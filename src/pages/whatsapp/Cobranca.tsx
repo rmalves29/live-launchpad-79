@@ -704,6 +704,33 @@ export default function Cobranca() {
       console.log(`🏷️ Tag selecionada: ${tagName} (${selectedTagId})`);
     }
 
+    // 🛡️ Pré-check: WhatsApp precisa estar conectado antes do disparo
+    try {
+      const { data: statusData, error: statusErr } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+        body: { action: 'status', tenant_id: tenant.id }
+      });
+      if (statusErr) throw statusErr;
+      if (!statusData?.connected) {
+        setDisconnectedModal({
+          open: true,
+          reason: statusData?.message || 'A instância Z-API retornou status desconectado.',
+          context: 'precheck',
+        });
+        return;
+      }
+    } catch (e: any) {
+      setDisconnectedModal({
+        open: true,
+        reason: e?.message || 'Não foi possível verificar o status da Z-API.',
+        context: 'precheck',
+      });
+      return;
+    }
+
+    // Gera batch_id único para este disparo (agrupa logs no histórico)
+    const batchId = (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
+    let consecutiveDisconnectFails = 0;
+
     setSending(true);
     setSendProgress({ current: 0, total: customers.length });
     pausedRef.current = false;
