@@ -151,14 +151,19 @@ export default function BulkSendHistory({ refreshKey = 0 }: { refreshKey?: numbe
   return (
     <>
       <Card className="rounded-2xl border-[#e5e7eb] shadow-sm">
-        <CardHeader className="pb-3 flex flex-row items-center justify-between">
-          <div className="flex items-center gap-2">
-            <History className="w-5 h-5 text-muted-foreground" />
-            <CardTitle className="text-lg font-semibold">Últimos envios em massa</CardTitle>
+        <CardHeader className="pb-3">
+          <div className="flex flex-row items-center justify-between">
+            <div className="flex items-center gap-2">
+              <History className="w-5 h-5 text-muted-foreground" />
+              <CardTitle className="text-lg font-semibold">Últimos envios em massa</CardTitle>
+            </div>
+            <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </Button>
           </div>
-          <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
+          <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+            Registro dos 5 disparos mais recentes de cobrança em massa. Mostra data/hora, quantidade de destinatários, status de entrega (entregues, pendentes e falhas) e prévia do texto enviado. Use para auditar campanhas e identificar rapidamente envios com problemas (ex.: WhatsApp desconectado).
+          </p>
         </CardHeader>
         <CardContent>
           {loading && summaries.length === 0 && (
