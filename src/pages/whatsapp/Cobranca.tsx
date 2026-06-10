@@ -854,8 +854,9 @@ export default function Cobranca() {
         // Regras: imagem+botão → envia imagem primeiro, depois mensagem com botão
         try {
           // 1) imagem (sempre primeiro se houver)
+          let imageResp: { data: any; error: any } = { data: null, error: null };
           if (imageDataUrl) {
-            await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+            imageResp = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
               body: {
                 action: 'send-image',
                 tenant_id: tenant.id,
@@ -890,7 +891,7 @@ export default function Cobranca() {
 
           const { data, error } = invokeBody
             ? await supabaseTenant.raw.functions.invoke('zapi-proxy', { body: invokeBody })
-            : { data: { ok: true }, error: null };
+            : { data: imageResp.data ?? { ok: true }, error: imageResp.error };
 
           // Detectar erro real: erro da function OU payload com error/sem messageId
           const payloadErrorMsg: string | null =
