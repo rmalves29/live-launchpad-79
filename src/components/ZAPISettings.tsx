@@ -529,6 +529,55 @@ export function ZAPISettings() {
               />
             </div>
 
+            {messageFlags.send_item_added_msg && (
+              <div className="ml-3 pl-4 border-l-2 border-primary/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="item_added_button_enabled" className="text-sm font-medium cursor-pointer">
+                      Enviar com botão clicável
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Adiciona um botão de ação (ex.: "Pagar Agora") com link direto.
+                    </p>
+                  </div>
+                  <Switch
+                    id="item_added_button_enabled"
+                    checked={itemAddedButtonEnabled}
+                    onCheckedChange={setItemAddedButtonEnabled}
+                  />
+                </div>
+
+                {itemAddedButtonEnabled && (
+                  <>
+                    <div className="space-y-1">
+                      <Label htmlFor="item_added_button_label" className="text-xs">Texto do botão (máx. 20)</Label>
+                      <Input
+                        id="item_added_button_label"
+                        maxLength={20}
+                        value={itemAddedButtonLabel}
+                        onChange={(e) => setItemAddedButtonLabel(e.target.value)}
+                        placeholder="Pagar Agora"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="item_added_button_url" className="text-xs">Link do botão</Label>
+                      <Input
+                        id="item_added_button_url"
+                        type="url"
+                        value={itemAddedButtonUrl}
+                        onChange={(e) => setItemAddedButtonUrl(e.target.value)}
+                        placeholder="Deixe em branco para usar o checkout padrão da loja"
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        Variáveis disponíveis no template ITEM_ADDED: <code>{'{{itens_pedido}}'}</code>, <code>{'{{total_pedido}}'}</code>, <code>{'{{numero_pedido}}'}</code>, <code>{'{{produto}}'}</code>, <code>{'{{quantidade}}'}</code>, <code>{'{{valor}}'}</code>, <code>{'{{codigo}}'}</code>.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+
             <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
               <div className="space-y-0.5">
                 <Label htmlFor="send_paid_order_msg" className="text-sm font-medium cursor-pointer">
