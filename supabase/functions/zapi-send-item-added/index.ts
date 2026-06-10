@@ -605,16 +605,23 @@ serve(async (req) => {
       );
     }
 
-    const { instanceId, token, clientToken, templateSolicitacao, templateComLink, templateItemAdded } = credentials;
+    const { instanceId, token, clientToken, templateSolicitacao, templateComLink, templateItemAdded, buttonEnabled, buttonLabel, buttonUrl } = credentials;
     const baseUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}`;
     const formattedPhone = await resolveWhatsAppPhone(baseUrl, clientToken, customer_phone);
-    const sendUrl = `${baseUrl}/send-text`;
+    const sendTextUrl = `${baseUrl}/send-text`;
+    const sendButtonUrl = `${baseUrl}/send-button-actions`;
+
+    // Carrega contexto do pedido (itens, total, número) para variáveis novas
+    const orderCtx = await loadOrderContext(supabase, tenant_id, order_id);
 
     let message: string;
     let templateType: 'A' | 'B' = 'A';
     let skipPendingConfirmation = false;
     let consentDecisionAfterSend: 'request_sent' | 'active_sent' | null = null;
     let activeStateId: string | null = null;
+    // Só mensagens "com link" (B) recebem o botão; solicitação (A) continua texto puro
+    let useButton = false;
+    let resolvedButtonUrl: string | null = null;
 
     // Verifica se proteção por consentimento está ativada para o tenant
     const { data: consentCfg } = await supabase
@@ -632,12 +639,16 @@ serve(async (req) => {
       // Fonte oficial: whatsapp_templates (type=ITEM_ADDED) — editado na tela WhatsApp → Templates
       const templateFromTable = await getTemplate(supabase, tenant_id);
       const template = templateFromTable || templateItemAdded || templateComLink || getDefaultTemplateComLink();
-      const baseMessage = formatMessage(template, body)
+      const baseMessage = formatMessage(template, body, orderCtx)
         .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
         .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
       message = addMessageVariation(baseMessage, false);
       consentDecisionAfterSend = null;
       skipPendingConfirmation = false;
+      if (buttonEnabled) {
+        useButton = true;
+        resolvedButtonUrl = (buttonUrl && buttonUrl.trim()) ? buttonUrl.trim() : checkoutUrl;
+      }
     } else {
       // ============================================================
       // MÁQUINA DE ESTADOS DE CONSENTIMENTO (tenant com proteção ativa)
@@ -673,7 +684,7 @@ serve(async (req) => {
       if (decision.action === 'send_request') {
         templateType = 'A';
         const template = templateSolicitacao || getDefaultTemplateSolicitacao();
-        const baseMessage = formatMessage(template, body);
+        const baseMessage = formatMessage(template, body, orderCtx);
         message = addMessageVariation(baseMessage, false);
         consentDecisionAfterSend = 'request_sent';
         skipPendingConfirmation = true;
@@ -684,14 +695,19 @@ serve(async (req) => {
         // Fonte oficial: whatsapp_templates (type=ITEM_ADDED) — editado na tela WhatsApp → Templates
         const templateFromTable = await getTemplate(supabase, tenant_id);
         const template = templateFromTable || templateComLink || getDefaultTemplateComLink();
-        const baseMessage = formatMessage(template, body)
+        const baseMessage = formatMessage(template, body, orderCtx)
           .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
           .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
         message = addMessageVariation(baseMessage, false);
         consentDecisionAfterSend = 'active_sent';
         skipPendingConfirmation = true;
+        if (buttonEnabled) {
+          useButton = true;
+          resolvedButtonUrl = (buttonUrl && buttonUrl.trim()) ? buttonUrl.trim() : checkoutUrl;
+        }
       }
     }
+
 
     // Check for throttling (multiple messages to same phone)
     const throttleDelay = await getThrottleDelay(formattedPhone);
