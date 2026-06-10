@@ -33,6 +33,9 @@ export function ZAPIAdvancedSettings() {
   const [consentProtectionEnabled, setConsentProtectionEnabled] = useState(false);
   const [templateSolicitacao, setTemplateSolicitacao] = useState('');
   const [templateComLink, setTemplateComLink] = useState('');
+  const [itemAddedButtonEnabled, setItemAddedButtonEnabled] = useState(true);
+  const [itemAddedButtonLabel, setItemAddedButtonLabel] = useState('Pagar Agora');
+  const [itemAddedButtonUrl, setItemAddedButtonUrl] = useState('');
 
   useEffect(() => {
     if (tenant?.id) load();
