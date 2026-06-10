@@ -545,31 +545,32 @@ export const ShippingOptionsManager = () => {
                   </div>
 
                   {/* Campo de pedido mínimo para frete grátis */}
-                  {formData.price === 0 && (
-                    <div className="space-y-2">
-                      <Label htmlFor="free_shipping_min_order">
-                        Pedido mínimo para liberar frete grátis (R$)
-                      </Label>
-                      <Input
-                        id="free_shipping_min_order"
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        placeholder="Ex: 99.00 — deixe em branco para sempre disponível"
-                        value={formData.free_shipping_min_order ?? ''}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setFormData(prev => ({
-                            ...prev,
-                            free_shipping_min_order: val === '' ? null : parseFloat(val) || null
-                          }));
-                        }}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Se preenchido, este frete grátis só aparecerá no checkout quando o pedido atingir este valor.
-                      </p>
-                    </div>
-                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="free_shipping_min_order">
+                      Pedido mínimo para liberar frete grátis (R$)
+                    </Label>
+                    <Input
+                      id="free_shipping_min_order"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      placeholder="Ex: 99.00 — deixe em branco para sempre disponível"
+                      disabled={formData.price > 0}
+                      value={formData.free_shipping_min_order ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData(prev => ({
+                          ...prev,
+                          free_shipping_min_order: val === '' ? null : parseFloat(val) || null
+                        }));
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {formData.price > 0
+                        ? 'Disponível somente quando o Valor estiver em R$ 0,00 (frete grátis).'
+                        : 'Se preenchido, este frete grátis só aparecerá no checkout quando o pedido atingir este valor (ex.: 99,00).'}
+                    </p>
+                  </div>
                   
                   {/* Carrier selection */}
                   <div className="space-y-2">

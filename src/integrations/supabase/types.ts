@@ -412,6 +412,7 @@ export type Database = {
           created_at: string
           delivery_days: number
           description: string | null
+          free_shipping_min_order: number | null
           id: string
           is_active: boolean
           name: string
@@ -429,6 +430,7 @@ export type Database = {
           created_at?: string
           delivery_days?: number
           description?: string | null
+          free_shipping_min_order?: number | null
           id?: string
           is_active?: boolean
           name: string
@@ -446,6 +448,7 @@ export type Database = {
           created_at?: string
           delivery_days?: number
           description?: string | null
+          free_shipping_min_order?: number | null
           id?: string
           is_active?: boolean
           name?: string
