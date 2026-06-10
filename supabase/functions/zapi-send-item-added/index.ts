@@ -85,7 +85,7 @@ function phoneMatches(a?: string | null, b?: string | null): boolean {
 async function getZAPICredentials(supabase: any, tenantId: string, sourceInstanceId?: string, sourceConnectedPhone?: string) {
   const { data: integration, error } = await supabase
     .from("integration_whatsapp")
-     .select("zapi_instance_id, zapi_token, zapi_client_token, connected_phone, is_active, provider, send_item_added_msg, confirmation_timeout_minutes, template_solicitacao, template_com_link, template_item_added")
+     .select("zapi_instance_id, zapi_token, zapi_client_token, connected_phone, is_active, provider, send_item_added_msg, confirmation_timeout_minutes, template_solicitacao, template_com_link, template_item_added, item_added_button_enabled, item_added_button_label, item_added_button_url")
     .eq("tenant_id", tenantId)
     .eq("provider", "zapi")
     .eq("is_active", true)
@@ -136,6 +136,64 @@ async function getZAPICredentials(supabase: any, tenantId: string, sourceInstanc
      templateSolicitacao: integration.template_solicitacao || null,
      templateComLink: integration.template_com_link || null,
      templateItemAdded: integration.template_item_added || null,
+     // Botão "Pagar Agora"
+     buttonEnabled: integration.item_added_button_enabled !== false,
+     buttonLabel: (integration.item_added_button_label || 'Pagar Agora').toString().slice(0, 20),
+     buttonUrl: integration.item_added_button_url || null,
+  };
+}
+
+function formatBRL(value: number): string {
+  return `R$ ${value.toFixed(2).replace('.', ',')}`;
+}
+
+// Busca itens do carrinho + número do pedido para popular as variáveis novas
+async function loadOrderContext(
+  supabase: any,
+  tenantId: string,
+  orderId?: number | null,
+): Promise<{ itensPedido: string; totalPedido: string; numeroPedido: string }> {
+  if (!orderId) return { itensPedido: '', totalPedido: '', numeroPedido: '' };
+
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, cart_id')
+    .eq('id', orderId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+
+  if (!order) return { itensPedido: '', totalPedido: '', numeroPedido: '' };
+
+  let itensPedido = '';
+  let totalPedido = '';
+
+  if (order.cart_id) {
+    const { data: items } = await supabase
+      .from('cart_items')
+      .select('qty, unit_price, products:product_id(name, code)')
+      .eq('cart_id', order.cart_id);
+
+    if (Array.isArray(items) && items.length > 0) {
+      let total = 0;
+      const lines: string[] = [];
+      for (const it of items) {
+        const qty = Number(it.qty) || 0;
+        const price = Number(it.unit_price) || 0;
+        total += qty * price;
+        const name = it.products?.name || 'Produto';
+        const code = it.products?.code || '';
+        const codeStr = code ? ` (${code})` : '';
+        lines.push(`• ${name}${codeStr} — ${qty}x ${formatBRL(price)}`);
+      }
+      itensPedido = lines.join('\n');
+      totalPedido = formatBRL(total);
+    }
+  }
+
+  return {
+    itensPedido,
+    totalPedido,
+    numeroPedido: String(order.id || ''),
   };
 }
 
