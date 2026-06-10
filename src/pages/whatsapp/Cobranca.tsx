@@ -19,6 +19,8 @@ import { addMessageVariation, getHumanizedDelayMs } from '@/lib/whatsapp-anti-bl
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import BulkSendHistory from '@/components/whatsapp/BulkSendHistory';
+import ZapiDisconnectedModal from '@/components/whatsapp/ZapiDisconnectedModal';
 
 interface FilterCriteria {
   isPaid: string;
