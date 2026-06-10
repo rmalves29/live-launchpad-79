@@ -1890,6 +1890,9 @@ export type Database = {
           id: string
           instance_name: string
           is_active: boolean
+          item_added_button_enabled: boolean
+          item_added_button_label: string
+          item_added_button_url: string | null
           item_added_confirmation_template: string | null
           last_status_check: string | null
           provider: string | null
@@ -1917,6 +1920,9 @@ export type Database = {
           id?: string
           instance_name: string
           is_active?: boolean
+          item_added_button_enabled?: boolean
+          item_added_button_label?: string
+          item_added_button_url?: string | null
           item_added_confirmation_template?: string | null
           last_status_check?: string | null
           provider?: string | null
@@ -1944,6 +1950,9 @@ export type Database = {
           id?: string
           instance_name?: string
           is_active?: boolean
+          item_added_button_enabled?: boolean
+          item_added_button_label?: string
+          item_added_button_url?: string | null
           item_added_confirmation_template?: string | null
           last_status_check?: string | null
           provider?: string | null
