@@ -154,6 +154,10 @@ export function ZAPISettings() {
          setConsentProtectionEnabled(typedData.consent_protection_enabled ?? false);
          setTemplateSolicitacao(typedData.template_solicitacao ?? '');
          setTemplateComLink(typedData.template_com_link ?? '');
+         // Botão "Pagar Agora"
+         setItemAddedButtonEnabled((typedData as any).item_added_button_enabled ?? true);
+         setItemAddedButtonLabel((typedData as any).item_added_button_label ?? 'Pagar Agora');
+         setItemAddedButtonUrl((typedData as any).item_added_button_url ?? '');
       }
     } catch (error: any) {
       console.error('Error loading Z-API integration:', error);
