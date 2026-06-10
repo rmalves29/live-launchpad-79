@@ -704,8 +704,8 @@ serve(async (req) => {
       const templateFromTable = await getTemplate(supabase, tenant_id);
       const template = templateFromTable || templateItemAdded || templateComLink || getDefaultTemplateComLink();
       const baseMessage = formatMessage(template, body, orderCtx)
-        .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
-        .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
+        .replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrl)
+        .replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrl);
       message = addMessageVariation(baseMessage, false);
       consentDecisionAfterSend = null;
       skipPendingConfirmation = false;
@@ -760,8 +760,8 @@ serve(async (req) => {
         const templateFromTable = await getTemplate(supabase, tenant_id);
         const template = templateFromTable || templateComLink || getDefaultTemplateComLink();
         const baseMessage = formatMessage(template, body, orderCtx)
-          .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
-          .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
+          .replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrl)
+          .replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrl);
         message = addMessageVariation(baseMessage, false);
         consentDecisionAfterSend = 'active_sent';
         skipPendingConfirmation = true;
