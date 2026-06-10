@@ -149,10 +149,58 @@ export default function WhatsappTemplates() {
   const [sendCadastroDm, setSendCadastroDm] = useState(false);
   const [loadingFlag, setLoadingFlag] = useState(false);
 
+  const [itemAddedBtnEnabled, setItemAddedBtnEnabled] = useState(true);
+  const [itemAddedBtnLabel, setItemAddedBtnLabel] = useState('Pagar Agora');
+  const [itemAddedBtnUrl, setItemAddedBtnUrl] = useState('');
+  const [savingItemBtn, setSavingItemBtn] = useState(false);
+  const [whatsappIntegrationId, setWhatsappIntegrationId] = useState<number | null>(null);
+
   useEffect(() => {
     initializeTemplates();
     loadCadastroDmFlag();
+    loadItemAddedButton();
   }, []);
+
+  const loadItemAddedButton = async () => {
+    try {
+      const { data } = await supabaseTenant
+        .from('integration_whatsapp')
+        .select('id, item_added_button_enabled, item_added_button_label, item_added_button_url')
+        .maybeSingle();
+      if (data) {
+        setWhatsappIntegrationId((data as any).id);
+        setItemAddedBtnEnabled((data as any).item_added_button_enabled ?? true);
+        setItemAddedBtnLabel((data as any).item_added_button_label ?? 'Pagar Agora');
+        setItemAddedBtnUrl((data as any).item_added_button_url ?? '');
+      }
+    } catch (e) {
+      console.error('Erro ao carregar botão ITEM_ADDED:', e);
+    }
+  };
+
+  const saveItemAddedButton = async () => {
+    if (!whatsappIntegrationId) {
+      toast.error('Configure a integração Z-API primeiro');
+      return;
+    }
+    setSavingItemBtn(true);
+    try {
+      const { error } = await supabaseTenant
+        .from('integration_whatsapp')
+        .update({
+          item_added_button_enabled: itemAddedBtnEnabled,
+          item_added_button_label: (itemAddedBtnLabel || '').slice(0, 20),
+          item_added_button_url: itemAddedBtnUrl,
+          updated_at: new Date().toISOString(),
+        });
+      if (error) throw error;
+      toast.success('Botão "Pagar Agora" salvo');
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao salvar botão');
+    } finally {
+      setSavingItemBtn(false);
+    }
+  };
 
   const loadCadastroDmFlag = async () => {
     try {
