@@ -1104,7 +1104,7 @@ export default function Cobranca() {
         </div>
       )}
 
-      <BulkSendHistory refreshKey={historyRefreshKey} />
+      
 
       <ZapiDisconnectedModal
         open={disconnectedModal.open}
@@ -1640,6 +1640,8 @@ export default function Cobranca() {
           </CardContent>
         </Card>
       </div>
+
+      <BulkSendHistory refreshKey={historyRefreshKey} />
     </div>
   );
 }
