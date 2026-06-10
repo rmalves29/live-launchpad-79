@@ -148,15 +148,59 @@ export function ZAPIAdvancedSettings() {
         </CardHeader>
         <CardContent className="space-y-3">
           {flagItems.map(item => (
-            <div key={item.key} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-              <div className="space-y-0.5 pr-4">
-                <Label className="text-sm font-medium cursor-pointer">{item.title}</Label>
-                <p className="text-xs text-muted-foreground">{item.desc}</p>
+            <div key={item.key} className="space-y-3">
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                <div className="space-y-0.5 pr-4">
+                  <Label className="text-sm font-medium cursor-pointer">{item.title}</Label>
+                  <p className="text-xs text-muted-foreground">{item.desc}</p>
+                </div>
+                <Switch
+                  checked={messageFlags[item.key]}
+                  onCheckedChange={() => handleToggleFlag(item.key)}
+                />
               </div>
-              <Switch
-                checked={messageFlags[item.key]}
-                onCheckedChange={() => handleToggleFlag(item.key)}
-              />
+
+              {item.key === 'send_item_added_msg' && messageFlags.send_item_added_msg && (
+                <div className="space-y-3 p-3 rounded-lg border bg-muted/30 ml-2">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5 pr-4">
+                      <Label className="text-sm font-medium">Botão "Pagar Agora" (clicável)</Label>
+                      <p className="text-xs text-muted-foreground">Envia a mensagem com um botão clicável de URL no WhatsApp</p>
+                    </div>
+                    <Switch checked={itemAddedButtonEnabled} onCheckedChange={setItemAddedButtonEnabled} />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Texto do botão (máx. 20)</Label>
+                      <Input
+                        value={itemAddedButtonLabel}
+                        maxLength={20}
+                        onChange={(e) => setItemAddedButtonLabel(e.target.value)}
+                        placeholder="Pagar Agora"
+                        disabled={!itemAddedButtonEnabled}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">URL do botão (opcional)</Label>
+                      <Input
+                        value={itemAddedButtonUrl}
+                        onChange={(e) => setItemAddedButtonUrl(e.target.value)}
+                        placeholder="Padrão: link do checkout"
+                        disabled={!itemAddedButtonEnabled}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Variáveis disponíveis na mensagem: {'{{produto}}'}, {'{{quantidade}}'}, {'{{valor}}'}, {'{{link_checkout}}'}, {'{{itens_pedido}}'}, {'{{total_pedido}}'}, {'{{numero_pedido}}'}
+                  </p>
+                  <div className="flex justify-end">
+                    <Button size="sm" onClick={handleSaveConsent} disabled={saving}>
+                      <Save className="h-4 w-4 mr-2" />
+                      {saving ? 'Salvando...' : 'Salvar Botão'}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </CardContent>
