@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Bell, MessageSquare, Save, Loader2, Shield } from 'lucide-react';
@@ -33,6 +34,9 @@ export function ZAPIAdvancedSettings() {
   const [consentProtectionEnabled, setConsentProtectionEnabled] = useState(false);
   const [templateSolicitacao, setTemplateSolicitacao] = useState('');
   const [templateComLink, setTemplateComLink] = useState('');
+  const [itemAddedButtonEnabled, setItemAddedButtonEnabled] = useState(true);
+  const [itemAddedButtonLabel, setItemAddedButtonLabel] = useState('Pagar Agora');
+  const [itemAddedButtonUrl, setItemAddedButtonUrl] = useState('');
 
   useEffect(() => {
     if (tenant?.id) load();
@@ -44,7 +48,7 @@ export function ZAPIAdvancedSettings() {
     try {
       const { data, error } = await supabase
         .from('integration_whatsapp')
-        .select('id, send_item_added_msg, send_paid_order_msg, send_product_canceled_msg, send_out_of_stock_msg, consent_protection_enabled, template_solicitacao, template_com_link')
+        .select('id, send_item_added_msg, send_paid_order_msg, send_product_canceled_msg, send_out_of_stock_msg, consent_protection_enabled, template_solicitacao, template_com_link, item_added_button_enabled, item_added_button_label, item_added_button_url')
         .eq('tenant_id', tenant.id)
         .maybeSingle();
       if (error && error.code !== 'PGRST116') throw error;
@@ -59,6 +63,9 @@ export function ZAPIAdvancedSettings() {
         setConsentProtectionEnabled((data as any).consent_protection_enabled ?? false);
         setTemplateSolicitacao((data as any).template_solicitacao ?? '');
         setTemplateComLink((data as any).template_com_link ?? '');
+        setItemAddedButtonEnabled((data as any).item_added_button_enabled ?? true);
+        setItemAddedButtonLabel((data as any).item_added_button_label ?? 'Pagar Agora');
+        setItemAddedButtonUrl((data as any).item_added_button_url ?? '');
       }
     } catch (e: any) {
       console.error('Error loading advanced settings:', e);
@@ -100,6 +107,9 @@ export function ZAPIAdvancedSettings() {
           consent_protection_enabled: consentProtectionEnabled,
           template_solicitacao: templateSolicitacao || null,
           template_com_link: templateComLink || null,
+          item_added_button_enabled: itemAddedButtonEnabled,
+          item_added_button_label: (itemAddedButtonLabel || 'Pagar Agora').slice(0, 20),
+          item_added_button_url: itemAddedButtonUrl || null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', integrationId);
@@ -186,15 +196,46 @@ export function ZAPIAdvancedSettings() {
           <div className="space-y-2">
             <Label className="text-sm font-medium">Template B — Com Link (Consentimento Válido)</Label>
             <p className="text-xs text-muted-foreground">
-              Variáveis: {'{{produto}}'}, {'{{quantidade}}'}, {'{{valor}}'}, {'{{link_checkout}}'}
+              Variáveis: {'{{produto}}'}, {'{{quantidade}}'}, {'{{valor}}'}, {'{{link_checkout}}'}, {'{{itens_pedido}}'}, {'{{total_pedido}}'}, {'{{numero_pedido}}'}
             </p>
             <Textarea
               value={templateComLink}
               onChange={(e) => setTemplateComLink(e.target.value)}
               rows={6}
               className="font-mono text-sm"
-              placeholder={`🛒 *Item adicionado*\n\n✅ {{produto}}\nQtd: *{{quantidade}}*\nValor: *R$ {{valor}}*\n\n👉 Finalize: {{link_checkout}}`}
+              placeholder={`🛒 *Item adicionado*\n\n{{itens_pedido}}\n\nTotal: *R$ {{total_pedido}}*\nPedido: #{{numero_pedido}}\n\n👉 Finalize: {{link_checkout}}`}
             />
+          </div>
+
+          <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5 pr-4">
+                <Label className="text-sm font-medium">Botão "Pagar Agora" (clicável)</Label>
+                <p className="text-xs text-muted-foreground">Envia a mensagem com um botão clicável de URL no WhatsApp</p>
+              </div>
+              <Switch checked={itemAddedButtonEnabled} onCheckedChange={setItemAddedButtonEnabled} />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Texto do botão (máx. 20)</Label>
+                <Input
+                  value={itemAddedButtonLabel}
+                  maxLength={20}
+                  onChange={(e) => setItemAddedButtonLabel(e.target.value)}
+                  placeholder="Pagar Agora"
+                  disabled={!itemAddedButtonEnabled}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">URL do botão (opcional)</Label>
+                <Input
+                  value={itemAddedButtonUrl}
+                  onChange={(e) => setItemAddedButtonUrl(e.target.value)}
+                  placeholder="Padrão: link do checkout"
+                  disabled={!itemAddedButtonEnabled}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-800">
