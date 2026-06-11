@@ -141,6 +141,11 @@ const Produtos = () => {
     }
   }, []);
 
+  // Resetar paginação quando filtros mudam
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchTerm, saleTypeFilter, categoriaFilter]);
+
   const loadCategorias = async () => {
     try {
       const { data, error } = await (supabaseTenant as any)
