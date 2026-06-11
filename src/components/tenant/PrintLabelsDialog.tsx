@@ -30,6 +30,10 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
   const [labelWidth, setLabelWidth] = useState(33);
   const [labelHeight, setLabelHeight] = useState(18);
   const [columns, setColumns] = useState(3);
+  const [gapX, setGapX] = useState(5);
+  const [gapY, setGapY] = useState(0);
+  const [marginTop, setMarginTop] = useState(0);
+  const [marginLeft, setMarginLeft] = useState(0);
   const [codeInput, setCodeInput] = useState('');
   const [items, setItems] = useState<LabelItem[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
