@@ -439,6 +439,7 @@ Deno.serve(async (req) => {
               item_added_message_sent: false,
               payment_confirmation_sent: false,
               is_cancelled: false,
+              source: 'instagram',
               ...(customerData ? {
                 customer_cep: customerData.cep || null,
                 customer_street: customerData.street || null,
