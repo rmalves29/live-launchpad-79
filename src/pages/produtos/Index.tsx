@@ -1388,7 +1388,7 @@ const Produtos = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredProducts.map((product) => (
+                      {paginatedProducts.map((product) => (
                         <TableRow key={product.id}>
                           <TableCell>
                             <Checkbox
@@ -1469,6 +1469,69 @@ const Produtos = () => {
                       ))}
                     </TableBody>
                   </Table>
+                  {/* Controles de Paginação */}
+                  {filteredProducts.length > 0 && (
+                    <div className="flex items-center justify-between mt-4 px-1">
+                      <div className="text-sm text-muted-foreground">
+                        Página {safePage} de {totalPages} ({paginatedProducts.length} de {filteredProducts.length} produtos)
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPage(1)}
+                          disabled={safePage <= 1}
+                        >
+                          {'<<'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPage(p => Math.max(1, p - 1))}
+                          disabled={safePage <= 1}
+                        >
+                          {'<'}
+                        </Button>
+                        {Array.from({ length: totalPages }, (_, i) => i + 1)
+                          .filter(p => {
+                            if (totalPages <= 5) return true;
+                            if (p === 1 || p === totalPages) return true;
+                            if (Math.abs(p - safePage) <= 1) return true;
+                            return false;
+                          })
+                          .map((p, idx, arr) => (
+                            <div key={p} className="flex items-center">
+                              {idx > 0 && arr[idx - 1] !== p - 1 && (
+                                <span className="px-2 text-muted-foreground">...</span>
+                              )}
+                              <Button
+                                variant={p === safePage ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setPage(p)}
+                              >
+                                {p}
+                              </Button>
+                            </div>
+                          ))}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                          disabled={safePage >= totalPages}
+                        >
+                          {'>'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPage(totalPages)}
+                          disabled={safePage >= totalPages}
+                        >
+                          {'>>'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
               </div>
             )}
           </CardContent>
