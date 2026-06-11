@@ -149,7 +149,7 @@ Deno.serve(async (req) => {
       // Cria pedido novo
       const { data: newOrder, error: oErr } = await supabase.from('orders').insert({
         tenant_id, customer_phone, event_date: today, event_type: 'LIVE',
-        total_amount: 0, is_paid: false,
+        total_amount: 0, is_paid: false, source: 'storefront',
       }).select('id').single();
       if (oErr) {
         console.error('[add-to-cart] create order:', oErr);
