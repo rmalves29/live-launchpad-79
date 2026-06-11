@@ -2141,6 +2141,7 @@ async function findOrCreateOrder(
       is_paid: false,
       cart_id: cartId,
       whatsapp_group_name: groupName || null,
+      source: 'whatsapp',
     })
     .select()
     .single();
