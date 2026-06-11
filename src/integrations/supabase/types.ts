@@ -539,6 +539,7 @@ export type Database = {
           neighborhood: string | null
           number: string | null
           phone: string
+          profile_picture_url: string | null
           state: string | null
           street: string | null
           tenant_id: string
@@ -562,6 +563,7 @@ export type Database = {
           neighborhood?: string | null
           number?: string | null
           phone: string
+          profile_picture_url?: string | null
           state?: string | null
           street?: string | null
           tenant_id: string
@@ -585,6 +587,7 @@ export type Database = {
           neighborhood?: string | null
           number?: string | null
           phone?: string
+          profile_picture_url?: string | null
           state?: string | null
           street?: string | null
           tenant_id?: string
@@ -3031,6 +3034,54 @@ export type Database = {
           webhook_secret?: string | null
         }
         Relationships: []
+      }
+      storage_file_references: {
+        Row: {
+          bucket_id: string
+          created_at: string | null
+          id: string
+          product_id: number | null
+          source_column: string
+          source_table: string
+          storage_name: string
+          tenant_id: string | null
+        }
+        Insert: {
+          bucket_id?: string
+          created_at?: string | null
+          id?: string
+          product_id?: number | null
+          source_column?: string
+          source_table?: string
+          storage_name: string
+          tenant_id?: string | null
+        }
+        Update: {
+          bucket_id?: string
+          created_at?: string | null
+          id?: string
+          product_id?: number | null
+          source_column?: string
+          source_table?: string
+          storage_name?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "storage_file_references_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "storage_file_references_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       support_conversations: {
         Row: {
