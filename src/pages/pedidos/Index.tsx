@@ -1899,7 +1899,22 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                       
                       {/* Tipo Evento */}
                       <TableCell className="px-3 py-3 text-center">
-                        <Badge className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${String(order.event_type).toUpperCase().includes('LIVE') ? 'bg-[#dbeafe] text-[#2563eb] hover:bg-[#dbeafe]' : 'bg-[#f3e8ff] text-[#9333ea] hover:bg-[#f3e8ff]'}`}>{order.event_type}</Badge>
+                        <div className="flex flex-col items-center gap-1">
+                          <Badge className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${String(order.event_type).toUpperCase().includes('LIVE') ? 'bg-[#dbeafe] text-[#2563eb] hover:bg-[#dbeafe]' : 'bg-[#f3e8ff] text-[#9333ea] hover:bg-[#f3e8ff]'}`}>{order.event_type}</Badge>
+                          {(() => {
+                            const src = order.source || 'manual';
+                            const map: Record<string, { label: string; cls: string }> = {
+                              whatsapp:   { label: 'WhatsApp',  cls: 'bg-[#dcfce7] text-[#16a34a]' },
+                              instagram:  { label: 'Instagram', cls: 'bg-[#fce7f3] text-[#db2777]' },
+                              storefront: { label: 'Vitrine',   cls: 'bg-[#fef3c7] text-[#ca8a04]' },
+                              live_admin: { label: 'Live',      cls: 'bg-[#e0e7ff] text-[#4f46e5]' },
+                              webhook:    { label: 'Auto',      cls: 'bg-[#dcfce7] text-[#16a34a]' },
+                              manual:     { label: 'Manual',    cls: 'bg-[#f1f5f9] text-[#475569]' },
+                            };
+                            const m = map[src] || { label: src, cls: 'bg-[#f1f5f9] text-[#475569]' };
+                            return <span className={`text-[10px] font-medium rounded-full px-1.5 py-0.5 ${m.cls}`} title={`Origem: ${m.label}`}>{m.label}</span>;
+                          })()}
+                        </div>
                       </TableCell>
                       
                       {/* Data Evento */}
