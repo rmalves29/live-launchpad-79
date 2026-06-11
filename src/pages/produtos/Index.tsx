@@ -77,6 +77,10 @@ const Produtos = () => {
   const [isLabelsOpen, setIsLabelsOpen] = useState(false);
   const [isCategoriasOpen, setIsCategoriasOpen] = useState(false);
   
+  // Paginação
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [categoriaFilter, setCategoriaFilter] = useState<string>('ALL');
   const [bulkCategoryValue, setBulkCategoryValue] = useState<string>('');
@@ -136,6 +140,11 @@ const Produtos = () => {
       return () => clearInterval(checkTenant);
     }
   }, []);
+
+  // Resetar paginação quando filtros mudam
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchTerm, saleTypeFilter, categoriaFilter]);
 
   const loadCategorias = async () => {
     try {
@@ -474,7 +483,7 @@ const Produtos = () => {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedProducts(filteredProducts.map(p => p.id));
+      setSelectedProducts(paginatedProducts.map(p => p.id));
     } else {
       setSelectedProducts([]);
     }
@@ -541,6 +550,11 @@ const Produtos = () => {
       (categoriaFilter === '__none__' ? !product.category_id : product.category_id === categoriaFilter);
     return matchesSearch && matchesType && matchesCategoria;
   });
+
+  // Paginação
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paginatedProducts = filteredProducts.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -1296,6 +1310,16 @@ const Produtos = () => {
                 )}
               </div>
               <div className="flex items-center space-x-2">
+                <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
+                  <SelectTrigger className="w-[100px]">
+                    <SelectValue placeholder="Itens" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Select value={categoriaFilter} onValueChange={setCategoriaFilter}>
                   <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="Categoria" />
@@ -1347,7 +1371,7 @@ const Produtos = () => {
                       <TableRow>
                         <TableHead className="w-[50px]">
                           <Checkbox
-                            checked={selectedProducts.length === filteredProducts.length && filteredProducts.length > 0}
+                            checked={selectedProducts.length === paginatedProducts.length && paginatedProducts.length > 0}
                             onCheckedChange={handleSelectAll}
                           />
                         </TableHead>
@@ -1364,7 +1388,7 @@ const Produtos = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredProducts.map((product) => (
+                      {paginatedProducts.map((product) => (
                         <TableRow key={product.id}>
                           <TableCell>
                             <Checkbox
@@ -1445,6 +1469,69 @@ const Produtos = () => {
                       ))}
                     </TableBody>
                   </Table>
+                  {/* Controles de Paginação */}
+                  {filteredProducts.length > 0 && (
+                    <div className="flex items-center justify-between mt-4 px-1">
+                      <div className="text-sm text-muted-foreground">
+                        Página {safePage} de {totalPages} ({paginatedProducts.length} de {filteredProducts.length} produtos)
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPage(1)}
+                          disabled={safePage <= 1}
+                        >
+                          {'<<'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPage(p => Math.max(1, p - 1))}
+                          disabled={safePage <= 1}
+                        >
+                          {'<'}
+                        </Button>
+                        {Array.from({ length: totalPages }, (_, i) => i + 1)
+                          .filter(p => {
+                            if (totalPages <= 5) return true;
+                            if (p === 1 || p === totalPages) return true;
+                            if (Math.abs(p - safePage) <= 1) return true;
+                            return false;
+                          })
+                          .map((p, idx, arr) => (
+                            <div key={p} className="flex items-center">
+                              {idx > 0 && arr[idx - 1] !== p - 1 && (
+                                <span className="px-2 text-muted-foreground">...</span>
+                              )}
+                              <Button
+                                variant={p === safePage ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setPage(p)}
+                              >
+                                {p}
+                              </Button>
+                            </div>
+                          ))}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                          disabled={safePage >= totalPages}
+                        >
+                          {'>'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPage(totalPages)}
+                          disabled={safePage >= totalPages}
+                        >
+                          {'>>'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
               </div>
             )}
           </CardContent>
