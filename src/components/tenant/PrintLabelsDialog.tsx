@@ -4,7 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Printer, Tags, X, Plus, Minus } from 'lucide-react';
+import { Printer, Tags, X, Plus, Minus, Save } from 'lucide-react';
+import { useTenant } from '@/hooks/useTenant';
+import { toast } from 'sonner';
+
 
 interface Product {
   id: number;
@@ -27,14 +30,45 @@ interface PrintLabelsDialogProps {
 }
 
 export default function PrintLabelsDialog({ open, onOpenChange, products, preSelectedIds }: PrintLabelsDialogProps) {
+  const { tenant } = useTenant();
+  const storageKey = tenant?.id ? `printLabelsConfig:${tenant.id}` : null;
+
   const [labelWidth, setLabelWidth] = useState(33);
   const [labelHeight, setLabelHeight] = useState(18);
   const [columns, setColumns] = useState(3);
-  const [gapX, setGapX] = useState(5);
-  const [gapY, setGapY] = useState(0);
+  const [gapX, setGapX] = useState(3);
+  const [gapY, setGapY] = useState(3);
   const [marginTop, setMarginTop] = useState(0);
   const [marginLeft, setMarginLeft] = useState(0);
   const [codeInput, setCodeInput] = useState('');
+
+  // Load saved per-tenant config
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return;
+      const c = JSON.parse(raw);
+      if (typeof c.labelWidth === 'number') setLabelWidth(c.labelWidth);
+      if (typeof c.labelHeight === 'number') setLabelHeight(c.labelHeight);
+      if (typeof c.columns === 'number') setColumns(c.columns);
+      if (typeof c.gapX === 'number') setGapX(c.gapX);
+      if (typeof c.gapY === 'number') setGapY(c.gapY);
+      if (typeof c.marginTop === 'number') setMarginTop(c.marginTop);
+      if (typeof c.marginLeft === 'number') setMarginLeft(c.marginLeft);
+    } catch {}
+  }, [storageKey]);
+
+  const saveConfig = () => {
+    if (!storageKey) {
+      toast.error('Tenant não identificado');
+      return;
+    }
+    localStorage.setItem(storageKey, JSON.stringify({
+      labelWidth, labelHeight, columns, gapX, gapY, marginTop, marginLeft
+    }));
+    toast.success('Configuração de etiqueta salva para esta empresa');
+  };
   const [items, setItems] = useState<LabelItem[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -317,7 +351,11 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button variant="outline" onClick={saveConfig}>
+            <Save className="h-4 w-4 mr-2" />
+            Salvar config.
+          </Button>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button onClick={handlePrint} disabled={items.length === 0}>
             <Printer className="h-4 w-4 mr-2" />
