@@ -351,7 +351,11 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button variant="outline" onClick={saveConfig}>
+            <Save className="h-4 w-4 mr-2" />
+            Salvar config.
+          </Button>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button onClick={handlePrint} disabled={items.length === 0}>
             <Printer className="h-4 w-4 mr-2" />
