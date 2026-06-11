@@ -210,20 +210,22 @@ async function loadOrderContext(
       });
     }
 
-    // O trigger chama a Edge Function antes do commit do cart_items; por isso
-    // garantimos que o item recém-adicionado entre na lista mesmo que a consulta
-    // ainda não enxergue a linha nova/atualizada.
+    // Com trigger assíncrono (net.http_post), o cart_items já está commitado
+    // quando a Edge Function consulta. Só adicionamos currentItem manualmente
+    // se ele AINDA não aparece na consulta (fallback de timing).
+    // NUNCA somar por cima do que já está no DB — isso duplicaria a quantidade.
     if (currentItem) {
       const code = currentItem.product_code || '';
       const name = currentItem.product_name || 'Produto';
       const key = code || name;
-      const existing = merged.get(key);
-      merged.set(key, {
-        name: existing?.name || name,
-        code: existing?.code || code,
-        qty: (existing?.qty || 0) + (Number(currentItem.quantity) || 0),
-        price: Number(currentItem.unit_price) || existing?.price || 0,
-      });
+      if (!merged.has(key)) {
+        merged.set(key, {
+          name,
+          code,
+          qty: Number(currentItem.quantity) || 0,
+          price: Number(currentItem.unit_price) || 0,
+        });
+      }
     }
 
     if (merged.size > 0) {
