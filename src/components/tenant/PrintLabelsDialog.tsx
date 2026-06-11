@@ -242,6 +242,24 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
               <Input type="number" min={1} max={10} value={columns} onChange={e => setColumns(Number(e.target.value))} />
             </div>
           </div>
+          <div className="grid grid-cols-4 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Espaço H (mm)</Label>
+              <Input type="number" min={0} max={20} step={0.5} value={gapX} onChange={e => setGapX(Number(e.target.value))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Espaço V (mm)</Label>
+              <Input type="number" min={0} max={20} step={0.5} value={gapY} onChange={e => setGapY(Number(e.target.value))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Margem topo (mm)</Label>
+              <Input type="number" min={0} max={50} step={0.5} value={marginTop} onChange={e => setMarginTop(Number(e.target.value))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Margem esq. (mm)</Label>
+              <Input type="number" min={0} max={50} step={0.5} value={marginLeft} onChange={e => setMarginLeft(Number(e.target.value))} />
+            </div>
+          </div>
 
           {/* Code input */}
           <div className="space-y-1">
