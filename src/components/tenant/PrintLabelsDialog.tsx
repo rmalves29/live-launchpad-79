@@ -30,6 +30,10 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
   const [labelWidth, setLabelWidth] = useState(33);
   const [labelHeight, setLabelHeight] = useState(18);
   const [columns, setColumns] = useState(3);
+  const [gapX, setGapX] = useState(5);
+  const [gapY, setGapY] = useState(0);
+  const [marginTop, setMarginTop] = useState(0);
+  const [marginLeft, setMarginLeft] = useState(0);
   const [codeInput, setCodeInput] = useState('');
   const [items, setItems] = useState<LabelItem[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -151,19 +155,20 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
   .grid {
     display: grid;
     grid-template-columns: repeat(${columns}, ${labelWidth}mm);
-    gap: 2mm;
-    padding: 2mm;
+    column-gap: ${gapX}mm;
+    row-gap: ${gapY}mm;
+    padding-top: ${marginTop}mm;
+    padding-left: ${marginLeft}mm;
   }
   .label {
     width: ${labelWidth}mm;
     height: ${labelHeight}mm;
-    border: 0.3mm solid #000;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 1mm;
+    padding: 0.5mm;
     page-break-inside: avoid;
   }
   .label-name {
@@ -196,8 +201,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
   }
   @media print {
     html, body { margin: 0; padding: 0; }
-    .grid { padding: 0; }
-    .label { border-color: #000; }
+    .grid { padding-top: ${marginTop}mm; padding-left: ${marginLeft}mm; }
   }
 </style>
 </head>
@@ -236,6 +240,24 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
             <div className="space-y-1">
               <Label className="text-xs">Colunas</Label>
               <Input type="number" min={1} max={10} value={columns} onChange={e => setColumns(Number(e.target.value))} />
+            </div>
+          </div>
+          <div className="grid grid-cols-4 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Espaço H (mm)</Label>
+              <Input type="number" min={0} max={20} step={0.5} value={gapX} onChange={e => setGapX(Number(e.target.value))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Espaço V (mm)</Label>
+              <Input type="number" min={0} max={20} step={0.5} value={gapY} onChange={e => setGapY(Number(e.target.value))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Margem topo (mm)</Label>
+              <Input type="number" min={0} max={50} step={0.5} value={marginTop} onChange={e => setMarginTop(Number(e.target.value))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Margem esq. (mm)</Label>
+              <Input type="number" min={0} max={50} step={0.5} value={marginLeft} onChange={e => setMarginLeft(Number(e.target.value))} />
             </div>
           </div>
 
