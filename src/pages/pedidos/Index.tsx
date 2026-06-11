@@ -51,6 +51,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     order_status?: 'em_separacao' | 'envio_pendente' | 'enviado' | 'liberado_retirada' | null;
     customer_name?: string;
     bling_order_id?: number;
+    source?: string | null;
     customer?: {
       name?: string;
       cpf?: string;
