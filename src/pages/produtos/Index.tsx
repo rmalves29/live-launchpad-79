@@ -1371,7 +1371,7 @@ const Produtos = () => {
                       <TableRow>
                         <TableHead className="w-[50px]">
                           <Checkbox
-                            checked={selectedProducts.length === filteredProducts.length && filteredProducts.length > 0}
+                            checked={selectedProducts.length === paginatedProducts.length && paginatedProducts.length > 0}
                             onCheckedChange={handleSelectAll}
                           />
                         </TableHead>
