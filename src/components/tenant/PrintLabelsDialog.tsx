@@ -201,8 +201,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
   }
   @media print {
     html, body { margin: 0; padding: 0; }
-    .grid { padding: 0; }
-    .label { border-color: #000; }
+    .grid { padding-top: ${marginTop}mm; padding-left: ${marginLeft}mm; }
   }
 </style>
 </head>
