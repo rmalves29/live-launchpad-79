@@ -77,6 +77,10 @@ const Produtos = () => {
   const [isLabelsOpen, setIsLabelsOpen] = useState(false);
   const [isCategoriasOpen, setIsCategoriasOpen] = useState(false);
   
+  // Paginação
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [categoriaFilter, setCategoriaFilter] = useState<string>('ALL');
   const [bulkCategoryValue, setBulkCategoryValue] = useState<string>('');
