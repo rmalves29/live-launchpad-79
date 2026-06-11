@@ -80,3 +80,8 @@ verify_jwt = false
 
 [functions.cleanup-fe-group-events]
 verify_jwt = false
+[functions.zapi-webhook]
+verify_jwt = false
+
+[functions.whatsapp-add-label]
+verify_jwt = false
