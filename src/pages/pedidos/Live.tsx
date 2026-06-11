@@ -501,7 +501,8 @@ const Live = () => {
               event_type: 'LIVE',
               event_date: today,
               total_amount: subtotal,
-              is_paid: false
+              is_paid: false,
+              source: 'live_admin'
             }])
             .select()
             .single();

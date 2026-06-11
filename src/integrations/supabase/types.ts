@@ -2127,6 +2127,7 @@ export type Database = {
           printed: boolean | null
           shipping_service_id: number | null
           skip_paid_message: boolean | null
+          source: string | null
           tenant_id: string
           total_amount: number
           tracking_updated_at: string | null
@@ -2173,6 +2174,7 @@ export type Database = {
           printed?: boolean | null
           shipping_service_id?: number | null
           skip_paid_message?: boolean | null
+          source?: string | null
           tenant_id: string
           total_amount: number
           tracking_updated_at?: string | null
@@ -2219,6 +2221,7 @@ export type Database = {
           printed?: boolean | null
           shipping_service_id?: number | null
           skip_paid_message?: boolean | null
+          source?: string | null
           tenant_id?: string
           total_amount?: number
           tracking_updated_at?: string | null
