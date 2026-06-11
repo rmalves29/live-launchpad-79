@@ -4,7 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Printer, Tags, X, Plus, Minus } from 'lucide-react';
+import { Printer, Tags, X, Plus, Minus, Save } from 'lucide-react';
+import { useTenant } from '@/hooks/useTenant';
+import { toast } from 'sonner';
+
 
 interface Product {
   id: number;
