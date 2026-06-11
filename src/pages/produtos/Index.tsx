@@ -483,7 +483,7 @@ const Produtos = () => {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedProducts(filteredProducts.map(p => p.id));
+      setSelectedProducts(paginatedProducts.map(p => p.id));
     } else {
       setSelectedProducts([]);
     }
