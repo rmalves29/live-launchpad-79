@@ -155,19 +155,20 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
   .grid {
     display: grid;
     grid-template-columns: repeat(${columns}, ${labelWidth}mm);
-    gap: 2mm;
-    padding: 2mm;
+    column-gap: ${gapX}mm;
+    row-gap: ${gapY}mm;
+    padding-top: ${marginTop}mm;
+    padding-left: ${marginLeft}mm;
   }
   .label {
     width: ${labelWidth}mm;
     height: ${labelHeight}mm;
-    border: 0.3mm solid #000;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 1mm;
+    padding: 0.5mm;
     page-break-inside: avoid;
   }
   .label-name {
