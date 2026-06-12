@@ -354,6 +354,42 @@ serve(async (req) => {
             created_at: new Date().toISOString(),
           });
           console.log(`[zapi-webhook] 🔌 ${msg}`);
+
+          // 🛑 Auto-pausar envios em massa (sendflow/mass_message) quando o telefone desconectar
+          const isDisconnect =
+            evtType === 'DisconnectedCallback' ||
+            evtType === 'NotificationDisconnectedCallback';
+          if (isDisconnect) {
+            try {
+              const { data: pausedJobs, error: pauseErr } = await supabase
+                .from('sending_jobs')
+                .update({
+                  status: 'paused',
+                  paused_at: new Date().toISOString(),
+                  error_message: 'Pausado automaticamente: WhatsApp desconectado',
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('tenant_id', integ.tenant_id)
+                .eq('status', 'running')
+                .in('job_type', ['sendflow', 'mass_message', 'cobranca'])
+                .select('id, job_type');
+
+              if (pauseErr) {
+                console.error('[zapi-webhook] Erro ao pausar envios automáticos:', pauseErr.message);
+              } else if (pausedJobs && pausedJobs.length > 0) {
+                console.log(`[zapi-webhook] ⏸️ ${pausedJobs.length} envio(s) pausado(s) por desconexão do tenant ${integ.tenant_id}`);
+                await supabase.from('whatsapp_messages').insert({
+                  tenant_id: integ.tenant_id,
+                  phone: connectedPhoneStr || 'system',
+                  message: `Envios pausados automaticamente por desconexão (${pausedJobs.length} job(s)): ${pausedJobs.map((j: any) => `${j.job_type}#${String(j.id).slice(0, 8)}`).join(', ')}`,
+                  type: 'system_log',
+                  created_at: new Date().toISOString(),
+                });
+              }
+            } catch (pauseCatch: any) {
+              console.error('[zapi-webhook] Exceção ao auto-pausar envios:', pauseCatch?.message);
+            }
+          }
         } else {
           console.log(`[zapi-webhook] 🔌 ${evtType} (no tenant resolved) instanceId=${payload.instanceId}`);
         }
