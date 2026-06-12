@@ -148,7 +148,9 @@ const Sorteio = () => {
       let totalWeight = 0;
 
       customerMap.forEach((value, phone) => {
-        const weight = 1.0 + (value.revenue / 100) * 0.1;
+        // Peso proporcional puro: quem gastou mais tem chance diretamente proporcional ao valor
+        // Piso mínimo de R$ 1 para evitar peso zero em pedidos de valor irrisório
+        const weight = Math.max(1, value.revenue);
         totalWeight += weight;
         candidateList.push({
           customer_phone: phone,
