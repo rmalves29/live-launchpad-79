@@ -315,7 +315,7 @@ const Sorteio = () => {
               </div>
               <div className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 bg-primary rounded-full mt-1.5 shrink-0" />
-                <span><strong className="text-foreground">Peso</strong> = 1.0 + (Receita ÷ 100) × 0.1</span>
+                <span><strong className="text-foreground">Peso</strong> = Receita Paga (proporcional puro)</span>
               </div>
               <div className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 bg-primary rounded-full mt-1.5 shrink-0" />
