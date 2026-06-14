@@ -4,35 +4,38 @@ import { useTenant } from '@/hooks/useTenant';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { History, RefreshCw, Package, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import { History, RefreshCw, Package, Loader2, ChevronDown, Users } from 'lucide-react';
 import { formatBrasiliaDateTime } from '@/lib/date-utils';
 
-interface TaskRow {
+interface HistoryRow {
   product_id: number;
-  product_code: string;
+  group_id: string;
+  sent_at: string;
+}
+
+interface GroupSend {
+  group_id: string;
   group_name: string;
-  status: string;
-  completed_at: string | null;
-  created_at: string;
+  sent_at: string;
 }
 
 interface ProductSummary {
   product_id: number;
   product_code: string;
-  totalGroups: number;
-  sent: number;
-  failed: number;
-  cancelled: number;
-  lastSentAt: string | null;
+  product_name: string;
+  groups: GroupSend[];
+  lastSentAt: string;
 }
 
 function startOfTodayBrasiliaISO(): string {
-  // Início do dia em -03:00
   const now = new Date();
   const brasilia = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
   brasilia.setHours(0, 0, 0, 0);
-  // Reconstrói ISO -03:00
   const y = brasilia.getFullYear();
   const m = String(brasilia.getMonth() + 1).padStart(2, '0');
   const d = String(brasilia.getDate()).padStart(2, '0');
@@ -43,66 +46,88 @@ export default function SendflowTodayHistory() {
   const { tenant } = useTenant();
   const [loading, setLoading] = useState(false);
   const [summaries, setSummaries] = useState<ProductSummary[]>([]);
+  const [openProducts, setOpenProducts] = useState<Record<number, boolean>>({});
 
   const load = useCallback(async () => {
     if (!tenant?.id) return;
     setLoading(true);
     try {
       const since = startOfTodayBrasiliaISO();
-      const all: TaskRow[] = [];
+      const all: HistoryRow[] = [];
       let from = 0;
       const pageSize = 1000;
       while (true) {
         const { data, error } = await supabase
-          .from('sendflow_tasks')
-          .select('product_id, product_code, group_name, status, completed_at, created_at')
+          .from('sendflow_history')
+          .select('product_id, group_id, sent_at')
           .eq('tenant_id', tenant.id)
-          .gte('created_at', since)
-          .order('created_at', { ascending: false })
+          .gte('sent_at', since)
+          .order('sent_at', { ascending: false })
           .range(from, from + pageSize - 1);
         if (error) throw error;
-        const batch = (data || []) as TaskRow[];
+        const batch = (data || []) as HistoryRow[];
         all.push(...batch);
         if (batch.length < pageSize) break;
         from += pageSize;
       }
 
+      if (all.length === 0) {
+        setSummaries([]);
+        return;
+      }
+
+      // Buscar nomes de produtos e grupos
+      const productIds = Array.from(new Set(all.map((r) => r.product_id)));
+      const groupIds = Array.from(new Set(all.map((r) => r.group_id)));
+
+      const [{ data: products }, { data: groups }] = await Promise.all([
+        supabase
+          .from('products')
+          .select('id, code, name')
+          .eq('tenant_id', tenant.id)
+          .in('id', productIds),
+        supabase
+          .from('fe_groups')
+          .select('group_jid, group_name')
+          .eq('tenant_id', tenant.id)
+          .in('group_jid', groupIds),
+      ]);
+
+      const productMap = new Map<number, { code: string; name: string }>();
+      (products || []).forEach((p: any) =>
+        productMap.set(p.id, { code: p.code, name: p.name })
+      );
+      const groupMap = new Map<string, string>();
+      (groups || []).forEach((g: any) => groupMap.set(g.group_jid, g.group_name));
+
+      // Agrupar por produto
       const byProduct = new Map<number, ProductSummary>();
-      for (const t of all) {
-        let s = byProduct.get(t.product_id);
+      for (const r of all) {
+        let s = byProduct.get(r.product_id);
         if (!s) {
+          const p = productMap.get(r.product_id);
           s = {
-            product_id: t.product_id,
-            product_code: t.product_code,
-            totalGroups: 0,
-            sent: 0,
-            failed: 0,
-            cancelled: 0,
-            lastSentAt: null,
+            product_id: r.product_id,
+            product_code: p?.code || `#${r.product_id}`,
+            product_name: p?.name || '—',
+            groups: [],
+            lastSentAt: r.sent_at,
           };
-          byProduct.set(t.product_id, s);
+          byProduct.set(r.product_id, s);
         }
-        s.totalGroups += 1;
-        if (t.status === 'completed') {
-          s.sent += 1;
-          const ts = t.completed_at || t.created_at;
-          if (!s.lastSentAt || new Date(ts) > new Date(s.lastSentAt)) {
-            s.lastSentAt = ts;
-          }
-        } else if (t.status === 'error') {
-          s.failed += 1;
-        } else if (t.status === 'cancelled') {
-          s.cancelled += 1;
+        s.groups.push({
+          group_id: r.group_id,
+          group_name: groupMap.get(r.group_id) || r.group_id,
+          sent_at: r.sent_at,
+        });
+        if (new Date(r.sent_at) > new Date(s.lastSentAt)) {
+          s.lastSentAt = r.sent_at;
         }
       }
 
-      const list = Array.from(byProduct.values())
-        .filter((s) => s.sent > 0 || s.failed > 0)
-        .sort((a, b) => {
-          const ta = a.lastSentAt ? new Date(a.lastSentAt).getTime() : 0;
-          const tb = b.lastSentAt ? new Date(b.lastSentAt).getTime() : 0;
-          return tb - ta;
-        });
+      const list = Array.from(byProduct.values()).sort(
+        (a, b) => new Date(b.lastSentAt).getTime() - new Date(a.lastSentAt).getTime()
+      );
       setSummaries(list);
     } catch (e) {
       console.error('[SendflowTodayHistory] erro:', e);
@@ -117,8 +142,10 @@ export default function SendflowTodayHistory() {
   }, [load]);
 
   const totalProducts = summaries.length;
-  const totalSent = summaries.reduce((acc, s) => acc + s.sent, 0);
-  const totalFailed = summaries.reduce((acc, s) => acc + s.failed, 0);
+  const totalSends = summaries.reduce((acc, s) => acc + s.groups.length, 0);
+
+  const toggle = (id: number) =>
+    setOpenProducts((prev) => ({ ...prev, [id]: !prev[id] }));
 
   return (
     <Card className="rounded-2xl border-border/60 bg-card/70 backdrop-blur-xl shadow-sm">
@@ -132,7 +159,7 @@ export default function SendflowTodayHistory() {
               <CardTitle>Histórico de Produtos Enviados Hoje</CardTitle>
               <CardDescription className="pt-1">
                 {totalProducts > 0
-                  ? `${totalProducts} produto(s) • ${totalSent} envios concluídos${totalFailed > 0 ? ` • ${totalFailed} falhas` : ''}`
+                  ? `${totalProducts} produto(s) • ${totalSends} envio(s) em grupos`
                   : 'Nenhum envio registrado hoje'}
               </CardDescription>
             </div>
@@ -154,47 +181,55 @@ export default function SendflowTodayHistory() {
             <p>Nenhum produto foi enviado hoje ainda.</p>
           </div>
         ) : (
-          <div className="max-h-80 overflow-y-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Código</TableHead>
-                  <TableHead className="text-center">Grupos</TableHead>
-                  <TableHead className="text-center">Status</TableHead>
-                  <TableHead>Último envio</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {summaries.map((s) => (
-                  <TableRow key={s.product_id}>
-                    <TableCell className="font-mono font-medium">{s.product_code}</TableCell>
-                    <TableCell className="text-center">{s.totalGroups}</TableCell>
-                    <TableCell className="text-center">
-                      <div className="flex items-center justify-center gap-2 flex-wrap">
-                        <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white">
-                          <CheckCircle2 className="h-3 w-3 mr-1" />
-                          {s.sent}
-                        </Badge>
-                        {s.failed > 0 && (
-                          <Badge variant="destructive">
-                            <XCircle className="h-3 w-3 mr-1" />
-                            {s.failed}
-                          </Badge>
-                        )}
-                        {s.cancelled > 0 && (
-                          <Badge variant="outline">
-                            {s.cancelled} canc.
-                          </Badge>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {s.lastSentAt ? formatBrasiliaDateTime(s.lastSentAt) : '-'}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <div className="max-h-[28rem] overflow-y-auto space-y-2">
+            {summaries.map((s) => {
+              const isOpen = !!openProducts[s.product_id];
+              return (
+                <Collapsible
+                  key={s.product_id}
+                  open={isOpen}
+                  onOpenChange={() => toggle(s.product_id)}
+                  className="border border-border/60 rounded-lg bg-background/40"
+                >
+                  <CollapsibleTrigger className="w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-muted/40 transition-colors rounded-lg">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <ChevronDown
+                        className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${isOpen ? 'rotate-0' : '-rotate-90'}`}
+                      />
+                      <span className="font-mono font-semibold text-primary">{s.product_code}</span>
+                      <span className="truncate text-sm text-muted-foreground">{s.product_name}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge variant="secondary" className="gap-1">
+                        <Users className="h-3 w-3" />
+                        {s.groups.length}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground hidden sm:inline">
+                        {formatBrasiliaDateTime(s.lastSentAt)}
+                      </span>
+                    </div>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="px-4 pb-3 pt-1 space-y-1">
+                      {s.groups
+                        .slice()
+                        .sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime())
+                        .map((g, idx) => (
+                          <div
+                            key={`${g.group_id}-${idx}`}
+                            className="flex items-center justify-between text-sm px-2 py-1.5 rounded hover:bg-muted/30"
+                          >
+                            <span className="truncate">{g.group_name}</span>
+                            <span className="text-xs text-muted-foreground shrink-0 ml-2">
+                              {formatBrasiliaDateTime(g.sent_at)}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              );
+            })}
           </div>
         )}
       </CardContent>
