@@ -1160,6 +1160,8 @@ export default function SendFlow() {
           </Button>
         </CardContent>
       </Card>
+
+      <SendflowTodayHistory />
     </div>
   );
 }
