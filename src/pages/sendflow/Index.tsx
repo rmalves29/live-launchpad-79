@@ -8,6 +8,7 @@ import type { SendingJob } from '@/hooks/useSendingJob';
 import { getLatestWhatsAppTemplate, saveWhatsAppTemplate } from '@/lib/whatsapp-templates';
 import SendingControl from '@/components/SendingControl';
 import SendingProgressLive from '@/components/SendingProgressLive';
+import SendflowTodayHistory from '@/components/sendflow/SendflowTodayHistory';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -671,6 +672,8 @@ export default function SendFlow() {
           </CardHeader>
         </Card>
       )}
+
+      <SendflowTodayHistory />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="rounded-2xl border-border/60 bg-card/70 backdrop-blur-xl shadow-sm">
