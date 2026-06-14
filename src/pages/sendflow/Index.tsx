@@ -673,6 +673,8 @@ export default function SendFlow() {
         </Card>
       )}
 
+      <SendflowTodayHistory />
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="rounded-2xl border-border/60 bg-card/70 backdrop-blur-xl shadow-sm">
         <CardHeader>
