@@ -8,6 +8,7 @@ import type { SendingJob } from '@/hooks/useSendingJob';
 import { getLatestWhatsAppTemplate, saveWhatsAppTemplate } from '@/lib/whatsapp-templates';
 import SendingControl from '@/components/SendingControl';
 import SendingProgressLive from '@/components/SendingProgressLive';
+import SendflowTodayHistory from '@/components/sendflow/SendflowTodayHistory';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
