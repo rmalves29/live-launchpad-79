@@ -85,3 +85,6 @@ verify_jwt = false
 
 [functions.whatsapp-add-label]
 verify_jwt = false
+
+[functions.whatsapp-official-webhook]
+verify_jwt = false
