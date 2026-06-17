@@ -87,10 +87,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         {
           type: 'collapsible',
           key: 'whatsapp',
-          label: 'WhatsApp Z-API',
+          label: 'WhatsApp',
           icon: MessageSquare,
           items: [
-            { path: '/whatsapp/zapi', label: 'Conexão' },
+            { path: '/whatsapp/zapi', label: 'Conexão Z-API' },
+            { path: '/whatsapp/oficial', label: 'API Oficial (Meta)' },
             { path: '/whatsapp/templates', label: 'Templates' },
             { path: '/whatsapp/cobranca', label: 'Cobrança em Massa' },
             { path: '/whatsapp/envios-ativos', label: 'Envios Ativos' },
