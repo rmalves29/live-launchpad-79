@@ -48,6 +48,7 @@ import RenovarAssinatura from "./pages/RenovarAssinatura";
 import WhatsappTemplates from "./pages/whatsapp/Templates";
 import Cobranca from "./pages/whatsapp/Cobranca";
 import ConexaoZAPI from "./pages/whatsapp/ConexaoZAPI";
+import WhatsAppOfficialPage from "./pages/whatsapp/Oficial";
 import EnviosAtivos from "./pages/EnviosAtivos";
 import AgenteIA from "./pages/agente-ia/Index";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
@@ -228,6 +229,9 @@ const AppContent = () => {
         } />
         <Route path="/whatsapp/zapi" element={
           <RequireTenantAuth><ConexaoZAPI /></RequireTenantAuth>
+        } />
+        <Route path="/whatsapp/oficial" element={
+          <RequireTenantAuth><WhatsAppOfficialPage /></RequireTenantAuth>
         } />
         
         {/* Rota para integrações (Mercado Pago, Melhor Envio) */}
