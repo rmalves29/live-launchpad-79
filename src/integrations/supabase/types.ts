@@ -1978,6 +1978,69 @@ export type Database = {
         }
         Relationships: []
       }
+      integration_whatsapp_official: {
+        Row: {
+          access_token: string
+          app_id: string | null
+          business_account_status: string | null
+          created_at: string
+          display_phone_number: string | null
+          id: string
+          is_active: boolean
+          phone_number_id: string
+          tenant_id: string
+          updated_at: string
+          verified_name: string | null
+          waba_id: string
+          webhook_verify_token: string
+        }
+        Insert: {
+          access_token: string
+          app_id?: string | null
+          business_account_status?: string | null
+          created_at?: string
+          display_phone_number?: string | null
+          id?: string
+          is_active?: boolean
+          phone_number_id: string
+          tenant_id: string
+          updated_at?: string
+          verified_name?: string | null
+          waba_id: string
+          webhook_verify_token?: string
+        }
+        Update: {
+          access_token?: string
+          app_id?: string | null
+          business_account_status?: string | null
+          created_at?: string
+          display_phone_number?: string | null
+          id?: string
+          is_active?: boolean
+          phone_number_id?: string
+          tenant_id?: string
+          updated_at?: string
+          verified_name?: string | null
+          waba_id?: string
+          webhook_verify_token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_whatsapp_official_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integration_whatsapp_official_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       knowledge_base: {
         Row: {
           category: string | null
@@ -3349,6 +3412,7 @@ export type Database = {
           tenant_key: string | null
           trial_ends_at: string | null
           updated_at: string
+          whatsapp_provider: string
         }
         Insert: {
           address?: string | null
@@ -3388,6 +3452,7 @@ export type Database = {
           tenant_key?: string | null
           trial_ends_at?: string | null
           updated_at?: string
+          whatsapp_provider?: string
         }
         Update: {
           address?: string | null
@@ -3427,6 +3492,7 @@ export type Database = {
           tenant_key?: string | null
           trial_ends_at?: string | null
           updated_at?: string
+          whatsapp_provider?: string
         }
         Relationships: []
       }
@@ -3868,6 +3934,14 @@ export type Database = {
           content: string
           created_at: string | null
           id: number
+          official_category: string
+          official_components: Json | null
+          official_language: string
+          official_last_synced_at: string | null
+          official_rejection_reason: string | null
+          official_status: string
+          official_template_name: string | null
+          official_variables: Json | null
           tenant_id: string
           title: string | null
           type: Database["public"]["Enums"]["whatsapp_template_type"]
@@ -3877,6 +3951,14 @@ export type Database = {
           content: string
           created_at?: string | null
           id?: number
+          official_category?: string
+          official_components?: Json | null
+          official_language?: string
+          official_last_synced_at?: string | null
+          official_rejection_reason?: string | null
+          official_status?: string
+          official_template_name?: string | null
+          official_variables?: Json | null
           tenant_id: string
           title?: string | null
           type: Database["public"]["Enums"]["whatsapp_template_type"]
@@ -3886,6 +3968,14 @@ export type Database = {
           content?: string
           created_at?: string | null
           id?: number
+          official_category?: string
+          official_components?: Json | null
+          official_language?: string
+          official_last_synced_at?: string | null
+          official_rejection_reason?: string | null
+          official_status?: string
+          official_template_name?: string | null
+          official_variables?: Json | null
           tenant_id?: string
           title?: string | null
           type?: Database["public"]["Enums"]["whatsapp_template_type"]
