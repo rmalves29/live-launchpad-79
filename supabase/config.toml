@@ -88,3 +88,7 @@ verify_jwt = false
 
 [functions.whatsapp-official-webhook]
 verify_jwt = false
+
+[functions.whatsapp-official-auth-callback]
+verify_jwt = false
+
