@@ -136,6 +136,8 @@ const getTypeMeta = (type: string) =>
   };
 
 export default function WhatsappTemplates() {
+  const { profile } = useAuth();
+  const isSuperAdmin = profile?.role === 'super_admin';
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<number | null>(null);
