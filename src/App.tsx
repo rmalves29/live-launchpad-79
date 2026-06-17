@@ -231,7 +231,7 @@ const AppContent = () => {
           <RequireTenantAuth><ConexaoZAPI /></RequireTenantAuth>
         } />
         <Route path="/whatsapp/oficial" element={
-          <RequireTenantAuth><WhatsAppOfficialPage /></RequireTenantAuth>
+          <RequireAuth><SuperAdminOnly><WhatsAppOfficialPage /></SuperAdminOnly></RequireAuth>
         } />
         
         {/* Rota para integrações (Mercado Pago, Melhor Envio) */}

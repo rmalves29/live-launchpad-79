@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { supabaseTenant } from "@/lib/supabase-tenant";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { deleteWhatsAppTemplate, listLatestWhatsAppTemplates, saveWhatsAppTemplate, type WhatsAppTemplateType } from "@/lib/whatsapp-templates";
 import { Plus, Trash2 } from "lucide-react";
 
