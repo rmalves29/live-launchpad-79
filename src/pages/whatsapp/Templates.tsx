@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { supabaseTenant } from "@/lib/supabase-tenant";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { deleteWhatsAppTemplate, listLatestWhatsAppTemplates, saveWhatsAppTemplate, type WhatsAppTemplateType } from "@/lib/whatsapp-templates";
 import { Plus, Trash2 } from "lucide-react";
 
@@ -135,6 +136,8 @@ const getTypeMeta = (type: string) =>
   };
 
 export default function WhatsappTemplates() {
+  const { profile } = useAuth();
+  const isSuperAdmin = profile?.role === 'super_admin';
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -391,28 +394,30 @@ export default function WhatsappTemplates() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={async () => {
-              const tenantId = (templates[0] as any)?.tenant_id;
-              if (!tenantId) { toast.error("Tenant não identificado"); return; }
-              toast.loading("Enviando templates para aprovação na Meta...", { id: "submit-meta" });
-              const { data, error } = await supabase.functions.invoke("whatsapp-official-templates", {
-                body: { tenant_id: tenantId, action: "submit_all_pending" },
-              });
-              toast.dismiss("submit-meta");
-              if (error || !data?.success) {
-                toast.error("Falha: " + (error?.message || data?.error || "desconhecido"));
-              } else {
-                const ok = (data.results || []).filter((r: any) => r.ok).length;
-                const fail = (data.results || []).length - ok;
-                toast.success(`Aprovação enviada: ${ok} ok, ${fail} falhas`);
-              }
-            }}
-            className="rounded-xl h-11 px-4"
-          >
-            Aprovar mensagens existentes (Meta)
-          </Button>
+          {isSuperAdmin && (
+            <Button
+              variant="outline"
+              onClick={async () => {
+                const tenantId = (templates[0] as any)?.tenant_id;
+                if (!tenantId) { toast.error("Tenant não identificado"); return; }
+                toast.loading("Enviando templates para aprovação na Meta...", { id: "submit-meta" });
+                const { data, error } = await supabase.functions.invoke("whatsapp-official-templates", {
+                  body: { tenant_id: tenantId, action: "submit_all_pending" },
+                });
+                toast.dismiss("submit-meta");
+                if (error || !data?.success) {
+                  toast.error("Falha: " + (error?.message || data?.error || "desconhecido"));
+                } else {
+                  const ok = (data.results || []).filter((r: any) => r.ok).length;
+                  const fail = (data.results || []).length - ok;
+                  toast.success(`Aprovação enviada: ${ok} ok, ${fail} falhas`);
+                }
+              }}
+              className="rounded-xl h-11 px-4"
+            >
+              Aprovar mensagens existentes (Meta)
+            </Button>
+          )}
           <Button
             onClick={handleNew}
             className="bg-[#6366f1] hover:bg-[#4f46e5] text-white rounded-xl h-11 px-5"
