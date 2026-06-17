@@ -230,6 +230,9 @@ const AppContent = () => {
         <Route path="/whatsapp/zapi" element={
           <RequireTenantAuth><ConexaoZAPI /></RequireTenantAuth>
         } />
+        <Route path="/whatsapp/oficial" element={
+          <RequireTenantAuth><WhatsAppOfficialPage /></RequireTenantAuth>
+        } />
         
         {/* Rota para integrações (Mercado Pago, Melhor Envio) */}
         <Route path="/integracoes" element={
