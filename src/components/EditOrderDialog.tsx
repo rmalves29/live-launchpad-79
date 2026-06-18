@@ -315,6 +315,14 @@ useEffect(() => {
       setQuantity(1);
       setUnitPrice(0);
 
+      await logSignedEdit('add_product', {
+        product_id: selectedProduct.id,
+        product_code: selectedProduct.code,
+        product_name: selectedProduct.name,
+        qty: quantity,
+        unit_price: effectiveUnitPrice,
+      });
+
       toast({
         title: 'Sucesso',
         description: 'Produto adicionado e mensagem enviada'
