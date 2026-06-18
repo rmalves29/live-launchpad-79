@@ -84,6 +84,41 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
   const [orderStatus, setOrderStatus] = useState<'em_separacao' | 'envio_pendente' | 'enviado' | 'liberado_retirada' | 'entregue' | ''>('');
   const [savingMeta, setSavingMeta] = useState(false);
 
+  // ===== Assinatura digital para edição de pedidos pagos =====
+  const [signerName, setSignerName] = useState<string>('');
+  const [signaturePromptOpen, setSignaturePromptOpen] = useState(false);
+  const [signatureInput, setSignatureInput] = useState('');
+  const signatureResolverRef = useRef<((name: string | null) => void) | null>(null);
+
+  const ensureSignature = (): Promise<string | null> => {
+    if (!isPaid) return Promise.resolve('');
+    if (signerName.trim()) return Promise.resolve(signerName.trim());
+    return new Promise((resolve) => {
+      signatureResolverRef.current = resolve;
+      setSignatureInput('');
+      setSignaturePromptOpen(true);
+    });
+  };
+
+  const logSignedEdit = async (actionType: string, details: Record<string, any>) => {
+    if (!isPaid || !signerName.trim() || !order) return;
+    try {
+      await (supabase as any).from('audit_logs').insert({
+        entity: 'order',
+        entity_id: String(order.id),
+        action: 'paid_order_edited_with_signature',
+        tenant_id: profile?.tenant_id,
+        meta: {
+          signer_name: signerName.trim(),
+          action_type: actionType,
+          user_id: profile?.id,
+          ...details,
+        },
+      });
+    } catch (e) {
+      console.error('Erro ao registrar assinatura digital:', e);
+    }
+  };
 
 useEffect(() => {
   if (open && order) {
@@ -93,6 +128,9 @@ useEffect(() => {
     setObservation(order.observation || '');
     setPrinted(!!order.printed);
     setOrderStatus((order.order_status as any) || '');
+    setSignerName('');
+    setSignaturePromptOpen(false);
+    setSignatureInput('');
     loadProducts();
   }
 }, [open, order]);
