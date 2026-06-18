@@ -351,8 +351,18 @@ useEffect(() => {
       return;
     }
 
+    const signature = await ensureSignature();
+    if (signature === null) return;
+
     setLoading(true);
     try {
+      await logSignedEdit('remove_product', {
+        item_id: itemId,
+        product_id: item.product_id,
+        product_code: productCode,
+        product_name: productName,
+        qty: qtyToReturn,
+      });
       // Enviar mensagem de cancelamento via Z-API
       const { error: zapiError } = await supabase.functions.invoke('zapi-send-product-canceled', {
         body: {
