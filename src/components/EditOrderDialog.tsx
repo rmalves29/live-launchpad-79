@@ -433,6 +433,13 @@ useEffect(() => {
   const updateItemQuantity = async (itemId: number, newQty: number) => {
     if (newQty <= 0) return;
 
+    const existing = cartItems.find(i => i.id === itemId);
+    const oldQty = existing?.qty;
+    if (oldQty === newQty) return;
+
+    const signature = await ensureSignature();
+    if (signature === null) return;
+
     try {
       const { error } = await supabaseTenant
         .from('cart_items')
@@ -440,6 +447,15 @@ useEffect(() => {
         .eq('id', itemId);
 
       if (error) throw error;
+
+      await logSignedEdit('update_quantity', {
+        item_id: itemId,
+        product_id: existing?.product_id,
+        product_code: existing?.product?.code,
+        product_name: existing?.product?.name,
+        old_qty: oldQty,
+        new_qty: newQty,
+      });
 
       await loadCartItems(cartId);
       await updateOrderTotal(cartId);
