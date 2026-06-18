@@ -1,101 +1,60 @@
-# Plano: WhatsApp API Oficial + Z-API (modo híbrido coordenado)
+## Objetivo
 
-## Arquitetura
+Mover o disparo de cobranças (página `/whatsapp/cobranca`) do navegador para o servidor, igual ao SendFlow. Hoje o envio roda em um loop dentro da aba — se a aba é fechada, o navegador trava, a rede cai ou o WhatsApp desconecta por um segundo, o envio para no meio. Essa foi exatamente a causa do problema de hoje (Mania de Mulher): apenas 2 de 49 clientes receberam.
 
-**Z-API = sempre conectada** (leitora e coordenadora):
-- Continua lendo grupos, mensagens recebidas, webhooks de clientes
-- Continua disparando mensagens em **grupos** (API oficial não permite grupos)
-- É a "central" que recebe e interpreta tudo
+Bônus desta correção: descobrimos que o registro do job no banco já estava falhando hoje por causa de uma constraint antiga — `sending_jobs.job_type` só aceita `sendflow` e `mass_message`, e o código tenta inserir `cobranca`. Isso será corrigido junto.
 
-**API Oficial Meta = canal de envio alternativo** para mensagens 1:1 (cliente):
-- Confirmação de pagamento, rastreio, cobrança, mensagem em massa para clientes
-- Decide na hora: dentro de 24h → texto livre / fora de 24h → template aprovado
-- Nunca usada para grupos
+## Como vai funcionar
 
-**Roteamento por tipo de mensagem:**
-```
-Mensagem recebida de grupo/cliente  → Z-API (leitura)
-Resposta automática a cliente       → Router decide (oficial se preferência=oficial, senão Z-API)
-Envio para grupo WhatsApp           → Sempre Z-API
-Confirmação pagamento, rastreio, MM → Router decide (oficial ou Z-API)
-```
+1. Usuário monta a cobrança (filtros, template, imagem, botão CTA) na página, como hoje.
+2. Ao clicar em "Enviar", o navegador **não envia mais nada**. Ele só:
+   - Faz upload da imagem (se houver) para o Storage e pega a URL pública.
+   - Cria um registro em `sending_jobs` (status `running`) com a lista completa de clientes e o template.
+   - Chama a edge function `cobranca-process` em modo background.
+3. O servidor executa o loop completo: envia para todos os clientes, respeita delays anti-bloqueio, pausa quando detecta desconexão da Z-API, e se auto-reinvoca antes do timeout de 120s (mesma técnica do `sendflow-process`).
+4. A página mostra o progresso em tempo real lendo `sending_jobs.processed_items` (polling a cada 2s). Botões de Pausar / Retomar / Cancelar continuam funcionando — mudam apenas o `status` do job no banco; o servidor obedece na próxima iteração.
+5. O usuário pode fechar a aba, o navegador, o computador — o envio continua até o fim no servidor.
 
-## Banco de Dados (1 migration)
+## O que muda
 
-**Nova tabela `integration_whatsapp_official`** (por tenant):
-- `phone_number_id`, `waba_id`, `access_token`, `app_id`
-- `webhook_verify_token`, `display_phone_number`, `verified_name`
-- `business_account_status`, `is_active`, timestamps
-- RLS por tenant + grants para authenticated/service_role
+### Banco (migration)
 
-**`tenants`**: nova coluna `whatsapp_provider` (`'zapi' | 'official'`, default `'zapi'`)
-- Esta flag controla APENAS o canal de **envio 1:1**. Z-API continua sempre ligada para leitura/grupos.
+- Atualizar o CHECK constraint de `sending_jobs.job_type` para incluir `'cobranca'`.
+- Criar bucket público `cobranca-images` no Storage (se ainda não existir) para hospedar a imagem opcional da cobrança.
 
-**`whatsapp_templates`**: novas colunas
-- `official_template_name`, `official_status` (`not_submitted`/`pending`/`approved`/`rejected`)
-- `official_category`, `official_language` (default `pt_BR`)
-- `official_rejection_reason`, `official_components` (jsonb), `official_variables` (jsonb)
+### Backend (nova edge function)
 
-## Edge Functions (4 novas)
+`supabase/functions/cobranca-process/index.ts` (~450 linhas), espelhada no `sendflow-process`:
+- Recebe `{ job_id, tenant_id }`.
+- Lê `sending_jobs.job_data` com `customers[]`, `messageTemplate`, `imageUrl`, `buttonEnabled`, `buttonLabel`, `buttonUrl`, `tagId`, delays anti-bloqueio.
+- Loop pelos clientes: personaliza mensagem (`{{nome}}`, `{{produtos}}`, `{{total}}`, `{{pedido}}`, `{{link}}`), aplica variação anti-bloqueio (zero-width space + emoji swap leve), envia via Z-API (texto, imagem com legenda ou botão CTA conforme a config).
+- Registra cada envio em `whatsapp_messages` (tipo `bulk`, com `batch_id` = `job_id`) — mantém o histórico que a tela já consome.
+- Aplica tag no contato via `zapi-proxy` quando configurada.
+- Atualiza `processed_items` no banco a cada envio para o frontend exibir o progresso.
+- Detecta pausa/cancelamento checando `sending_jobs.status` antes de cada envio.
+- Pre-check de conexão Z-API a cada N envios — pausa o job e registra `error_message` se cair.
+- Auto-reinvocação a 120s para evitar kill por timeout (idêntico ao SendFlow).
 
-1. **`whatsapp-router`** — núcleo do roteamento
-   - Recebe `{ tenant_id, phone, message_type, payload }`
-   - Se `message_type='group'` → força Z-API
-   - Senão lê `tenants.whatsapp_provider`:
-     - `zapi` → chama `zapi-send-message`
-     - `official` → verifica janela 24h em `whatsapp_messages` (última msg recebida do cliente)
-       - Dentro de 24h → envia texto livre via oficial
-       - Fora → busca template aprovado correspondente, envia como HSM
-       - Sem template aprovado → fallback Z-API + log de aviso
+### Frontend (`src/pages/whatsapp/Cobranca.tsx`)
 
-2. **`whatsapp-official-send`** — POST `graph.facebook.com/v21.0/{phone_number_id}/messages` com Bearer token do tenant
+- Remover o loop client-side (`for (let i = 0; i < customers.length; i++)` e tudo dentro dele).
+- `handleSendAll` passa a:
+  1. Fazer upload da imagem (se houver) para o bucket `cobranca-images`.
+  2. Inserir o `sending_jobs` com `job_type: 'cobranca'`, `status: 'running'`, `total_items: customers.length`, e `job_data` contendo a lista completa de destinatários e configuração.
+  3. Invocar `cobranca-process` via `supabase.functions.invoke` (sem aguardar resposta — é background).
+  4. Marcar o `jobIdRef` e ativar o polling de progresso já existente (pollIntervalId).
+- O painel de progresso, botões de pausar/retomar/cancelar e modal de desconexão continuam funcionando — eles já operam via `sending_jobs.status`.
+- Banner de "envio órfão" também segue funcionando — agora indicará jobs realmente rodando no servidor.
 
-3. **`whatsapp-official-webhook`** — endpoint público
-   - GET: valida `hub.verify_token`
-   - POST: persiste status de entrega/leitura e mensagens recebidas em `whatsapp_messages` (atualiza janela 24h)
+## Riscos e mitigações
 
-4. **`whatsapp-official-templates`** — CRUD/submit/sync
-   - `submit_all_pending`: botão "Aprovar mensagens existentes" (envia em lote para Meta)
-   - `sync_status`: consulta status atual na Meta
+- **Tamanho do `job_data`**: listas muito grandes (1000+ clientes com itens detalhados) podem inflar a coluna `jsonb`. Mitigação: o template é guardado uma única vez; cada cliente armazena só os campos necessários para personalização (`phone`, `name`, `order_id`, `total`, `payment_link`, lista resumida de produtos). Em testes com 500 clientes isso fica <500KB, dentro do limite confortável.
+- **Imagem em base64**: hoje a imagem é mandada inline em cada envio. Faremos upload uma única vez e usaremos a URL pública — mais rápido e leve.
+- **Compatibilidade com cobranças "no ar" agora**: nenhuma — não há cobranças `running` no banco, então a troca é segura.
 
-## Refatoração dos pontos de envio
+## Entregáveis
 
-Substituir chamadas diretas a `zapi-send-message` por `whatsapp-router` em:
-- Trigger `process_paid_order` (confirmação de pagamento)
-- Trigger `send_tracking_whatsapp_on_update` (rastreio)
-- `fe-send-message` (sendflow → mantém Z-API se for grupo)
-- Cobrança, mensagem em massa
-
-`zapi-receive-webhook` (leitura) **não muda** — Z-API continua sendo a fonte única de entrada.
-
-## UI
-
-1. **Nova aba "API Oficial Meta"** em integrações WhatsApp:
-   - Formulário: `phone_number_id`, `waba_id`, `access_token`, `app_id`
-   - URL do webhook (copiar) + `verify_token` gerado
-   - Botão "Testar conexão" + status (`display_phone_number`, `verified_name`)
-   - Toggle global: **"Canal de envio 1:1: Z-API / API Oficial"** com aviso explícito:
-     > "A Z-API permanece sempre conectada lendo grupos e mensagens. Esta escolha afeta apenas o envio de mensagens individuais para clientes."
-
-2. **Nova aba "Templates Oficiais"** em `src/pages/whatsapp/Templates.tsx`:
-   - Lista templates com `official_status`
-   - Botão **"Aprovar mensagens existentes"** — envia todos `not_submitted`/`rejected` para Meta em lote
-   - Categoria (utility/marketing/authentication) por template
-   - Sync de status individual
-
-## Segurança
-
-- `access_token` da Meta armazenado por tenant na tabela `integration_whatsapp_official` (RLS estrita)
-- Secrets globais: `META_APP_SECRET` (assinatura de webhook), `META_GRAPH_VERSION` (default `v21.0`)
-
-## Pontos confirmados
-
-- Z-API permanece **sempre ligada** (leitora + grupos + fallback)
-- API oficial é canal **adicional** para envios 1:1
-- Janela 24h da Meta respeitada automaticamente
-- Grupos: sempre Z-API (API oficial não suporta)
-- Provedor: Meta Cloud API direto
-- Escopo: global por tenant
-- Templates: submissão à Meta com botão de aprovação em lote
-
-Posso prosseguir com a implementação?
+1. Migration: ajuste do CHECK constraint + bucket `cobranca-images`.
+2. Nova edge function `cobranca-process`.
+3. Refactor da página `Cobranca.tsx` (remover loop, adicionar upload + invoke).
+4. Teste manual: disparar uma cobrança pequena (2-3 clientes) e validar que termina mesmo fechando a aba.
