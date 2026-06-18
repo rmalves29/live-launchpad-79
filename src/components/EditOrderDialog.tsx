@@ -226,6 +226,9 @@ useEffect(() => {
   const addProductToOrder = async () => {
     if (!selectedProduct || !order) return;
 
+    const signature = await ensureSignature();
+    if (signature === null) return;
+
     setLoading(true);
     try {
       // STOCK VALIDATION: Fresh read from DB to prevent race conditions
