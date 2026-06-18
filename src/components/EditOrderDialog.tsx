@@ -892,6 +892,71 @@ useEffect(() => {
           </Button>
         </div>
       </DialogContent>
+
+      {/* Modal de assinatura digital para edição de pedidos pagos */}
+      <Dialog
+        open={signaturePromptOpen}
+        onOpenChange={(o) => {
+          if (!o && signatureResolverRef.current) {
+            signatureResolverRef.current(null);
+            signatureResolverRef.current = null;
+          }
+          setSignaturePromptOpen(o);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assinatura digital</DialogTitle>
+            <DialogDescription>
+              Este pedido já está pago. Informe seu nome completo para registrar quem está realizando esta alteração.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label htmlFor="signer-name">Seu nome</Label>
+            <Input
+              id="signer-name"
+              autoFocus
+              value={signatureInput}
+              onChange={(e) => setSignatureInput(e.target.value)}
+              placeholder="Ex.: Maria Silva"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && signatureInput.trim().length >= 2) {
+                  const name = signatureInput.trim();
+                  setSignerName(name);
+                  setSignaturePromptOpen(false);
+                  signatureResolverRef.current?.(name);
+                  signatureResolverRef.current = null;
+                }
+              }}
+              maxLength={120}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSignaturePromptOpen(false);
+                signatureResolverRef.current?.(null);
+                signatureResolverRef.current = null;
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={signatureInput.trim().length < 2}
+              onClick={() => {
+                const name = signatureInput.trim();
+                setSignerName(name);
+                setSignaturePromptOpen(false);
+                signatureResolverRef.current?.(name);
+                signatureResolverRef.current = null;
+              }}
+            >
+              Confirmar e assinar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 };
