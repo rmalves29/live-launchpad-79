@@ -1,0 +1,2 @@
+ALTER TABLE public.sending_jobs DROP CONSTRAINT IF EXISTS sending_jobs_job_type_check;
+ALTER TABLE public.sending_jobs ADD CONSTRAINT sending_jobs_job_type_check CHECK (job_type = ANY (ARRAY['sendflow'::text, 'mass_message'::text, 'cobranca'::text]));
