@@ -326,13 +326,18 @@ useEffect(() => {
       setQuantity(1);
       setUnitPrice(0);
 
-      await logSignedEdit('add_product', {
-        product_id: selectedProduct.id,
-        product_code: selectedProduct.code,
-        product_name: selectedProduct.name,
-        qty: quantity,
-        unit_price: effectiveUnitPrice,
-      });
+      await logSignedEdit(
+        signature,
+        'add_product',
+        `Adicionou ${quantity}x ${selectedProduct.code} - ${selectedProduct.name} (${formatCurrency(effectiveUnitPrice)} cada)`,
+        {
+          product_id: selectedProduct.id,
+          product_code: selectedProduct.code,
+          product_name: selectedProduct.name,
+          qty: quantity,
+          unit_price: effectiveUnitPrice,
+        },
+      );
 
       toast({
         title: 'Sucesso',
