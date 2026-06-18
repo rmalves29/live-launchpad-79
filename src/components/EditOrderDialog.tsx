@@ -828,14 +828,27 @@ useEffect(() => {
             disabled={savingMeta}
             onClick={async () => {
               if (!order) return;
+
+              // Detectar mudanças relevantes em campos meta de pedido pago
+              const trimmedTracking = trackingCode.trim();
+              const finalStatus = orderStatus === 'entregue'
+                ? 'entregue'
+                : (trimmedTracking ? 'enviado' : (orderStatus || null));
+
+              const metaChanged =
+                (!!order.is_paid) !== isPaid ||
+                (order.melhor_envio_tracking_code || '') !== trimmedTracking ||
+                (order.observation || '') !== (observation || '') ||
+                (!!order.printed) !== printed ||
+                (order.order_status || null) !== finalStatus;
+
+              if (order.is_paid && metaChanged) {
+                const signature = await ensureSignature();
+                if (signature === null) return;
+              }
+
               setSavingMeta(true);
               try {
-                const trimmedTracking = trackingCode.trim();
-                // Auto-status: se rastreio preenchido, marca como enviado (a menos que esteja Entregue)
-                const finalStatus = orderStatus === 'entregue'
-                  ? 'entregue'
-                  : (trimmedTracking ? 'enviado' : (orderStatus || null));
-
                 const { error } = await (supabaseTenant as any)
                   .from('orders')
                   .update({
@@ -848,6 +861,16 @@ useEffect(() => {
                   .eq('id', order.id);
 
                 if (error) throw error;
+
+                if (order.is_paid && metaChanged) {
+                  await logSignedEdit('update_order_meta', {
+                    is_paid: isPaid,
+                    tracking_code: trimmedTracking || null,
+                    observation: observation || null,
+                    printed,
+                    order_status: finalStatus,
+                  });
+                }
 
                 toast({ title: 'Pedido atualizado', description: 'Alterações salvas com sucesso.' });
                 onOrderUpdated();
