@@ -469,14 +469,19 @@ useEffect(() => {
 
       if (error) throw error;
 
-      await logSignedEdit('update_quantity', {
-        item_id: itemId,
-        product_id: existing?.product_id,
-        product_code: existing?.product?.code,
-        product_name: existing?.product?.name,
-        old_qty: oldQty,
-        new_qty: newQty,
-      });
+      await logSignedEdit(
+        signature,
+        'update_quantity',
+        `Alterou quantidade de ${existing?.product?.code || ''} - ${existing?.product?.name || ''} de ${oldQty} para ${newQty}`,
+        {
+          item_id: itemId,
+          product_id: existing?.product_id,
+          product_code: existing?.product?.code,
+          product_name: existing?.product?.name,
+          old_qty: oldQty,
+          new_qty: newQty,
+        },
+      );
 
       await loadCartItems(cartId);
       await updateOrderTotal(cartId);
