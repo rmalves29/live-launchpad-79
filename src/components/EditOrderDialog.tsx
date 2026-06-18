@@ -372,13 +372,18 @@ useEffect(() => {
 
     setLoading(true);
     try {
-      await logSignedEdit('remove_product', {
-        item_id: itemId,
-        product_id: item.product_id,
-        product_code: productCode,
-        product_name: productName,
-        qty: qtyToReturn,
-      });
+      await logSignedEdit(
+        signature,
+        'remove_product',
+        `Removeu ${qtyToReturn}x ${productCode} - ${productName}`,
+        {
+          item_id: itemId,
+          product_id: item.product_id,
+          product_code: productCode,
+          product_name: productName,
+          qty: qtyToReturn,
+        },
+      );
       // Enviar mensagem de cancelamento via Z-API
       const { error: zapiError } = await supabase.functions.invoke('zapi-send-product-canceled', {
         body: {
