@@ -85,6 +85,7 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
   const [savingMeta, setSavingMeta] = useState(false);
 
   // ===== Assinatura digital para edição de pedidos pagos =====
+  // IMPORTANTE: a assinatura é solicitada a CADA alteração (não é cacheada).
   const [signerName, setSignerName] = useState<string>('');
   const [signaturePromptOpen, setSignaturePromptOpen] = useState(false);
   const [signatureInput, setSignatureInput] = useState('');
@@ -92,7 +93,7 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
 
   const ensureSignature = (): Promise<string | null> => {
     if (!isPaid) return Promise.resolve('');
-    if (signerName.trim()) return Promise.resolve(signerName.trim());
+    // Sempre abre o prompt — nunca reaproveita assinatura anterior
     return new Promise((resolve) => {
       signatureResolverRef.current = resolve;
       setSignatureInput('');
@@ -100,8 +101,13 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
     });
   };
 
-  const logSignedEdit = async (actionType: string, details: Record<string, any>) => {
-    if (!isPaid || !signerName.trim() || !order) return;
+  const logSignedEdit = async (
+    signature: string,
+    actionType: string,
+    description: string,
+    details: Record<string, any>,
+  ) => {
+    if (!isPaid || !signature?.trim() || !order) return;
     try {
       await (supabase as any).from('audit_logs').insert({
         entity: 'order',
@@ -109,9 +115,14 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
         action: 'paid_order_edited_with_signature',
         tenant_id: profile?.tenant_id,
         meta: {
-          signer_name: signerName.trim(),
+          signer_name: signature.trim(),
           action_type: actionType,
+          description,
           user_id: profile?.id,
+          user_email: profile?.email,
+          order_id: order.id,
+          tenant_order_number: order.tenant_order_number,
+          changed_at: new Date().toISOString(),
           ...details,
         },
       });
