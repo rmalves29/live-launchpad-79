@@ -1407,14 +1407,22 @@ export default function Cobranca() {
                 variant="outline"
                 className="w-full h-11 rounded-xl border-[#e5e7eb] font-medium"
                 disabled={!sending}
-                onClick={() => {
+                onClick={async () => {
                   const next = !pausedRef.current;
                   pausedRef.current = next;
                   setIsPaused(next);
                   if (jobIdRef.current) {
                     const patch: any = { status: next ? 'paused' : 'running' };
                     if (next) patch.paused_at = new Date().toISOString();
-                    supabaseTenant.from('sending_jobs').update(patch).eq('id', jobIdRef.current).then(() => {}, () => {});
+                    try {
+                      await supabaseTenant.from('sending_jobs').update(patch).eq('id', jobIdRef.current);
+                    } catch {}
+                    // Ao retomar, reinvoca a edge function para continuar do índice atual
+                    if (!next && tenant?.id) {
+                      supabaseTenant.raw.functions
+                        .invoke('cobranca-process', { body: { job_id: jobIdRef.current, tenant_id: tenant.id } })
+                        .catch((e) => console.warn('Falha ao retomar cobranca-process:', e));
+                    }
                   }
                   toast({
                     title: next ? 'Envio pausado' : 'Envio retomado',
