@@ -85,6 +85,7 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
   const [savingMeta, setSavingMeta] = useState(false);
 
   // ===== Assinatura digital para edição de pedidos pagos =====
+  // IMPORTANTE: a assinatura é solicitada a CADA alteração (não é cacheada).
   const [signerName, setSignerName] = useState<string>('');
   const [signaturePromptOpen, setSignaturePromptOpen] = useState(false);
   const [signatureInput, setSignatureInput] = useState('');
@@ -92,7 +93,7 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
 
   const ensureSignature = (): Promise<string | null> => {
     if (!isPaid) return Promise.resolve('');
-    if (signerName.trim()) return Promise.resolve(signerName.trim());
+    // Sempre abre o prompt — nunca reaproveita assinatura anterior
     return new Promise((resolve) => {
       signatureResolverRef.current = resolve;
       setSignatureInput('');
@@ -100,8 +101,13 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
     });
   };
 
-  const logSignedEdit = async (actionType: string, details: Record<string, any>) => {
-    if (!isPaid || !signerName.trim() || !order) return;
+  const logSignedEdit = async (
+    signature: string,
+    actionType: string,
+    description: string,
+    details: Record<string, any>,
+  ) => {
+    if (!isPaid || !signature?.trim() || !order) return;
     try {
       await (supabase as any).from('audit_logs').insert({
         entity: 'order',
@@ -109,9 +115,14 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
         action: 'paid_order_edited_with_signature',
         tenant_id: profile?.tenant_id,
         meta: {
-          signer_name: signerName.trim(),
+          signer_name: signature.trim(),
           action_type: actionType,
+          description,
           user_id: profile?.id,
+          user_email: profile?.email,
+          order_id: order.id,
+          tenant_order_number: order.tenant_order_number,
+          changed_at: new Date().toISOString(),
           ...details,
         },
       });
@@ -315,13 +326,18 @@ useEffect(() => {
       setQuantity(1);
       setUnitPrice(0);
 
-      await logSignedEdit('add_product', {
-        product_id: selectedProduct.id,
-        product_code: selectedProduct.code,
-        product_name: selectedProduct.name,
-        qty: quantity,
-        unit_price: effectiveUnitPrice,
-      });
+      await logSignedEdit(
+        signature,
+        'add_product',
+        `Adicionou ${quantity}x ${selectedProduct.code} - ${selectedProduct.name} (${formatCurrency(effectiveUnitPrice)} cada)`,
+        {
+          product_id: selectedProduct.id,
+          product_code: selectedProduct.code,
+          product_name: selectedProduct.name,
+          qty: quantity,
+          unit_price: effectiveUnitPrice,
+        },
+      );
 
       toast({
         title: 'Sucesso',
@@ -356,13 +372,18 @@ useEffect(() => {
 
     setLoading(true);
     try {
-      await logSignedEdit('remove_product', {
-        item_id: itemId,
-        product_id: item.product_id,
-        product_code: productCode,
-        product_name: productName,
-        qty: qtyToReturn,
-      });
+      await logSignedEdit(
+        signature,
+        'remove_product',
+        `Removeu ${qtyToReturn}x ${productCode} - ${productName}`,
+        {
+          item_id: itemId,
+          product_id: item.product_id,
+          product_code: productCode,
+          product_name: productName,
+          qty: qtyToReturn,
+        },
+      );
       // Enviar mensagem de cancelamento via Z-API
       const { error: zapiError } = await supabase.functions.invoke('zapi-send-product-canceled', {
         body: {
@@ -448,14 +469,19 @@ useEffect(() => {
 
       if (error) throw error;
 
-      await logSignedEdit('update_quantity', {
-        item_id: itemId,
-        product_id: existing?.product_id,
-        product_code: existing?.product?.code,
-        product_name: existing?.product?.name,
-        old_qty: oldQty,
-        new_qty: newQty,
-      });
+      await logSignedEdit(
+        signature,
+        'update_quantity',
+        `Alterou quantidade de ${existing?.product?.code || ''} - ${existing?.product?.name || ''} de ${oldQty} para ${newQty}`,
+        {
+          item_id: itemId,
+          product_id: existing?.product_id,
+          product_code: existing?.product?.code,
+          product_name: existing?.product?.name,
+          old_qty: oldQty,
+          new_qty: newQty,
+        },
+      );
 
       await loadCartItems(cartId);
       await updateOrderTotal(cartId);
@@ -842,9 +868,10 @@ useEffect(() => {
                 (!!order.printed) !== printed ||
                 (order.order_status || null) !== finalStatus;
 
+              let metaSignature: string | null = null;
               if (order.is_paid && metaChanged) {
-                const signature = await ensureSignature();
-                if (signature === null) return;
+                metaSignature = await ensureSignature();
+                if (metaSignature === null) return;
               }
 
               setSavingMeta(true);
@@ -862,14 +889,38 @@ useEffect(() => {
 
                 if (error) throw error;
 
-                if (order.is_paid && metaChanged) {
-                  await logSignedEdit('update_order_meta', {
-                    is_paid: isPaid,
-                    tracking_code: trimmedTracking || null,
-                    observation: observation || null,
-                    printed,
-                    order_status: finalStatus,
-                  });
+                if (order.is_paid && metaChanged && metaSignature) {
+                  const changes: string[] = [];
+                  if ((!!order.is_paid) !== isPaid) changes.push(`pago: ${order.is_paid} → ${isPaid}`);
+                  if ((order.melhor_envio_tracking_code || '') !== trimmedTracking)
+                    changes.push(`rastreio: "${order.melhor_envio_tracking_code || ''}" → "${trimmedTracking}"`);
+                  if ((order.observation || '') !== (observation || ''))
+                    changes.push(`observação alterada`);
+                  if ((!!order.printed) !== printed) changes.push(`impresso: ${order.printed} → ${printed}`);
+                  if ((order.order_status || null) !== finalStatus)
+                    changes.push(`status: "${order.order_status || ''}" → "${finalStatus || ''}"`);
+
+                  await logSignedEdit(
+                    metaSignature,
+                    'update_order_meta',
+                    `Alterou dados do pedido: ${changes.join('; ')}`,
+                    {
+                      previous: {
+                        is_paid: order.is_paid,
+                        tracking_code: order.melhor_envio_tracking_code || null,
+                        observation: order.observation || null,
+                        printed: !!order.printed,
+                        order_status: order.order_status || null,
+                      },
+                      next: {
+                        is_paid: isPaid,
+                        tracking_code: trimmedTracking || null,
+                        observation: observation || null,
+                        printed,
+                        order_status: finalStatus,
+                      },
+                    },
+                  );
                 }
 
                 toast({ title: 'Pedido atualizado', description: 'Alterações salvas com sucesso.' });
