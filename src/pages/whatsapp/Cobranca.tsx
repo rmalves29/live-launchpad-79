@@ -727,18 +727,44 @@ export default function Cobranca() {
       return;
     }
 
-    // Gera batch_id único para este disparo (agrupa logs no histórico)
+    // ============================================================
+    // ENVIO SERVER-SIDE — o navegador apenas cria o job e dispara
+    // a edge function. O loop completo roda no servidor, mesmo se
+    // o usuário fechar a aba.
+    // ============================================================
     const batchId = (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
-    let consecutiveDisconnectFails = 0;
 
     setSending(true);
     setSendProgress({ current: 0, total: customers.length });
     pausedRef.current = false;
     cancelledRef.current = false;
     setIsPaused(false);
-
-    // Persistir início do envio em sending_jobs
     jobIdRef.current = null;
+
+    // 1) Upload da imagem (se houver) → obtém URL pública
+    let publicImageUrl: string | null = null;
+    if (imageDataUrl) {
+      try {
+        const blobRes = await fetch(imageDataUrl);
+        const blob = await blobRes.blob();
+        const extMatch = (imageFileName || '').match(/\.([a-z0-9]+)$/i);
+        const ext = (extMatch?.[1] || (blob.type.split('/')[1] || 'png')).toLowerCase();
+        const path = `cobranca/${tenant.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error: upErr } = await supabaseTenant.raw.storage
+          .from('product-images')
+          .upload(path, blob, { contentType: blob.type, upsert: false });
+        if (upErr) throw upErr;
+        const { data: pub } = supabaseTenant.raw.storage.from('product-images').getPublicUrl(path);
+        publicImageUrl = pub.publicUrl;
+      } catch (e: any) {
+        toast({ title: 'Erro ao enviar imagem', description: e?.message || 'Falha no upload', variant: 'destructive' });
+        setSending(false);
+        return;
+      }
+    }
+
+    // 2) Criar o job em sending_jobs com toda a configuração
+    let jobId: string | null = null;
     try {
       const { data: jobRow, error: jobErr } = await supabaseTenant
         .from('sending_jobs')
@@ -751,325 +777,112 @@ export default function Cobranca() {
           current_index: 0,
           started_at: new Date().toISOString(),
           job_data: {
-            phones: customers.map((c) => c.customer_phone),
-            message_preview: messageTemplate.slice(0, 200),
-            has_image: !!imageDataUrl,
-            has_button: buttonEnabled,
-            tag_id: selectedTagId || null,
+            batchId,
+            messageTemplate,
+            imageUrl: publicImageUrl,
+            buttonEnabled,
+            buttonLabel,
+            buttonUrl,
+            tagId: selectedTagId && selectedTagId !== 'none' ? selectedTagId : null,
+            delayBetweenMessages,
+            messagesBeforePause,
+            pauseDuration,
+            sentCount: 0,
+            errorCount: 0,
+            customers: customers.map((c) => ({
+              phone: c.customer_phone,
+              name: c.customer_name || '',
+              order_id: c.order_id || null,
+              total_amount: c.total_amount || 0,
+              payment_link: c.payment_link || '',
+              items: (c.items || []).map((it) => ({
+                product_name: it.product_name,
+                product_code: it.product_code,
+                qty: it.qty,
+                unit_price: it.unit_price,
+              })),
+            })),
           },
         })
         .select('id')
         .single();
       if (jobErr) throw jobErr;
-      jobIdRef.current = (jobRow as any).id;
-      console.log('📌 Envio persistido em sending_jobs:', jobIdRef.current);
-    } catch (e) {
-      console.warn('Falha ao persistir job (envio continua):', e);
+      jobId = (jobRow as any).id;
+      jobIdRef.current = jobId;
+    } catch (e: any) {
+      toast({ title: 'Erro ao registrar envio', description: e?.message || 'Falha ao criar job', variant: 'destructive' });
+      setSending(false);
+      return;
     }
 
-    // Polling: a cada 4s checa se foi cancelado/pausado externamente (outra aba ou painel)
+    // 3) Disparar a edge function (fire-and-forget — roda em background no servidor)
+    supabaseTenant.raw.functions
+      .invoke('cobranca-process', { body: { job_id: jobId, tenant_id: tenant.id } })
+      .catch((e) => console.warn('Falha ao invocar cobranca-process:', e));
+
+    toast({
+      title: 'Envio iniciado no servidor',
+      description: `Os ${customers.length} envios continuarão mesmo se você fechar a aba.`,
+    });
+
+    // 4) Polling de progresso (2s) — lê processed_items + status do job
     const pollIntervalId = window.setInterval(async () => {
       if (!jobIdRef.current) return;
       try {
         const { data } = await supabaseTenant
           .from('sending_jobs')
-          .select('status')
+          .select('status, processed_items, total_items, job_data, error_message')
           .eq('id', jobIdRef.current)
           .maybeSingle();
-        const status = (data as any)?.status;
-        if (status === 'cancelled') {
-          cancelledRef.current = true;
-        } else if (status === 'paused' && !pausedRef.current) {
-          pausedRef.current = true;
-          setIsPaused(true);
-        } else if (status === 'running' && pausedRef.current) {
+        if (!data) return;
+        const d: any = data;
+        setSendProgress({
+          current: d.processed_items || 0,
+          total: d.total_items || customers.length,
+        });
+
+        if (d.status === 'paused') {
+          if (!pausedRef.current) {
+            pausedRef.current = true;
+            setIsPaused(true);
+          }
+          if (typeof d.error_message === 'string' && /desconect|qrcode|qr.code|session|sessão/i.test(d.error_message)) {
+            setDisconnectedModal((cur) =>
+              cur.open ? cur : { open: true, reason: d.error_message, context: 'mid-send' },
+            );
+          }
+        } else if (d.status === 'running' && pausedRef.current) {
           pausedRef.current = false;
           setIsPaused(false);
         }
-      } catch {}
-    }, 4000);
 
-    let successCount = 0;
-    let errorCount = 0;
+        if (d.status === 'completed' || d.status === 'cancelled' || d.status === 'error') {
+          const sent = d.job_data?.sentCount ?? 0;
+          const errs = d.job_data?.errorCount ?? 0;
+          window.clearInterval(pollIntervalId);
+          jobIdRef.current = null;
+          setSending(false);
+          setSendProgress({ current: 0, total: 0 });
+          pausedRef.current = false;
+          cancelledRef.current = false;
+          setIsPaused(false);
+          setHistoryRefreshKey((k) => k + 1);
 
-    try {
-      for (let i = 0; i < customers.length; i++) {
-        // Cancelamento imediato
-        if (cancelledRef.current) {
-          console.log('🛑 Envio cancelado pelo usuário');
-          break;
-        }
-        // Pausa: aguardar enquanto pausedRef estiver true
-        while (pausedRef.current && !cancelledRef.current) {
-          await new Promise(r => setTimeout(r, 500));
-        }
-        if (cancelledRef.current) break;
-
-        const customer = customers[i];
-        setSendProgress({ current: i + 1, total: customers.length });
-
-        // Atualiza progresso no banco (fire-and-forget)
-        if (jobIdRef.current) {
-          supabaseTenant
-            .from('sending_jobs')
-            .update({
-              processed_items: i,
-              current_index: i,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', jobIdRef.current)
-            .then(() => {}, () => {});
-        }
-
-        // Atualizar status para "enviando"
-        setSendStatuses(prev => ({
-          ...prev,
-          [customer.customer_phone]: { phone: customer.customer_phone, status: 'sending' }
-        }));
-
-        // Personalizar mensagem com nome, produtos, total, pedido
-        let personalizedMessage = renderTemplate(messageTemplate, customer);
-
-        // 🛡️ Anti-bloqueio: aplicar variação sutil (emoji swap + zero-width space)
-        // para evitar que o WhatsApp filtre mensagens idênticas em massa
-        const variedMessage = addMessageVariation(personalizedMessage);
-
-        // Normalizar telefone para envio
-        const phoneToSend = normalizeForSending(customer.customer_phone);
-        console.log(`📱 Enviando para ${phoneToSend} (${i + 1}/${customers.length})`);
-
-        // Resolver botão (CTA) com variáveis também
-        const resolvedButtonLabel = buttonEnabled
-          ? renderTemplate(buttonLabel, customer).slice(0, 20)
-          : '';
-        const resolvedButtonUrl = buttonEnabled
-          ? renderTemplate(buttonUrl, customer).trim()
-          : '';
-        const hasValidButton =
-          buttonEnabled &&
-          resolvedButtonLabel.length > 0 &&
-          /^https?:\/\/.+/i.test(resolvedButtonUrl);
-
-        // Enviar mensagem via Z-API
-        // Regras: imagem+botão → envia imagem primeiro, depois mensagem com botão
-        try {
-          // 1) imagem (sempre primeiro se houver)
-          let imageResp: { data: any; error: any } = { data: null, error: null };
-          if (imageDataUrl) {
-            imageResp = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
-              body: {
-                action: 'send-image',
-                tenant_id: tenant.id,
-                phone: phoneToSend,
-                mediaUrl: imageDataUrl,
-                caption: hasValidButton ? '' : variedMessage,
-              },
-            });
-            // pequena pausa antes do botão
-            if (hasValidButton) await new Promise(r => setTimeout(r, 600));
-          }
-
-          // 2) mensagem principal — com botão ou texto
-          const invokeBody: any = hasValidButton
-            ? {
-                action: 'send-button-actions',
-                tenant_id: tenant.id,
-                phone: phoneToSend,
-                message: imageDataUrl ? variedMessage : variedMessage,
-                buttonActions: [
-                  { id: '1', type: 'URL', url: resolvedButtonUrl, label: resolvedButtonLabel },
-                ],
-              }
-            : imageDataUrl
-            ? null // já enviado acima como send-image com caption
-            : {
-                action: 'send-text',
-                tenant_id: tenant.id,
-                phone: phoneToSend,
-                message: variedMessage,
-              };
-
-          const { data, error } = invokeBody
-            ? await supabaseTenant.raw.functions.invoke('zapi-proxy', { body: invokeBody })
-            : { data: imageResp.data ?? { ok: true }, error: imageResp.error };
-
-          // Detectar erro real: erro da function OU payload com error/sem messageId
-          const payloadErrorMsg: string | null =
-            (data && typeof data === 'object' && (data.error || data.message))
-              ? String(data.error || data.message)
-              : null;
-          const hasMessageId = !!(data && (data.messageId || data.zaapId || data.id));
-          const looksDisconnected = !!payloadErrorMsg && /not.?connected|disconnect|desconect|sessão|session|qrcode|qr.code/i.test(payloadErrorMsg);
-          // Quando enviamos apenas imagem (sem texto seguinte), invokeBody é null e consideramos OK acima.
-          const sendFailed = !!error || (!!invokeBody && !hasMessageId && (payloadErrorMsg || data?.connected === false));
-          let deliveryStatus: string;
-
-          if (sendFailed) {
-            const errMsg = error?.message || payloadErrorMsg || 'Falha desconhecida no envio';
-            console.error(`❌ Erro ao enviar para ${phoneToSend}:`, errMsg, data);
-
-            setSendStatuses(prev => ({
-              ...prev,
-              [customer.customer_phone]: {
-                phone: customer.customer_phone,
-                status: 'error',
-                error: errMsg,
-              }
-            }));
-            errorCount++;
-            deliveryStatus = 'FAILED';
-
-            if (looksDisconnected) {
-              consecutiveDisconnectFails++;
-              if (consecutiveDisconnectFails >= 3 && !pausedRef.current) {
-                console.warn('🛑 Circuit breaker: 3 falhas consecutivas de desconexão. Pausando envio.');
-                pausedRef.current = true;
-                setIsPaused(true);
-                if (jobIdRef.current) {
-                  supabaseTenant.from('sending_jobs')
-                    .update({ status: 'paused', paused_at: new Date().toISOString(), error_message: 'Z-API desconectado' })
-                    .eq('id', jobIdRef.current)
-                    .then(() => {}, () => {});
-                }
-                setDisconnectedModal({ open: true, reason: errMsg, context: 'mid-send' });
-              }
-            } else {
-              consecutiveDisconnectFails = 0;
-            }
-          } else {
-            console.log(`✅ Mensagem enviada com sucesso para ${phoneToSend}`);
-            consecutiveDisconnectFails = 0;
-
-            // Adicionar tag ao contato se selecionada
-            if (selectedTagId && selectedTagId !== 'none') {
-              await addTagToContact(phoneToSend, selectedTagId);
-            }
-
-            setSendStatuses(prev => ({
-              ...prev,
-              [customer.customer_phone]: { phone: customer.customer_phone, status: 'sent' }
-            }));
-            successCount++;
-            deliveryStatus = hasMessageId ? 'SENT' : 'PENDING';
-          }
-
-          // Registrar no banco de dados
-          await supabaseTenant.from('whatsapp_messages').insert({
-            phone: phoneToSend,
-            message: variedMessage,
-            type: 'bulk',
-            batch_id: batchId,
-            delivery_status: deliveryStatus,
-            zapi_message_id: hasMessageId ? String(data.messageId || data.zaapId || data.id) : null,
-            sent_at: new Date().toISOString(),
-            processed: true,
+          toast({
+            title:
+              d.status === 'cancelled'
+                ? 'Envio cancelado'
+                : d.status === 'error'
+                ? 'Envio com erro'
+                : 'Envio concluído',
+            description: `${sent} enviada(s), ${errs} erro(s)`,
+            variant: d.status === 'error' ? 'destructive' : undefined,
           });
-
-        } catch (error) {
-          console.error(`❌ Erro ao enviar mensagem para ${customer.customer_phone}:`, error);
-
-          setSendStatuses(prev => ({
-            ...prev,
-            [customer.customer_phone]: {
-              phone: customer.customer_phone,
-              status: 'error',
-              error: error instanceof Error ? error.message : 'Erro desconhecido'
-            }
-          }));
-          errorCount++;
-
-          // grava falha também no histórico
-          try {
-            await supabaseTenant.from('whatsapp_messages').insert({
-              phone: phoneToSend,
-              message: variedMessage,
-              type: 'bulk',
-              batch_id: batchId,
-              delivery_status: 'FAILED',
-              sent_at: new Date().toISOString(),
-              processed: true,
-            });
-          } catch {}
         }
-
-        // Sistema de delay customizado com jitter humanizado (anti-bloqueio)
-        // Helper: dorme em fatias curtas para responder a cancelamento rapidamente
-        const interruptibleSleep = async (ms: number) => {
-          const step = 250;
-          let waited = 0;
-          while (waited < ms) {
-            if (cancelledRef.current) return;
-            await new Promise(r => setTimeout(r, Math.min(step, ms - waited)));
-            waited += step;
-          }
-        };
-
-        if (i < customers.length - 1) {
-          const humanDelay = getHumanizedDelayMs(delayBetweenMessages);
-          console.log(`⏱️ Aguardando ${(humanDelay / 1000).toFixed(1)}s (humanizado)`);
-          await interruptibleSleep(humanDelay);
-
-          if (cancelledRef.current) break;
-
-          // Pausa maior a cada X mensagens
-          if ((i + 1) % messagesBeforePause === 0) {
-            const humanPause = getHumanizedDelayMs(pauseDuration);
-            console.log(`⏸️ Pausa de ${(humanPause / 1000).toFixed(1)}s após ${i + 1} mensagens`);
-            await interruptibleSleep(humanPause);
-          }
-        }
+      } catch (e) {
+        console.warn('Erro no polling de progresso:', e);
       }
-
-      if (cancelledRef.current) {
-        toast({
-          title: 'Envio cancelado',
-          description: `${successCount} enviada(s), ${errorCount} erro(s) antes do cancelamento`,
-        });
-      } else {
-        toast({
-          title: 'Envio concluído',
-          description: `${successCount} enviada(s), ${errorCount} erro(s)${selectedTagId && selectedTagId !== 'none' ? '. Tags aplicadas!' : ''}`,
-        });
-      }
-
-      console.log('✅ Processo de envio finalizado');
-      console.log(`📊 Sucesso: ${successCount}, Erros: ${errorCount}`);
-
-    } catch (error: any) {
-      console.error('Erro ao enviar mensagens:', error);
-      toast({
-        title: 'Erro',
-        description: error?.message || 'Erro ao enviar mensagens em massa',
-        variant: 'destructive'
-      });
-    } finally {
-      window.clearInterval(pollIntervalId);
-      // Marcar status final no job
-      if (jobIdRef.current) {
-        const finalStatus = cancelledRef.current ? 'cancelled' : 'completed';
-        try {
-          await supabaseTenant
-            .from('sending_jobs')
-            .update({
-              status: finalStatus,
-              processed_items: successCount + errorCount,
-              current_index: successCount + errorCount,
-              completed_at: new Date().toISOString(),
-              error_message: cancelledRef.current ? 'Cancelado pelo usuário' : null,
-            })
-            .eq('id', jobIdRef.current);
-        } catch (e) {
-          console.warn('Falha ao finalizar job:', e);
-        }
-        jobIdRef.current = null;
-      }
-      setSending(false);
-      setSendProgress({ current: 0, total: 0 });
-      pausedRef.current = false;
-      cancelledRef.current = false;
-      setIsPaused(false);
-      setHistoryRefreshKey((k) => k + 1);
-    }
+    }, 2000);
   };
 
   return (
