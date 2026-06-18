@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -84,6 +84,41 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
   const [orderStatus, setOrderStatus] = useState<'em_separacao' | 'envio_pendente' | 'enviado' | 'liberado_retirada' | 'entregue' | ''>('');
   const [savingMeta, setSavingMeta] = useState(false);
 
+  // ===== Assinatura digital para edição de pedidos pagos =====
+  const [signerName, setSignerName] = useState<string>('');
+  const [signaturePromptOpen, setSignaturePromptOpen] = useState(false);
+  const [signatureInput, setSignatureInput] = useState('');
+  const signatureResolverRef = useRef<((name: string | null) => void) | null>(null);
+
+  const ensureSignature = (): Promise<string | null> => {
+    if (!isPaid) return Promise.resolve('');
+    if (signerName.trim()) return Promise.resolve(signerName.trim());
+    return new Promise((resolve) => {
+      signatureResolverRef.current = resolve;
+      setSignatureInput('');
+      setSignaturePromptOpen(true);
+    });
+  };
+
+  const logSignedEdit = async (actionType: string, details: Record<string, any>) => {
+    if (!isPaid || !signerName.trim() || !order) return;
+    try {
+      await (supabase as any).from('audit_logs').insert({
+        entity: 'order',
+        entity_id: String(order.id),
+        action: 'paid_order_edited_with_signature',
+        tenant_id: profile?.tenant_id,
+        meta: {
+          signer_name: signerName.trim(),
+          action_type: actionType,
+          user_id: profile?.id,
+          ...details,
+        },
+      });
+    } catch (e) {
+      console.error('Erro ao registrar assinatura digital:', e);
+    }
+  };
 
 useEffect(() => {
   if (open && order) {
@@ -93,6 +128,9 @@ useEffect(() => {
     setObservation(order.observation || '');
     setPrinted(!!order.printed);
     setOrderStatus((order.order_status as any) || '');
+    setSignerName('');
+    setSignaturePromptOpen(false);
+    setSignatureInput('');
     loadProducts();
   }
 }, [open, order]);
@@ -188,6 +226,9 @@ useEffect(() => {
   const addProductToOrder = async () => {
     if (!selectedProduct || !order) return;
 
+    const signature = await ensureSignature();
+    if (signature === null) return;
+
     setLoading(true);
     try {
       // STOCK VALIDATION: Fresh read from DB to prevent race conditions
@@ -274,6 +315,14 @@ useEffect(() => {
       setQuantity(1);
       setUnitPrice(0);
 
+      await logSignedEdit('add_product', {
+        product_id: selectedProduct.id,
+        product_code: selectedProduct.code,
+        product_name: selectedProduct.name,
+        qty: quantity,
+        unit_price: effectiveUnitPrice,
+      });
+
       toast({
         title: 'Sucesso',
         description: 'Produto adicionado e mensagem enviada'
@@ -302,8 +351,18 @@ useEffect(() => {
       return;
     }
 
+    const signature = await ensureSignature();
+    if (signature === null) return;
+
     setLoading(true);
     try {
+      await logSignedEdit('remove_product', {
+        item_id: itemId,
+        product_id: item.product_id,
+        product_code: productCode,
+        product_name: productName,
+        qty: qtyToReturn,
+      });
       // Enviar mensagem de cancelamento via Z-API
       const { error: zapiError } = await supabase.functions.invoke('zapi-send-product-canceled', {
         body: {
@@ -374,6 +433,13 @@ useEffect(() => {
   const updateItemQuantity = async (itemId: number, newQty: number) => {
     if (newQty <= 0) return;
 
+    const existing = cartItems.find(i => i.id === itemId);
+    const oldQty = existing?.qty;
+    if (oldQty === newQty) return;
+
+    const signature = await ensureSignature();
+    if (signature === null) return;
+
     try {
       const { error } = await supabaseTenant
         .from('cart_items')
@@ -381,6 +447,15 @@ useEffect(() => {
         .eq('id', itemId);
 
       if (error) throw error;
+
+      await logSignedEdit('update_quantity', {
+        item_id: itemId,
+        product_id: existing?.product_id,
+        product_code: existing?.product?.code,
+        product_name: existing?.product?.name,
+        old_qty: oldQty,
+        new_qty: newQty,
+      });
 
       await loadCartItems(cartId);
       await updateOrderTotal(cartId);
@@ -753,14 +828,27 @@ useEffect(() => {
             disabled={savingMeta}
             onClick={async () => {
               if (!order) return;
+
+              // Detectar mudanças relevantes em campos meta de pedido pago
+              const trimmedTracking = trackingCode.trim();
+              const finalStatus = orderStatus === 'entregue'
+                ? 'entregue'
+                : (trimmedTracking ? 'enviado' : (orderStatus || null));
+
+              const metaChanged =
+                (!!order.is_paid) !== isPaid ||
+                (order.melhor_envio_tracking_code || '') !== trimmedTracking ||
+                (order.observation || '') !== (observation || '') ||
+                (!!order.printed) !== printed ||
+                (order.order_status || null) !== finalStatus;
+
+              if (order.is_paid && metaChanged) {
+                const signature = await ensureSignature();
+                if (signature === null) return;
+              }
+
               setSavingMeta(true);
               try {
-                const trimmedTracking = trackingCode.trim();
-                // Auto-status: se rastreio preenchido, marca como enviado (a menos que esteja Entregue)
-                const finalStatus = orderStatus === 'entregue'
-                  ? 'entregue'
-                  : (trimmedTracking ? 'enviado' : (orderStatus || null));
-
                 const { error } = await (supabaseTenant as any)
                   .from('orders')
                   .update({
@@ -773,6 +861,16 @@ useEffect(() => {
                   .eq('id', order.id);
 
                 if (error) throw error;
+
+                if (order.is_paid && metaChanged) {
+                  await logSignedEdit('update_order_meta', {
+                    is_paid: isPaid,
+                    tracking_code: trimmedTracking || null,
+                    observation: observation || null,
+                    printed,
+                    order_status: finalStatus,
+                  });
+                }
 
                 toast({ title: 'Pedido atualizado', description: 'Alterações salvas com sucesso.' });
                 onOrderUpdated();
@@ -794,6 +892,71 @@ useEffect(() => {
           </Button>
         </div>
       </DialogContent>
+
+      {/* Modal de assinatura digital para edição de pedidos pagos */}
+      <Dialog
+        open={signaturePromptOpen}
+        onOpenChange={(o) => {
+          if (!o && signatureResolverRef.current) {
+            signatureResolverRef.current(null);
+            signatureResolverRef.current = null;
+          }
+          setSignaturePromptOpen(o);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assinatura digital</DialogTitle>
+            <DialogDescription>
+              Este pedido já está pago. Informe seu nome completo para registrar quem está realizando esta alteração.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label htmlFor="signer-name">Seu nome</Label>
+            <Input
+              id="signer-name"
+              autoFocus
+              value={signatureInput}
+              onChange={(e) => setSignatureInput(e.target.value)}
+              placeholder="Ex.: Maria Silva"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && signatureInput.trim().length >= 2) {
+                  const name = signatureInput.trim();
+                  setSignerName(name);
+                  setSignaturePromptOpen(false);
+                  signatureResolverRef.current?.(name);
+                  signatureResolverRef.current = null;
+                }
+              }}
+              maxLength={120}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSignaturePromptOpen(false);
+                signatureResolverRef.current?.(null);
+                signatureResolverRef.current = null;
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={signatureInput.trim().length < 2}
+              onClick={() => {
+                const name = signatureInput.trim();
+                setSignerName(name);
+                setSignaturePromptOpen(false);
+                signatureResolverRef.current?.(name);
+                signatureResolverRef.current = null;
+              }}
+            >
+              Confirmar e assinar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 };
