@@ -15,7 +15,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { Loader2, Send, Users, Calendar as CalendarIcon, Filter, Tag, RefreshCw, Clock, Database, ImagePlus, X as XIcon } from 'lucide-react';
 import { normalizeForSending } from '@/lib/phone-utils';
-import { addMessageVariation, getHumanizedDelayMs } from '@/lib/whatsapp-anti-block';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
