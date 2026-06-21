@@ -1757,7 +1757,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
             </div>
 
             {/* MOBILE: Cards empilhados (substitui a tabela) */}
-            <div className="md:hidden divide-y divide-[#f3f4f6]">
+            <div className="md:hidden divide-y divide-[#d1d5db]">
               {loading ? (
                 <div className="text-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin mx-auto" />
