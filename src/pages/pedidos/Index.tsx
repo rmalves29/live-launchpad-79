@@ -1499,8 +1499,9 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     const isRoanneJoias = supabaseTenant.getTenantId() === '014457e5-e85f-4d62-874b-6bd0b72213bc';
     return (
       <div className="min-h-screen bg-background">
-        <div className="p-6">
-          <div className="container mx-auto space-y-6">
+        <div className="p-3 md:p-6">
+          <div className="container mx-auto space-y-4 md:space-y-6 px-0">
+
             <div className="space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <h1 className="text-2xl font-bold tracking-tight">Gestão de Pedidos</h1>
@@ -1755,6 +1756,158 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
               </div>
             </div>
 
+            {/* MOBILE: Cards empilhados (substitui a tabela) */}
+            <div className="md:hidden divide-y divide-[#f3f4f6]">
+              {loading ? (
+                <div className="text-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                </div>
+              ) : paginatedOrders.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground text-sm">
+                  {debouncedSearchTerm ? 'Nenhum pedido encontrado para esta busca' : 'Nenhum pedido encontrado'}
+                </div>
+              ) : (
+                paginatedOrders.map((order) => {
+                  const normalizedPhone = normalizeForStorage(order.customer_phone);
+                  const multiCount = orderCountByPhone[normalizedPhone] || 1;
+                  const hasTracking = !!(order.melhor_envio_tracking_code && order.melhor_envio_tracking_code.trim());
+                  const srcMap: Record<string, { label: string; cls: string }> = {
+                    whatsapp:   { label: 'WhatsApp',  cls: 'bg-[#dcfce7] text-[#16a34a]' },
+                    instagram:  { label: 'Instagram', cls: 'bg-[#fce7f3] text-[#db2777]' },
+                    storefront: { label: 'Vitrine',   cls: 'bg-[#fef3c7] text-[#ca8a04]' },
+                    live_admin: { label: 'Live',      cls: 'bg-[#e0e7ff] text-[#4f46e5]' },
+                    webhook:    { label: 'Auto',      cls: 'bg-[#dcfce7] text-[#16a34a]' },
+                    manual:     { label: 'Manual',    cls: 'bg-[#f1f5f9] text-[#475569]' },
+                  };
+                  const src = order.source || 'manual';
+                  const srcInfo = srcMap[src] || { label: src, cls: 'bg-[#f1f5f9] text-[#475569]' };
+                  let statusBadge: JSX.Element;
+                  if (order.is_cancelled) {
+                    statusBadge = <Badge variant="destructive" className="text-[10px]">Cancelado</Badge>;
+                  } else if (order.is_paid && (order.order_status === 'enviado' || hasTracking)) {
+                    statusBadge = <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#dbeafe] text-[#2563eb]">Enviado</Badge>;
+                  } else if (order.is_paid && order.order_status === 'em_separacao') {
+                    statusBadge = <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#fef3c7] text-[#b45309]">Em Separação</Badge>;
+                  } else if (order.is_paid && order.order_status === 'envio_pendente') {
+                    statusBadge = <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#ffedd5] text-[#c2410c]">Envio Pendente</Badge>;
+                  } else if (order.is_paid && order.order_status === 'liberado_retirada') {
+                    statusBadge = <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#e0e7ff] text-[#4338ca]">Liberado p/ Retirada</Badge>;
+                  } else {
+                    statusBadge = <Badge className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${order.is_paid ? 'bg-[#dcfce7] text-[#16a34a]' : 'bg-[#fef9c3] text-[#ca8a04]'}`}>{order.is_paid ? 'Pago' : 'Pendente'}</Badge>;
+                  }
+                  return (
+                    <div key={order.id} className={cn("p-3 space-y-2", order.is_cancelled && 'opacity-60 bg-muted/30')}>
+                      <div className="flex items-start gap-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedOrders.has(order.id)}
+                          onChange={() => toggleOrderSelection(order.id)}
+                          className="w-4 h-4 mt-1 accent-[#4f46e5]"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-mono text-[13px] font-semibold text-[#111827]">#{order.tenant_order_number || order.id}</span>
+                            <span className="text-sm font-bold text-[#111827]">{formatCurrency(order.total_amount)}</span>
+                          </div>
+                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[12px] text-[#374151] font-medium">{formatPhoneForDisplay(order.customer_phone)}</span>
+                            {order.customer?.instagram && (
+                              <span className="text-[11px] text-muted-foreground">@{order.customer.instagram.replace(/^@/, '')}</span>
+                            )}
+                            {multiCount > 1 && (
+                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-800">{multiCount} pedidos</Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5 items-center">
+                        {statusBadge}
+                        <Badge className={`text-[10px] font-semibold rounded-full px-2 py-0.5 border-0 ${String(order.event_type).toUpperCase().includes('LIVE') ? 'bg-[#dbeafe] text-[#2563eb]' : 'bg-[#f3e8ff] text-[#9333ea]'}`}>{order.event_type}</Badge>
+                        <span className={`text-[10px] font-medium rounded-full px-1.5 py-0.5 ${srcInfo.cls}`}>{srcInfo.label}</span>
+                        <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", order.printed ? 'bg-[#e5e7eb] text-[#111827] font-semibold' : 'bg-transparent text-[#9ca3af]')} onClick={() => togglePrintedStatus(order.id, order.printed || false)}>
+                          {order.printed ? 'Impresso' : 'Não impresso'}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground ml-auto">{formatBrasiliaDate(order.event_date)}</span>
+                      </div>
+
+                      {/* Rastreio */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-muted-foreground">Rastreio:</span>
+                        {editingTracking === order.id ? (
+                          <div className="flex items-center gap-1 flex-1">
+                            <Input value={trackingText} onChange={(e) => setTrackingText(e.target.value)} placeholder="Código" className="h-8 text-xs" disabled={savingTracking === order.id} />
+                            <Button size="sm" className="h-8 w-8 p-0" onClick={() => saveTrackingCode(order.id)} disabled={savingTracking === order.id}>
+                              {savingTracking === order.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                            </Button>
+                          </div>
+                        ) : order.melhor_envio_tracking_code ? (
+                          <Badge className="text-[11px] font-mono cursor-pointer rounded-full px-2 py-0.5 border-0 bg-[#dbeafe] text-[#2563eb]" onClick={() => { setEditingTracking(order.id); setTrackingText(order.melhor_envio_tracking_code || ''); }}>
+                            {order.melhor_envio_tracking_code}
+                          </Badge>
+                        ) : (
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-muted-foreground" onClick={() => { setEditingTracking(order.id); setTrackingText(''); }}>
+                            <Truck className="h-3.5 w-3.5 mr-1" /> Adicionar
+                          </Button>
+                        )}
+                      </div>
+
+                      {/* Observação */}
+                      <div className="flex items-start gap-2">
+                        <span className="text-[11px] text-muted-foreground pt-1">Obs:</span>
+                        {editingObservation === order.id ? (
+                          <div className="flex items-center gap-1 flex-1">
+                            <Input value={observationText} onChange={(e) => setObservationText(e.target.value)} placeholder="Observação" className="h-8 text-xs" />
+                            <Button size="sm" className="h-8 w-8 p-0" onClick={() => saveObservation(order.id)}>
+                              <Check className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] flex-1 cursor-pointer" onClick={() => { setEditingObservation(order.id); setObservationText(order.observation || ''); }}>
+                            {order.observation || <span className="text-muted-foreground">Sem observação</span>}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Ações */}
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#f3f4f6]">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] text-muted-foreground">Pago:</span>
+                          <Switch
+                            checked={order.is_paid}
+                            onCheckedChange={() => togglePaidStatus(order.id, order.is_paid)}
+                            disabled={processingIds.has(order.id) || order.is_cancelled}
+                            className="data-[state=checked]:bg-[#16a34a]"
+                          />
+                          {processingIds.has(order.id) && <Loader2 className="h-3 w-3 animate-spin" />}
+                          <MessageCircle className={cn("h-4 w-4 ml-1", order.item_added_delivered ? "text-green-500" : "text-muted-foreground/40")} />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => { setEditingOrder(order); setEditOrderOpen(true); }} title="Editar">
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={async () => { const withItems = await ensureOrderCartItems(order); setViewingOrder(withItems); setViewOrderOpen(true); }} title="Visualizar">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          {order.is_cancelled ? (
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-amber-600" onClick={() => toggleCancelledStatus(order.id, true)} title="Reverter">
+                              <RotateCcw className="h-4 w-4" />
+                            </Button>
+                          ) : !order.is_paid ? (
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive" onClick={() => toggleCancelledStatus(order.id, false)} title="Cancelar">
+                              <Ban className="h-4 w-4" />
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* DESKTOP: Tabela tradicional */}
+            <div className="hidden md:block">
             <Table className="text-xs w-full [&_tbody_tr]:border-b [&_tbody_tr]:border-[#f3f4f6] [&_tbody_tr]:hover:bg-[#fafafa] [&_tbody_tr]:transition-colors">
               <TableHeader className="bg-[#fafafa]">
                 <TableRow className="border-b border-[#e5e7eb] hover:bg-transparent">
@@ -2051,6 +2204,8 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                 )}
               </TableBody>
             </Table>
+            </div>
+
             
             {filteredOrders.length > 0 && (
               <div className="p-4 border-t bg-muted/30">
