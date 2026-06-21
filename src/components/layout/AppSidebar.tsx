@@ -40,7 +40,7 @@ type NavGroup = { label: string; entries: NavEntry[] };
 const SUPABASE_DASHBOARD_URL = 'https://supabase.com/dashboard/project/hxtbsieodbtzgcvvkeqx/reports/database';
 const LOVABLE_CLOUD_URL = 'https://lovable.dev/projects/154035f9-093b-4aed-ac82-a01434f3c19b';
 
-function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
+export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user, profile } = useAuth();
   const { tenant } = useTenant();
   const navigate = useNavigate();
@@ -264,34 +264,13 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 export function AppSidebar() {
-  const [mobileOpen, setMobileOpen] = useState(false);
-
   return (
-    <>
-      {/* Desktop sidebar */}
-      <aside
-        style={{ width: 240, flexShrink: 0 }}
-        className="hidden lg:block border-r border-[#e5e7eb] h-screen sticky top-0"
-      >
-        <SidebarContent />
-      </aside>
-
-      {/* Mobile top bar + drawer */}
-      <div className="lg:hidden sticky top-0 z-40 bg-white border-b border-[#e5e7eb] flex items-center justify-between px-3 h-14">
-        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-9 w-9 p-0">
-              <Menu className="h-5 w-5" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-[280px]">
-            <SidebarContent onNavigate={() => setMobileOpen(false)} />
-          </SheetContent>
-        </Sheet>
-        <img src={cartzyLogo} alt="Cartzy" className="h-[3.4rem] w-auto object-contain" />
-        <div className="w-9" />
-      </div>
-    </>
+    <aside
+      style={{ width: 240, flexShrink: 0 }}
+      className="hidden lg:block border-r border-[#e5e7eb] h-screen sticky top-0"
+    >
+      <SidebarContent />
+    </aside>
   );
 }
 
