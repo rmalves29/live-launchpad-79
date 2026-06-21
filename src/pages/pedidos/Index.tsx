@@ -2204,6 +2204,8 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                 )}
               </TableBody>
             </Table>
+            </div>
+
             
             {filteredOrders.length > 0 && (
               <div className="p-4 border-t bg-muted/30">
