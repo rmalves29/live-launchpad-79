@@ -1499,8 +1499,9 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     const isRoanneJoias = supabaseTenant.getTenantId() === '014457e5-e85f-4d62-874b-6bd0b72213bc';
     return (
       <div className="min-h-screen bg-background">
-        <div className="p-6">
-          <div className="container mx-auto space-y-6">
+        <div className="p-3 md:p-6">
+          <div className="container mx-auto space-y-4 md:space-y-6 px-0">
+
             <div className="space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <h1 className="text-2xl font-bold tracking-tight">Gestão de Pedidos</h1>
