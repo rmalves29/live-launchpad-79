@@ -107,6 +107,35 @@ Deno.serve(async (req) => {
     const phoneDigits = (body.holder_phone || "").replace(/\D/g, "");
     const code = `orderzap-sub-${body.tenant_id}-${body.plan_id}`;
 
+    // Tokeniza cartão server-side se necessário usando a public key
+    let cardToken = body.card_token;
+    if (!cardToken && body.card) {
+      const publicKey = Deno.env.get("PAGARME_ORDERZAP_PUBLIC_KEY");
+      if (!publicKey) return json({ success: false, error: "PAGARME_ORDERZAP_PUBLIC_KEY não configurada" }, 200);
+      const tokResp = await fetch(`${PAGARME_API}/tokens?appId=${encodeURIComponent(publicKey)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "card",
+          card: {
+            number: body.card.number.replace(/\D/g, ""),
+            holder_name: body.card.holder_name,
+            exp_month: Number(body.card.exp_month),
+            exp_year: Number(body.card.exp_year) < 100 ? 2000 + Number(body.card.exp_year) : Number(body.card.exp_year),
+            cvv: String(body.card.cvv).replace(/\D/g, ""),
+          },
+        }),
+      });
+      const tokOut = await tokResp.json().catch(() => ({}));
+      if (!tokResp.ok || !tokOut?.id) {
+        console.error("[pagarme-create-subscription] tokenização falhou:", tokOut);
+        return json({ success: false, error: tokOut?.message || tokOut?.errors?.[0]?.message || "Cartão inválido" }, 200);
+      }
+      cardToken = tokOut.id;
+    }
+
+
+
     const subscriptionPayload: Record<string, unknown> = {
       code,
       payment_method: "credit_card",
