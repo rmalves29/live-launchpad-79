@@ -92,3 +92,6 @@ verify_jwt = false
 [functions.whatsapp-official-auth-callback]
 verify_jwt = false
 
+[functions.pagarme-subscription-webhook]
+verify_jwt = false
+
