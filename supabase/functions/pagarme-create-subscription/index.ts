@@ -11,7 +11,9 @@ const PAGARME_API = "https://api.pagar.me/core/v5";
 interface Body {
   tenant_id: string;
   plan_id: "pro" | "enterprise";
-  plan_price: number; // BRL
+  plan_price: number; // BRL — valor MENSAL
+  interval_months?: number; // intervalo da cobrança (default 1 = mensal)
+  total_cycles?: number; // número total de cobranças (ex.: 6 ou 12)
   card_token?: string;
   card?: {
     number: string;
@@ -21,9 +23,9 @@ interface Body {
     cvv: string;
   };
   holder_name: string;
-  holder_document: string; // CPF, only digits
+  holder_document: string;
   holder_email: string;
-  holder_phone?: string; // digits only e.g. 11999999999
+  holder_phone?: string;
   billing_address: {
     line_1: string;
     line_2?: string;
