@@ -55,6 +55,7 @@ interface Order {
   coupon_code?: string;
   coupon_discount?: number;
   gift_name?: string;
+  melhor_envio_tracking_code?: string | null;
 }
 
 async function getEdgeFunctionErrorMessage(err: any): Promise<string> {
