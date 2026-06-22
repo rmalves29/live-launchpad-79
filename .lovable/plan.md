@@ -1,80 +1,79 @@
-# Plano: Responsividade mobile do sistema inteiro
+## Objetivo
+Permitir que o cliente da OrderZap assine os planos **Pro (semestral)** e **Enterprise (anual)** com **cobrança recorrente real no cartão de crédito** via API de Subscriptions da Pagar.me. A cada cobrança aprovada, o sistema **identifica automaticamente o tenant que pagou e estende `subscription_ends_at` na tabela `tenants`** (+6 ou +12 meses). O plano Basic (mensal) continua como está.
 
-Desktop fica idêntico. Toda a adaptação acontece abaixo de 768px (breakpoint `md` do Tailwind). Nenhuma funcionalidade, configuração ou coluna é removida — só muda a forma de exibir no celular.
+## Como o sistema sabe qual empresa pagou
+Em cada subscription criada na Pagar.me serão gravados dois campos de identificação redundantes (a prova de qualquer falha):
+1. **`code`** = `orderzap-sub-<TENANT_ID>-<PLAN_ID>` (campo nativo, único por tenant+plano).
+2. **`metadata`** = `{ tenant_id, plan_id, interval_months }` (Pagar.me devolve nos webhooks).
 
-## 1. Layout global (shell do app)
+Além disso, gravamos localmente em `subscription_recurrences` o vínculo `pagarme_subscription_id → tenant_id`. Quando o webhook chega:
+- Tenta resolver o tenant por: `metadata.tenant_id` → `subscription_recurrences.pagarme_subscription_id` → parsing do `code`.
+- Se nenhum resolver, registra em `webhook_logs` como `unmatched_subscription` (sem atualizar nada — evita atualizar tenant errado).
 
-- **Sidebar**: no mobile, vira off-canvas (gaveta) acionada por um botão de menu no topo. No desktop continua fixa igual hoje.
-- **Header/topbar**: reduzir altura, esconder labels longos, manter ações principais (notificações, perfil, seletor de empresa) em ícone.
-- **Container das páginas**: padding lateral menor no mobile (`px-3` em vez de `px-6/8`), permitir largura 100%.
-- **Modais grandes**: garantir `max-h-[90vh]`, scroll interno, header/footer fixos (já é padrão do projeto, vou auditar página por página).
+## Como vai funcionar (visão do usuário)
+1. Na tela **Renovar Assinatura**, os cards Pro e Enterprise ganham um botão extra **"Assinar com renovação automática (cartão)"**.
+2. Modal pede dados do cartão + CPF/nome/endereço do titular. Cartão é tokenizado no navegador com a public key (chave secreta nunca sai do servidor).
+3. Backend cria customer + card + subscription na Pagar.me com `interval=month`, `interval_count=6` ou `12`, `billing_type=prepaid`, gravando `code` e `metadata` com o `tenant_id`.
+4. Webhook da Pagar.me confirma cada cobrança e o sistema:
+   - Localiza o tenant pelo metadata/code/registro local.
+   - Soma `+6` ou `+12` meses em `tenants.subscription_ends_at` (a partir da data atual ou da data já futura, o que for maior).
+   - Atualiza `subscription_recurrences.current_period_end`, `last_charge_at`, `last_charge_status`.
+   - Grava tudo em `webhook_logs` com o `tenant_id` para auditoria.
+5. Usuário vê na tela o status da assinatura ativa (próxima cobrança, cartão usado) e pode cancelar a renovação automática a qualquer momento.
 
-## 2. Tabelas viram cards empilhados no mobile
+## Configuração necessária (3 secrets)
+- **`PAGARME_ORDERZAP_API_KEY`** — Secret Key `sk_...` da conta Pagar.me da OrderZap (exclusiva para mensalidades).
+- **`PAGARME_ORDERZAP_PUBLIC_KEY`** — Public Key `pk_...` (usada no navegador para tokenizar).
+- **`PAGARME_WEBHOOK_SECRET_ORDERZAP`** — para validar HMAC dos webhooks.
 
-Padrão a aplicar em todas as listagens:
+## Mudanças no banco
+Nova tabela **`subscription_recurrences`**:
+- `tenant_id` (FK lógica para `tenants.id`, único junto com `plan_id`)
+- `plan_id` (`pro` | `enterprise`), `interval_months` (6 ou 12), `price`
+- `pagarme_subscription_id` (único), `pagarme_customer_id`, `pagarme_card_id`, `pagarme_code`
+- `status` (`active` | `canceled` | `past_due` | `pending`)
+- `current_period_end`, `last_charge_at`, `last_charge_status`, `cancel_at`, `canceled_at`
+- `card_brand`, `card_last4` (para mostrar na UI)
+- RLS: tenant_admin vê/cancela só os seus; service_role acesso total; super_admin vê todos.
+- GRANTs explícitos + trigger `updated_at`.
 
-- Desktop (`md:` e acima): tabela atual, intocada.
-- Mobile (`<md`): cada linha vira um card com as infos principais em destaque (ex.: número do pedido, cliente, status, total) e as ações (botões/menu) acessíveis por toque.
-- Nenhuma coluna some — informações secundárias entram no card em linhas menores ou num "ver mais" expansível quando forem muitas.
+## Edge Functions (3 novas)
+1. **`pagarme-create-subscription`**
+   - Entrada: `tenant_id`, `plan_id`, `card_token`, dados do titular.
+   - Valida que o usuário logado pertence ao `tenant_id`.
+   - Cria customer + card + subscription na Pagar.me com `code` e `metadata` carregando o `tenant_id`.
+   - Grava em `subscription_recurrences` e estende `subscription_ends_at` já no primeiro pagamento aprovado retornado pela API.
 
-Páginas com tabelas que recebem esse tratamento:
+2. **`pagarme-subscription-webhook`** (pública)
+   - Valida HMAC com `PAGARME_WEBHOOK_SECRET_ORDERZAP`.
+   - Eventos tratados:
+     - `charge.paid` / `invoice.paid` → resolve tenant, **estende `subscription_ends_at` em +6 ou +12 meses** (com base no `interval_months` salvo), atualiza `current_period_end`.
+     - `charge.payment_failed` → marca `past_due` (mantém acesso até o `subscription_ends_at` atual).
+     - `subscription.canceled` → marca `canceled`.
+   - Registra tudo em `webhook_logs` com `tenant_id` resolvido.
 
-- Pedidos, Pedidos cancelados, Pedido manual (lista de itens)
-- Produtos (listagem + variações)
-- Clientes
-- Cupons, Presentes, Promoções
-- Sendflow (campanhas, jobs)
-- WhatsApp: Cobrança, Envios ativos, Grupos, Templates, Contatos
-- Instagram: Live, Comentários, DMs
-- Integrações: listas de ERPs/transportadoras
-- Relatórios: tabelas de ranking, RFM, faturamento
-- Logs/Auditoria
-- Configurações (usuários, roles, etc.)
+3. **`pagarme-cancel-subscription`**
+   - Cancela na Pagar.me e marca `cancel_at = current_period_end` (acesso vai até o fim do ciclo pago).
 
-## 3. Formulários e modais
+## Frontend
+- **`src/pages/RenovarAssinatura.tsx`** — adicionar botão "Assinar com renovação automática" nos cards Pro/Enterprise; bloco mostrando assinatura ativa (cartão final, próxima cobrança, botão cancelar).
+- **`src/components/billing/PagarmeSubscribeDialog.tsx`** (novo) — modal com formulário do cartão + titular, carrega Pagar.me JS v5 com a public key, tokeniza, chama a edge function.
+- Tela `/assinatura/recorrente/sucesso` simples reaproveitando layout existente.
 
-- Inputs, selects e botões em largura total no mobile.
-- Grids de 2–4 colunas viram 1 coluna abaixo de `md`.
-- Botões de ação no rodapé do modal empilhados no mobile, lado a lado no desktop.
-- Date pickers, comboboxes e dropdowns com toque confortável (mín. 44px de altura).
+## Fora de escopo
+- Plano Basic (mensal) continua via Mercado Pago.
+- Checkout das lojas (Pagar.me por tenant em `integration_pagarme`) não sofre alteração — chaves totalmente separadas.
+- Preços especiais da Ju Bijoux continuam aplicados também na recorrência.
 
-## 4. Telas operacionais críticas (auditoria detalhada)
-
-Vou revisar caso a caso para garantir que nada quebra:
-
-- Pedido manual (carrinho + busca de produto + cliente + frete + pagamento)
-- Cobrança (seleção de clientes, preview da mensagem, banner de progresso)
-- Live Instagram (lançador de vendas)
-- Envios ativos (banner persistente + controles)
-- Checkout admin / cupons aplicados
-- Dashboard / Relatórios (gráficos com `ResponsiveContainer`, KPIs em 1 coluna no mobile)
-
-## 5. Componentes compartilhados
-
-- `DataTable` / wrappers de tabela: adicionar prop ou variante `mobileAsCards` com renderização alternativa.
-- Diálogos do shadcn já são responsivos; só ajusto padding e largura.
-- Filtros e barras de busca: colapsam num botão "Filtros" que abre um sheet no mobile.
+## Sequência
+1. Migration `subscription_recurrences` + GRANTs + RLS + trigger.
+2. Pedir as 3 secrets via `add_secret`.
+3. Criar as 3 edge functions.
+4. Componente do modal + ajustes em `RenovarAssinatura.tsx`.
+5. URL do webhook para cadastrar no painel Pagar.me (entrego pronta pra colar).
 
 ## Detalhes técnicos
-
-- Breakpoint principal: `md` (768px). Uso pontual de `sm` (640px) para casos muito apertados.
-- Tailwind utilitários `hidden md:table` / `md:hidden` para alternar tabela ↔ cards sem duplicar lógica de dados.
-- Nenhum token de design novo; reaproveito `Card`, `Badge`, `Button`, `Sheet`, `Drawer` já existentes.
-- Nenhuma mudança em queries Supabase, edge functions, RLS ou regras de negócio.
-- Sem mudança no desktop: todas as classes novas são prefixadas com `md:` ou aplicadas só dentro de blocos `md:hidden`.
-
-## Ordem de execução
-
-1. Shell (sidebar off-canvas + header + container).
-2. Componentes compartilhados de tabela (criar variante card).
-3. Pedidos, Pedido manual, Cobrança, Envios ativos, Live (operação diária).
-4. Produtos, Clientes, Cupons, Presentes, Promoções.
-5. Sendflow, WhatsApp (grupos/templates/contatos), Instagram.
-6. Integrações, Relatórios, Configurações, Logs.
-7. Passada final em modais e formulários extensos.
-
-## Fora do escopo
-
-- Mudanças visuais no desktop.
-- Reescrita de telas ou de fluxos.
-- Novo app nativo / PWA instalável (posso fazer depois se quiser).
+- Endpoint: `https://api.pagar.me/core/v5/subscriptions` (Basic Auth `sk_xxx:`).
+- Recorrência: `interval: "month"`, `interval_count: 6|12`, `billing_type: "prepaid"`, `pricing_scheme: { price: <centavos> }`, `payment_method: "credit_card"`.
+- `code` único por tenant+plano evita duplicar subscription se o usuário clicar 2x.
+- Webhook idempotente: usa `charge.id` para não somar dias duas vezes da mesma cobrança.
