@@ -88,6 +88,21 @@ export default function RenovarAssinatura() {
     name: string;
     subscription_ends_at: string | null;
   } | null>(null);
+  const [recurringDialog, setRecurringDialog] = useState<Plan | null>(null);
+  const [activeRecurring, setActiveRecurring] = useState<any | null>(null);
+  const [cancelingRec, setCancelingRec] = useState(false);
+
+  const loadRecurring = async (tid: string) => {
+    const { data } = await supabase
+      .from("subscription_recurrences" as any)
+      .select("*")
+      .eq("tenant_id", tid)
+      .in("status", ["active", "past_due", "pending"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    setActiveRecurring(data || null);
+  };
 
   useEffect(() => {
     document.title = "Renovar Assinatura - OrderZap";
