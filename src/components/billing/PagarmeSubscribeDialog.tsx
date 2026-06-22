@@ -11,10 +11,12 @@ interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   tenantId: string;
-  planId: "pro" | "enterprise";
+  planId: "basic" | "pro" | "enterprise";
   planName: string;
   planPrice: number;
   intervalMonths: number;
+  planDays?: number;
+  mode?: "subscription" | "one_time";
   userEmail: string;
   onSuccess?: () => void;
 }
