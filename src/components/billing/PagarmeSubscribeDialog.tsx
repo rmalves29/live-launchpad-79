@@ -119,9 +119,13 @@ export function PagarmeSubscribeDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Assinar {planName} - Renovação automática</DialogTitle>
+          <DialogTitle>
+            {mode === "one_time" ? `Pagar ${planName}` : `Assinar ${planName} - Renovação automática`}
+          </DialogTitle>
           <DialogDescription>
-            Cobrança recorrente no cartão a cada {intervalMonths} meses. Você pode cancelar a qualquer momento.
+            {mode === "one_time"
+              ? `Pagamento único no cartão. Acesso por ${planDays} dias.`
+              : `Cobrança recorrente no cartão a cada ${intervalMonths} meses. Você pode cancelar a qualquer momento.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -131,7 +135,8 @@ export function PagarmeSubscribeDialog({
               <ShieldCheck className="h-4 w-4" /> Pagamento processado por Pagar.me
             </div>
             <div className="text-muted-foreground mt-1">
-              Valor: <strong>R$ {planPrice.toFixed(2).replace(".", ",")}</strong> a cada {intervalMonths} meses
+              Valor: <strong>R$ {planPrice.toFixed(2).replace(".", ",")}</strong>
+              {mode === "one_time" ? " (pagamento único)" : ` a cada ${intervalMonths} meses`}
             </div>
           </div>
 
