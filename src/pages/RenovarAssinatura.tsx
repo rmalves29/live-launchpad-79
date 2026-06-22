@@ -15,6 +15,8 @@ interface Plan {
   name: string;
   days: number;
   price: number;
+  monthlyPrice?: number;
+  totalCycles?: number;
   displayPrice?: string;
   discount?: string;
   features: string[];
