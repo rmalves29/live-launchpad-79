@@ -32,6 +32,7 @@ export function PagarmeSubscribeDialog({
   planName,
   planPrice,
   intervalMonths,
+  totalCycles,
   planDays = 30,
   mode = "subscription",
   userEmail,
