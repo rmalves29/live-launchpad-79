@@ -239,7 +239,7 @@ Deno.serve(async (req) => {
       current_period_end: nextBilling,
       card_brand: cardBrand,
       card_last4: cardLast4,
-      metadata: { created_via: "pagarme-create-subscription" },
+      metadata: { created_via: "pagarme-create-subscription", total_cycles },
     });
 
     if (insertErr) console.error("[pagarme-create-subscription] erro insert:", insertErr);
