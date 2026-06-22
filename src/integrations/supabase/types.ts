@@ -3149,6 +3149,93 @@ export type Database = {
           },
         ]
       }
+      subscription_recurrences: {
+        Row: {
+          cancel_at: string | null
+          canceled_at: string | null
+          card_brand: string | null
+          card_last4: string | null
+          created_at: string
+          current_period_end: string | null
+          id: string
+          interval_months: number
+          last_charge_at: string | null
+          last_charge_id: string | null
+          last_charge_status: string | null
+          metadata: Json | null
+          pagarme_card_id: string | null
+          pagarme_code: string | null
+          pagarme_customer_id: string | null
+          pagarme_subscription_id: string | null
+          plan_id: string
+          price: number
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          cancel_at?: string | null
+          canceled_at?: string | null
+          card_brand?: string | null
+          card_last4?: string | null
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          interval_months: number
+          last_charge_at?: string | null
+          last_charge_id?: string | null
+          last_charge_status?: string | null
+          metadata?: Json | null
+          pagarme_card_id?: string | null
+          pagarme_code?: string | null
+          pagarme_customer_id?: string | null
+          pagarme_subscription_id?: string | null
+          plan_id: string
+          price: number
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          cancel_at?: string | null
+          canceled_at?: string | null
+          card_brand?: string | null
+          card_last4?: string | null
+          created_at?: string
+          current_period_end?: string | null
+          id?: string
+          interval_months?: number
+          last_charge_at?: string | null
+          last_charge_id?: string | null
+          last_charge_status?: string | null
+          metadata?: Json | null
+          pagarme_card_id?: string | null
+          pagarme_code?: string | null
+          pagarme_customer_id?: string | null
+          pagarme_subscription_id?: string | null
+          plan_id?: string
+          price?: number
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_recurrences_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_recurrences_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       support_conversations: {
         Row: {
           created_at: string | null
