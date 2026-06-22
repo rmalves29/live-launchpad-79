@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
     if (!user) return json({ success: false, error: "Usuário inválido" }, 200);
 
     const body = (await req.json()) as Body;
-    if (!body.tenant_id || !body.plan_id || !body.card_token || !body.holder_document) {
+    if (!body.tenant_id || !body.plan_id || !body.holder_document || (!body.card_token && !body.card)) {
       return json({ success: false, error: "Dados incompletos" }, 200);
     }
 
