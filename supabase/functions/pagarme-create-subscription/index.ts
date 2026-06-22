@@ -190,6 +190,7 @@ Deno.serve(async (req) => {
         tenant_id: body.tenant_id,
         plan_id: body.plan_id,
         interval_months: String(interval_months),
+        total_cycles: String(total_cycles),
       },
     };
 
