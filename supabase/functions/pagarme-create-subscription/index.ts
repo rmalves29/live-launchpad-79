@@ -11,7 +11,9 @@ const PAGARME_API = "https://api.pagar.me/core/v5";
 interface Body {
   tenant_id: string;
   plan_id: "pro" | "enterprise";
-  plan_price: number; // BRL
+  plan_price: number; // BRL — valor MENSAL
+  interval_months?: number; // intervalo da cobrança (default 1 = mensal)
+  total_cycles?: number; // número total de cobranças (ex.: 6 ou 12)
   card_token?: string;
   card?: {
     number: string;
@@ -21,9 +23,9 @@ interface Body {
     cvv: string;
   };
   holder_name: string;
-  holder_document: string; // CPF, only digits
+  holder_document: string;
   holder_email: string;
-  holder_phone?: string; // digits only e.g. 11999999999
+  holder_phone?: string;
   billing_address: {
     line_1: string;
     line_2?: string;
@@ -79,7 +81,10 @@ Deno.serve(async (req) => {
       return json({ success: false, error: "Sem permissão para este tenant" }, 200);
     }
 
-    const interval_months = body.plan_id === "enterprise" ? 12 : 6;
+    const interval_months = Number(body.interval_months) > 0 ? Number(body.interval_months) : 1;
+    const total_cycles = Number(body.total_cycles) > 0
+      ? Number(body.total_cycles)
+      : (body.plan_id === "enterprise" ? 12 : 6);
     const priceCents = Math.round(Number(body.plan_price) * 100);
     if (!Number.isFinite(priceCents) || priceCents <= 0) {
       return json({ success: false, error: "Preço inválido" }, 200);
@@ -185,6 +190,7 @@ Deno.serve(async (req) => {
         tenant_id: body.tenant_id,
         plan_id: body.plan_id,
         interval_months: String(interval_months),
+        total_cycles: String(total_cycles),
       },
     };
 
@@ -233,7 +239,7 @@ Deno.serve(async (req) => {
       current_period_end: nextBilling,
       card_brand: cardBrand,
       card_last4: cardLast4,
-      metadata: { created_via: "pagarme-create-subscription" },
+      metadata: { created_via: "pagarme-create-subscription", total_cycles },
     });
 
     if (insertErr) console.error("[pagarme-create-subscription] erro insert:", insertErr);

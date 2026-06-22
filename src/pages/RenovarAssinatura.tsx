@@ -15,6 +15,8 @@ interface Plan {
   name: string;
   days: number;
   price: number;
+  monthlyPrice?: number;
+  totalCycles?: number;
   displayPrice?: string;
   discount?: string;
   features: string[];
@@ -46,7 +48,9 @@ const getPlans = (tenantId?: string | null): Plan[] => {
       id: "pro",
       name: "Pro",
       days: 185,
-      price: isJuBijoux ? 2100.00 : 2694.60,
+      price: isJuBijoux ? 350.00 : 449.10,
+      monthlyPrice: isJuBijoux ? 350.00 : 449.10,
+      totalCycles: 6,
       displayPrice: isJuBijoux ? "6x de R$ 350,00" : "6x de R$ 449,10",
       discount: isJuBijoux ? "Preço especial" : "10% de desconto",
       features: [
@@ -63,7 +67,9 @@ const getPlans = (tenantId?: string | null): Plan[] => {
       id: "enterprise",
       name: "Enterprise",
       days: 365,
-      price: isJuBijoux ? 3588.00 : 5089.80,
+      price: isJuBijoux ? 299.00 : 424.15,
+      monthlyPrice: isJuBijoux ? 299.00 : 424.15,
+      totalCycles: 12,
       displayPrice: isJuBijoux ? "12x de R$ 299,00" : "12x de R$ 424,15",
       discount: isJuBijoux ? "Preço especial" : "15% de desconto",
       features: [
@@ -333,8 +339,9 @@ export default function RenovarAssinatura() {
             tenantId={currentTenantId}
             planId={recurringDialog.id as "basic" | "pro" | "enterprise"}
             planName={recurringDialog.name}
-            planPrice={recurringDialog.price}
-            intervalMonths={recurringDialog.id === "enterprise" ? 12 : 6}
+            planPrice={recurringDialog.monthlyPrice ?? recurringDialog.price}
+            intervalMonths={1}
+            totalCycles={recurringDialog.totalCycles}
             planDays={recurringDialog.days}
             mode={recurringDialog.id === "basic" ? "one_time" : "subscription"}
             userEmail={user.email}

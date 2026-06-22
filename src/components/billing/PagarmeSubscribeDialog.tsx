@@ -15,6 +15,7 @@ interface Props {
   planName: string;
   planPrice: number;
   intervalMonths: number;
+  totalCycles?: number;
   planDays?: number;
   mode?: "subscription" | "one_time";
   userEmail: string;
@@ -31,6 +32,7 @@ export function PagarmeSubscribeDialog({
   planName,
   planPrice,
   intervalMonths,
+  totalCycles,
   planDays = 30,
   mode = "subscription",
   userEmail,
@@ -93,6 +95,9 @@ export function PagarmeSubscribeDialog({
       if (mode === "one_time") {
         payload.plan_name = planName;
         payload.plan_days = planDays;
+      } else {
+        payload.interval_months = intervalMonths;
+        if (totalCycles) payload.total_cycles = totalCycles;
       }
       const { data, error } = await supabase.functions.invoke(fnName, { body: payload });
 
@@ -125,7 +130,9 @@ export function PagarmeSubscribeDialog({
           <DialogDescription>
             {mode === "one_time"
               ? `Pagamento único no cartão. Acesso por ${planDays} dias.`
-              : `Cobrança recorrente no cartão a cada ${intervalMonths} meses. Você pode cancelar a qualquer momento.`}
+              : totalCycles
+                ? `Cobrança mensal recorrente no cartão por ${totalCycles} meses. Você pode cancelar a qualquer momento.`
+                : `Cobrança recorrente no cartão a cada ${intervalMonths} meses. Você pode cancelar a qualquer momento.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -136,7 +143,11 @@ export function PagarmeSubscribeDialog({
             </div>
             <div className="text-muted-foreground mt-1">
               Valor: <strong>R$ {planPrice.toFixed(2).replace(".", ",")}</strong>
-              {mode === "one_time" ? " (pagamento único)" : ` a cada ${intervalMonths} meses`}
+              {mode === "one_time"
+                ? " (pagamento único)"
+                : totalCycles
+                  ? ` por mês durante ${totalCycles} meses`
+                  : ` a cada ${intervalMonths} meses`}
             </div>
           </div>
 
