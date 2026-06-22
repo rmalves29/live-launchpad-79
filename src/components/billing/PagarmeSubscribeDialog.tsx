@@ -213,7 +213,7 @@ export function PagarmeSubscribeDialog({
           </Button>
           <Button onClick={handleSubmit} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-            Confirmar assinatura
+            {mode === "one_time" ? "Pagar agora" : "Confirmar assinatura"}
           </Button>
         </DialogFooter>
       </DialogContent>
