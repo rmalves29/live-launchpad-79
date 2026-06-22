@@ -65,39 +65,46 @@ export function PagarmeSubscribeDialog({
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("pagarme-create-subscription", {
-        body: {
-          tenant_id: tenantId,
-          plan_id: planId,
-          plan_price: planPrice,
-          card: {
-            number: onlyDigits(cardNumber),
-            holder_name: holderName,
-            exp_month: parseInt(cardExpMonth, 10),
-            exp_year: parseInt(cardExpYear, 10),
-            cvv: onlyDigits(cardCvv),
-          },
+      const fnName = mode === "one_time" ? "pagarme-create-order" : "pagarme-create-subscription";
+      const payload: any = {
+        tenant_id: tenantId,
+        plan_id: planId,
+        plan_price: planPrice,
+        card: {
+          number: onlyDigits(cardNumber),
           holder_name: holderName,
-          holder_document: onlyDigits(holderDocument),
-          holder_email: userEmail,
-          holder_phone: onlyDigits(holderPhone),
-          billing_address: {
-            line_1: line1,
-            line_2: line2,
-            zip_code: onlyDigits(zip),
-            city,
-            state: state.toUpperCase(),
-            country: "BR",
-          },
+          exp_month: parseInt(cardExpMonth, 10),
+          exp_year: parseInt(cardExpYear, 10),
+          cvv: onlyDigits(cardCvv),
         },
-      });
+        holder_name: holderName,
+        holder_document: onlyDigits(holderDocument),
+        holder_email: userEmail,
+        holder_phone: onlyDigits(holderPhone),
+        billing_address: {
+          line_1: line1,
+          line_2: line2,
+          zip_code: onlyDigits(zip),
+          city,
+          state: state.toUpperCase(),
+          country: "BR",
+        },
+      };
+      if (mode === "one_time") {
+        payload.plan_name = planName;
+        payload.plan_days = planDays;
+      }
+      const { data, error } = await supabase.functions.invoke(fnName, { body: payload });
 
       if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || "Erro ao criar assinatura");
+      if (!data?.success) throw new Error(data?.error || "Erro ao processar pagamento");
 
       toast({
-        title: "Assinatura criada!",
-        description: `Seu plano ${planName} foi ativado com renovação automática.`,
+        title: mode === "one_time" ? "Pagamento aprovado!" : "Assinatura criada!",
+        description:
+          mode === "one_time"
+            ? `Plano ${planName} ativado por ${planDays} dias.`
+            : `Seu plano ${planName} foi ativado com renovação automática.`,
       });
       onOpenChange(false);
       onSuccess?.();
