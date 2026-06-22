@@ -12,7 +12,14 @@ interface Body {
   tenant_id: string;
   plan_id: "pro" | "enterprise";
   plan_price: number; // BRL
-  card_token: string;
+  card_token?: string;
+  card?: {
+    number: string;
+    holder_name: string;
+    exp_month: number;
+    exp_year: number;
+    cvv: string;
+  };
   holder_name: string;
   holder_document: string; // CPF, only digits
   holder_email: string;
