@@ -19,11 +19,7 @@ interface Props {
   onSuccess?: () => void;
 }
 
-const PAGARME_PUBLIC_KEY = (import.meta as any).env?.VITE_PAGARME_ORDERZAP_PUBLIC_KEY || "";
-
-function onlyDigits(v: string) {
-  return v.replace(/\D/g, "");
-}
+const onlyDigits = (v: string) => v.replace(/\D/g, "");
 
 export function PagarmeSubscribeDialog({
   open,
@@ -53,37 +49,6 @@ export function PagarmeSubscribeDialog({
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
 
-  async function tokenizeCard(): Promise<string> {
-    if (!PAGARME_PUBLIC_KEY) {
-      throw new Error("VITE_PAGARME_ORDERZAP_PUBLIC_KEY não configurada no frontend");
-    }
-    const expMonth = parseInt(cardExpMonth, 10);
-    const expYear = parseInt(cardExpYear.length === 2 ? `20${cardExpYear}` : cardExpYear, 10);
-
-    const resp = await fetch(
-      `https://api.pagar.me/core/v5/tokens?appId=${encodeURIComponent(PAGARME_PUBLIC_KEY)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "card",
-          card: {
-            number: onlyDigits(cardNumber),
-            holder_name: holderName,
-            exp_month: expMonth,
-            exp_year: expYear,
-            cvv: onlyDigits(cardCvv),
-          },
-        }),
-      },
-    );
-    const out = await resp.json();
-    if (!resp.ok || !out?.id) {
-      throw new Error(out?.message || out?.errors?.[0]?.message || "Cartão inválido");
-    }
-    return out.id;
-  }
-
   async function handleSubmit() {
     if (!holderName || !holderDocument || !cardNumber || !cardExpMonth || !cardExpYear || !cardCvv) {
       toast({ title: "Campos obrigatórios", description: "Preencha todos os dados do cartão", variant: "destructive" });
@@ -96,14 +61,18 @@ export function PagarmeSubscribeDialog({
 
     setLoading(true);
     try {
-      const token = await tokenizeCard();
-
       const { data, error } = await supabase.functions.invoke("pagarme-create-subscription", {
         body: {
           tenant_id: tenantId,
           plan_id: planId,
           plan_price: planPrice,
-          card_token: token,
+          card: {
+            number: onlyDigits(cardNumber),
+            holder_name: holderName,
+            exp_month: parseInt(cardExpMonth, 10),
+            exp_year: parseInt(cardExpYear, 10),
+            cvv: onlyDigits(cardCvv),
+          },
           holder_name: holderName,
           holder_document: onlyDigits(holderDocument),
           holder_email: userEmail,
