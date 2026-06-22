@@ -82,7 +82,7 @@ export default function RenovarAssinatura() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user, profile } = useAuth();
-  const [, setLoading] = useState<string | null>(null);
+  
   const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
   const [tenantInfo, setTenantInfo] = useState<{
     name: string;
