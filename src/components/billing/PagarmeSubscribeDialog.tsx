@@ -130,7 +130,9 @@ export function PagarmeSubscribeDialog({
           <DialogDescription>
             {mode === "one_time"
               ? `Pagamento único no cartão. Acesso por ${planDays} dias.`
-              : `Cobrança recorrente no cartão a cada ${intervalMonths} meses. Você pode cancelar a qualquer momento.`}
+              : totalCycles
+                ? `Cobrança mensal recorrente no cartão por ${totalCycles} meses. Você pode cancelar a qualquer momento.`
+                : `Cobrança recorrente no cartão a cada ${intervalMonths} meses. Você pode cancelar a qualquer momento.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -141,7 +143,11 @@ export function PagarmeSubscribeDialog({
             </div>
             <div className="text-muted-foreground mt-1">
               Valor: <strong>R$ {planPrice.toFixed(2).replace(".", ",")}</strong>
-              {mode === "one_time" ? " (pagamento único)" : ` a cada ${intervalMonths} meses`}
+              {mode === "one_time"
+                ? " (pagamento único)"
+                : totalCycles
+                  ? ` por mês durante ${totalCycles} meses`
+                  : ` a cada ${intervalMonths} meses`}
             </div>
           </div>
 
