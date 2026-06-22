@@ -11,10 +11,12 @@ interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   tenantId: string;
-  planId: "pro" | "enterprise";
+  planId: "basic" | "pro" | "enterprise";
   planName: string;
   planPrice: number;
   intervalMonths: number;
+  planDays?: number;
+  mode?: "subscription" | "one_time";
   userEmail: string;
   onSuccess?: () => void;
 }
@@ -29,6 +31,8 @@ export function PagarmeSubscribeDialog({
   planName,
   planPrice,
   intervalMonths,
+  planDays = 30,
+  mode = "subscription",
   userEmail,
   onSuccess,
 }: Props) {
@@ -61,39 +65,46 @@ export function PagarmeSubscribeDialog({
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("pagarme-create-subscription", {
-        body: {
-          tenant_id: tenantId,
-          plan_id: planId,
-          plan_price: planPrice,
-          card: {
-            number: onlyDigits(cardNumber),
-            holder_name: holderName,
-            exp_month: parseInt(cardExpMonth, 10),
-            exp_year: parseInt(cardExpYear, 10),
-            cvv: onlyDigits(cardCvv),
-          },
+      const fnName = mode === "one_time" ? "pagarme-create-order" : "pagarme-create-subscription";
+      const payload: any = {
+        tenant_id: tenantId,
+        plan_id: planId,
+        plan_price: planPrice,
+        card: {
+          number: onlyDigits(cardNumber),
           holder_name: holderName,
-          holder_document: onlyDigits(holderDocument),
-          holder_email: userEmail,
-          holder_phone: onlyDigits(holderPhone),
-          billing_address: {
-            line_1: line1,
-            line_2: line2,
-            zip_code: onlyDigits(zip),
-            city,
-            state: state.toUpperCase(),
-            country: "BR",
-          },
+          exp_month: parseInt(cardExpMonth, 10),
+          exp_year: parseInt(cardExpYear, 10),
+          cvv: onlyDigits(cardCvv),
         },
-      });
+        holder_name: holderName,
+        holder_document: onlyDigits(holderDocument),
+        holder_email: userEmail,
+        holder_phone: onlyDigits(holderPhone),
+        billing_address: {
+          line_1: line1,
+          line_2: line2,
+          zip_code: onlyDigits(zip),
+          city,
+          state: state.toUpperCase(),
+          country: "BR",
+        },
+      };
+      if (mode === "one_time") {
+        payload.plan_name = planName;
+        payload.plan_days = planDays;
+      }
+      const { data, error } = await supabase.functions.invoke(fnName, { body: payload });
 
       if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || "Erro ao criar assinatura");
+      if (!data?.success) throw new Error(data?.error || "Erro ao processar pagamento");
 
       toast({
-        title: "Assinatura criada!",
-        description: `Seu plano ${planName} foi ativado com renovação automática.`,
+        title: mode === "one_time" ? "Pagamento aprovado!" : "Assinatura criada!",
+        description:
+          mode === "one_time"
+            ? `Plano ${planName} ativado por ${planDays} dias.`
+            : `Seu plano ${planName} foi ativado com renovação automática.`,
       });
       onOpenChange(false);
       onSuccess?.();
@@ -108,9 +119,13 @@ export function PagarmeSubscribeDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Assinar {planName} - Renovação automática</DialogTitle>
+          <DialogTitle>
+            {mode === "one_time" ? `Pagar ${planName}` : `Assinar ${planName} - Renovação automática`}
+          </DialogTitle>
           <DialogDescription>
-            Cobrança recorrente no cartão a cada {intervalMonths} meses. Você pode cancelar a qualquer momento.
+            {mode === "one_time"
+              ? `Pagamento único no cartão. Acesso por ${planDays} dias.`
+              : `Cobrança recorrente no cartão a cada ${intervalMonths} meses. Você pode cancelar a qualquer momento.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -120,7 +135,8 @@ export function PagarmeSubscribeDialog({
               <ShieldCheck className="h-4 w-4" /> Pagamento processado por Pagar.me
             </div>
             <div className="text-muted-foreground mt-1">
-              Valor: <strong>R$ {planPrice.toFixed(2).replace(".", ",")}</strong> a cada {intervalMonths} meses
+              Valor: <strong>R$ {planPrice.toFixed(2).replace(".", ",")}</strong>
+              {mode === "one_time" ? " (pagamento único)" : ` a cada ${intervalMonths} meses`}
             </div>
           </div>
 
@@ -197,7 +213,7 @@ export function PagarmeSubscribeDialog({
           </Button>
           <Button onClick={handleSubmit} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-            Confirmar assinatura
+            {mode === "one_time" ? "Pagar agora" : "Confirmar assinatura"}
           </Button>
         </DialogFooter>
       </DialogContent>

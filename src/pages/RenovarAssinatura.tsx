@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { AlertTriangle, Check, Crown, Rocket, Building2, Loader2, Zap, RefreshCw, XCircle } from "lucide-react";
+import { AlertTriangle, Check, Crown, Rocket, Building2, Loader2, Zap, RefreshCw, XCircle, CreditCard } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { PagarmeSubscribeDialog } from "@/components/billing/PagarmeSubscribeDialog";
 
@@ -82,7 +82,7 @@ export default function RenovarAssinatura() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user, profile } = useAuth();
-  const [loading, setLoading] = useState<string | null>(null);
+  
   const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
   const [tenantInfo, setTenantInfo] = useState<{
     name: string;
@@ -148,77 +148,11 @@ export default function RenovarAssinatura() {
     fetchTenantInfo();
   }, [profile?.tenant_id, user]);
 
-  const handleSelectPlan = async (plan: Plan) => {
-    if (!user) {
-      toast({
-        title: "Erro",
-        description: "Usuário não autenticado",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    // Buscar tenant_id direto se não tiver no profile
-    let tenantId = profile?.tenant_id;
-    if (!tenantId) {
-      const { data: userProfile } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .maybeSingle();
-      
-      tenantId = userProfile?.tenant_id;
-    }
-    
-    if (!tenantId) {
-      toast({
-        title: "Erro",
-        description: "Empresa não identificada",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setLoading(plan.id);
-
-    try {
-      console.log('[RenovarAssinatura] Criando pagamento:', { tenantId, plan });
-      
-      const { data, error } = await supabase.functions.invoke("create-subscription-payment", {
-        body: {
-          tenant_id: tenantId,
-          plan_id: plan.id,
-          plan_name: plan.name,
-          plan_days: plan.days,
-          plan_price: plan.price,
-          user_email: user.email,
-        },
-      });
-
-      if (error) throw error;
-
-      if (data?.init_point) {
-        // Redirecionar para o link de pagamento
-        window.location.href = data.init_point;
-      } else {
-        throw new Error("Link de pagamento não gerado");
-      }
-    } catch (err: any) {
-      console.error("Erro ao criar pagamento:", err);
-      toast({
-        title: "Erro ao processar",
-        description: err.message || "Tente novamente mais tarde",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(null);
-    }
-  };
-
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "Não definido";
     return new Date(dateStr).toLocaleDateString("pt-BR");
   };
+
 
   const isExpired = tenantInfo?.subscription_ends_at
     ? new Date(tenantInfo.subscription_ends_at) < new Date()
@@ -313,32 +247,27 @@ export default function RenovarAssinatura() {
                 </ul>
               </CardContent>
               <CardFooter className="flex-col gap-2">
-                <Button
-                  className="w-full"
-                  variant={plan.popular ? "default" : "outline"}
-                  size="lg"
-                  onClick={() => handleSelectPlan(plan)}
-                  disabled={loading !== null}
-                >
-                  {loading === plan.id ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Processando...
-                    </>
-                  ) : (
-                    "Pagar via Mercado Pago"
-                  )}
-                </Button>
-                {(plan.id === "pro" || plan.id === "enterprise") && currentTenantId && (
+                {plan.id === "basic" ? (
                   <Button
                     className="w-full"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setRecurringDialog(plan)}
-                    disabled={loading !== null || !!activeRecurring}
+                    variant={plan.popular ? "default" : "outline"}
+                    size="lg"
+                    onClick={() => currentTenantId && setRecurringDialog(plan)}
+                    disabled={!currentTenantId}
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Pagar com cartão
+                  </Button>
+                ) : (
+                  <Button
+                    className="w-full"
+                    variant={plan.popular ? "default" : "outline"}
+                    size="lg"
+                    onClick={() => currentTenantId && setRecurringDialog(plan)}
+                    disabled={!currentTenantId || !!activeRecurring}
                   >
                     <RefreshCw className="h-4 w-4 mr-2" />
-                    Renovação automática (cartão)
+                    Assinar (renovação automática)
                   </Button>
                 )}
               </CardFooter>
@@ -402,10 +331,12 @@ export default function RenovarAssinatura() {
             open={!!recurringDialog}
             onOpenChange={(v) => !v && setRecurringDialog(null)}
             tenantId={currentTenantId}
-            planId={recurringDialog.id as "pro" | "enterprise"}
+            planId={recurringDialog.id as "basic" | "pro" | "enterprise"}
             planName={recurringDialog.name}
             planPrice={recurringDialog.price}
             intervalMonths={recurringDialog.id === "enterprise" ? 12 : 6}
+            planDays={recurringDialog.days}
+            mode={recurringDialog.id === "basic" ? "one_time" : "subscription"}
             userEmail={user.email}
             onSuccess={() => loadRecurring(currentTenantId)}
           />
@@ -414,7 +345,7 @@ export default function RenovarAssinatura() {
         {/* Info adicional */}
         <div className="mt-8 text-center text-sm text-muted-foreground">
           <p>
-            Pagamento seguro processado via Mercado Pago.
+            Pagamento seguro processado via Pagar.me.
             <br />
             Após a confirmação do pagamento, seu acesso será liberado
             automaticamente.
