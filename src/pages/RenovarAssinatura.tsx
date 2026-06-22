@@ -6,8 +6,9 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { AlertTriangle, Check, Crown, Rocket, Building2, Loader2, Zap } from "lucide-react";
+import { AlertTriangle, Check, Crown, Rocket, Building2, Loader2, Zap, RefreshCw, XCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { PagarmeSubscribeDialog } from "@/components/billing/PagarmeSubscribeDialog";
 
 interface Plan {
   id: string;
@@ -87,6 +88,21 @@ export default function RenovarAssinatura() {
     name: string;
     subscription_ends_at: string | null;
   } | null>(null);
+  const [recurringDialog, setRecurringDialog] = useState<Plan | null>(null);
+  const [activeRecurring, setActiveRecurring] = useState<any | null>(null);
+  const [cancelingRec, setCancelingRec] = useState(false);
+
+  const loadRecurring = async (tid: string) => {
+    const { data } = await supabase
+      .from("subscription_recurrences" as any)
+      .select("*")
+      .eq("tenant_id", tid)
+      .in("status", ["active", "past_due", "pending"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    setActiveRecurring(data || null);
+  };
 
   useEffect(() => {
     document.title = "Renovar Assinatura - OrderZap";
@@ -125,6 +141,7 @@ export default function RenovarAssinatura() {
         console.log('[RenovarAssinatura] Tenant info:', data);
         setTenantInfo(data);
         setCurrentTenantId(tenantId);
+        loadRecurring(tenantId);
       }
     };
 
@@ -295,7 +312,7 @@ export default function RenovarAssinatura() {
                   ))}
                 </ul>
               </CardContent>
-              <CardFooter>
+              <CardFooter className="flex-col gap-2">
                 <Button
                   className="w-full"
                   variant={plan.popular ? "default" : "outline"}
@@ -309,13 +326,90 @@ export default function RenovarAssinatura() {
                       Processando...
                     </>
                   ) : (
-                    "Selecionar Plano"
+                    "Pagar via Mercado Pago"
                   )}
                 </Button>
+                {(plan.id === "pro" || plan.id === "enterprise") && currentTenantId && (
+                  <Button
+                    className="w-full"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setRecurringDialog(plan)}
+                    disabled={loading !== null || !!activeRecurring}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Renovação automática (cartão)
+                  </Button>
+                )}
               </CardFooter>
             </Card>
           ))}
         </div>
+
+        {/* Status assinatura recorrente ativa */}
+        {activeRecurring && currentTenantId && (
+          <Card className="mt-8 max-w-2xl mx-auto border-primary/40">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <RefreshCw className="h-5 w-5 text-primary" />
+                Renovação automática ativa
+              </CardTitle>
+              <CardDescription>
+                Plano <strong className="capitalize">{activeRecurring.plan_id}</strong> —
+                cobrança a cada {activeRecurring.interval_months} meses no cartão
+                {activeRecurring.card_brand ? ` ${activeRecurring.card_brand}` : ""}
+                {activeRecurring.card_last4 ? ` final ${activeRecurring.card_last4}` : ""}.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground space-y-1">
+              <div>Status: <span className="font-medium">{activeRecurring.status}</span></div>
+              {activeRecurring.current_period_end && (
+                <div>Próxima cobrança: <strong>{formatDate(activeRecurring.current_period_end)}</strong></div>
+              )}
+            </CardContent>
+            <CardFooter>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={cancelingRec}
+                onClick={async () => {
+                  if (!confirm("Cancelar renovação automática? Você manterá o acesso até o fim do ciclo já pago.")) return;
+                  setCancelingRec(true);
+                  try {
+                    const { data, error } = await supabase.functions.invoke("pagarme-cancel-subscription", {
+                      body: { subscription_id: activeRecurring.id },
+                    });
+                    if (error) throw error;
+                    if (!data?.success) throw new Error(data?.error || "Erro");
+                    toast({ title: "Renovação cancelada" });
+                    await loadRecurring(currentTenantId);
+                  } catch (e: any) {
+                    toast({ title: "Erro", description: e.message, variant: "destructive" });
+                  } finally {
+                    setCancelingRec(false);
+                  }
+                }}
+              >
+                {cancelingRec ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <XCircle className="h-4 w-4 mr-2" />}
+                Cancelar renovação
+              </Button>
+            </CardFooter>
+          </Card>
+        )}
+
+        {recurringDialog && currentTenantId && user?.email && (
+          <PagarmeSubscribeDialog
+            open={!!recurringDialog}
+            onOpenChange={(v) => !v && setRecurringDialog(null)}
+            tenantId={currentTenantId}
+            planId={recurringDialog.id as "pro" | "enterprise"}
+            planName={recurringDialog.name}
+            planPrice={recurringDialog.price}
+            intervalMonths={recurringDialog.id === "enterprise" ? 12 : 6}
+            userEmail={user.email}
+            onSuccess={() => loadRecurring(currentTenantId)}
+          />
+        )}
 
         {/* Info adicional */}
         <div className="mt-8 text-center text-sm text-muted-foreground">
