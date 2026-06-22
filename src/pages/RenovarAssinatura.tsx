@@ -247,32 +247,27 @@ export default function RenovarAssinatura() {
                 </ul>
               </CardContent>
               <CardFooter className="flex-col gap-2">
-                <Button
-                  className="w-full"
-                  variant={plan.popular ? "default" : "outline"}
-                  size="lg"
-                  onClick={() => handleSelectPlan(plan)}
-                  disabled={loading !== null}
-                >
-                  {loading === plan.id ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Processando...
-                    </>
-                  ) : (
-                    "Pagar via Mercado Pago"
-                  )}
-                </Button>
-                {(plan.id === "pro" || plan.id === "enterprise") && currentTenantId && (
+                {plan.id === "basic" ? (
                   <Button
                     className="w-full"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setRecurringDialog(plan)}
-                    disabled={loading !== null || !!activeRecurring}
+                    variant={plan.popular ? "default" : "outline"}
+                    size="lg"
+                    onClick={() => currentTenantId && setRecurringDialog(plan)}
+                    disabled={!currentTenantId}
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Pagar com cartão
+                  </Button>
+                ) : (
+                  <Button
+                    className="w-full"
+                    variant={plan.popular ? "default" : "outline"}
+                    size="lg"
+                    onClick={() => currentTenantId && setRecurringDialog(plan)}
+                    disabled={!currentTenantId || !!activeRecurring}
                   >
                     <RefreshCw className="h-4 w-4 mr-2" />
-                    Renovação automática (cartão)
+                    Assinar (renovação automática)
                   </Button>
                 )}
               </CardFooter>
