@@ -31,6 +31,8 @@ export function PagarmeSubscribeDialog({
   planName,
   planPrice,
   intervalMonths,
+  planDays = 30,
+  mode = "subscription",
   userEmail,
   onSuccess,
 }: Props) {
