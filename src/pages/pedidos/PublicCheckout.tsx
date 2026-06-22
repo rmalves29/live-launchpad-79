@@ -55,6 +55,7 @@ interface Order {
   coupon_code?: string;
   coupon_discount?: number;
   gift_name?: string;
+  melhor_envio_tracking_code?: string | null;
 }
 
 async function getEdgeFunctionErrorMessage(err: any): Promise<string> {
@@ -2120,6 +2121,25 @@ const PublicCheckout = () => {
                           <p className="text-sm text-muted-foreground">
                             {order.items.length} {order.items.length === 1 ? 'produto' : 'produtos'}
                           </p>
+                          {order.melhor_envio_tracking_code && (
+                            <div className="flex items-center gap-2 flex-wrap pt-1">
+                              <Badge variant="outline" className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-mono text-xs">
+                                📦 Rastreio: {order.melhor_envio_tracking_code}
+                              </Badge>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs"
+                                onClick={() => {
+                                  navigator.clipboard?.writeText(order.melhor_envio_tracking_code || '');
+                                  toast({ title: 'Código copiado!' });
+                                }}
+                              >
+                                Copiar
+                              </Button>
+                            </div>
+                          )}
                         </div>
                         <div className="text-right space-y-2">
                           <div className="text-xl font-bold text-green-600 dark:text-green-400">
