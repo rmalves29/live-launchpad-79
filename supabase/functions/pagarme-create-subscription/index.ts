@@ -81,7 +81,10 @@ Deno.serve(async (req) => {
       return json({ success: false, error: "Sem permissão para este tenant" }, 200);
     }
 
-    const interval_months = body.plan_id === "enterprise" ? 12 : 6;
+    const interval_months = Number(body.interval_months) > 0 ? Number(body.interval_months) : 1;
+    const total_cycles = Number(body.total_cycles) > 0
+      ? Number(body.total_cycles)
+      : (body.plan_id === "enterprise" ? 12 : 6);
     const priceCents = Math.round(Number(body.plan_price) * 100);
     if (!Number.isFinite(priceCents) || priceCents <= 0) {
       return json({ success: false, error: "Preço inválido" }, 200);
