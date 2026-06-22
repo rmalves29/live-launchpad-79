@@ -15,6 +15,7 @@ interface Props {
   planName: string;
   planPrice: number;
   intervalMonths: number;
+  totalCycles?: number;
   planDays?: number;
   mode?: "subscription" | "one_time";
   userEmail: string;
