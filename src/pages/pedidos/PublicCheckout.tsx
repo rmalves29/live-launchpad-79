@@ -2133,7 +2133,7 @@ const PublicCheckout = () => {
                                 className="h-6 px-2 text-xs"
                                 onClick={() => {
                                   navigator.clipboard?.writeText(order.melhor_envio_tracking_code || '');
-                                  toast.success('Código copiado!');
+                                  toast({ title: 'Código copiado!' });
                                 }}
                               >
                                 Copiar
