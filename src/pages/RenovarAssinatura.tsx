@@ -141,6 +141,7 @@ export default function RenovarAssinatura() {
         console.log('[RenovarAssinatura] Tenant info:', data);
         setTenantInfo(data);
         setCurrentTenantId(tenantId);
+        loadRecurring(tenantId);
       }
     };
 
