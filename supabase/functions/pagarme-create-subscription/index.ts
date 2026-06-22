@@ -171,7 +171,7 @@ Deno.serve(async (req) => {
           : {}),
       },
       card: {
-        token: body.card_token,
+        token: cardToken,
         billing_address: {
           line_1: body.billing_address.line_1,
           line_2: body.billing_address.line_2 || "",
