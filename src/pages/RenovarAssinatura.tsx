@@ -148,77 +148,11 @@ export default function RenovarAssinatura() {
     fetchTenantInfo();
   }, [profile?.tenant_id, user]);
 
-  const handleSelectPlan = async (plan: Plan) => {
-    if (!user) {
-      toast({
-        title: "Erro",
-        description: "Usuário não autenticado",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    // Buscar tenant_id direto se não tiver no profile
-    let tenantId = profile?.tenant_id;
-    if (!tenantId) {
-      const { data: userProfile } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .maybeSingle();
-      
-      tenantId = userProfile?.tenant_id;
-    }
-    
-    if (!tenantId) {
-      toast({
-        title: "Erro",
-        description: "Empresa não identificada",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setLoading(plan.id);
-
-    try {
-      console.log('[RenovarAssinatura] Criando pagamento:', { tenantId, plan });
-      
-      const { data, error } = await supabase.functions.invoke("create-subscription-payment", {
-        body: {
-          tenant_id: tenantId,
-          plan_id: plan.id,
-          plan_name: plan.name,
-          plan_days: plan.days,
-          plan_price: plan.price,
-          user_email: user.email,
-        },
-      });
-
-      if (error) throw error;
-
-      if (data?.init_point) {
-        // Redirecionar para o link de pagamento
-        window.location.href = data.init_point;
-      } else {
-        throw new Error("Link de pagamento não gerado");
-      }
-    } catch (err: any) {
-      console.error("Erro ao criar pagamento:", err);
-      toast({
-        title: "Erro ao processar",
-        description: err.message || "Tente novamente mais tarde",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(null);
-    }
-  };
-
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "Não definido";
     return new Date(dateStr).toLocaleDateString("pt-BR");
   };
+
 
   const isExpired = tenantInfo?.subscription_ends_at
     ? new Date(tenantInfo.subscription_ends_at) < new Date()
