@@ -99,6 +99,7 @@ export function PagarmeSubscribeDialog({
         payload.interval_months = intervalMonths;
         if (totalCycles) payload.total_cycles = totalCycles;
       }
+      const { data, error } = await supabase.functions.invoke(fnName, { body: payload });
 
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || "Erro ao processar pagamento");
