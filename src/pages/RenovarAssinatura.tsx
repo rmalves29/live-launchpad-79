@@ -339,8 +339,9 @@ export default function RenovarAssinatura() {
             tenantId={currentTenantId}
             planId={recurringDialog.id as "basic" | "pro" | "enterprise"}
             planName={recurringDialog.name}
-            planPrice={recurringDialog.price}
-            intervalMonths={recurringDialog.id === "enterprise" ? 12 : 6}
+            planPrice={recurringDialog.monthlyPrice ?? recurringDialog.price}
+            intervalMonths={1}
+            totalCycles={recurringDialog.totalCycles}
             planDays={recurringDialog.days}
             mode={recurringDialog.id === "basic" ? "one_time" : "subscription"}
             userEmail={user.email}
