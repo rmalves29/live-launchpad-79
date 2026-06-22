@@ -331,10 +331,12 @@ export default function RenovarAssinatura() {
             open={!!recurringDialog}
             onOpenChange={(v) => !v && setRecurringDialog(null)}
             tenantId={currentTenantId}
-            planId={recurringDialog.id as "pro" | "enterprise"}
+            planId={recurringDialog.id as "basic" | "pro" | "enterprise"}
             planName={recurringDialog.name}
             planPrice={recurringDialog.price}
             intervalMonths={recurringDialog.id === "enterprise" ? 12 : 6}
+            planDays={recurringDialog.days}
+            mode={recurringDialog.id === "basic" ? "one_time" : "subscription"}
             userEmail={user.email}
             onSuccess={() => loadRecurring(currentTenantId)}
           />
@@ -343,7 +345,7 @@ export default function RenovarAssinatura() {
         {/* Info adicional */}
         <div className="mt-8 text-center text-sm text-muted-foreground">
           <p>
-            Pagamento seguro processado via Mercado Pago.
+            Pagamento seguro processado via Pagar.me.
             <br />
             Após a confirmação do pagamento, seu acesso será liberado
             automaticamente.
