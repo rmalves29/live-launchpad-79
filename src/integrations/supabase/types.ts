@@ -2593,6 +2593,78 @@ export type Database = {
           },
         ]
       }
+      product_waitlist: {
+        Row: {
+          created_at: string
+          customer_id: number | null
+          customer_instagram: string | null
+          customer_name: string | null
+          customer_phone: string
+          id: number
+          notes: string | null
+          notified_at: string | null
+          order_id: number | null
+          product_id: number
+          qty: number
+          reserved_until: string | null
+          source: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id?: number | null
+          customer_instagram?: string | null
+          customer_name?: string | null
+          customer_phone: string
+          id?: number
+          notes?: string | null
+          notified_at?: string | null
+          order_id?: number | null
+          product_id: number
+          qty?: number
+          reserved_until?: string | null
+          source?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: number | null
+          customer_instagram?: string | null
+          customer_name?: string | null
+          customer_phone?: string
+          id?: number
+          notes?: string | null
+          notified_at?: string | null
+          order_id?: number | null
+          product_id?: number
+          qty?: number
+          reserved_until?: string | null
+          source?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_waitlist_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_waitlist_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           bling_product_id: number | null
@@ -3499,6 +3571,8 @@ export type Database = {
           tenant_key: string | null
           trial_ends_at: string | null
           updated_at: string
+          waitlist_enabled: boolean
+          waitlist_reserve_minutes: number
           whatsapp_provider: string
         }
         Insert: {
@@ -3539,6 +3613,8 @@ export type Database = {
           tenant_key?: string | null
           trial_ends_at?: string | null
           updated_at?: string
+          waitlist_enabled?: boolean
+          waitlist_reserve_minutes?: number
           whatsapp_provider?: string
         }
         Update: {
@@ -3579,6 +3655,8 @@ export type Database = {
           tenant_key?: string | null
           trial_ends_at?: string | null
           updated_at?: string
+          waitlist_enabled?: boolean
+          waitlist_reserve_minutes?: number
           whatsapp_provider?: string
         }
         Relationships: []
