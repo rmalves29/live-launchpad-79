@@ -62,6 +62,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
       if (typeof c.thermalMode === 'boolean') setThermalMode(c.thermalMode);
       if (typeof c.rowsPerPage === 'number') setRowsPerPage(c.rowsPerPage);
       if (typeof c.rotate180 === 'boolean') setRotate180(c.rotate180);
+    } catch {}
   }, [storageKey]);
 
   const saveConfig = () => {
