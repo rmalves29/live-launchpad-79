@@ -40,6 +40,8 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
   const [gapY, setGapY] = useState(3);
   const [marginTop, setMarginTop] = useState(0);
   const [marginLeft, setMarginLeft] = useState(0);
+  const [thermalMode, setThermalMode] = useState(false);
+  const [rowsPerPage, setRowsPerPage] = useState(1);
   const [codeInput, setCodeInput] = useState('');
 
   // Load saved per-tenant config
@@ -56,6 +58,8 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
       if (typeof c.gapY === 'number') setGapY(c.gapY);
       if (typeof c.marginTop === 'number') setMarginTop(c.marginTop);
       if (typeof c.marginLeft === 'number') setMarginLeft(c.marginLeft);
+      if (typeof c.thermalMode === 'boolean') setThermalMode(c.thermalMode);
+      if (typeof c.rowsPerPage === 'number') setRowsPerPage(c.rowsPerPage);
     } catch {}
   }, [storageKey]);
 
@@ -65,7 +69,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
       return;
     }
     localStorage.setItem(storageKey, JSON.stringify({
-      labelWidth, labelHeight, columns, gapX, gapY, marginTop, marginLeft
+      labelWidth, labelHeight, columns, gapX, gapY, marginTop, marginLeft, thermalMode, rowsPerPage
     }));
     toast.success('Configuração de etiqueta salva para esta empresa');
   };
@@ -154,18 +158,39 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    const labelsHtml = items.flatMap(({ product, quantity }) =>
-      Array.from({ length: quantity }, () => {
-        const barcodeHtml = generateCode128SVG(product.code);
-        return `
-          <div class="label">
-            <div class="label-name">${escapeHtml(product.name)}</div>
-            <div class="label-barcode">${barcodeHtml}</div>
-            <div class="label-code">${escapeHtml(product.code)}</div>
-          </div>
-        `;
-      })
-    ).join('');
+    const allLabels = items.flatMap(({ product, quantity }) =>
+      Array.from({ length: quantity }, () => product)
+    );
+
+    const renderLabel = (product: Product) => {
+      const barcodeHtml = generateCode128SVG(product.code);
+      return `
+        <div class="label">
+          <div class="label-name">${escapeHtml(product.name)}</div>
+          <div class="label-barcode">${barcodeHtml}</div>
+          <div class="label-code">${escapeHtml(product.code)}</div>
+        </div>
+      `;
+    };
+
+    let bodyHtml = '';
+    let pageCss = '';
+
+    if (thermalMode) {
+      const perPage = Math.max(1, columns * rowsPerPage);
+      const pageWidth = columns * labelWidth + Math.max(0, columns - 1) * gapX;
+      const pageHeight = rowsPerPage * labelHeight + Math.max(0, rowsPerPage - 1) * gapY;
+      pageCss = `@page { size: ${pageWidth}mm ${pageHeight}mm; margin: 0; }`;
+      const pages: string[] = [];
+      for (let i = 0; i < allLabels.length; i += perPage) {
+        const chunk = allLabels.slice(i, i + perPage).map(renderLabel).join('');
+        pages.push(`<div class="page">${chunk}</div>`);
+      }
+      bodyHtml = pages.join('');
+    } else {
+      pageCss = `@page { size: auto; margin: 0; }`;
+      bodyHtml = `<div class="page">${allLabels.map(renderLabel).join('')}</div>`;
+    }
 
     printWindow.document.write(`<!DOCTYPE html>
 <html>
@@ -173,10 +198,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
 <meta charset="utf-8">
 <title>Etiquetas</title>
 <style>
-  @page {
-    size: auto;
-    margin: 0;
-  }
+  ${pageCss}
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
     width: 100%;
@@ -186,14 +208,17 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  .grid {
+  .page {
     display: grid;
     grid-template-columns: repeat(${columns}, ${labelWidth}mm);
     column-gap: ${gapX}mm;
     row-gap: ${gapY}mm;
-    padding-top: ${marginTop}mm;
-    padding-left: ${marginLeft}mm;
+    padding-top: ${thermalMode ? 0 : marginTop}mm;
+    padding-left: ${thermalMode ? 0 : marginLeft}mm;
+    page-break-after: always;
+    break-after: page;
   }
+  .page:last-child { page-break-after: auto; break-after: auto; }
   .label {
     width: ${labelWidth}mm;
     height: ${labelHeight}mm;
@@ -204,6 +229,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
     justify-content: center;
     padding: 0.5mm;
     page-break-inside: avoid;
+    break-inside: avoid;
   }
   .label-name {
     font-size: 6pt;
@@ -233,14 +259,10 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
     text-align: center;
     letter-spacing: 0.5pt;
   }
-  @media print {
-    html, body { margin: 0; padding: 0; }
-    .grid { padding-top: ${marginTop}mm; padding-left: ${marginLeft}mm; }
-  }
 </style>
 </head>
 <body>
-<div class="grid">${labelsHtml}</div>
+${bodyHtml}
 <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}</script>
 </body>
 </html>`);
@@ -293,6 +315,33 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
               <Label className="text-xs">Margem esq. (mm)</Label>
               <Input type="number" min={0} max={50} step={0.5} value={marginLeft} onChange={e => setMarginLeft(Number(e.target.value))} />
             </div>
+          </div>
+
+          {/* Thermal printer mode */}
+          <div className="flex items-center gap-3 p-3 rounded-md border bg-muted/30">
+            <input
+              type="checkbox"
+              id="thermal-mode"
+              checked={thermalMode}
+              onChange={e => setThermalMode(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <Label htmlFor="thermal-mode" className="text-xs flex-1 cursor-pointer">
+              Impressora térmica (Zebra) — define tamanho exato da página
+            </Label>
+            {thermalMode && (
+              <div className="flex items-center gap-2">
+                <Label className="text-xs whitespace-nowrap">Linhas/pág:</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={rowsPerPage}
+                  onChange={e => setRowsPerPage(Number(e.target.value))}
+                  className="w-16 h-8"
+                />
+              </div>
+            )}
           </div>
 
           {/* Code input */}
