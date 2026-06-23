@@ -219,6 +219,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
     padding-left: ${thermalMode ? 0 : marginLeft}mm;
     page-break-after: always;
     break-after: page;
+    ${rotate180 ? 'transform: rotate(180deg); transform-origin: center center;' : ''}
   }
   .page:last-child { page-break-after: auto; break-after: auto; }
   .label {
@@ -232,7 +233,6 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
     padding: 0.5mm;
     page-break-inside: avoid;
     break-inside: avoid;
-    ${rotate180 ? 'transform: rotate(180deg);' : ''}
   }
   .label-name {
     font-size: 6pt;
