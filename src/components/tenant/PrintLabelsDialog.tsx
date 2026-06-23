@@ -58,6 +58,8 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
       if (typeof c.gapY === 'number') setGapY(c.gapY);
       if (typeof c.marginTop === 'number') setMarginTop(c.marginTop);
       if (typeof c.marginLeft === 'number') setMarginLeft(c.marginLeft);
+      if (typeof c.thermalMode === 'boolean') setThermalMode(c.thermalMode);
+      if (typeof c.rowsPerPage === 'number') setRowsPerPage(c.rowsPerPage);
     } catch {}
   }, [storageKey]);
 
@@ -67,7 +69,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
       return;
     }
     localStorage.setItem(storageKey, JSON.stringify({
-      labelWidth, labelHeight, columns, gapX, gapY, marginTop, marginLeft
+      labelWidth, labelHeight, columns, gapX, gapY, marginTop, marginLeft, thermalMode, rowsPerPage
     }));
     toast.success('Configuração de etiqueta salva para esta empresa');
   };
