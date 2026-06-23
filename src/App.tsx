@@ -192,6 +192,9 @@ const AppContent = () => {
         <Route path="/relatorios" element={
           <RequireTenantAuth><Relatorios /></RequireTenantAuth>
         } />
+        <Route path="/fila-espera" element={
+          <RequireTenantAuth><FilaEspera /></RequireTenantAuth>
+        } />
         <Route path="/sendflow" element={
           <RequireTenantAuth><SendFlow /></RequireTenantAuth>
         } />
