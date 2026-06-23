@@ -232,6 +232,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
     padding: 0.5mm;
     page-break-inside: avoid;
     break-inside: avoid;
+    ${rotate180 ? 'transform: rotate(180deg);' : ''}
   }
   .label-name {
     font-size: 6pt;
