@@ -42,6 +42,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
   const [marginLeft, setMarginLeft] = useState(0);
   const [thermalMode, setThermalMode] = useState(false);
   const [rowsPerPage, setRowsPerPage] = useState(1);
+  const [rotate180, setRotate180] = useState(false);
   const [codeInput, setCodeInput] = useState('');
 
   // Load saved per-tenant config
