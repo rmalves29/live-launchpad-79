@@ -71,7 +71,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
       return;
     }
     localStorage.setItem(storageKey, JSON.stringify({
-      labelWidth, labelHeight, columns, gapX, gapY, marginTop, marginLeft, thermalMode, rowsPerPage
+      labelWidth, labelHeight, columns, gapX, gapY, marginTop, marginLeft, thermalMode, rowsPerPage, rotate180
     }));
     toast.success('Configuração de etiqueta salva para esta empresa');
   };
