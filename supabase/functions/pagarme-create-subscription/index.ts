@@ -54,13 +54,19 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return json({ success: false, error: "Não autenticado" }, 200);
 
+    // Client com JWT do usuário (apenas para validar identidade)
+    const userClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    // Client admin com service role (bypassa RLS para gravar)
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
     );
 
-    const { data: userRes } = await supabase.auth.getUser();
+    const { data: userRes } = await userClient.auth.getUser();
     const user = userRes.user;
     if (!user) return json({ success: false, error: "Usuário inválido" }, 200);
 
