@@ -42,6 +42,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
   const [marginLeft, setMarginLeft] = useState(0);
   const [thermalMode, setThermalMode] = useState(false);
   const [rowsPerPage, setRowsPerPage] = useState(1);
+  const [rotate180, setRotate180] = useState(false);
   const [codeInput, setCodeInput] = useState('');
 
   // Load saved per-tenant config
@@ -60,6 +61,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
       if (typeof c.marginLeft === 'number') setMarginLeft(c.marginLeft);
       if (typeof c.thermalMode === 'boolean') setThermalMode(c.thermalMode);
       if (typeof c.rowsPerPage === 'number') setRowsPerPage(c.rowsPerPage);
+      if (typeof c.rotate180 === 'boolean') setRotate180(c.rotate180);
     } catch {}
   }, [storageKey]);
 
@@ -69,7 +71,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
       return;
     }
     localStorage.setItem(storageKey, JSON.stringify({
-      labelWidth, labelHeight, columns, gapX, gapY, marginTop, marginLeft, thermalMode, rowsPerPage
+      labelWidth, labelHeight, columns, gapX, gapY, marginTop, marginLeft, thermalMode, rowsPerPage, rotate180
     }));
     toast.success('Configuração de etiqueta salva para esta empresa');
   };
@@ -217,6 +219,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
     padding-left: ${thermalMode ? 0 : marginLeft}mm;
     page-break-after: always;
     break-after: page;
+    ${rotate180 ? 'transform: rotate(180deg); transform-origin: center center;' : ''}
   }
   .page:last-child { page-break-after: auto; break-after: auto; }
   .label {
@@ -342,6 +345,20 @@ ${bodyHtml}
                 />
               </div>
             )}
+          </div>
+
+          {/* Rotate 180° */}
+          <div className="flex items-center gap-3 p-3 rounded-md border bg-muted/30">
+            <input
+              type="checkbox"
+              id="rotate-180"
+              checked={rotate180}
+              onChange={e => setRotate180(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <Label htmlFor="rotate-180" className="text-xs flex-1 cursor-pointer">
+              Girar 180° — use se a impressão sair de cabeça para baixo / começando pelo final da folha
+            </Label>
           </div>
 
           {/* Code input */}
