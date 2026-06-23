@@ -1,79 +1,86 @@
-## Objetivo
-Permitir que o cliente da OrderZap assine os planos **Pro (semestral)** e **Enterprise (anual)** com **cobrança recorrente real no cartão de crédito** via API de Subscriptions da Pagar.me. A cada cobrança aprovada, o sistema **identifica automaticamente o tenant que pagou e estende `subscription_ends_at` na tabela `tenants`** (+6 ou +12 meses). O plano Basic (mensal) continua como está.
 
-## Como o sistema sabe qual empresa pagou
-Em cada subscription criada na Pagar.me serão gravados dois campos de identificação redundantes (a prova de qualquer falha):
-1. **`code`** = `orderzap-sub-<TENANT_ID>-<PLAN_ID>` (campo nativo, único por tenant+plano).
-2. **`metadata`** = `{ tenant_id, plan_id, interval_months }` (Pagar.me devolve nos webhooks).
+# Fila de Espera de Produtos
 
-Além disso, gravamos localmente em `subscription_recurrences` o vínculo `pagarme_subscription_id → tenant_id`. Quando o webhook chega:
-- Tenta resolver o tenant por: `metadata.tenant_id` → `subscription_recurrences.pagarme_subscription_id` → parsing do `code`.
-- Se nenhum resolver, registra em `webhook_logs` como `unmatched_subscription` (sem atualizar nada — evita atualizar tenant errado).
+Quando um produto está esgotado e uma cliente tenta comprar (vitrine, WhatsApp/LIVE, manual), ela entra automaticamente em uma fila por ordem de chegada. Quando o estoque volta (cancelamento de pedido ou reposição), o sistema cria um pedido automaticamente para a próxima cliente da fila, reserva a unidade e notifica via WhatsApp com link de pagamento. Se ela não pagar dentro do tempo configurado, passa para a próxima.
 
-## Como vai funcionar (visão do usuário)
-1. Na tela **Renovar Assinatura**, os cards Pro e Enterprise ganham um botão extra **"Assinar com renovação automática (cartão)"**.
-2. Modal pede dados do cartão + CPF/nome/endereço do titular. Cartão é tokenizado no navegador com a public key (chave secreta nunca sai do servidor).
-3. Backend cria customer + card + subscription na Pagar.me com `interval=month`, `interval_count=6` ou `12`, `billing_type=prepaid`, gravando `code` e `metadata` com o `tenant_id`.
-4. Webhook da Pagar.me confirma cada cobrança e o sistema:
-   - Localiza o tenant pelo metadata/code/registro local.
-   - Soma `+6` ou `+12` meses em `tenants.subscription_ends_at` (a partir da data atual ou da data já futura, o que for maior).
-   - Atualiza `subscription_recurrences.current_period_end`, `last_charge_at`, `last_charge_status`.
-   - Grava tudo em `webhook_logs` com o `tenant_id` para auditoria.
-5. Usuário vê na tela o status da assinatura ativa (próxima cobrança, cartão usado) e pode cancelar a renovação automática a qualquer momento.
+## 1. Banco de dados (migration)
 
-## Configuração necessária (3 secrets)
-- **`PAGARME_ORDERZAP_API_KEY`** — Secret Key `sk_...` da conta Pagar.me da OrderZap (exclusiva para mensalidades).
-- **`PAGARME_ORDERZAP_PUBLIC_KEY`** — Public Key `pk_...` (usada no navegador para tokenizar).
-- **`PAGARME_WEBHOOK_SECRET_ORDERZAP`** — para validar HMAC dos webhooks.
+**Nova tabela `product_waitlist`**
+- `id`, `tenant_id`, `product_id`, `customer_id`, `customer_phone`, `customer_name`
+- `qty` (quantidade desejada, default 1)
+- `status`: `waiting` | `notified` | `converted` | `expired` | `cancelled`
+- `position` (calculada por ordem de `created_at` no tenant+produto)
+- `source`: `storefront` | `whatsapp` | `manual`
+- `notified_at`, `reserved_until`, `order_id` (pedido criado quando atendida)
+- `created_at`, `updated_at`
+- Índices: `(tenant_id, product_id, status, created_at)` e `(reserved_until)` para o cron.
+- RLS: tenant_admin/staff do tenant; service_role total. GRANTs explícitos.
 
-## Mudanças no banco
-Nova tabela **`subscription_recurrences`**:
-- `tenant_id` (FK lógica para `tenants.id`, único junto com `plan_id`)
-- `plan_id` (`pro` | `enterprise`), `interval_months` (6 ou 12), `price`
-- `pagarme_subscription_id` (único), `pagarme_customer_id`, `pagarme_card_id`, `pagarme_code`
-- `status` (`active` | `canceled` | `past_due` | `pending`)
-- `current_period_end`, `last_charge_at`, `last_charge_status`, `cancel_at`, `canceled_at`
-- `card_brand`, `card_last4` (para mostrar na UI)
-- RLS: tenant_admin vê/cancela só os seus; service_role acesso total; super_admin vê todos.
-- GRANTs explícitos + trigger `updated_at`.
+**Nova coluna em `tenants`**
+- `waitlist_reserve_minutes` integer default 120 (tempo de reserva configurável).
+- `waitlist_enabled` boolean default true.
 
-## Edge Functions (3 novas)
-1. **`pagarme-create-subscription`**
-   - Entrada: `tenant_id`, `plan_id`, `card_token`, dados do titular.
-   - Valida que o usuário logado pertence ao `tenant_id`.
-   - Cria customer + card + subscription na Pagar.me com `code` e `metadata` carregando o `tenant_id`.
-   - Grava em `subscription_recurrences` e estende `subscription_ends_at` já no primeiro pagamento aprovado retornado pela API.
+**Trigger `on_stock_returned_process_waitlist`**
+- Em `products` AFTER UPDATE quando `stock` aumenta de 0 para >0 (ou simplesmente sobe): chama edge function `waitlist-process-next` via `http_post` (fast-path, respeitando limite de 4s — apenas dispara, não processa).
+- Em `orders` AFTER UPDATE quando `is_cancelled` vira true: trigger já existente restaura estoque; o trigger de `products` cuida do resto.
 
-2. **`pagarme-subscription-webhook`** (pública)
-   - Valida HMAC com `PAGARME_WEBHOOK_SECRET_ORDERZAP`.
-   - Eventos tratados:
-     - `charge.paid` / `invoice.paid` → resolve tenant, **estende `subscription_ends_at` em +6 ou +12 meses** (com base no `interval_months` salvo), atualiza `current_period_end`.
-     - `charge.payment_failed` → marca `past_due` (mantém acesso até o `subscription_ends_at` atual).
-     - `subscription.canceled` → marca `canceled`.
-   - Registra tudo em `webhook_logs` com `tenant_id` resolvido.
+## 2. Edge Functions
 
-3. **`pagarme-cancel-subscription`**
-   - Cancela na Pagar.me e marca `cancel_at = current_period_end` (acesso vai até o fim do ciclo pago).
+**`waitlist-enqueue`** (chamada por `storefront-add-to-cart`, fluxo WhatsApp e admin)
+- Recebe `tenant_id`, `product_id`, dados da cliente, `source`.
+- Verifica se cliente já está na fila ativa daquele produto (status `waiting` ou `notified`) — se sim, retorna posição atual.
+- Insere registro `waiting`, calcula posição (count + 1), retorna `{position, estimated_wait}`.
 
-## Frontend
-- **`src/pages/RenovarAssinatura.tsx`** — adicionar botão "Assinar com renovação automática" nos cards Pro/Enterprise; bloco mostrando assinatura ativa (cartão final, próxima cobrança, botão cancelar).
-- **`src/components/billing/PagarmeSubscribeDialog.tsx`** (novo) — modal com formulário do cartão + titular, carrega Pagar.me JS v5 com a public key, tokeniza, chama a edge function.
-- Tela `/assinatura/recorrente/sucesso` simples reaproveitando layout existente.
+**`waitlist-process-next`** (disparada por trigger e cron)
+- Para cada produto com estoque > 0, busca o primeiro `waiting` ordenado por `created_at`.
+- Decrementa estoque atomicamente (igual `storefront-add-to-cart`); se falhar, encerra.
+- Cria pedido LIVE de hoje para a cliente (mesma lógica do storefront), reserva unidade.
+- Atualiza waitlist: `status=notified`, `notified_at=now`, `reserved_until=now + waitlist_reserve_minutes`, `order_id`.
+- Envia WhatsApp via template novo `WAITLIST_AVAILABLE` com link de pagamento e prazo.
 
-## Fora de escopo
-- Plano Basic (mensal) continua via Mercado Pago.
-- Checkout das lojas (Pagar.me por tenant em `integration_pagarme`) não sofre alteração — chaves totalmente separadas.
-- Preços especiais da Ju Bijoux continuam aplicados também na recorrência.
+**`waitlist-expire-reservations`** (cron a cada 5 min via pg_cron)
+- Busca `notified` com `reserved_until < now` e sem pagamento.
+- Cancela o pedido reservado (restaura estoque, dispara o trigger novamente para a próxima).
+- Marca waitlist como `expired` e envia mensagem opcional avisando.
 
-## Sequência
-1. Migration `subscription_recurrences` + GRANTs + RLS + trigger.
-2. Pedir as 3 secrets via `add_secret`.
-3. Criar as 3 edge functions.
-4. Componente do modal + ajustes em `RenovarAssinatura.tsx`.
-5. URL do webhook para cadastrar no painel Pagar.me (entrego pronta pra colar).
+## 3. Integração nos pontos de entrada
 
-## Detalhes técnicos
-- Endpoint: `https://api.pagar.me/core/v5/subscriptions` (Basic Auth `sk_xxx:`).
-- Recorrência: `interval: "month"`, `interval_count: 6|12`, `billing_type: "prepaid"`, `pricing_scheme: { price: <centavos> }`, `payment_method: "credit_card"`.
-- `code` único por tenant+plano evita duplicar subscription se o usuário clicar 2x.
-- Webhook idempotente: usa `charge.id` para não somar dias duas vezes da mesma cobrança.
+**`storefront-add-to-cart`**: quando retorna `OUT_OF_STOCK`/`INSUFFICIENT_STOCK`, chamar `waitlist-enqueue` e devolver `{waitlisted: true, position}` para a UI mostrar "Você é a 3ª na fila".
+
+**Fluxo WhatsApp (reconhecimento de código)**: quando produto esgotado, em vez de só responder "esgotado", enfileirar e responder com posição.
+
+**Admin (página de produto / pedido manual)**: botão "Adicionar cliente à fila" disponível mesmo com estoque zero.
+
+## 4. UI — Página "Fila de Espera"
+
+**Menu lateral**: novo item em **Gestão** → `Fila de Espera` (rota `/fila-espera`).
+
+**Página** (`src/pages/fila-espera/Index.tsx`):
+- Filtro por produto, status, canal.
+- Tabela com colunas: Posição, Produto (código + foto), Cliente (nome/telefone/Instagram), Qtd, Status (badge colorido), Origem, Entrou em, Reserva expira em, Pedido (link), Ações.
+- Ações por linha: Reordenar (subir/descer), Remover da fila, Notificar manualmente (força processamento mesmo sem estoque, se admin quiser), Ver pedido reservado.
+- Card no topo: total esperando, total notificadas pendentes, total convertidas (últimos 30d).
+- Realtime via Supabase Realtime na tabela `product_waitlist`.
+
+**Configurações → aba Loja**: novo campo "Tempo de reserva da fila de espera (minutos)" + toggle "Ativar fila de espera".
+
+**Storefront**: quando produto esgotado, botão muda para "Entrar na fila de espera" e modal pede dados (mesmo fluxo de identificação já existente).
+
+## 5. Template WhatsApp
+
+Novo tipo `WAITLIST_AVAILABLE` criado automaticamente para todo tenant via trigger existente `create_default_whatsapp_templates`:
+```
+🎉 Boa notícia! O produto *{{produto}}* (cód. {{codigo}}) voltou ao estoque e separamos uma unidade para você!
+⏰ Você tem até {{prazo}} para finalizar o pagamento.
+💳 Link: {{link}}
+Caso não pague no prazo, o produto passa para a próxima cliente da fila.
+```
+
+## 6. Detalhes técnicos relevantes
+
+- Trigger `http_post` apenas dispara edge function (fast-path < 4s) conforme regra do projeto.
+- Datas em UTC-3 explícito.
+- Decremento de estoque atômico com `gt('stock', 0)` para evitar race condition entre fila e compra normal.
+- Pedidos criados pela fila marcados com `source='waitlist'` para rastreabilidade.
+- Cancelamento pela fila usa mesmo caminho de cancelamento existente para reaproveitar restauração de estoque.
+- RLS: cliente final nunca lê a tabela diretamente; storefront recebe posição via edge function.
