@@ -4491,6 +4491,7 @@ export type Database = {
         | "TRACKING"
         | "BLOCKED_CUSTOMER"
         | "DM_INSTAGRAM_CADASTRO"
+        | "WAITLIST_AVAILABLE"
     }
     CompositeTypes: {
       http_header: {
@@ -4658,6 +4659,7 @@ export const Constants = {
         "TRACKING",
         "BLOCKED_CUSTOMER",
         "DM_INSTAGRAM_CADASTRO",
+        "WAITLIST_AVAILABLE",
       ],
     },
   },
