@@ -53,10 +53,14 @@ Deno.serve(async (req) => {
     const authH = req.headers.get("Authorization");
     if (!authH) return json({ success: false, error: "Não autenticado" }, 200);
 
+    const userClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authH } } },
+    );
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      { global: { headers: { Authorization: authH } } },
     );
 
     const { data: userRes } = await supabase.auth.getUser();
