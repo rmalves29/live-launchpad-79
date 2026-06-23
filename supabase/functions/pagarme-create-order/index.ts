@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const { data: userRes } = await supabase.auth.getUser();
+    const { data: userRes } = await userClient.auth.getUser();
     const user = userRes.user;
     if (!user) return json({ success: false, error: "Usuário inválido" }, 200);
 
