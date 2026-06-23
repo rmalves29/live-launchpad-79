@@ -193,6 +193,15 @@ export default function TenantStorefront() {
         },
       });
 
+      if (data?.code === 'WAITLISTED') {
+        toast({
+          title: data.already_in_queue ? 'Você já está na fila' : 'Você entrou na fila de espera! 🎯',
+          description: data.error,
+        });
+        if (tenant) loadProducts(tenant.id);
+        return;
+      }
+
       if (fnErr || (data && data.error)) {
         const msg = (data?.error as string) || (fnErr?.message as string) || 'Erro ao adicionar';
         toast({ title: 'Não foi possível adicionar', description: msg, variant: 'destructive' });

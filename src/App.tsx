@@ -34,6 +34,7 @@ import SendFlow from "./pages/sendflow/Index";
 import Etiquetas from "./pages/etiquetas/Index";
 import FluxoEnvio from "./pages/fluxo-envio/Index";
 import CampaignRedirect from "./pages/fluxo-envio/CampaignRedirect";
+import FilaEspera from "./pages/fila-espera/Index";
 import TenantIntegrationsPage from "./components/TenantIntegrationsPage";
 import TenantStorefront from "./pages/TenantStorefront";
 import CadastroInstagram from "./pages/tenant/CadastroInstagram";
@@ -190,6 +191,9 @@ const AppContent = () => {
         } />
         <Route path="/relatorios" element={
           <RequireTenantAuth><Relatorios /></RequireTenantAuth>
+        } />
+        <Route path="/fila-espera" element={
+          <RequireTenantAuth><FilaEspera /></RequireTenantAuth>
         } />
         <Route path="/sendflow" element={
           <RequireTenantAuth><SendFlow /></RequireTenantAuth>

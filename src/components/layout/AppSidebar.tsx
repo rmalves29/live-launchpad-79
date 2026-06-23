@@ -23,6 +23,7 @@ import {
   ShoppingCart,
   Shield,
   Bug,
+  ListOrdered,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -74,6 +75,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       entries: [
         { type: 'item', item: { path: '/produtos', label: 'Produtos', icon: Package } },
         { type: 'item', item: { path: '/clientes', label: 'Clientes', icon: Users } },
+        { type: 'item', item: { path: '/fila-espera', label: 'Fila de Espera', icon: ListOrdered } },
         { type: 'item', item: { path: '/relatorios', label: 'Relatórios', icon: BarChart3 } },
       ],
     },
