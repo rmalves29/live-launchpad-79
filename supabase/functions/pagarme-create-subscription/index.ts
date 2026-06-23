@@ -110,7 +110,9 @@ Deno.serve(async (req) => {
 
     const document = body.holder_document.replace(/\D/g, "");
     const phoneDigits = (body.holder_phone || "").replace(/\D/g, "");
-    const code = `orderzap-sub-${body.tenant_id}-${body.plan_id}`;
+    // code tem limite de 52 chars na Pagar.me — usa primeiros 8 chars do tenant_id
+    const tenantShort = body.tenant_id.replace(/-/g, "").slice(0, 12);
+    const code = `oz-${body.plan_id}-${tenantShort}-${Date.now().toString(36)}`;
 
     // Tokeniza cartão server-side se necessário usando a public key
     let cardToken = body.card_token;
