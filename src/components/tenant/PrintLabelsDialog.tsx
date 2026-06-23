@@ -317,6 +317,33 @@ ${bodyHtml}
             </div>
           </div>
 
+          {/* Thermal printer mode */}
+          <div className="flex items-center gap-3 p-3 rounded-md border bg-muted/30">
+            <input
+              type="checkbox"
+              id="thermal-mode"
+              checked={thermalMode}
+              onChange={e => setThermalMode(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <Label htmlFor="thermal-mode" className="text-xs flex-1 cursor-pointer">
+              Impressora térmica (Zebra) — define tamanho exato da página
+            </Label>
+            {thermalMode && (
+              <div className="flex items-center gap-2">
+                <Label className="text-xs whitespace-nowrap">Linhas/pág:</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={rowsPerPage}
+                  onChange={e => setRowsPerPage(Number(e.target.value))}
+                  className="w-16 h-8"
+                />
+              </div>
+            )}
+          </div>
+
           {/* Code input */}
           <div className="space-y-1">
             <Label className="text-xs">Código do produto</Label>
