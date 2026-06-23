@@ -347,6 +347,20 @@ ${bodyHtml}
             )}
           </div>
 
+          {/* Rotate 180° */}
+          <div className="flex items-center gap-3 p-3 rounded-md border bg-muted/30">
+            <input
+              type="checkbox"
+              id="rotate-180"
+              checked={rotate180}
+              onChange={e => setRotate180(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <Label htmlFor="rotate-180" className="text-xs flex-1 cursor-pointer">
+              Girar 180° — use se a impressão sair de cabeça para baixo / começando pelo final da folha
+            </Label>
+          </div>
+
           {/* Code input */}
           <div className="space-y-1">
             <Label className="text-xs">Código do produto</Label>
