@@ -158,18 +158,39 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    const labelsHtml = items.flatMap(({ product, quantity }) =>
-      Array.from({ length: quantity }, () => {
-        const barcodeHtml = generateCode128SVG(product.code);
-        return `
-          <div class="label">
-            <div class="label-name">${escapeHtml(product.name)}</div>
-            <div class="label-barcode">${barcodeHtml}</div>
-            <div class="label-code">${escapeHtml(product.code)}</div>
-          </div>
-        `;
-      })
-    ).join('');
+    const allLabels = items.flatMap(({ product, quantity }) =>
+      Array.from({ length: quantity }, () => product)
+    );
+
+    const renderLabel = (product: Product) => {
+      const barcodeHtml = generateCode128SVG(product.code);
+      return `
+        <div class="label">
+          <div class="label-name">${escapeHtml(product.name)}</div>
+          <div class="label-barcode">${barcodeHtml}</div>
+          <div class="label-code">${escapeHtml(product.code)}</div>
+        </div>
+      `;
+    };
+
+    let bodyHtml = '';
+    let pageCss = '';
+
+    if (thermalMode) {
+      const perPage = Math.max(1, columns * rowsPerPage);
+      const pageWidth = columns * labelWidth + Math.max(0, columns - 1) * gapX;
+      const pageHeight = rowsPerPage * labelHeight + Math.max(0, rowsPerPage - 1) * gapY;
+      pageCss = `@page { size: ${pageWidth}mm ${pageHeight}mm; margin: 0; }`;
+      const pages: string[] = [];
+      for (let i = 0; i < allLabels.length; i += perPage) {
+        const chunk = allLabels.slice(i, i + perPage).map(renderLabel).join('');
+        pages.push(`<div class="page">${chunk}</div>`);
+      }
+      bodyHtml = pages.join('');
+    } else {
+      pageCss = `@page { size: auto; margin: 0; }`;
+      bodyHtml = `<div class="page">${allLabels.map(renderLabel).join('')}</div>`;
+    }
 
     printWindow.document.write(`<!DOCTYPE html>
 <html>
@@ -177,10 +198,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
 <meta charset="utf-8">
 <title>Etiquetas</title>
 <style>
-  @page {
-    size: auto;
-    margin: 0;
-  }
+  ${pageCss}
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
     width: 100%;
@@ -190,14 +208,17 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  .grid {
+  .page {
     display: grid;
     grid-template-columns: repeat(${columns}, ${labelWidth}mm);
     column-gap: ${gapX}mm;
     row-gap: ${gapY}mm;
-    padding-top: ${marginTop}mm;
-    padding-left: ${marginLeft}mm;
+    padding-top: ${thermalMode ? 0 : marginTop}mm;
+    padding-left: ${thermalMode ? 0 : marginLeft}mm;
+    page-break-after: always;
+    break-after: page;
   }
+  .page:last-child { page-break-after: auto; break-after: auto; }
   .label {
     width: ${labelWidth}mm;
     height: ${labelHeight}mm;
@@ -208,6 +229,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
     justify-content: center;
     padding: 0.5mm;
     page-break-inside: avoid;
+    break-inside: avoid;
   }
   .label-name {
     font-size: 6pt;
@@ -237,14 +259,10 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
     text-align: center;
     letter-spacing: 0.5pt;
   }
-  @media print {
-    html, body { margin: 0; padding: 0; }
-    .grid { padding-top: ${marginTop}mm; padding-left: ${marginLeft}mm; }
-  }
 </style>
 </head>
 <body>
-<div class="grid">${labelsHtml}</div>
+${bodyHtml}
 <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}</script>
 </body>
 </html>`);
