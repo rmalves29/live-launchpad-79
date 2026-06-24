@@ -950,6 +950,7 @@ const Live = () => {
                             <TableHead>Nome</TableHead>
                             <TableHead>Variação</TableHead>
                             <TableHead>Preço</TableHead>
+                            <TableHead>Preço Prom.</TableHead>
                             <TableHead>Estoque</TableHead>
                             <TableHead>Instagram</TableHead>
                             <TableHead>Qtd</TableHead>
