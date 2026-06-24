@@ -987,6 +987,13 @@ const Live = () => {
                               </TableCell>
                               <TableCell>{formatCurrency(product.price)}</TableCell>
                               <TableCell>
+                                {product.promotional_price && product.promotional_price > 0 ? (
+                                  <span className="text-green-600 font-semibold">{formatCurrency(product.promotional_price)}</span>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
                                 <span
                                   className={cn(
                                     "inline-flex items-center justify-center h-7 w-7 rounded-full text-xs font-semibold text-white",
