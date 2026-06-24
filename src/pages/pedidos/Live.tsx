@@ -31,6 +31,7 @@ interface Product {
   code: string;
   name: string;
   price: number;
+  promotional_price?: number | null;
   stock: number;
   image_url?: string;
   is_active: boolean;
