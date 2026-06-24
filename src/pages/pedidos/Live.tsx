@@ -31,6 +31,7 @@ interface Product {
   code: string;
   name: string;
   price: number;
+  promotional_price?: number | null;
   stock: number;
   image_url?: string;
   is_active: boolean;
@@ -949,6 +950,7 @@ const Live = () => {
                             <TableHead>Nome</TableHead>
                             <TableHead>Variação</TableHead>
                             <TableHead>Preço</TableHead>
+                            <TableHead>Preço Prom.</TableHead>
                             <TableHead>Estoque</TableHead>
                             <TableHead>Instagram</TableHead>
                             <TableHead>Qtd</TableHead>
@@ -984,6 +986,13 @@ const Live = () => {
                                 )}
                               </TableCell>
                               <TableCell>{formatCurrency(product.price)}</TableCell>
+                              <TableCell>
+                                {product.promotional_price && product.promotional_price > 0 ? (
+                                  <span className="text-green-600 font-semibold">{formatCurrency(product.promotional_price)}</span>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                              </TableCell>
                               <TableCell>
                                 <span
                                   className={cn(
