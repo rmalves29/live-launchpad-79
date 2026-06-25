@@ -863,15 +863,20 @@ serve(async (req) => {
         .eq('id', order_id);
     }
 
+    console.log(`[zapi-send-item-added] ✅ Background processing done: sent=${response.ok} status=${response.status} messageId=${zapiMessageId} templateType=${templateType}`);
+    }; // end processInBackground
+
+    const edgeRuntime = (globalThis as any).EdgeRuntime;
+    const bgTask = processInBackground().catch((err: any) => {
+      console.error('[zapi-send-item-added] Background task error:', err?.message || err);
+    });
+    if (edgeRuntime?.waitUntil) {
+      edgeRuntime.waitUntil(bgTask);
+    }
+
     return new Response(
-       JSON.stringify({ 
-         sent: response.ok, 
-         status: response.status, 
-         messageId: zapiMessageId,
-         templateType,
-         waitingConfirmation: !skipPendingConfirmation && response.ok
-       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ accepted: true, background: true }),
+      { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error: any) {
