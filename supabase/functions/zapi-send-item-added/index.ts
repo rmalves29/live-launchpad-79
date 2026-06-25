@@ -614,6 +614,9 @@ serve(async (req) => {
       );
     }
 
+    // Background processing: the DB trigger calls this function with a 1s timeout.
+    // We ack immediately and run the actual send asynchronously to avoid being cancelled.
+    const processInBackground = async () => {
     const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, original_price, order_id, cart_id } = body;
     const source_instance_id = hasServiceRoleAuthorization(req) ? body.source_instance_id : undefined;
     const source_connected_phone = hasServiceRoleAuthorization(req) ? body.source_connected_phone : undefined;
