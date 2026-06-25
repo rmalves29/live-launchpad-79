@@ -614,6 +614,9 @@ serve(async (req) => {
       );
     }
 
+    // Background processing: the DB trigger calls this function with a 1s timeout.
+    // We ack immediately and run the actual send asynchronously to avoid being cancelled.
+    const processInBackground = async () => {
     const { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, original_price, order_id, cart_id } = body;
     const source_instance_id = hasServiceRoleAuthorization(req) ? body.source_instance_id : undefined;
     const source_connected_phone = hasServiceRoleAuthorization(req) ? body.source_connected_phone : undefined;
@@ -860,15 +863,20 @@ serve(async (req) => {
         .eq('id', order_id);
     }
 
+    console.log(`[zapi-send-item-added] ✅ Background processing done: sent=${response.ok} status=${response.status} messageId=${zapiMessageId} templateType=${templateType}`);
+    }; // end processInBackground
+
+    const edgeRuntime = (globalThis as any).EdgeRuntime;
+    const bgTask = processInBackground().catch((err: any) => {
+      console.error('[zapi-send-item-added] Background task error:', err?.message || err);
+    });
+    if (edgeRuntime?.waitUntil) {
+      edgeRuntime.waitUntil(bgTask);
+    }
+
     return new Response(
-       JSON.stringify({ 
-         sent: response.ok, 
-         status: response.status, 
-         messageId: zapiMessageId,
-         templateType,
-         waitingConfirmation: !skipPendingConfirmation && response.ok
-       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ accepted: true, background: true }),
+      { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error: any) {
