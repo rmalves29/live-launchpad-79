@@ -206,38 +206,43 @@ async function sendGroupMessage(
       invisibleVariation: true,
     });
 
-    let url: string;
-    let body: Record<string, unknown>;
-    
-    if (imageUrl) {
-      // Usa /send-link em vez de /send-image para que o Z-API conte como 1 única
-      // mensagem (em vez de 2). O WhatsApp renderiza um preview com miniatura da foto.
-      url = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-link`;
-      const title = (productMeta?.name || '').trim() || 'Produto';
-      const description = productMeta?.code ? `Código ${productMeta.code}` : '';
-      body = {
-        phone: groupId,
-        message: variedMessage,
-        image: imageUrl,
-        linkUrl: imageUrl,
-        title,
-        linkDescription: description,
-      };
-    } else {
-      url = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-text`;
-      body = { phone: groupId, message: variedMessage };
-    }
-    
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (clientToken) headers['Client-Token'] = clientToken;
-    
-    const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
-    
-    if (response.ok) {
-      return { success: true };
+
+    if (imageUrl) {
+      // Envia imagem sem caption (1 operação na Z-API) para evitar dupla contagem.
+      // Depois envia o texto separado com delay humanizado.
+      const imgRes = await fetch(
+        `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-image`,
+        { method: 'POST', headers, body: JSON.stringify({ phone: groupId, image: imageUrl }) }
+      );
+      if (!imgRes.ok) {
+        const errorText = await imgRes.text();
+        return { success: false, error: errorText.substring(0, 100) };
+      }
+      // Delay entre imagem e texto (1.5 a 2.5s) — simula comportamento humano
+      await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1000));
+      const txtRes = await fetch(
+        `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-text`,
+        { method: 'POST', headers, body: JSON.stringify({ phone: groupId, message: variedMessage }) }
+      );
+      if (txtRes.ok) {
+        return { success: true };
+      } else {
+        const errorText = await txtRes.text();
+        return { success: false, error: errorText.substring(0, 100) };
+      }
     } else {
-      const errorText = await response.text();
-      return { success: false, error: errorText.substring(0, 100) };
+      const response = await fetch(
+        `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-text`,
+        { method: 'POST', headers, body: JSON.stringify({ phone: groupId, message: variedMessage }) }
+      );
+      if (response.ok) {
+        return { success: true };
+      } else {
+        const errorText = await response.text();
+        return { success: false, error: errorText.substring(0, 100) };
+      }
     }
   } catch (error: any) {
     return { success: false, error: error.message };
