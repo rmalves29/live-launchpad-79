@@ -45,6 +45,7 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
     environment: 'production' as 'sandbox' | 'production',
     min_installment_value: 0,
     max_installments_without_interest: 1,
+    max_installments: 12,
     pix_discount_percent: 0,
     enable_pix: true,
     enable_credit_card: true,
