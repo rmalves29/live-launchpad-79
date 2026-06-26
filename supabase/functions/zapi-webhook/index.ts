@@ -1290,7 +1290,27 @@ serve(async (req) => {
       // STOCK VALIDATION: Block if no stock available
       if (product.stock <= 0) {
         console.log(`[zapi-webhook] ❌ ESTOQUE ESGOTADO para ${product.code}: estoque atual = ${product.stock}`);
-        
+
+        // Tenta colocar na fila de espera automaticamente
+        let waitlistPosition: number | null = null;
+        try {
+          const { data: wl } = await supabase.functions.invoke('waitlist-enqueue', {
+            body: {
+              tenant_id: tenantId,
+              product_id: product.id,
+              qty: 1,
+              customer_phone: normalizedPhone,
+              source: 'whatsapp',
+            },
+          });
+          if (wl?.success) {
+            waitlistPosition = wl.position;
+            console.log(`[zapi-webhook] 🎯 Cliente ${normalizedPhone} entrou na fila de ${product.code} - posição ${wl.position}`);
+          }
+        } catch (wlErr) {
+          console.error(`[zapi-webhook] erro enqueue waitlist:`, wlErr);
+        }
+
         // Send out of stock message to customer via Z-API
         try {
           const { data: whatsappConfig } = await supabase
@@ -1304,7 +1324,9 @@ serve(async (req) => {
           if (whatsappConfig?.send_out_of_stock_msg === false) {
             console.log(`[zapi-webhook] ⏭️ Mensagem de estoque esgotado desativada para este tenant`);
           } else if (whatsappConfig?.zapi_instance_id && whatsappConfig?.zapi_token) {
-            const baseOutOfStockMessage = `😔 *Produto Esgotado*\n\nO produto *${product.name}* (código *${product.code}*) acabou no momento.💚`;
+            const baseOutOfStockMessage = waitlistPosition
+              ? `😔 *Produto Esgotado*\n\nO produto *${product.name}* (código *${product.code}*) acabou no momento.\n\n🎯 Te coloquei na *fila de espera*! Você é a *${waitlistPosition}ª* da fila. Assim que voltar ao estoque, separo uma unidade pra você e te aviso aqui no WhatsApp com o link de pagamento. 💚`
+              : `😔 *Produto Esgotado*\n\nO produto *${product.name}* (código *${product.code}*) acabou no momento.💚`;
             const outOfStockMessage = addMessageVariation(baseOutOfStockMessage);
             
             // Format phone for Z-API (needs 55 prefix)
