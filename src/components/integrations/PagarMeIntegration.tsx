@@ -443,6 +443,22 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
                     Quantidade máxima de parcelas sem juros (1 a 12).
                   </p>
                 </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="max_installments">Máximo de parcelas exibidas</Label>
+                  <Input
+                    id="max_installments"
+                    type="number"
+                    min="1"
+                    max="12"
+                    value={formData.max_installments}
+                    onChange={(e) => setFormData({ ...formData, max_installments: parseInt(e.target.value) || 12 })}
+                    placeholder="Ex: 4"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Limite de parcelas que o cliente pode escolher no checkout (1 a 12). Ex: 4 = cliente vê apenas 1x a 4x.
+                  </p>
+                </div>
               </div>
             </div>
 
