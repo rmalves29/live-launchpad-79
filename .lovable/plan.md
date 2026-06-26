@@ -1,39 +1,73 @@
-## Problema
 
-Hoje o campo configurado no painel do Pagar.me (`max_installments_without_interest`) **não tem efeito nenhum** no checkout:
+# Reduzir contagem do Z-API no SendFlow (imagem + texto = 1 mensagem)
 
-- Em `supabase/functions/create-payment/index.ts` (`buildInstallmentsConfig`, linhas 95-137), o loop é fixo de 1 até 12, e os dois ramos do `if/else` empurram exatamente o mesmo objeto. O Pagar.me recebe a lista completa 1x-12x e mostra todas.
+## Diagnóstico
 
-Você quer travar para que o cliente não escolha mais que 4 parcelas (ou o número configurado no painel).
+O envio do SendFlow já faz **uma única chamada** para o Z-API (`POST /send-image` com `caption`). Não existe envio duplicado no código.
 
-## Solução
+O "2 mensagens" que você vê é **regra de cobrança/contagem do próprio Z-API**: toda chamada para `/send-image` é faturada/contada como 2 (1 do tipo *mídia* + 1 da *caption*), independente de chegar como bolha única no WhatsApp do cliente. Isso é definido pela Z-API, não tem como pedir pra eles "cobrarem 1" — precisamos mudar o tipo de envio.
 
-Adicionar um campo novo `max_installments` na tabela `integration_pagarme` que define o **teto** de parcelas exibidas no checkout, e usá-lo de fato no payload enviado ao Pagar.me.
+## Solução proposta
 
-### 1. Banco
+Trocar `/send-image` por **`/send-link`** no `sendflow-process`. Esse endpoint do Z-API manda 1 mensagem de texto contendo a URL da imagem, e o WhatsApp automaticamente renderiza um **preview com miniatura da foto, título e descrição**. Visualmente fica parecido com a foto + legenda, mas o Z-API conta como **1 única mensagem**.
 
-Migration:
-- `ALTER TABLE public.integration_pagarme ADD COLUMN max_installments integer NOT NULL DEFAULT 12 CHECK (max_installments BETWEEN 1 AND 12);`
+### Comparação
 
-### 2. Painel — `src/components/integrations/PagarMeIntegration.tsx`
+```text
+HOJE (/send-image)             PROPOSTA (/send-link)
+┌──────────────────┐           ┌──────────────────┐
+│   [foto grande]  │           │ ┌──────────────┐ │
+│                  │           │ │[mini][título]│ │
+│ Texto da legenda │           │ │   [descr]    │ │
+│ com variáveis... │           │ └──────────────┘ │
+└──────────────────┘           │ Texto completo   │
+2 msgs no Z-API                │ com variáveis... │
+                               └──────────────────┘
+                               1 msg no Z-API
+```
 
-- Adicionar `max_installments` no tipo, no `formData` (default 4) e na carga inicial a partir de `integration`.
-- Novo input numérico **"Máximo de parcelas (1 a 12)"** ao lado do "Parcelas sem juros", com `min=1 max=12`.
-- Incluir `max_installments` no payload do `upsert` do `handleSave`.
-- Mostrar o valor no resumo do cartão da integração.
+### Trade-offs (você decide)
 
-### 3. Edge function — `supabase/functions/create-payment/index.ts`
+- ✅ **Reduz pela metade** a contagem do Z-API → economia direta no plano e menor risco de bloqueio.
+- ✅ Texto e preview chegam como bolha única no WhatsApp.
+- ⚠️ A foto aparece como **miniatura** (cerca de 1/3 do tamanho de uma foto enviada normalmente), não em tela cheia. Cliente precisa tocar para abrir grande.
+- ⚠️ Depende do WhatsApp do destinatário ter renderização de link preview ativada (padrão em ~99% dos casos).
+- ⚠️ A primeira linha do `caption` vira o "título" do preview; precisamos garantir que o template fique legível nesse formato.
 
-- No `.select(...)` do `integration_pagarme` (linha ~502) incluir `max_installments`.
-- Em `buildInstallmentsConfig`, aceitar novo parâmetro `maxInstallments` e usar `Math.min(12, maxInstallments || 12)` como teto do loop.
-- Passar `pagarmeIntegration.max_installments` na chamada (linha ~910).
-- Limitar também o `installments: 1..N` no caso de `applyPaymentMethodLock` (Pagar.me usa `accepted_payment_methods` mas o array `installments` é o que controla o select do checkout).
+## Mudanças técnicas
 
-### 4. Validação
+**Arquivo:** `supabase/functions/sendflow-process/index.ts`
 
-Após o deploy, abrir o painel, definir `max_installments = 4`, gerar um link de pagamento Pagar.me de teste e confirmar que o checkout só mostra 1x-4x. Conferir log do `create-payment` para ver o payload com `installments` truncado.
+Na função `sendGroupMessage` (linhas ~190-232), quando `imageUrl` existir, trocar:
 
-## Observações
+```typescript
+// ANTES
+url = `${ZAPI_BASE_URL}/.../send-image`;
+body = { phone: groupId, image: imageUrl, caption: variedMessage };
 
-- O campo `max_installments_without_interest` continua existindo e mantém seu papel de "até quantas são sem juros" (a partir daí o Pagar.me aplica os juros configurados na conta).
-- Nada muda nos webhooks nem em outras integrações.
+// DEPOIS
+url = `${ZAPI_BASE_URL}/.../send-link`;
+body = {
+  phone: groupId,
+  message: variedMessage,           // texto completo
+  image: imageUrl,                  // thumb do preview
+  linkUrl: imageUrl,                // URL clicável
+  title: product.name,              // título do card
+  linkDescription: `Código ${product.code}`,
+};
+```
+
+Para passar `product.name` e `product.code`, ajustar a assinatura de `sendGroupMessage` pra receber o `product` (ou só os 2 campos).
+
+Quando **não houver imagem**, mantém `/send-text` exatamente como hoje.
+
+## Validação
+
+1. Após deploy, abrir o SendFlow, selecionar 1 produto com foto + 1 grupo de teste e disparar.
+2. Conferir no WhatsApp se chegou como bolha única com preview da foto.
+3. Conferir no painel do Z-API se o contador subiu **+1** (e não +2) para esse envio.
+
+## Alternativas (caso não goste do preview reduzido)
+
+- **Manter como está** (foto grande, conta 2) — sem mudança no código.
+- **Enviar só texto sem foto** (conta 1, mas perde a imagem completamente).
