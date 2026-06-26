@@ -1757,6 +1757,7 @@ export type Database = {
           environment: string
           id: string
           is_active: boolean
+          max_installments: number
           max_installments_without_interest: number | null
           min_installment_value: number | null
           pix_discount_percent: number | null
@@ -1774,6 +1775,7 @@ export type Database = {
           environment?: string
           id?: string
           is_active?: boolean
+          max_installments?: number
           max_installments_without_interest?: number | null
           min_installment_value?: number | null
           pix_discount_percent?: number | null
@@ -1791,6 +1793,7 @@ export type Database = {
           environment?: string
           id?: string
           is_active?: boolean
+          max_installments?: number
           max_installments_without_interest?: number | null
           min_installment_value?: number | null
           pix_discount_percent?: number | null
