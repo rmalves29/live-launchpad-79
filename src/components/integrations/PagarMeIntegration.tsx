@@ -28,6 +28,7 @@ interface IntegrationData {
   // Configurações de parcelamento
   min_installment_value: number | null;
   max_installments_without_interest: number | null;
+  max_installments: number | null;
   pix_discount_percent: number | null;
   enable_pix: boolean | null;
   enable_credit_card: boolean | null;
