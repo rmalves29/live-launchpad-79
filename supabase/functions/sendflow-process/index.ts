@@ -593,7 +593,7 @@ async function processTaskQueue({
 
     // Send the message
     const message = personalizeMessage(messageTemplate, product);
-    const result = await sendGroupMessage(credentials, task.group_id, message, product.image_url || undefined);
+    const result = await sendGroupMessage(credentials, task.group_id, message, product.image_url || undefined, { name: product.name, code: product.code });
 
     if (result.success) {
       sentMessages++;
