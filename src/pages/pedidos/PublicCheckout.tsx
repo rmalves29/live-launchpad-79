@@ -2115,9 +2115,13 @@ const PublicCheckout = () => {
                               <Badge className="bg-gradient-to-r from-red-500 to-rose-500 text-white border-0">
                                 ✕ Cancelado
                               </Badge>
-                            ) : (
+                            ) : order.is_paid ? (
                               <Badge className="bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0">
                                 ✓ Pago
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0">
+                                ⏳ Pendente
                               </Badge>
                             )}
                           </div>
