@@ -56,6 +56,7 @@ interface Order {
   coupon_discount?: number;
   gift_name?: string;
   melhor_envio_tracking_code?: string | null;
+  order_status?: 'em_separacao' | 'envio_pendente' | 'enviado' | 'liberado_retirada' | null;
 }
 
 async function getEdgeFunctionErrorMessage(err: any): Promise<string> {
