@@ -51,24 +51,48 @@ export default function FilaEsperaPage() {
   const [search, setSearch] = useState('');
 
   async function load() {
-    if (!tenant?.id) return;
+    if (!tenant?.id) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('product_waitlist')
-        .select('*, product:products!product_waitlist_product_id_fkey(id, name, code, image_url, stock)')
+        .select('*')
         .eq('tenant_id', tenant.id)
         .order('created_at', { ascending: true })
         .limit(500);
-      // Fallback se a relação não estiver inferida: buscar produtos manualmente
-      if (data && data.length && !data[0].product) {
-        const ids = Array.from(new Set(data.map((r: any) => r.product_id)));
-        const { data: prods } = await supabase.from('products')
-          .select('id, name, code, image_url, stock').in('id', ids);
-        const map = new Map((prods || []).map((p: any) => [p.id, p]));
-        (data as any[]).forEach((r: any) => { r.product = map.get(r.product_id); });
+
+      if (error) {
+        console.error('[fila-espera] erro ao carregar fila:', error);
+        toast({ title: 'Erro ao carregar fila', description: error.message, variant: 'destructive' });
+        setRows([]);
+        return;
       }
-      setRows((data || []) as any);
+
+      const waitlistRows = (data || []) as WaitlistRow[];
+      const productIds = Array.from(new Set(waitlistRows.map((r) => r.product_id).filter(Boolean)));
+
+      if (productIds.length > 0) {
+        const { data: products, error: productsError } = await supabase
+          .from('products')
+          .select('id, name, code, image_url, stock')
+          .eq('tenant_id', tenant.id)
+          .in('id', productIds);
+
+        if (productsError) {
+          console.error('[fila-espera] erro ao carregar produtos da fila:', productsError);
+        }
+
+        const productsById = new Map((products || []).map((product) => [product.id, product]));
+        waitlistRows.forEach((row) => {
+          row.product = productsById.get(row.product_id) as WaitlistRow['product'];
+        });
+      }
+
+      setRows(waitlistRows);
     } finally { setLoading(false); }
   }
 
