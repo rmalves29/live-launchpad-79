@@ -696,6 +696,29 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
 
         if (error) throw error;
 
+        // Registrar auditoria do cancelamento/reativação
+        try {
+          await supabaseTenant.from('audit_logs').insert({
+            entity: 'order',
+            entity_id: String(orderId),
+            action: currentStatus ? 'cancellation_reverted' : 'cancelled',
+            tenant_id: order?.tenant_id,
+            meta: {
+              order_number: order?.tenant_order_number || orderId,
+              previous_is_cancelled: currentStatus,
+              new_is_cancelled: !currentStatus,
+              is_paid: order?.is_paid ?? false,
+              total_amount: order?.total_amount,
+              customer_phone: order?.customer_phone,
+              user_id: profile?.id,
+              user_email: profile?.email,
+              source: 'panel_single',
+            },
+          });
+        } catch (logErr) {
+          console.error('Falha ao registrar audit_log de cancelamento:', logErr);
+        }
+
         setOrders(prev => prev.map(order => 
           order.id === orderId 
             ? { ...order, is_cancelled: !currentStatus }
