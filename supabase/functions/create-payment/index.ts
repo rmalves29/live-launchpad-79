@@ -904,7 +904,8 @@ serve(async (req) => {
                 installments: buildInstallmentsConfig(
                   totalAmount,
                   pagarmeIntegration.min_installment_value,
-                  pagarmeIntegration.max_installments_without_interest
+                  pagarmeIntegration.max_installments_without_interest,
+                  (pagarmeIntegration as any).max_installments
                 ),
               },
             },
