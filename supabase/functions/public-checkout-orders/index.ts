@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
 
     const { data: orders, error: ordersError } = await supabase
       .from("orders")
-      .select("id, tenant_id, customer_phone, customer_name, event_type, event_date, total_amount, is_paid, is_cancelled, payment_link, cart_id, coupon_code, coupon_discount, gift_name, created_at, melhor_envio_tracking_code")
+      .select("id, tenant_id, customer_phone, customer_name, event_type, event_date, total_amount, is_paid, is_cancelled, order_status, payment_link, cart_id, coupon_code, coupon_discount, gift_name, created_at, melhor_envio_tracking_code")
       .eq("tenant_id", tenant.id)
       .or(`customer_phone.eq.${normalizedPhone},customer_phone.eq.55${normalizedPhone}`);
 
