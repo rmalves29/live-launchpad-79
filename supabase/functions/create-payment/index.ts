@@ -95,11 +95,13 @@ function buildFreightNote(shipping: ShippingData, shippingCost: number) {
 function buildInstallmentsConfig(
   totalAmountCents: number,
   minInstallmentValue: number | null,
-  maxInstallmentsWithoutInterest: number | null
+  maxInstallmentsWithoutInterest: number | null,
+  maxInstallments: number | null
 ): { number: number; total: number }[] {
   const totalAmountReais = totalAmountCents / 100;
   const minValue = minInstallmentValue || 0;
   const maxFreeInstallments = maxInstallmentsWithoutInterest || 1;
+  const hardCap = Math.min(12, Math.max(1, maxInstallments || 12));
 
   const installments: { number: number; total: number }[] = [];
 
@@ -111,30 +113,22 @@ function buildInstallmentsConfig(
     return installments;
   }
 
-  // Calcular parcelas disponíveis (máximo 12)
-  for (let i = 2; i <= 12; i++) {
+  // Calcular parcelas disponíveis (limitadas pelo teto configurado pelo lojista)
+  for (let i = 2; i <= hardCap; i++) {
     const installmentValue = totalAmountReais / i;
-    
-    // Se o valor da parcela for menor que R$5 (mínimo comum), para de calcular
-    if (installmentValue < 5) break;
 
-    // Se houver um mínimo configurado e a parcela for menor, para
+    if (installmentValue < 5) break;
     if (minValue > 0 && installmentValue < minValue) break;
 
-    // Parcelas sem juros (até o limite configurado)
-    if (i <= maxFreeInstallments) {
-      installments.push({ number: i, total: totalAmountCents });
-    }
-    // Depois do limite, são parcelas com juros (o Pagar.me calcula automaticamente)
-    // Mas para o checkout, precisamos informar o total - deixamos o mesmo valor
-    // e o Pagar.me aplicará juros conforme configurado na conta
-    else {
-      installments.push({ number: i, total: totalAmountCents });
-    }
+    // Até maxFreeInstallments → sem juros; acima → o Pagar.me aplica os juros
+    // da conta automaticamente. Para a UI, basta listar a parcela.
+    installments.push({ number: i, total: totalAmountCents });
+    void maxFreeInstallments; // mantido apenas para clareza semântica
   }
 
   return installments;
 }
+
 
 function validate(body: any): { ok: true; data: CreatePaymentRequest } | { ok: false; error: string } {
   if (!body || typeof body !== "object") return { ok: false, error: "Body inválido" };
