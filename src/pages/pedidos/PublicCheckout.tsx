@@ -56,6 +56,7 @@ interface Order {
   coupon_discount?: number;
   gift_name?: string;
   melhor_envio_tracking_code?: string | null;
+  order_status?: 'em_separacao' | 'envio_pendente' | 'enviado' | 'liberado_retirada' | null;
 }
 
 async function getEdgeFunctionErrorMessage(err: any): Promise<string> {
@@ -2111,19 +2112,28 @@ const PublicCheckout = () => {
                             <Badge variant="secondary" className="bg-slate-200 dark:bg-slate-700 font-medium">
                               Pedido #{order.id}
                             </Badge>
-                            {order.is_cancelled ? (
-                              <Badge className="bg-gradient-to-r from-red-500 to-rose-500 text-white border-0">
-                                ✕ Cancelado
-                              </Badge>
-                            ) : order.is_paid ? (
-                              <Badge className="bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0">
-                                ✓ Pago
-                              </Badge>
-                            ) : (
-                              <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0">
-                                ⏳ Pendente
-                              </Badge>
-                            )}
+                            {(() => {
+                              const hasTracking = !!(order.melhor_envio_tracking_code && order.melhor_envio_tracking_code.trim());
+                              if (order.is_cancelled) {
+                                return <Badge className="bg-gradient-to-r from-red-500 to-rose-500 text-white border-0">✕ Cancelado</Badge>;
+                              }
+                              if (order.is_paid && (order.order_status === 'enviado' || hasTracking)) {
+                                return <Badge className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white border-0">🚚 Enviado</Badge>;
+                              }
+                              if (order.is_paid && order.order_status === 'em_separacao') {
+                                return <Badge className="bg-gradient-to-r from-amber-500 to-yellow-500 text-white border-0">📦 Em Separação</Badge>;
+                              }
+                              if (order.is_paid && order.order_status === 'envio_pendente') {
+                                return <Badge className="bg-gradient-to-r from-orange-500 to-amber-500 text-white border-0">⏱ Envio Pendente</Badge>;
+                              }
+                              if (order.is_paid && order.order_status === 'liberado_retirada') {
+                                return <Badge className="bg-gradient-to-r from-indigo-500 to-violet-500 text-white border-0">🏬 Liberado p/ Retirada</Badge>;
+                              }
+                              if (order.is_paid) {
+                                return <Badge className="bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0">✓ Pago</Badge>;
+                              }
+                              return <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0">⏳ Pendente</Badge>;
+                            })()}
                           </div>
                           <p className="text-sm text-muted-foreground">
                             {formatBrasiliaDateLong(order.event_date)} • {order.event_type}
