@@ -2111,9 +2111,15 @@ const PublicCheckout = () => {
                             <Badge variant="secondary" className="bg-slate-200 dark:bg-slate-700 font-medium">
                               Pedido #{order.id}
                             </Badge>
-                            <Badge className="bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0">
-                              ✓ Pago
-                            </Badge>
+                            {order.is_cancelled ? (
+                              <Badge className="bg-gradient-to-r from-red-500 to-rose-500 text-white border-0">
+                                ✕ Cancelado
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0">
+                                ✓ Pago
+                              </Badge>
+                            )}
                           </div>
                           <p className="text-sm text-muted-foreground">
                             {formatBrasiliaDateLong(order.event_date)} • {order.event_type}
