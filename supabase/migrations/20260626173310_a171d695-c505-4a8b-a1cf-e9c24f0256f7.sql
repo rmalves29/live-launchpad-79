@@ -1,0 +1,1 @@
+ALTER TABLE public.integration_pagarme ADD COLUMN IF NOT EXISTS max_installments integer NOT NULL DEFAULT 12 CHECK (max_installments BETWEEN 1 AND 12);

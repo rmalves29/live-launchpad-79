@@ -28,6 +28,7 @@ interface IntegrationData {
   // Configurações de parcelamento
   min_installment_value: number | null;
   max_installments_without_interest: number | null;
+  max_installments: number | null;
   pix_discount_percent: number | null;
   enable_pix: boolean | null;
   enable_credit_card: boolean | null;
@@ -44,6 +45,7 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
     environment: 'production' as 'sandbox' | 'production',
     min_installment_value: 0,
     max_installments_without_interest: 1,
+    max_installments: 12,
     pix_discount_percent: 0,
     enable_pix: true,
     enable_credit_card: true,
@@ -95,6 +97,7 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
         environment: integration.environment as 'sandbox' | 'production',
         min_installment_value: integration.min_installment_value || 0,
         max_installments_without_interest: integration.max_installments_without_interest || 1,
+        max_installments: integration.max_installments || 12,
         pix_discount_percent: integration.pix_discount_percent || 0,
         enable_pix: integration.enable_pix !== false,
         enable_credit_card: integration.enable_credit_card !== false,
@@ -120,6 +123,7 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
         is_active: true,
         min_installment_value: formData.min_installment_value || 0,
         max_installments_without_interest: formData.max_installments_without_interest || 1,
+        max_installments: Math.min(12, Math.max(1, formData.max_installments || 12)),
         pix_discount_percent: formData.pix_discount_percent || 0,
         enable_pix: formData.enable_pix,
         enable_credit_card: formData.enable_credit_card,
@@ -321,6 +325,10 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
                   <span className="font-medium">Parcelas sem juros:</span>{' '}
                   {integration.max_installments_without_interest || 1}x
                 </div>
+                <div>
+                  <span className="font-medium">Máximo de parcelas exibidas:</span>{' '}
+                  {integration.max_installments || 12}x
+                </div>
               </div>
             </div>
 
@@ -433,6 +441,22 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
                   />
                   <p className="text-xs text-muted-foreground">
                     Quantidade máxima de parcelas sem juros (1 a 12).
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="max_installments">Máximo de parcelas exibidas</Label>
+                  <Input
+                    id="max_installments"
+                    type="number"
+                    min="1"
+                    max="12"
+                    value={formData.max_installments}
+                    onChange={(e) => setFormData({ ...formData, max_installments: parseInt(e.target.value) || 12 })}
+                    placeholder="Ex: 4"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Limite de parcelas que o cliente pode escolher no checkout (1 a 12). Ex: 4 = cliente vê apenas 1x a 4x.
                   </p>
                 </div>
               </div>
