@@ -94,14 +94,25 @@ async function sendToGroup(
       return res;
     }
     case "image": {
-      const body: any = { phone, image: mediaUrl, caption: contentText || "" };
-      if (mentioned) body.mentioned = mentioned;
-      const res = await fetch(`${baseUrl}/send-image`, {
+      // Envia imagem sem caption (1 operação na Z-API) para evitar dupla contagem.
+      // Depois envia o texto separado com delay humanizado.
+      const imgBody: any = { phone, image: mediaUrl };
+      const imgRes = await fetch(`${baseUrl}/send-image`, {
         method: "POST",
         headers,
-        body: JSON.stringify(body),
+        body: JSON.stringify(imgBody),
       });
-      return res;
+      if (contentText && contentText.trim()) {
+        await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1000));
+        const txtBody: any = { phone, message: contentText };
+        if (mentioned) txtBody.mentioned = mentioned;
+        await fetch(`${baseUrl}/send-text`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(txtBody),
+        });
+      }
+      return imgRes;
     }
     case "audio": {
       const res = await fetch(`${baseUrl}/send-audio`, {
