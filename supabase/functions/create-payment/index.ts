@@ -499,7 +499,7 @@ serve(async (req) => {
 
     const { data: pagarmeIntegration } = await sb
       .from("integration_pagarme")
-      .select("api_key, public_key, environment, is_active, min_installment_value, max_installments_without_interest, enable_pix, enable_credit_card")
+      .select("api_key, public_key, environment, is_active, min_installment_value, max_installments_without_interest, max_installments, enable_pix, enable_credit_card")
       .eq("tenant_id", payload.tenant_id)
       .maybeSingle();
 
