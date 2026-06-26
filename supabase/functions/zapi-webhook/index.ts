@@ -1660,17 +1660,41 @@ serve(async (req) => {
         
         if (!preCheckStock || preCheckStock.stock < requestedQty) {
           console.log(`[zapi-webhook] ❌ ESTOQUE ESGOTADO (pre-check) para novo item ${product.code}: estoque real=${preCheckStock?.stock}`);
-          results.push({ 
-            code, 
-            success: false, 
+
+          // Tenta colocar na fila de espera automaticamente
+          let waitlistPosition: number | null = null;
+          try {
+            const { data: wl } = await supabase.functions.invoke('waitlist-enqueue', {
+              body: {
+                tenant_id: tenantId,
+                product_id: product.id,
+                qty: requestedQty,
+                customer_phone: normalizedPhone,
+                source: 'whatsapp',
+              },
+            });
+            if (wl?.success) {
+              waitlistPosition = wl.position;
+              console.log(`[zapi-webhook] 🎯 Cliente ${normalizedPhone} entrou na fila de ${product.code} - posição ${wl.position}`);
+            }
+          } catch (wlErr) {
+            console.error(`[zapi-webhook] erro enqueue waitlist:`, wlErr);
+          }
+
+          results.push({
+            code,
+            success: false,
             error: 'out_of_stock',
             product_name: product.name,
-            current_stock: 0
+            current_stock: 0,
+            waitlist_position: waitlistPosition,
           });
-          
+
           // Send out of stock message
           if (whatsappConfig?.send_out_of_stock_msg !== false) {
-            const outOfStockMsg = `❌ *Produto Esgotado!*\n\nO produto *${product.name}* (${product.code}) está esgotado.\n\nDesculpe pelo inconveniente! 😔`;
+            const outOfStockMsg = waitlistPosition
+              ? `😔 *Produto Esgotado*\n\nO produto *${product.name}* (${product.code}) está esgotado.\n\n🎯 Te coloquei na *fila de espera*! Você é a *${waitlistPosition}ª* da fila. Assim que voltar ao estoque, separo uma unidade pra você e te aviso aqui no WhatsApp com o link de pagamento. 💚`
+              : `❌ *Produto Esgotado!*\n\nO produto *${product.name}* (${product.code}) está esgotado.\n\nDesculpe pelo inconveniente! 😔`;
             await sendZAPIMessage(supabase, tenantId, senderPhone, outOfStockMsg);
           }
           continue;
