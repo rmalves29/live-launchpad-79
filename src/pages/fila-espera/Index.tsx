@@ -149,7 +149,7 @@ export default function FilaEsperaPage() {
       body: { tenant_id: tenant?.id, product_id: productId },
     });
     if (error) toast({ title: 'Erro', description: error.message, variant: 'destructive' });
-    else { toast({ title: 'Processamento disparado', description: JSON.stringify(data?.results?.[0] || data) }); load(); }
+    else { toast({ title: 'Envio processado' }); load(); }
   }
 
   function timeLeft(iso: string | null): string {
