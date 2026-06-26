@@ -191,7 +191,8 @@ async function sendGroupMessage(
   credentials: { instanceId: string; token: string; clientToken?: string },
   groupId: string,
   message: string,
-  imageUrl?: string
+  imageUrl?: string,
+  productMeta?: { name?: string; code?: string }
 ): Promise<{ success: boolean; error?: string }> {
   const { instanceId, token, clientToken } = credentials;
   
@@ -209,8 +210,19 @@ async function sendGroupMessage(
     let body: Record<string, unknown>;
     
     if (imageUrl) {
-      url = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-image`;
-      body = { phone: groupId, image: imageUrl, caption: variedMessage };
+      // Usa /send-link em vez de /send-image para que o Z-API conte como 1 única
+      // mensagem (em vez de 2). O WhatsApp renderiza um preview com miniatura da foto.
+      url = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-link`;
+      const title = (productMeta?.name || '').trim() || 'Produto';
+      const description = productMeta?.code ? `Código ${productMeta.code}` : '';
+      body = {
+        phone: groupId,
+        message: variedMessage,
+        image: imageUrl,
+        linkUrl: imageUrl,
+        title,
+        linkDescription: description,
+      };
     } else {
       url = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-text`;
       body = { phone: groupId, message: variedMessage };
