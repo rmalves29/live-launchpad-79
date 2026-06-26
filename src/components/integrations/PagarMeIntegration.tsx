@@ -325,6 +325,10 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
                   <span className="font-medium">Parcelas sem juros:</span>{' '}
                   {integration.max_installments_without_interest || 1}x
                 </div>
+                <div>
+                  <span className="font-medium">Máximo de parcelas exibidas:</span>{' '}
+                  {integration.max_installments || 12}x
+                </div>
               </div>
             </div>
 
