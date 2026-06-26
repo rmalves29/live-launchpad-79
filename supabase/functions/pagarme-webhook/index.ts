@@ -199,54 +199,10 @@ serve(async (req) => {
                           body.current_status === 'chargedback';
 
     if (isCancelEvent) {
-      console.log("[pagarme-webhook] Processing CANCELLATION/REFUND event:", eventType);
-
-      const metadata = eventData.metadata || eventData.charge?.metadata || body.metadata || body.order?.metadata || {};
-      const externalReference = metadata.external_reference || metadata.externalReference ||
-                                 eventData.external_reference || eventData.code ||
-                                 body.external_reference || body.code || "";
-
-      const orderIds = parseOrderIds(externalReference);
-      const parsedTenantId = parseTenantId(externalReference) || tenantId;
-
-      let ordersToCancel: any[] = [];
-
-      if (orderIds.length > 0) {
-        const { data } = await sb.from("orders").select("id, is_paid, tenant_id")
-          .in("id", orderIds);
-        if (data) ordersToCancel = data;
-      }
-
-      // Fallback: buscar por payment_link
-      if (ordersToCancel.length === 0) {
-        const pagarmeOrderId = body.id || eventData.id || eventData.code || "";
-        const pagarmeCheckoutId = eventData.checkouts?.[0]?.id || "";
-
-        if (pagarmeOrderId) {
-          const { data } = await sb.from("orders").select("id, is_paid, tenant_id")
-            .ilike("payment_link", `%${pagarmeOrderId}%`);
-          if (data && data.length > 0) ordersToCancel = data;
-        }
-        if (ordersToCancel.length === 0 && pagarmeCheckoutId) {
-          const { data } = await sb.from("orders").select("id, is_paid, tenant_id")
-            .ilike("payment_link", `%${pagarmeCheckoutId}%`);
-          if (data && data.length > 0) ordersToCancel = data;
-        }
-      }
-
-      if (ordersToCancel.length > 0) {
-        for (const order of ordersToCancel) {
-          await markOrderAsCancelled(sb, order.id, order.tenant_id || parsedTenantId, body.id || "unknown", eventType || "cancelled");
-        }
-        return new Response(
-          JSON.stringify({ status: "ok", orders_cancelled: ordersToCancel.map((o: any) => o.id) }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      console.log("[pagarme-webhook] No orders found for cancellation event");
+      // Política: notificações de cancelamento/estorno do gateway são ignoradas silenciosamente.
+      console.log("[pagarme-webhook] Cancellation/refund event ignored by policy:", eventType);
       return new Response(
-        JSON.stringify({ status: "ok", message: "Cancellation event logged, no orders found" }),
+        JSON.stringify({ status: "ok", ignored: "cancellation event ignored by policy" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

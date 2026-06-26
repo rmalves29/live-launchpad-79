@@ -133,8 +133,8 @@ async function processPayment(sb: any, paymentId: string, mpAccessToken: string,
     const isCancelled = ["refunded", "cancelled", "charged_back", "rejected"].includes(payment.status);
 
     if (isCancelled) {
-      console.log(`[mp-webhook] Payment ${paymentId} is ${payment.status}, evaluating cancellation`);
-      await handleCancelledPayment(sb, payment, paymentId, mpAccessToken, tenantIdHint);
+      // Política: notificações de cancelamento/estorno do gateway são ignoradas silenciosamente.
+      console.log(`[mp-webhook] Payment ${paymentId} status=${payment.status} — cancellation event ignored by policy`);
       return;
     }
 
