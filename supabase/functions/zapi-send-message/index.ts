@@ -132,14 +132,16 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Roteamento: se o tenant optou por 'official' e o destino NÃO é grupo,
-    // redireciona para a API Oficial Meta. Z-API permanece para grupos e fallback.
+    // Roteamento: API Oficial Meta liberada APENAS para o tenant 'orderzap'.
+    // Demais empresas sempre usam Z-API, independentemente do whatsapp_provider salvo.
     const isGroup = phone.includes('@g.us') || phone.includes('-');
     if (!isGroup) {
       const { data: tenantRow } = await supabase
-        .from('tenants').select('whatsapp_provider').eq('id', tenant_id).maybeSingle();
-      if ((tenantRow as any)?.whatsapp_provider === 'official') {
-        console.log(`[zapi-send-message] Roteando para API Oficial Meta (tenant ${tenant_id})`);
+        .from('tenants').select('whatsapp_provider, slug').eq('id', tenant_id).maybeSingle();
+      const slug = (tenantRow as any)?.slug;
+      const provider = (tenantRow as any)?.whatsapp_provider;
+      if (provider === 'official' && slug === 'orderzap') {
+        console.log(`[zapi-send-message] Roteando para API Oficial Meta (tenant ${tenant_id} / ${slug})`);
         const { data: routed, error: routedErr } = await supabase.functions.invoke('whatsapp-official-send', {
           body: { tenant_id, phone, message, mediaUrl, caption, messageType },
         });
@@ -149,6 +151,8 @@ serve(async (req) => {
           });
         }
         console.error('[zapi-send-message] Falha ao rotear p/ Official, usando Z-API como fallback:', routedErr?.message);
+      } else if (provider === 'official' && slug !== 'orderzap') {
+        console.log(`[zapi-send-message] Tenant ${slug} tem provider=official mas não é orderzap — forçando Z-API`);
       }
     }
 
