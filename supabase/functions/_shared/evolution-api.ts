@@ -1,0 +1,142 @@
+﻿const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL") || "";
+const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "";
+
+function getHeaders(): Record<string, string> {
+  return { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY };
+}
+
+export async function sendText(instanceName: string, phone: string, message: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const res = await fetch(EVOLUTION_API_URL + "/message/sendText/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, text: message }) });
+    const data = await res.json();
+    if (res.ok) return { success: true, messageId: data?.key?.id };
+    return { success: false, error: JSON.stringify(data).substring(0, 200) };
+  } catch (e: any) { return { success: false, error: e.message }; }
+}
+
+export async function sendImage(instanceName: string, phone: string, imageUrl: string, caption?: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const res = await fetch(EVOLUTION_API_URL + "/message/sendMedia/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "image", media: imageUrl, caption: caption || "" }) });
+    const data = await res.json();
+    if (res.ok) return { success: true, messageId: data?.key?.id };
+    return { success: false, error: JSON.stringify(data).substring(0, 200) };
+  } catch (e: any) { return { success: false, error: e.message }; }
+}
+
+export async function sendAudio(instanceName: string, phone: string, audioUrl: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const res = await fetch(EVOLUTION_API_URL + "/message/sendMedia/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "audio", media: audioUrl }) });
+    const data = await res.json();
+    if (res.ok) return { success: true, messageId: data?.key?.id };
+    return { success: false, error: JSON.stringify(data).substring(0, 200) };
+  } catch (e: any) { return { success: false, error: e.message }; }
+}
+
+export async function sendVideo(instanceName: string, phone: string, videoUrl: string, caption?: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const res = await fetch(EVOLUTION_API_URL + "/message/sendMedia/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "video", media: videoUrl, caption: caption || "" }) });
+    const data = await res.json();
+    if (res.ok) return { success: true, messageId: data?.key?.id };
+    return { success: false, error: JSON.stringify(data).substring(0, 200) };
+  } catch (e: any) { return { success: false, error: e.message }; }
+}
+
+export async function sendDocument(instanceName: string, phone: string, documentUrl: string, fileName: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const res = await fetch(EVOLUTION_API_URL + "/message/sendMedia/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "document", media: documentUrl, fileName }) });
+    const data = await res.json();
+    if (res.ok) return { success: true, messageId: data?.key?.id };
+    return { success: false, error: JSON.stringify(data).substring(0, 200) };
+  } catch (e: any) { return { success: false, error: e.message }; }
+}
+
+export async function sendPresenceComposing(instanceName: string, phone: string, durationMs?: number): Promise<void> {
+  try {
+    const wait = durationMs || 3000;
+    await fetch(EVOLUTION_API_URL + "/chat/sendPresence/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, options: { presence: "composing", delay: wait } }) });
+    await new Promise((r) => setTimeout(r, wait));
+  } catch (e: any) { console.warn("[evolution] sendPresenceComposing error: " + e.message); }
+}
+
+export function calcTypingDuration(messageLength: number): number {
+  const base = (messageLength / 40) * 1000;
+  const multiplier = 0.5 + Math.random();
+  return Math.min(Math.max(base * multiplier, 2000), 8000);
+}
+
+export async function sendPresenceAvailable(instanceName: string, phone: string): Promise<void> {
+  try {
+    await fetch(EVOLUTION_API_URL + "/chat/sendPresence/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, options: { presence: "available" } }) });
+    await new Promise((r) => setTimeout(r, 500 + Math.random() * 500));
+  } catch (e: any) { console.warn("[evolution] sendPresenceAvailable error: " + e.message); }
+}
+
+export async function markMessageAsRead(instanceName: string, phone: string, messageId: string): Promise<void> {
+  try {
+    await fetch(EVOLUTION_API_URL + "/chat/markMessageAsRead/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ readMessages: [{ remoteJid: phone, id: messageId, fromMe: false }] }) });
+  } catch (e: any) { console.warn("[evolution] markMessageAsRead error: " + e.message); }
+}
+
+export async function sendReaction(instanceName: string, phone: string, messageId: string, emoji: string): Promise<void> {
+  try {
+    await fetch(EVOLUTION_API_URL + "/message/sendReaction/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ key: { remoteJid: phone, id: messageId, fromMe: false }, reaction: emoji }) });
+    await new Promise((r) => setTimeout(r, 800 + Math.random() * 700));
+  } catch (e: any) { console.warn("[evolution] sendReaction error: " + e.message); }
+}
+
+const REACTION_EMOJIS = ["❤️", "🔥", "😍", "👏", "🛍️", "💜", "😱", "🤩", "👀", "💯"];
+export function getRandomReactionEmoji(): string { return REACTION_EMOJIS[Math.floor(Math.random() * REACTION_EMOJIS.length)]; }
+
+export async function checkPhone(instanceName: string, phone: string): Promise<string> {
+  try {
+    const res = await fetch(EVOLUTION_API_URL + "/chat/whatsappNumbers/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ numbers: [phone] }) });
+    const data = await res.json();
+    const result = Array.isArray(data) ? data[0] : null;
+    if (result?.exists && result?.jid) return result.jid.replace("@s.whatsapp.net", "").replace("@g.us", "");
+    return phone;
+  } catch (e: any) { console.warn("[evolution] checkPhone error: " + e.message); return phone; }
+}
+
+export async function getGroupParticipants(instanceName: string, groupJid: string): Promise<string[]> {
+  try {
+    const res = await fetch(EVOLUTION_API_URL + "/group/findGroupInfos/" + instanceName + "?groupJid=" + groupJid, { method: "GET", headers: getHeaders() });
+    const data = await res.json();
+    return (data?.participants || []).map((p: any) => p.id || p);
+  } catch (e: any) { console.warn("[evolution] getGroupParticipants error: " + e.message); return []; }
+}
+
+export async function createInstance(instanceName: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch(EVOLUTION_API_URL + "/instance/create", { method: "POST", headers: getHeaders(), body: JSON.stringify({ instanceName, integration: "WHATSAPP-BAILEYS", qrcode: true }) });
+    const data = await res.json();
+    if (res.ok) return { success: true };
+    return { success: false, error: JSON.stringify(data).substring(0, 200) };
+  } catch (e: any) { return { success: false, error: e.message }; }
+}
+
+export async function getQRCode(instanceName: string): Promise<{ qrcode?: string; error?: string }> {
+  try {
+    const res = await fetch(EVOLUTION_API_URL + "/instance/connect/" + instanceName, { method: "GET", headers: getHeaders() });
+    const data = await res.json();
+    if (res.ok) return { qrcode: data?.base64 || data?.qrcode?.base64 };
+    return { error: JSON.stringify(data).substring(0, 200) };
+  } catch (e: any) { return { error: e.message }; }
+}
+
+export async function getInstanceStatus(instanceName: string): Promise<{ connected: boolean }> {
+  try {
+    const res = await fetch(EVOLUTION_API_URL + "/instance/fetchInstances?instanceName=" + instanceName, { method: "GET", headers: getHeaders() });
+    const data = await res.json();
+    const instance = Array.isArray(data) ? data[0] : data;
+    return { connected: instance?.instance?.state === "open" };
+  } catch (e: any) { return { connected: false }; }
+}
+
+export async function deleteInstance(instanceName: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    await fetch(EVOLUTION_API_URL + "/instance/logout/" + instanceName, { method: "DELETE", headers: getHeaders() });
+    const res = await fetch(EVOLUTION_API_URL + "/instance/delete/" + instanceName, { method: "DELETE", headers: getHeaders() });
+    if (res.ok) return { success: true };
+    return { success: false, error: "Erro ao deletar instancia" };
+  } catch (e: any) { return { success: false, error: e.message }; }
+}
