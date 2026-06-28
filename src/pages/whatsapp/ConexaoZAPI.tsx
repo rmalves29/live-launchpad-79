@@ -16,6 +16,10 @@ import {
   Save,
   Eye,
   EyeOff,
+  Zap,
+  Shield,
+  Trash2,
+  Plus,
 } from "lucide-react";
 import { ZAPIAdvancedSettings } from "@/components/ZAPIAdvancedSettings";
 
@@ -31,7 +35,10 @@ interface WhatsAppStatus {
 
 const POLLING_INTERVAL_MS = 5000;
 const QR_CODE_EXPIRATION_SECONDS = 60;
+const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4';
+
+type Provider = 'zapi' | 'evolution';
 
 function maskMiddle(value: string, visible = 4): string {
   if (!value) return '';
@@ -42,12 +49,8 @@ function maskMiddle(value: string, visible = 4): string {
 function formatPhone(phone?: string | null): string {
   if (!phone) return '-';
   const digits = phone.replace(/\D/g, '');
-  // Brazilian format
   if (digits.length === 13 && digits.startsWith('55')) {
-    const ddd = digits.slice(2, 4);
-    const part1 = digits.slice(4, 9);
-    const part2 = digits.slice(9, 13);
-    return `(${ddd}) ${part1}-${part2}`;
+    return `(${digits.slice(2, 4)}) ${digits.slice(4, 9)}-${digits.slice(9, 13)}`;
   }
   if (digits.length === 11) {
     return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
@@ -55,19 +58,27 @@ function formatPhone(phone?: string | null): string {
   return phone;
 }
 
+function callFunction(name: string, body: object) {
+  return fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}`, 'apikey': ANON_KEY },
+    body: JSON.stringify(body),
+  }).then(r => r.json());
+}
+
 export default function ConexaoZAPI() {
   const { tenant } = useTenantContext();
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
-  const [hasZAPIConfig, setHasZAPIConfig] = useState(false);
+  const [provider, setProvider] = useState<Provider>('zapi');
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [loadingQR, setLoadingQR] = useState(false);
   const [qrCountdown, setQrCountdown] = useState(0);
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
 
-  // Credentials form
+  // Z-API fields
   const [integrationId, setIntegrationId] = useState<string | null>(null);
   const [instanceId, setInstanceId] = useState('');
   const [token, setToken] = useState('');
@@ -75,6 +86,12 @@ export default function ConexaoZAPI() {
   const [showToken, setShowToken] = useState(false);
   const [showClientToken, setShowClientToken] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
+
+  // Evolution API fields
+  const [evolutionInstanceName, setEvolutionInstanceName] = useState('');
+  const [evolutionDraftName, setEvolutionDraftName] = useState('');
+  const [creatingInstance, setCreatingInstance] = useState(false);
+  const [deletingInstance, setDeletingInstance] = useState(false);
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const qrTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -94,39 +111,46 @@ export default function ConexaoZAPI() {
   }, [tenant?.id]);
 
   useEffect(() => {
-    if (hasZAPIConfig && tenant?.id) {
-      startPolling();
-      return () => stopPolling();
+    stopPolling();
+    setWhatsappStatus(null);
+    setLastSyncAt(null);
+    if (provider === 'zapi' && instanceId && token) {
+      startPollingZapi();
+    } else if (provider === 'evolution' && evolutionInstanceName) {
+      startPollingEvolution();
     }
-  }, [hasZAPIConfig, tenant?.id]);
+    return () => stopPolling();
+  }, [provider, instanceId, token, evolutionInstanceName]);
 
   const loadIntegration = async () => {
     if (!tenant?.id) return;
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('integration_whatsapp')
-        .select('id, zapi_instance_id, zapi_token, zapi_client_token, provider, is_active')
+        .select('id, zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, provider, is_active')
         .eq('tenant_id', tenant.id)
         .maybeSingle();
-      if (error && error.code !== 'PGRST116') throw error;
+
       if (data) {
         setIntegrationId((data as any).id);
         setInstanceId((data as any).zapi_instance_id || '');
         setToken((data as any).zapi_token || '');
         setClientToken((data as any).zapi_client_token || '');
-        setHasZAPIConfig(!!((data as any).zapi_instance_id && (data as any).zapi_token));
-      } else {
-        setHasZAPIConfig(false);
+        setEvolutionInstanceName((data as any).evolution_instance_name || '');
+        const savedProvider: Provider = (data as any).provider === 'evolution' ? 'evolution' : 'zapi';
+        setProvider(savedProvider);
       }
     } catch (e: any) {
-      console.error('Error loading Z-API config:', e);
+      console.error('Error loading integration:', e);
     } finally {
       setLoading(false);
     }
   };
 
-  const saveCredentials = async () => {
+  // ─── Z-API ───────────────────────────────────────────────────────────────
+
+  const saveZapiCredentials = async () => {
     if (!tenant?.id) return;
     if (!instanceId.trim() || !token.trim()) {
       toast({ title: 'Erro', description: 'Instance ID e Token são obrigatórios', variant: 'destructive' });
@@ -163,14 +187,153 @@ export default function ConexaoZAPI() {
     }
   };
 
+  const checkStatusZapi = async () => {
+    if (!tenant?.id || !mountedRef.current) return;
+    try {
+      const data = await callFunction('zapi-proxy', { action: 'status', tenant_id: tenant.id });
+      if (!mountedRef.current) return;
+      setLastSyncAt(new Date());
+      if (data.error) {
+        setWhatsappStatus(prev => prev?.status === 'qr_ready' && prev?.qrCode ? prev : { connected: false, status: 'error', error: data.error });
+        return;
+      }
+      if (data.connected) {
+        stopQRCountdown();
+        setWhatsappStatus({ connected: true, status: data.status, message: data.message, user: data.user });
+      } else {
+        setWhatsappStatus(prev => prev?.status === 'qr_ready' && prev?.qrCode ? prev : { connected: false, status: data.status || 'disconnected', user: data.user });
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const getQRCodeZapi = async () => {
+    if (!tenant?.id) return;
+    setLoadingQR(true);
+    try {
+      const data = await callFunction('zapi-proxy', { action: 'qr-code', tenant_id: tenant.id });
+      if (data.qrCode) {
+        setWhatsappStatus(prev => ({ ...prev, connected: false, status: 'qr_ready', qrCode: data.qrCode, hasQR: true }));
+        startQRCountdown();
+        toast({ title: 'QR Code gerado', description: 'Você tem 60 segundos para escanear' });
+      } else if (data.error) {
+        toast({ title: 'Erro', description: data.message || data.error, variant: 'destructive' });
+      }
+    } catch (e: any) {
+      toast({ title: 'Erro', description: e.message, variant: 'destructive' });
+    } finally {
+      setLoadingQR(false);
+    }
+  };
+
+  const handleDisconnectZapi = async () => {
+    if (!tenant?.id) return;
+    setIsReconnecting(true);
+    try {
+      await callFunction('zapi-proxy', { action: 'disconnect', tenant_id: tenant.id });
+      setWhatsappStatus({ connected: false, status: 'disconnected' });
+      toast({ title: 'Desconectado', description: 'Sessão WhatsApp encerrada.' });
+    } catch (e: any) {
+      toast({ title: 'Erro', description: e.message, variant: 'destructive' });
+    } finally {
+      setIsReconnecting(false);
+    }
+  };
+
+  // ─── Evolution API ────────────────────────────────────────────────────────
+
+  const createEvolutionInstance = async () => {
+    if (!tenant?.id || !evolutionDraftName.trim()) {
+      toast({ title: 'Erro', description: 'Informe um nome para a instância', variant: 'destructive' });
+      return;
+    }
+    setCreatingInstance(true);
+    try {
+      const data = await callFunction('evolution-instance-manager', { action: 'create', tenant_id: tenant.id, instance_name: evolutionDraftName.trim() });
+      if (data.success) {
+        toast({ title: 'Instância criada', description: 'Agora gere o QR Code para conectar' });
+        await loadIntegration();
+      } else {
+        toast({ title: 'Erro', description: data.error || 'Falha ao criar instância', variant: 'destructive' });
+      }
+    } catch (e: any) {
+      toast({ title: 'Erro', description: e.message, variant: 'destructive' });
+    } finally {
+      setCreatingInstance(false);
+    }
+  };
+
+  const getQRCodeEvolution = async () => {
+    if (!tenant?.id) return;
+    setLoadingQR(true);
+    try {
+      const data = await callFunction('evolution-instance-manager', { action: 'qrcode', tenant_id: tenant.id });
+      if (data.qrCode) {
+        setWhatsappStatus(prev => ({ ...prev, connected: false, status: 'qr_ready', qrCode: data.qrCode, hasQR: true }));
+        startQRCountdown();
+        toast({ title: 'QR Code gerado', description: 'Você tem 60 segundos para escanear' });
+      } else {
+        toast({ title: 'Erro', description: data.error || 'Falha ao gerar QR Code', variant: 'destructive' });
+      }
+    } catch (e: any) {
+      toast({ title: 'Erro', description: e.message, variant: 'destructive' });
+    } finally {
+      setLoadingQR(false);
+    }
+  };
+
+  const checkStatusEvolution = async () => {
+    if (!tenant?.id || !mountedRef.current) return;
+    try {
+      const data = await callFunction('evolution-instance-manager', { action: 'status', tenant_id: tenant.id });
+      if (!mountedRef.current) return;
+      setLastSyncAt(new Date());
+      if (data.connected) {
+        stopQRCountdown();
+        setWhatsappStatus({ connected: true, status: 'open', user: data.user });
+      } else if (data.status !== 'not_configured') {
+        setWhatsappStatus(prev => prev?.status === 'qr_ready' && prev?.qrCode ? prev : { connected: false, status: data.status || 'disconnected' });
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const deleteEvolutionInstance = async () => {
+    if (!tenant?.id) return;
+    if (!confirm('Tem certeza? Isso vai desconectar e remover a instância da Evolution API.')) return;
+    setDeletingInstance(true);
+    try {
+      const data = await callFunction('evolution-instance-manager', { action: 'delete', tenant_id: tenant.id });
+      if (data.success) {
+        toast({ title: 'Instância removida' });
+        setEvolutionInstanceName('');
+        setEvolutionDraftName('');
+        setWhatsappStatus(null);
+        await loadIntegration();
+      } else {
+        toast({ title: 'Erro', description: data.error, variant: 'destructive' });
+      }
+    } catch (e: any) {
+      toast({ title: 'Erro', description: e.message, variant: 'destructive' });
+    } finally {
+      setDeletingInstance(false);
+    }
+  };
+
+  // ─── Polling helpers ──────────────────────────────────────────────────────
+
   const stopPolling = useCallback(() => {
     if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
   }, []);
 
-  const startPolling = useCallback(() => {
+  const startPollingZapi = useCallback(() => {
     stopPolling();
-    checkStatus();
-    pollingRef.current = setInterval(() => { if (mountedRef.current) checkStatus(); }, POLLING_INTERVAL_MS);
+    checkStatusZapi();
+    pollingRef.current = setInterval(() => { if (mountedRef.current) checkStatusZapi(); }, POLLING_INTERVAL_MS);
+  }, []);
+
+  const startPollingEvolution = useCallback(() => {
+    stopPolling();
+    checkStatusEvolution();
+    pollingRef.current = setInterval(() => { if (mountedRef.current) checkStatusEvolution(); }, POLLING_INTERVAL_MS);
   }, []);
 
   const startQRCountdown = useCallback(() => {
@@ -193,82 +356,10 @@ export default function ConexaoZAPI() {
     setQrCountdown(0);
   }, []);
 
-  const checkStatus = async () => {
-    if (!tenant?.id || !mountedRef.current) return;
-    try {
-      const r = await fetch('https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/zapi-proxy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}`, 'apikey': ANON_KEY },
-        body: JSON.stringify({ action: 'status', tenant_id: tenant.id })
-      });
-      if (!mountedRef.current) return;
-      const data = await r.json();
-      setLastSyncAt(new Date());
-      if (data.error) {
-        setWhatsappStatus(prev => prev?.status === 'qr_ready' && prev?.qrCode ? prev : { connected: false, status: 'error', error: data.error, message: data.message });
-        return;
-      }
-      if (data.connected) {
-        stopQRCountdown();
-        setWhatsappStatus({ connected: true, status: data.status, message: data.message, user: data.user });
-      } else {
-        setWhatsappStatus(prev => prev?.status === 'qr_ready' && prev?.qrCode ? prev : { connected: false, status: data.status || 'disconnected', message: data.message, user: data.user });
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
+  // ─── Derived state ────────────────────────────────────────────────────────
 
-  const getQRCode = async () => {
-    if (!tenant?.id) return;
-    setLoadingQR(true);
-    try {
-      const r = await fetch('https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/zapi-proxy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}`, 'apikey': ANON_KEY },
-        body: JSON.stringify({ action: 'qr-code', tenant_id: tenant.id })
-      });
-      const data = await r.json();
-      if (data.qrCode) {
-        setWhatsappStatus(prev => ({ ...prev, connected: false, status: 'qr_ready', qrCode: data.qrCode, hasQR: true, message: 'Escaneie o QR Code' }));
-        startQRCountdown();
-        toast({ title: 'QR Code gerado', description: 'Você tem 60 segundos para escanear' });
-      } else if (data.error) {
-        toast({ title: 'Erro', description: data.message || data.error, variant: 'destructive' });
-      }
-    } catch (e: any) {
-      toast({ title: 'Erro', description: e.message, variant: 'destructive' });
-    } finally {
-      setLoadingQR(false);
-    }
-  };
-
-  const handleDisconnect = async () => {
-    if (!tenant?.id) return;
-    setIsReconnecting(true);
-    try {
-      await fetch('https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/zapi-proxy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}`, 'apikey': ANON_KEY },
-        body: JSON.stringify({ action: 'disconnect', tenant_id: tenant.id })
-      });
-      setWhatsappStatus({ connected: false, status: 'disconnected', message: 'WhatsApp desconectado' });
-      toast({ title: 'Desconectado', description: 'Sessão WhatsApp encerrada.' });
-    } catch (e: any) {
-      toast({ title: 'Erro', description: e.message, variant: 'destructive' });
-    } finally {
-      setIsReconnecting(false);
-    }
-  };
-
-  const handleReconnect = async () => {
-    setIsReconnecting(true);
-    try {
-      await getQRCode();
-    } finally {
-      setIsReconnecting(false);
-    }
-  };
+  const isConnected = !!whatsappStatus?.connected;
+  const isQrReady = whatsappStatus?.status === 'qr_ready' && whatsappStatus.qrCode;
 
   const lastSyncLabel = lastSyncAt
     ? (() => {
@@ -287,20 +378,54 @@ export default function ConexaoZAPI() {
     );
   }
 
-  const isConnected = !!whatsappStatus?.connected;
-  const isQrReady = whatsappStatus?.status === 'qr_ready' && whatsappStatus.qrCode;
-
   return (
     <div className="max-w-[1600px] mx-auto p-6 space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">WhatsApp — Conexão</h1>
-        <p className="text-sm text-muted-foreground mt-1">Gerencie a conexão do seu WhatsApp via Z-API</p>
+        <p className="text-sm text-muted-foreground mt-1">Gerencie a conexão do seu WhatsApp</p>
       </div>
 
-      {/* Top row: Status + QR */}
+      {/* Provider selector */}
+      <div className="grid grid-cols-2 gap-3 max-w-md">
+        <button
+          onClick={() => setProvider('zapi')}
+          className={`flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
+            provider === 'zapi'
+              ? 'border-primary bg-primary/5'
+              : 'border-border hover:border-primary/40 bg-card'
+          }`}
+        >
+          <div className={`p-2 rounded-lg ${provider === 'zapi' ? 'bg-primary/10' : 'bg-muted'}`}>
+            <Zap className={`h-5 w-5 ${provider === 'zapi' ? 'text-primary' : 'text-muted-foreground'}`} />
+          </div>
+          <div>
+            <p className={`text-sm font-semibold ${provider === 'zapi' ? 'text-primary' : 'text-foreground'}`}>Z-API</p>
+            <p className="text-xs text-muted-foreground">Instância própria</p>
+          </div>
+        </button>
+
+        <button
+          onClick={() => setProvider('evolution')}
+          className={`flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
+            provider === 'evolution'
+              ? 'border-violet-500 bg-violet-500/5'
+              : 'border-border hover:border-violet-400/40 bg-card'
+          }`}
+        >
+          <div className={`p-2 rounded-lg ${provider === 'evolution' ? 'bg-violet-500/10' : 'bg-muted'}`}>
+            <Shield className={`h-5 w-5 ${provider === 'evolution' ? 'text-violet-500' : 'text-muted-foreground'}`} />
+          </div>
+          <div>
+            <p className={`text-sm font-semibold ${provider === 'evolution' ? 'text-violet-600 dark:text-violet-400' : 'text-foreground'}`}>Evolution API</p>
+            <p className="text-xs text-muted-foreground">Anti-bloqueio avançado</p>
+          </div>
+        </button>
+      </div>
+
+      {/* Status + QR */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Status da Conexão */}
+        {/* Status */}
         <Card>
           <CardContent className="p-6">
             <div className="flex items-start gap-4 mb-6">
@@ -328,13 +453,23 @@ export default function ConexaoZAPI() {
                 <span className="font-semibold">{formatPhone(whatsappStatus?.user?.phone)}</span>
               </div>
               <div className="flex items-center justify-between py-2 border-b border-border/50">
-                <span className="text-muted-foreground">Instance ID</span>
-                <span className="font-mono">{instanceId ? maskMiddle(instanceId, 4) : '—'}</span>
+                <span className="text-muted-foreground">API</span>
+                <Badge variant="outline" className={provider === 'evolution' ? 'text-violet-600 border-violet-300' : ''}>
+                  {provider === 'evolution' ? 'Evolution API' : 'Z-API'}
+                </Badge>
               </div>
-              <div className="flex items-center justify-between py-2 border-b border-border/50">
-                <span className="text-muted-foreground">Token</span>
-                <span className="font-mono">{token ? `zapi_${'•'.repeat(8)}` : '—'}</span>
-              </div>
+              {provider === 'zapi' && (
+                <div className="flex items-center justify-between py-2 border-b border-border/50">
+                  <span className="text-muted-foreground">Instance ID</span>
+                  <span className="font-mono">{instanceId ? maskMiddle(instanceId, 4) : '—'}</span>
+                </div>
+              )}
+              {provider === 'evolution' && (
+                <div className="flex items-center justify-between py-2 border-b border-border/50">
+                  <span className="text-muted-foreground">Instância</span>
+                  <span className="font-mono text-xs">{evolutionInstanceName || '—'}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between py-2">
                 <span className="text-muted-foreground">Última sync</span>
                 <span className={isConnected ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-muted-foreground'}>
@@ -344,14 +479,34 @@ export default function ConexaoZAPI() {
             </div>
 
             <div className="grid grid-cols-2 gap-3 mt-6">
-              <Button variant="outline" onClick={handleDisconnect} disabled={isReconnecting || !isConnected}>
-                {isReconnecting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <WifiOff className="h-4 w-4 mr-2" />}
-                Desconectar
-              </Button>
-              <Button onClick={handleReconnect} disabled={isReconnecting || loadingQR}>
-                {(isReconnecting || loadingQR) ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                Reconectar
-              </Button>
+              {provider === 'zapi' ? (
+                <>
+                  <Button variant="outline" onClick={handleDisconnectZapi} disabled={isReconnecting || !isConnected}>
+                    {isReconnecting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <WifiOff className="h-4 w-4 mr-2" />}
+                    Desconectar
+                  </Button>
+                  <Button onClick={() => getQRCodeZapi()} disabled={loadingQR || isConnected}>
+                    {loadingQR ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                    Reconectar
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={deleteEvolutionInstance}
+                    disabled={deletingInstance || !evolutionInstanceName}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    {deletingInstance ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                    Remover
+                  </Button>
+                  <Button onClick={getQRCodeEvolution} disabled={loadingQR || !evolutionInstanceName || isConnected}>
+                    {loadingQR ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                    Reconectar
+                  </Button>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -362,7 +517,7 @@ export default function ConexaoZAPI() {
             <div className="text-center mb-4">
               <h2 className="text-lg font-semibold">QR Code para emparelhar</h2>
               <p className="text-sm text-muted-foreground mt-1">
-                Abra o WhatsApp no celular → Dispositivos Conectados → Conectar Dispositivo
+                Abra o WhatsApp → Dispositivos Conectados → Conectar Dispositivo
               </p>
             </div>
 
@@ -388,7 +543,12 @@ export default function ConexaoZAPI() {
               <p className="text-xs text-muted-foreground mb-2">Expira em {qrCountdown}s</p>
             )}
 
-            <Button variant="outline" className="w-full" onClick={getQRCode} disabled={loadingQR || isConnected}>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={provider === 'evolution' ? getQRCodeEvolution : getQRCodeZapi}
+              disabled={loadingQR || isConnected || (provider === 'evolution' && !evolutionInstanceName)}
+            >
               {loadingQR ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <QrCodeIcon className="h-4 w-4 mr-2" />}
               Gerar novo QR Code
             </Button>
@@ -396,80 +556,133 @@ export default function ConexaoZAPI() {
         </Card>
       </div>
 
-      {/* Configurações Z-API */}
-      <Card>
-        <CardContent className="p-6">
-          <h2 className="text-lg font-semibold mb-6">Configurações Z-API</h2>
+      {/* Config section — changes based on provider */}
+      {provider === 'zapi' ? (
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center gap-2 mb-6">
+              <Zap className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold">Configurações Z-API</h2>
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div className="space-y-2">
-              <Label htmlFor="client-token">Client Token</Label>
-              <div className="relative">
-                <Input
-                  id="client-token"
-                  type={showClientToken ? 'text' : 'password'}
-                  value={clientToken}
-                  onChange={(e) => setClientToken(e.target.value)}
-                  placeholder="••••••••••"
-                  className="pr-10"
-                />
-                <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full px-3" onClick={() => setShowClientToken(v => !v)}>
-                  {showClientToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </Button>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div className="space-y-2">
+                <Label htmlFor="client-token">Client Token</Label>
+                <div className="relative">
+                  <Input
+                    id="client-token"
+                    type={showClientToken ? 'text' : 'password'}
+                    value={clientToken}
+                    onChange={(e) => setClientToken(e.target.value)}
+                    placeholder="••••••••••"
+                    className="pr-10"
+                  />
+                  <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full px-3" onClick={() => setShowClientToken(v => !v)}>
+                    {showClientToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="instance-id">Instance ID</Label>
+                <Input id="instance-id" value={instanceId} onChange={(e) => setInstanceId(e.target.value)} placeholder="3DF82A-XXXX" />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="security-token">Security Token</Label>
+                <div className="relative">
+                  <Input
+                    id="security-token"
+                    type={showToken ? 'text' : 'password'}
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    placeholder="••••••••••"
+                    className="pr-10"
+                  />
+                  <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full px-3" onClick={() => setShowToken(v => !v)}>
+                    {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="instance-id">Instance ID</Label>
-              <Input
-                id="instance-id"
-                value={instanceId}
-                onChange={(e) => setInstanceId(e.target.value)}
-                placeholder="3DF82A-XXXX"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="security-token">Security Token</Label>
-              <div className="relative">
-                <Input
-                  id="security-token"
-                  type={showToken ? 'text' : 'password'}
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  placeholder="••••••••••"
-                  className="pr-10"
-                />
-                <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full px-3" onClick={() => setShowToken(v => !v)}>
-                  {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </Button>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+              <div className="space-y-2">
+                <Label>Webhook URL</Label>
+                <Input value={`${SUPABASE_URL}/functions/v1/zapi-webhook`} readOnly className="font-mono text-xs" />
               </div>
+              <div className="space-y-2">
+                <Label>Modo de Envio</Label>
+                <Input value="Direto" readOnly />
+              </div>
+              <Button onClick={saveZapiCredentials} disabled={savingConfig} className="h-10">
+                {savingConfig ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                Salvar configurações
+              </Button>
             </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-            <div className="space-y-2">
-              <Label htmlFor="webhook-url">Webhook URL</Label>
-              <Input
-                id="webhook-url"
-                value={`https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/zapi-webhook`}
-                readOnly
-                className="font-mono text-xs"
-              />
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center gap-2 mb-2">
+              <Shield className="h-5 w-5 text-violet-500" />
+              <h2 className="text-lg font-semibold">Configurações Evolution API</h2>
             </div>
+            <p className="text-sm text-muted-foreground mb-6">
+              A Evolution API roda no servidor da OrderZaps e simula comportamento humano real — digitando, lendo mensagens e reagindo antes de enviar.
+            </p>
 
-            <div className="space-y-2">
-              <Label>Modo de Envio</Label>
-              <Input value="Direto" readOnly />
-            </div>
+            {evolutionInstanceName ? (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 p-4 rounded-lg bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800">
+                  <div className="p-2 bg-violet-100 dark:bg-violet-900/40 rounded-lg">
+                    <Shield className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-violet-800 dark:text-violet-300">Instância configurada</p>
+                    <p className="text-xs font-mono text-violet-600 dark:text-violet-400 mt-0.5">{evolutionInstanceName}</p>
+                  </div>
+                  <Badge variant="outline" className={isConnected ? 'text-emerald-600 border-emerald-300' : 'text-muted-foreground'}>
+                    {isConnected ? 'Conectado' : 'Desconectado'}
+                  </Badge>
+                </div>
 
-            <Button onClick={saveCredentials} disabled={savingConfig} className="h-10">
-              {savingConfig ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-              Salvar configurações
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+                {!isConnected && (
+                  <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-4 text-sm text-amber-700 dark:text-amber-400">
+                    Gere o QR Code acima e escaneie com o WhatsApp para conectar este chip.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20 p-4 text-sm text-blue-700 dark:text-blue-400">
+                  Crie uma instância para começar. Use um nome simples como <span className="font-mono font-medium">minha-loja</span> ou <span className="font-mono font-medium">chip-vendas</span>.
+                </div>
+
+                <div className="flex gap-3">
+                  <div className="flex-1 space-y-2">
+                    <Label htmlFor="evo-instance-name">Nome da instância</Label>
+                    <Input
+                      id="evo-instance-name"
+                      value={evolutionDraftName}
+                      onChange={(e) => setEvolutionDraftName(e.target.value)}
+                      placeholder="minha-loja"
+                      onKeyDown={(e) => e.key === 'Enter' && createEvolutionInstance()}
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <Button onClick={createEvolutionInstance} disabled={creatingInstance || !evolutionDraftName.trim()} className="bg-violet-600 hover:bg-violet-700 text-white">
+                      {creatingInstance ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
+                      Criar instância
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Mensagens automáticas + Proteção por consentimento */}
       <ZAPIAdvancedSettings />
