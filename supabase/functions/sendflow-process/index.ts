@@ -232,19 +232,23 @@ async function sendGroupMessageEvolution(
   imageUrl?: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await sendPresenceAvailable(instanceName, groupId);
+    const evoGroupId = groupId.includes("@g.us")
+      ? groupId
+      : groupId.replace(/-group$/i, "") + "@g.us";
+
+    await sendPresenceAvailable(instanceName, evoGroupId);
 
     if (imageUrl) {
-      await sendPresenceComposing(instanceName, groupId, calcTypingDuration(50));
-      const imgResult = await evoSendImage(instanceName, groupId, imageUrl);
+      await sendPresenceComposing(instanceName, evoGroupId, calcTypingDuration(50));
+      const imgResult = await evoSendImage(instanceName, evoGroupId, imageUrl);
       if (!imgResult.success) return { success: false, error: imgResult.error };
       await sleep(1500 + Math.random() * 1000);
-      await sendPresenceComposing(instanceName, groupId, calcTypingDuration(message.length));
-      return await evoSendText(instanceName, groupId, message);
+      await sendPresenceComposing(instanceName, evoGroupId, calcTypingDuration(message.length));
+      return await evoSendText(instanceName, evoGroupId, message);
     }
 
-    await sendPresenceComposing(instanceName, groupId, calcTypingDuration(message.length));
-    return await evoSendText(instanceName, groupId, message);
+    await sendPresenceComposing(instanceName, evoGroupId, calcTypingDuration(message.length));
+    return await evoSendText(instanceName, evoGroupId, message);
   } catch (error: any) {
     return { success: false, error: error.message };
   }
