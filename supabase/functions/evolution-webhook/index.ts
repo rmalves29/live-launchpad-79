@@ -544,29 +544,7 @@ Deno.serve(async (req) => {
       // Customer notification follows the same template flow used by Z-API.
       // Do not send ad-hoc confirmation in the group: only ITEM_ADDED / PAID_ORDER / TRACKING templates are sent privately.
       if (sendConfirmation) {
-        try {
-          const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-          const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-          await fetch(`${supabaseUrl}/functions/v1/zapi-send-item-added`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceRoleKey}` },
-            body: JSON.stringify({
-              tenant_id: tenantId,
-              customer_phone: senderPhone,
-              product_name: product.name,
-              product_code: product.code,
-              quantity: requestedQty,
-              unit_price: Number(cartItem.unit_price || product.promotional_price || product.price),
-              original_price: Number(product.price),
-              order_id: order?.id || null,
-              cart_id: cart.id,
-            }),
-          }).then(async (response) => {
-            const text = await response.text();
-            console.log(`[evolution-webhook] item-added dispatch status=${response.status} body=${text.substring(0, 200)}`);
-          });
-        } catch (e: any) { console.error("[evolution-webhook] Erro ao invocar zapi-send-item-added:", e.message); }
-
+        // cart_items INSERT/UPDATE already triggers send_whatsapp_on_item_added -> zapi-send-item-added.
         // Log system entry only; actual outgoing template is logged by zapi-send-item-added.
         await supabase.from("whatsapp_messages").insert({
           tenant_id: tenantId,
