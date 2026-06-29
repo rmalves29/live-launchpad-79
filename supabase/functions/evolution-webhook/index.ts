@@ -118,6 +118,42 @@ function firstRealPhoneFromValues(values: Array<unknown>): string | null {
   return null;
 }
 
+function normalizeNameText(value: string): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function resolvePhoneByPushName(supabase: any, tenantId: string, pushName: string): Promise<string | null> {
+  const normalized = normalizeNameText(pushName);
+  const tokens = normalized.split(" ").filter((token) => token.length >= 3);
+  if (tokens.length === 0) return null;
+
+  const { data: customers } = await supabase
+    .from("customers")
+    .select("phone, name")
+    .eq("tenant_id", tenantId)
+    .limit(1000);
+
+  const requiredTokens = tokens.length >= 2 ? [tokens[0], tokens[tokens.length - 1]] : [tokens[0]];
+  const matches = (customers || [])
+    .map((customer: any) => ({ ...customer, phone: normalizeRealCustomerPhone(customer.phone), normalizedName: normalizeNameText(customer.name || "") }))
+    .filter((customer: any) => customer.phone && requiredTokens.every((token) => customer.normalizedName.includes(token)));
+
+  const uniquePhones = Array.from(new Set(matches.map((customer: any) => customer.phone)));
+  if (uniquePhones.length === 1) {
+    console.log(`[evolution-webhook] Resolved phone by pushName "${pushName}" -> ${uniquePhones[0]}`);
+    return uniquePhones[0] as string;
+  }
+  if (uniquePhones.length > 1) console.warn(`[evolution-webhook] pushName "${pushName}" matched multiple customer phones; ignoring fallback`);
+  return null;
+}
+
 function participantFieldValues(participant: any): string[] {
   if (!participant) return [];
   if (typeof participant === "string") return [participant];
@@ -129,7 +165,7 @@ function participantFieldValues(participant: any): string[] {
   return values;
 }
 
-async function resolveSenderPhone(instanceName: string, groupJid: string, data: any, senderJid: string, isGroup: boolean): Promise<string | null> {
+async function resolveSenderPhone(supabase: any, tenantId: string, instanceName: string, groupJid: string, data: any, senderJid: string, isGroup: boolean, pushName: string): Promise<string | null> {
   const key = data?.key || {};
   const contextInfo = data?.message?.extendedTextMessage?.contextInfo || data?.message?.imageMessage?.contextInfo || data?.message?.videoMessage?.contextInfo || {};
   const directPhone = firstRealPhoneFromValues([
@@ -171,6 +207,9 @@ async function resolveSenderPhone(instanceName: string, groupJid: string, data: 
       return phone;
     }
   }
+
+  const byName = await resolvePhoneByPushName(supabase, tenantId, pushName);
+  if (byName) return byName;
 
   console.warn(`[evolution-webhook] Could not resolve LID sender ${senderJid} in group ${groupJid}`);
   return null;
