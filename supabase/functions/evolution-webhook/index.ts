@@ -15,6 +15,10 @@ function evoHeaders() {
   return { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY };
 }
 
+function evoUrl(path: string): string {
+  return EVOLUTION_API_URL.replace(/\/+$/, "") + path;
+}
+
 async function evoSendText(instanceName: string, phone: string, message: string): Promise<boolean> {
   try {
     await fetch(`${EVOLUTION_API_URL}/chat/sendPresence/${instanceName}`, {
@@ -35,7 +39,7 @@ async function evoSendText(instanceName: string, phone: string, message: string)
 
 async function getGroupName(instanceName: string, groupJid: string): Promise<string> {
   try {
-    const resp = await fetch(`${EVOLUTION_API_URL}/group/findGroupInfos/${instanceName}?groupJid=${encodeURIComponent(groupJid)}`, {
+    const resp = await fetch(evoUrl(`/group/findGroupInfos/${instanceName}?groupJid=${encodeURIComponent(groupJid)}`), {
       method: "GET", headers: evoHeaders(),
     });
     if (resp.ok) {
@@ -44,6 +48,20 @@ async function getGroupName(instanceName: string, groupJid: string): Promise<str
     }
   } catch (_) {}
   return groupJid.split("@")[0];
+}
+
+async function getGroupInfo(instanceName: string, groupJid: string): Promise<any | null> {
+  try {
+    const resp = await fetch(evoUrl(`/group/findGroupInfos/${instanceName}?groupJid=${encodeURIComponent(groupJid)}`), {
+      method: "GET",
+      headers: evoHeaders(),
+    });
+    if (!resp.ok) return null;
+    return await resp.json().catch(() => null);
+  } catch (e: any) {
+    console.warn(`[evolution-webhook] getGroupInfo error: ${e.message}`);
+    return null;
+  }
 }
 
 // ─── Payload parsing ──────────────────────────────────────────────────────────
@@ -71,6 +89,91 @@ function normalizePhone(raw: string): string {
   let p = raw.replace(/\D/g, "").replace(/^0+/, "");
   if (!p.startsWith("55")) p = "55" + p;
   return p;
+}
+
+function normalizeRealCustomerPhone(raw: string | null | undefined): string | null {
+  let p = String(raw || "").replace(/\D/g, "").replace(/^0+/, "");
+  if (!p) return null;
+  if (p.startsWith("55")) {
+    if (p.length === 12 || p.length === 13) return p;
+    return null;
+  }
+  if (p.length === 10 || p.length === 11) return "55" + p;
+  return null;
+}
+
+function isLikelyLid(value: string | null | undefined): boolean {
+  const text = String(value || "");
+  const digits = text.replace(/\D/g, "");
+  return text.includes("@lid") || digits.length > 13;
+}
+
+function firstRealPhoneFromValues(values: Array<unknown>): string | null {
+  for (const value of values) {
+    const text = String(value || "");
+    if (!text || text.includes("@g.us") || text.includes("@broadcast") || text.includes("@lid")) continue;
+    const phone = normalizeRealCustomerPhone(text);
+    if (phone) return phone;
+  }
+  return null;
+}
+
+function participantFieldValues(participant: any): string[] {
+  if (!participant) return [];
+  if (typeof participant === "string") return [participant];
+  const values: string[] = [];
+  const keys = ["id", "jid", "phone", "number", "participant", "lid", "lidJid", "lid_jid", "pn", "phoneNumber"];
+  for (const key of keys) {
+    if (participant[key]) values.push(String(participant[key]));
+  }
+  return values;
+}
+
+async function resolveSenderPhone(instanceName: string, groupJid: string, data: any, senderJid: string, isGroup: boolean): Promise<string | null> {
+  const key = data?.key || {};
+  const contextInfo = data?.message?.extendedTextMessage?.contextInfo || data?.message?.imageMessage?.contextInfo || data?.message?.videoMessage?.contextInfo || {};
+  const directPhone = firstRealPhoneFromValues([
+    key.participantPn,
+    key.participantPN,
+    key.senderPn,
+    key.senderPN,
+    data.participantPn,
+    data.participantPN,
+    data.senderPn,
+    data.senderPN,
+    data.sender,
+    data.participant,
+    contextInfo.participant,
+    senderJid,
+  ]);
+  if (directPhone) return directPhone;
+
+  if (!isGroup || !groupJid || !isLikelyLid(senderJid)) {
+    const fallback = normalizeRealCustomerPhone(phoneFromJid(senderJid));
+    return fallback;
+  }
+
+  const lidDigits = phoneFromJid(senderJid).replace(/\D/g, "");
+  const groupInfo = await getGroupInfo(instanceName, groupJid);
+  const participants = Array.isArray(groupInfo?.participants)
+    ? groupInfo.participants
+    : Array.isArray(groupInfo?.groupMetadata?.participants)
+      ? groupInfo.groupMetadata.participants
+      : [];
+
+  for (const participant of participants) {
+    const values = participantFieldValues(participant);
+    const matchesLid = values.some((value) => value.includes("@lid") && phoneFromJid(value).replace(/\D/g, "") === lidDigits);
+    if (!matchesLid) continue;
+    const phone = firstRealPhoneFromValues(values);
+    if (phone) {
+      console.log(`[evolution-webhook] Resolved LID ${lidDigits} to phone ${phone}`);
+      return phone;
+    }
+  }
+
+  console.warn(`[evolution-webhook] Could not resolve LID sender ${senderJid} in group ${groupJid}`);
+  return null;
 }
 
 function addVariation(msg: string): string {
