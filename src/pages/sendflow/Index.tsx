@@ -247,7 +247,7 @@ export default function SendFlow() {
       // Read connection status from DB (instant) instead of live API call
       const { data, error } = await supabaseTenant.raw
         .from('integration_whatsapp')
-        .select('status, provider')
+        .select('is_active, provider, zapi_instance_id, evolution_instance_name')
         .eq('tenant_id', tenant.id)
         .maybeSingle();
 
@@ -257,7 +257,12 @@ export default function SendFlow() {
         return;
       }
 
-      setWhatsappConnected(data?.status === 'connected');
+      // Consider connected if active and has the relevant instance configured
+      const isConnected = !!(data?.is_active && (
+        (data.provider === 'evolution' && data.evolution_instance_name) ||
+        (data.provider !== 'evolution' && data.zapi_instance_id)
+      ));
+      setWhatsappConnected(isConnected);
     } catch (error) {
       console.log('WhatsApp não conectado');
       setWhatsappConnected(false);
