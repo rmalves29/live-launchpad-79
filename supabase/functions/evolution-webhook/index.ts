@@ -407,7 +407,6 @@ Deno.serve(async (req) => {
     const messageId: string = key.id || "";
     const isGroup = remoteJid.includes("@g.us");
     const senderJid: string = isGroup ? (key.participant || "") : remoteJid;
-    const senderRaw = phoneFromJid(senderJid);
     const messageText = extractText(data);
     const pushName: string = data.pushName || "";
 
@@ -440,7 +439,21 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ skipped: "tenant_not_found", instance: instanceName }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
     const tenantId: string = integration.tenant_id;
-    const senderPhone = normalizePhone(senderRaw);
+    const senderPhone = await resolveSenderPhone(instanceName, remoteJid, data, senderJid, isGroup);
+    if (!senderPhone) {
+      await supabase.from("whatsapp_webhook_orphans").insert({
+        tenant_id: tenantId,
+        instance_id: instanceName,
+        group_id: isGroup ? remoteJid : null,
+        sender_jid: senderJid || null,
+        message_text: messageText.substring(0, 1000),
+        reason: "unresolved_lid_phone",
+        payload,
+      }).then(({ error }: any) => {
+        if (error) console.warn(`[evolution-webhook] orphan insert failed: ${error.message}`);
+      });
+      return new Response(JSON.stringify({ success: false, error: "unresolved_lid_phone" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     // ─── Private message: consent handling ───────────────────────────────────
     if (!isGroup) {
