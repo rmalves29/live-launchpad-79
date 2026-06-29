@@ -10,10 +10,12 @@ import {
 } from "../_shared/anti-block-delay.ts";
 import {
   sendText as evoSendText,
+  sendButton as evoSendButton,
   sendPresenceAvailable,
   sendPresenceComposing,
   calcTypingDuration,
 } from "../_shared/evolution-api.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
