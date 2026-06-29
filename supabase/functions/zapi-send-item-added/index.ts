@@ -503,9 +503,27 @@ serve(async (req) => {
         const instanceName = (credentials as any).instanceName;
         await sendPresenceAvailable(instanceName, formattedPhone);
         await sendPresenceComposing(instanceName, formattedPhone, calcTypingDuration(message.length));
-        const result = await evoSendText(instanceName, formattedPhone, message);
-        sendOk = result.success;
+
+        if (useButton && resolvedButtonUrl) {
+          const buttonLabel = (credentials as any).buttonLabel || "Pagar Agora";
+          const btnResult = await evoSendButton(instanceName, formattedPhone, message, buttonLabel, resolvedButtonUrl);
+          if (btnResult.success) {
+            sendOk = true;
+            zapiMessageId = btnResult.messageId || null;
+          } else {
+            console.warn("[zapi-send-item-added] Evolution sendButton falhou, fallback texto:", btnResult.error);
+            const fallbackMessage = message + "\n\n🔗 " + resolvedButtonUrl;
+            const result = await evoSendText(instanceName, formattedPhone, fallbackMessage);
+            sendOk = result.success;
+            zapiMessageId = result.messageId || null;
+          }
+        } else {
+          const result = await evoSendText(instanceName, formattedPhone, message);
+          sendOk = result.success;
+          zapiMessageId = result.messageId || null;
+        }
       } else {
+
         const { instanceId, token, clientToken } = credentials as any;
         const baseUrl = ZAPI_BASE_URL + "/instances/" + instanceId + "/token/" + token;
 
