@@ -314,6 +314,7 @@ const PedidosManual = () => {
 
       const { orderId, cartId: initialCartId, isNew } = await getOrCreateOrder();
       let cartId = initialCartId;
+      if (isNew) createdOrderId = orderId;
 
       // Create cart if needed
       if (!cartId) {
@@ -331,6 +332,7 @@ const PedidosManual = () => {
 
         if (cartError) throw cartError;
         cartId = newCart.id;
+        createdCartId = cartId;
 
         // Update order with cart_id
         await supabaseTenant
