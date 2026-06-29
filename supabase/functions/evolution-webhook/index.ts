@@ -550,7 +550,7 @@ Deno.serve(async (req) => {
           await fetch(`${supabaseUrl}/functions/v1/zapi-send-item-added`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceRoleKey}` },
-            body: {
+            body: JSON.stringify({
               tenant_id: tenantId,
               customer_phone: senderPhone,
               product_name: product.name,
@@ -560,7 +560,7 @@ Deno.serve(async (req) => {
               original_price: Number(product.price),
               order_id: order?.id || null,
               cart_id: cart.id,
-            } as any,
+            }),
           }).then(async (response) => {
             const text = await response.text();
             console.log(`[evolution-webhook] item-added dispatch status=${response.status} body=${text.substring(0, 200)}`);
@@ -578,32 +578,6 @@ Deno.serve(async (req) => {
           order_id: order?.id || null,
           delivery_status: "QUEUED",
         });
-      }
-
-      results.push({ code: codeUpper, success: true, product: product.name, qty: cartItem.qty, order_id: order?.id });
-    }
-
-    return new Response(JSON.stringify({ success: true, results }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-
-  } catch (error: any) {
-    console.error("[evolution-webhook] Error:", error.message);
-    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  }
-});
-              tenant_id: tenantId,
-              customer_phone: senderPhone,
-              product_name: product.name,
-              product_code: product.code,
-              quantity: requestedQty,
-              unit_price: Number(product.price),
-              order_id: order?.id || null,
-              cart_id: cart.id,
-            },
-          });
-        } catch (e: any) { console.error("[evolution-webhook] Erro ao invocar zapi-send-item-added:", e.message); }
-
-        // Log
-        await supabase.from("whatsapp_messages").insert({ tenant_id: tenantId, phone: senderPhone, message: confirmMsg.substring(0, 500), type: "outgoing", product_name: product.name, sent_at: new Date().toISOString(), order_id: order?.id || null, delivery_status: "SENT" });
       }
 
       results.push({ code: codeUpper, success: true, product: product.name, qty: cartItem.qty, order_id: order?.id });
