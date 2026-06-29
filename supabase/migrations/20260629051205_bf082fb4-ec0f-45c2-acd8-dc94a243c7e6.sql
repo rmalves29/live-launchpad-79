@@ -1,0 +1,1 @@
+UPDATE public.integration_whatsapp SET provider='evolution', updated_at=now() WHERE evolution_instance_name IS NOT NULL AND evolution_instance_name <> '' AND provider <> 'evolution';
