@@ -136,6 +136,11 @@ const PedidosManual = () => {
 
     setProcessingIds(prev => new Set(prev).add(product.id));
 
+    // Rollback tracking — limpar pedido/carrinho órfãos se o cart_items falhar
+    let createdOrderId: number | null = null;
+    let createdCartId: number | null = null;
+    let cartItemInserted = false;
+
     try {
       // Check if customer is blocked
       const { data: customerData } = await supabaseTenant
