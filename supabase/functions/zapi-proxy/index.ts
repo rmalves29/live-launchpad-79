@@ -134,20 +134,31 @@ serve(async (req) => {
 
       if (action === "list-groups") {
         try {
-          const res = await fetch(`${EVOLUTION_API_URL}/group/fetchAllGroups/${instanceName}?getParticipants=false`, { method: "GET", headers: evoH });
-          const data = await res.json();
-          const groups = Array.isArray(data) ? data : [];
-          // Normalize to Z-API format expected by SendFlow frontend
+          const baseUrl = EVOLUTION_API_URL.replace(/\/+$/, "");
+          const url = `${baseUrl}/group/fetchAllGroups/${instanceName}?getParticipants=false`;
+          console.log(`[zapi-proxy] Evolution list-groups GET ${url}`);
+          const res = await fetch(url, { method: "GET", headers: evoH });
+          const text = await res.text();
+          console.log(`[zapi-proxy] Evolution list-groups status=${res.status} bodyLen=${text.length} preview=${text.substring(0, 200)}`);
+          let data: any = null;
+          try { data = JSON.parse(text); } catch { data = null; }
+          // Evolution may return array, or { groups: [...] }, or wrapped under data
+          let groups: any[] = [];
+          if (Array.isArray(data)) groups = data;
+          else if (Array.isArray(data?.groups)) groups = data.groups;
+          else if (Array.isArray(data?.data)) groups = data.data;
+          console.log(`[zapi-proxy] Evolution list-groups parsed groups=${groups.length}`);
           const normalized = groups.map((g: any) => ({
-            id: g.id || g.remoteJid || "",
-            name: g.subject || g.name || "",
+            id: g.id || g.remoteJid || g.groupJid || "",
+            name: g.subject || g.name || g.id || "",
             isGroup: true,
-            participantCount: g.size || g.participants?.length || 0,
-            lastMessageTime: String(g.creation || "0"),
-          })).filter((g: any) => g.id && g.name)
+            participantCount: g.size || g.participantsCount || g.participants?.length || 0,
+            lastMessageTime: String(g.creation || g.subjectTime || "0"),
+          })).filter((g: any) => g.id)
             .sort((a: any, b: any) => parseInt(b.lastMessageTime) - parseInt(a.lastMessageTime));
           return new Response(JSON.stringify(normalized), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (e: any) {
+          console.error(`[zapi-proxy] Evolution list-groups error: ${e.message}`);
           return new Response(JSON.stringify([]), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
       }
