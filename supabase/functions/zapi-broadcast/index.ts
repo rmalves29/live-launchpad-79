@@ -20,20 +20,25 @@ interface BroadcastRequest {
   delayMs?: number;
 }
 
-async function getZAPICredentials(supabase: any, tenantId: string) {
+async function getCredentials(supabase: any, tenantId: string) {
   const { data: integration, error } = await supabase
     .from("integration_whatsapp")
-    .select("zapi_instance_id, zapi_token, zapi_client_token, is_active, provider")
+    .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, is_active, provider")
     .eq("tenant_id", tenantId)
-    .eq("provider", "zapi")
     .eq("is_active", true)
     .maybeSingle();
 
-  if (error || !integration || !integration.zapi_instance_id || !integration.zapi_token) {
-    return null;
+  if (error || !integration) return null;
+
+  const provider = integration.provider || "zapi";
+  if (provider === "evolution") {
+    if (!integration.evolution_instance_name) return null;
+    return { provider: "evolution" as const, instanceName: integration.evolution_instance_name };
   }
 
+  if (!integration.zapi_instance_id || !integration.zapi_token) return null;
   return {
+    provider: "zapi" as const,
     instanceId: integration.zapi_instance_id,
     token: integration.zapi_token,
     clientToken: integration.zapi_client_token || ''
@@ -146,10 +151,10 @@ serve(async (req) => {
       );
     }
 
-    const credentials = await getZAPICredentials(supabase, tenant_id);
+    const credentials = await getCredentials(supabase, tenant_id);
     if (!credentials) {
       return new Response(
-        JSON.stringify({ error: "Z-API não configurado", sent: 0, failed: 0 }),
+        JSON.stringify({ error: "WhatsApp não configurado", sent: 0, failed: 0 }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -212,34 +217,41 @@ serve(async (req) => {
       );
     }
 
-    const { instanceId, token, clientToken } = credentials;
-    const sendUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-text`;
+    const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL") || "";
+    const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "";
 
     let sent = 0;
     let failed = 0;
     const results: Array<{ phone: string; success: boolean; error?: string }> = [];
 
-    // Enforce minimum delay to prevent abuse
     const safeDelayMs = Math.max(delayMs, 1000);
 
     for (const phone of targetPhones) {
       try {
-        // Simulate typing indicator (3-5 seconds)
-        await simulateTyping(instanceId, token, clientToken, phone);
-
-        // Add message variation
         const variedMessage = addMessageVariation(message);
+        let response: Response;
 
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json'
-        };
-        if (clientToken) headers['Client-Token'] = clientToken;
-
-        const response = await fetch(sendUrl, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ phone, message: variedMessage })
-        });
+        if (credentials.provider === "evolution") {
+          const { instanceName } = credentials as any;
+          const evoH = { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY };
+          // Simulate composing presence
+          await fetch(`${EVOLUTION_API_URL}/chat/sendPresence/${instanceName}`, {
+            method: "POST", headers: evoH,
+            body: JSON.stringify({ number: phone, options: { presence: "composing", delay: 1500 } }),
+          });
+          await new Promise((r) => setTimeout(r, 1500));
+          response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
+            method: "POST", headers: evoH,
+            body: JSON.stringify({ number: phone, text: variedMessage }),
+          });
+        } else {
+          const { instanceId, token, clientToken } = credentials as any;
+          await simulateTyping(instanceId, token, clientToken, phone);
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          if (clientToken) headers["Client-Token"] = clientToken;
+          const sendUrl = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-text`;
+          response = await fetch(sendUrl, { method: "POST", headers, body: JSON.stringify({ phone, message: variedMessage }) });
+        }
 
         const responseText = await response.text();
         let zapiMessageId: string | null = null;
