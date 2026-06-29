@@ -372,6 +372,7 @@ const PedidosManual = () => {
           throw updateCartError;
         }
         console.log('[Manual] ✅ Item do carrinho atualizado');
+        cartItemInserted = true;
       } else {
         console.log('[Manual] ➕ Inserindo novo item no carrinho:', {
           cart_id: cartId,
@@ -397,6 +398,7 @@ const PedidosManual = () => {
           throw cartItemError;
         }
         console.log('[Manual] ✅ Item inserido com sucesso:', newCartItem);
+        cartItemInserted = true;
       }
 
       // Update product stock in database
