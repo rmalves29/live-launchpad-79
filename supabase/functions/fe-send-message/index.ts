@@ -1,3 +1,4 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
@@ -23,6 +24,7 @@ interface SendRequest {
   content_text?: string;
   media_url?: string;
   mention_all?: boolean;
+  async?: boolean;
 }
 
 async function getCredentials(supabase: any, tenantId: string) {
@@ -227,54 +229,70 @@ serve(async (req) => {
       group_ids.forEach((gid, idx) => { if (gid && message_ids[idx]) groupToMessageId.set(gid, message_ids[idx]); });
     }
 
-    const results: Array<{ group_id: string; group_name: string; success: boolean; error?: string }> = [];
+    const processGroups = async () => {
+      const results: Array<{ group_id: string; group_name: string; success: boolean; error?: string }> = [];
 
-    for (const group of groups) {
-      try {
-        if (results.length > 0) {
-          await new Promise((r) => setTimeout(r, 500 + Math.random() * 1000));
+      for (const group of groups) {
+        try {
+          if (results.length > 0) {
+            await new Promise((r) => setTimeout(r, 500 + Math.random() * 1000));
+          }
+
+          let sent = false;
+          let errMsg: string | undefined;
+
+          if (creds.provider === "evolution") {
+            const result = await sendToGroupEvolution(creds.instanceName!, group.group_jid, content_type, content_text, media_url);
+            sent = result.success;
+            errMsg = result.error;
+            console.log("[fe-send-message] Evolution - Group " + group.group_name + ": sent=" + sent);
+          } else {
+            const res = await sendToGroupZapi(zapiBaseUrl, creds.clientToken!, group.group_jid, content_type, content_text, media_url, mention_all);
+            const resText = await res.text();
+            sent = res.status >= 200 && res.status < 300;
+            errMsg = sent ? undefined : resText.substring(0, 300);
+            console.log("[fe-send-message] ZAPI - Group " + group.group_name + ": status=" + res.status);
+          }
+
+          results.push({ group_id: group.id, group_name: group.group_name, success: sent, error: errMsg });
+
+          const messageId = groupToMessageId.get(group.id);
+          let statusUpdate = supabase.from("fe_messages").update({ status: sent ? "sent" : "failed", sent_at: new Date().toISOString() });
+          if (messageId) {
+            statusUpdate = statusUpdate.eq("id", messageId).eq("status", "sending");
+          } else {
+            statusUpdate = statusUpdate.eq("tenant_id", tenant_id).eq("group_id", group.id).eq("status", "sending");
+          }
+          await statusUpdate;
+        } catch (err: any) {
+          console.error("[fe-send-message] Error sending to " + group.group_name + ":", err.message);
+          results.push({ group_id: group.id, group_name: group.group_name, success: false, error: err.message });
+
+          const messageId = groupToMessageId.get(group.id);
+          let failUpdate = supabase.from("fe_messages").update({ status: "failed" });
+          if (messageId) {
+            failUpdate = failUpdate.eq("id", messageId).eq("status", "sending");
+          } else {
+            failUpdate = failUpdate.eq("tenant_id", tenant_id).eq("group_id", group.id).eq("status", "sending");
+          }
+          await failUpdate;
         }
-
-        let sent = false;
-        let errMsg: string | undefined;
-
-        if (creds.provider === "evolution") {
-          const result = await sendToGroupEvolution(creds.instanceName!, group.group_jid, content_type, content_text, media_url);
-          sent = result.success;
-          errMsg = result.error;
-          console.log("[fe-send-message] Evolution - Group " + group.group_name + ": sent=" + sent);
-        } else {
-          const res = await sendToGroupZapi(zapiBaseUrl, creds.clientToken!, group.group_jid, content_type, content_text, media_url, mention_all);
-          const resText = await res.text();
-          sent = res.status >= 200 && res.status < 300;
-          errMsg = sent ? undefined : resText.substring(0, 300);
-          console.log("[fe-send-message] ZAPI - Group " + group.group_name + ": status=" + res.status);
-        }
-
-        results.push({ group_id: group.id, group_name: group.group_name, success: sent, error: errMsg });
-
-        const messageId = groupToMessageId.get(group.id);
-        let statusUpdate = supabase.from("fe_messages").update({ status: sent ? "sent" : "failed", sent_at: new Date().toISOString() });
-        if (messageId) {
-          statusUpdate = statusUpdate.eq("id", messageId).eq("status", "sending");
-        } else {
-          statusUpdate = statusUpdate.eq("tenant_id", tenant_id).eq("group_id", group.id).eq("status", "sending");
-        }
-        await statusUpdate;
-      } catch (err: any) {
-        console.error("[fe-send-message] Error sending to " + group.group_name + ":", err.message);
-        results.push({ group_id: group.id, group_name: group.group_name, success: false, error: err.message });
-
-        const messageId = groupToMessageId.get(group.id);
-        let failUpdate = supabase.from("fe_messages").update({ status: "failed" });
-        if (messageId) {
-          failUpdate = failUpdate.eq("id", messageId).eq("status", "sending");
-        } else {
-          failUpdate = failUpdate.eq("tenant_id", tenant_id).eq("group_id", group.id).eq("status", "sending");
-        }
-        await failUpdate;
       }
+
+      return results;
+    };
+
+    if (body.async) {
+      EdgeRuntime.waitUntil(
+        processGroups().catch((err) => console.error("[fe-send-message] Async processing error:", err?.message || err))
+      );
+      return new Response(
+        JSON.stringify({ queued: true, total: groups.length, sent: 0 }),
+        { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
+
+    const results = await processGroups();
 
     return new Response(
       JSON.stringify({ results, total: results.length, sent: results.filter((r) => r.success).length }),
@@ -283,7 +301,7 @@ serve(async (req) => {
   } catch (error: any) {
     console.error("[fe-send-message] Error:", error.message);
     return new Response(JSON.stringify({ error: error.message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
