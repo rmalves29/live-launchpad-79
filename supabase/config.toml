@@ -86,6 +86,9 @@ verify_jwt = false
 [functions.zapi-webhook]
 verify_jwt = false
 
+[functions.evolution-webhook]
+verify_jwt = false
+
 [functions.whatsapp-add-label]
 verify_jwt = false
 
