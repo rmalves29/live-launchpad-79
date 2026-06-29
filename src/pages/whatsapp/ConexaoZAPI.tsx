@@ -167,6 +167,8 @@ export default function ConexaoZAPI() {
         zapi_token: token,
         zapi_client_token: clientToken || null,
         provider: 'zapi',
+        // Clear Evolution credentials — only one provider active at a time
+        evolution_instance_name: null,
         updated_at: new Date().toISOString(),
       };
       if (integrationId) {
@@ -254,6 +256,18 @@ export default function ConexaoZAPI() {
     try {
       const data = await callFunction('evolution-instance-manager', { action: 'create', tenant_id: tenant.id, instance_name: evolutionDraftName.trim() });
       if (data.success) {
+        // Clear Z-API credentials — only one provider active at a time
+        if (integrationId) {
+          await supabase.from('integration_whatsapp').update({
+            zapi_instance_id: null,
+            zapi_token: null,
+            zapi_client_token: null,
+            updated_at: new Date().toISOString(),
+          }).eq('id', integrationId);
+        }
+        setInstanceId('');
+        setToken('');
+        setClientToken('');
         toast({ title: 'Instância criada', description: 'Agora gere o QR Code para conectar' });
         await loadIntegration();
       } else {
