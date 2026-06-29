@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
       }
 
       // Invoke sendflow-process
-      const functionUrl = `${supabaseUrl}/functions/v1/sendflow-process`;
+      const functionUrl = `${supabaseUrl}/functions/v1/sendflow-runner`;
       try {
         const resp = await fetch(functionUrl, {
           method: "POST",

@@ -78,7 +78,7 @@ export default function GroupsManager() {
     if (!tenant) return;
     setSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('fe-list-groups', {
+      const { data, error } = await supabase.functions.invoke('fe-list-groups-v2', {
         body: { tenant_id: tenant.id, admin_only: adminOnly },
       });
 

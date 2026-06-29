@@ -171,7 +171,7 @@ export const useBackendSendFlow = () => {
 
       // 4. Trigger edge function (skip if scheduled)
       if (!isScheduled) {
-        const { error: invokeError } = await supabase.functions.invoke('sendflow-process', {
+        const { error: invokeError } = await supabase.functions.invoke('sendflow-runner', {
           body: { job_id: job.id, tenant_id: tenant.id }
         });
 
@@ -222,7 +222,7 @@ export const useBackendSendFlow = () => {
         .update({ status: 'running', paused_at: null, updated_at: new Date().toISOString() })
         .eq('id', jobId);
 
-      const { error: invokeError } = await supabase.functions.invoke('sendflow-process', {
+      const { error: invokeError } = await supabase.functions.invoke('sendflow-runner', {
         body: { job_id: jobId, tenant_id: tenant.id }
       });
 
