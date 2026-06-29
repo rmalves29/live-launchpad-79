@@ -12,6 +12,40 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+async function setEvolutionWebhook(apiUrl: string, apiKey: string, instance: string, webhookUrl: string) {
+  const headers = { "Content-Type": "application/json", "apikey": apiKey };
+  const events = ["MESSAGES_UPSERT", "CONNECTION_UPDATE"];
+
+  // Tentativa 1: payload v2 (objeto "webhook")
+  const v2Body = {
+    webhook: {
+      enabled: true,
+      url: webhookUrl,
+      webhookByEvents: false,
+      webhookBase64: false,
+      events,
+    },
+  };
+  try {
+    const r = await fetch(`${apiUrl}/webhook/set/${instance}`, { method: "POST", headers, body: JSON.stringify(v2Body) });
+    const txt = await r.text();
+    console.log(`[evolution-webhook-setup] v2 status=${r.status} body=${txt.slice(0,300)}`);
+    if (r.ok) return { ok: true, format: "v2", response: txt };
+  } catch (e: any) { console.warn(`[evolution-webhook-setup] v2 erro: ${e.message}`); }
+
+  // Tentativa 2: payload plano (compat antiga)
+  const flatBody = { url: webhookUrl, enabled: true, webhook_by_events: false, webhook_base64: false, events };
+  try {
+    const r = await fetch(`${apiUrl}/webhook/set/${instance}`, { method: "POST", headers, body: JSON.stringify(flatBody) });
+    const txt = await r.text();
+    console.log(`[evolution-webhook-setup] flat status=${r.status} body=${txt.slice(0,300)}`);
+    return { ok: r.ok, format: "flat", response: txt };
+  } catch (e: any) {
+    console.error(`[evolution-webhook-setup] flat erro: ${e.message}`);
+    return { ok: false, error: e.message };
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -55,21 +89,7 @@ Deno.serve(async (req) => {
         const evolutionApiUrl = Deno.env.get("EVOLUTION_API_URL") || "";
         const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY") || "";
         const webhookUrl = `${supabaseUrl}/functions/v1/evolution-webhook`;
-        try {
-          await fetch(`${evolutionApiUrl}/webhook/set/${slugName}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "apikey": evolutionApiKey },
-            body: JSON.stringify({
-              url: webhookUrl,
-              webhook_by_events: false,
-              webhook_base64: false,
-              events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
-            }),
-          });
-          console.log(`[evolution-instance-manager] Webhook configurado: ${webhookUrl}`);
-        } catch (whErr: any) {
-          console.warn(`[evolution-instance-manager] Erro ao configurar webhook (não fatal): ${whErr.message}`);
-        }
+        await setEvolutionWebhook(evolutionApiUrl, evolutionApiKey, slugName, webhookUrl);
 
         // Save to DB
         const { data: existing } = await supabase.from("integration_whatsapp").select("id").eq("tenant_id", tenant_id).maybeSingle();
@@ -138,6 +158,27 @@ Deno.serve(async (req) => {
         }
 
         return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      case "reconfigure_webhook": {
+        const { data: integration } = await supabase.from("integration_whatsapp").select("evolution_instance_name").eq("tenant_id", tenant_id).maybeSingle();
+        const instName = instance_name || integration?.evolution_instance_name;
+        if (!instName) {
+          return new Response(JSON.stringify({ error: "Instancia nao configurada" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const evolutionApiUrl = Deno.env.get("EVOLUTION_API_URL") || "";
+        const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY") || "";
+        const webhookUrl = `${supabaseUrl}/functions/v1/evolution-webhook`;
+        const r = await setEvolutionWebhook(evolutionApiUrl, evolutionApiKey, instName, webhookUrl);
+
+        // Buscar webhook atual para confirmar
+        let current: any = null;
+        try {
+          const cr = await fetch(`${evolutionApiUrl}/webhook/find/${instName}`, { headers: { apikey: evolutionApiKey } });
+          current = await cr.json().catch(() => null);
+        } catch (_) {}
+
+        return new Response(JSON.stringify({ success: r.ok, set_result: r, current_webhook: current, webhook_url: webhookUrl, instance: instName }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       default:
