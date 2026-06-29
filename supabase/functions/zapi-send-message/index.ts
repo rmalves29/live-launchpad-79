@@ -60,6 +60,18 @@ function formatPhoneNumber(phone: string): string {
   return cleaned;
 }
 
+// Detect group identifiers (Z-API: "<id>-group", Evolution/WA: "<id>@g.us")
+function isGroupJid(phone: string): boolean {
+  return phone.includes("@g.us") || /-group$/i.test(phone);
+}
+
+// Normalize group JID for each provider
+function normalizeGroupJid(phone: string, provider: "zapi" | "evolution"): string {
+  const id = phone.replace("@g.us", "").replace(/-group$/i, "");
+  if (provider === "evolution") return id + "@g.us";
+  return id + "-group"; // Z-API native format
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
