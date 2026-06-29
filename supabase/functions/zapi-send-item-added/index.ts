@@ -471,13 +471,11 @@ serve(async (req) => {
             .replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrlA);
           message = addMessageVariation(baseMessageA, false);
           consentDecisionAfterSend = "request_sent";
-          if ((credentials as any).buttonEnabled && provider === "zapi") {
+          if ((credentials as any).buttonEnabled) {
             useButton = true;
             resolvedButtonUrl = ((credentials as any).buttonUrl && (credentials as any).buttonUrl.trim()) ? (credentials as any).buttonUrl.trim() : checkoutUrlA;
           }
-          if (provider === "evolution") {
-            message = message + "\n\n🔗 " + checkoutUrlA;
-          }
+
         } else {
           templateType = "B";
           activeStateId = decision.stateId;
