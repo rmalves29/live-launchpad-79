@@ -209,7 +209,7 @@ export default function MessageComposer() {
             content_text: contentText,
             media_url: mediaUrl,
             mention_all: mentionAll,
-            message_ids: targetGroupIds.map(gid => (insertedMessages as any[] | null)?.find(m => m.group_id === gid)?.id).filter(Boolean),
+            message_ids: targetGroupIds.map(gid => (insertedMessages as any[] | null)?.find(m => m.group_id === gid)?.id),
             async: true,
           },
         });

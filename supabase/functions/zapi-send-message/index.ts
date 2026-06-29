@@ -114,8 +114,10 @@ serve(async (req) => {
     let zapiZaapId: string | null = null;
 
     if (credentials.provider === "evolution") {
-      await sendPresenceAvailable(credentials.instanceName, formattedPhone);
-      await sendPresenceComposing(credentials.instanceName, formattedPhone, calcTypingDuration(message.length));
+      if (!isGroup) {
+        await sendPresenceAvailable(credentials.instanceName, formattedPhone);
+        await sendPresenceComposing(credentials.instanceName, formattedPhone, calcTypingDuration(message.length));
+      }
       let result: { success: boolean; error?: string };
       if (messageType === "image" && mediaUrl) {
         result = await evoSendImage(credentials.instanceName, formattedPhone, mediaUrl, caption);
