@@ -60,6 +60,18 @@ function formatPhoneNumber(phone: string): string {
   return cleaned;
 }
 
+// Detect group identifiers (Z-API: "<id>-group", Evolution/WA: "<id>@g.us")
+function isGroupJid(phone: string): boolean {
+  return phone.includes("@g.us") || /-group$/i.test(phone);
+}
+
+// Normalize group JID for each provider
+function normalizeGroupJid(phone: string, provider: "zapi" | "evolution"): string {
+  const id = phone.replace("@g.us", "").replace(/-group$/i, "");
+  if (provider === "evolution") return id + "@g.us";
+  return id + "-group"; // Z-API native format
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -77,7 +89,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const isGroup = phone.includes("@g.us") || phone.includes("-");
+    const isGroup = isGroupJid(phone);
     if (!isGroup) {
       const { data: tenantRow } = await supabase.from("tenants").select("whatsapp_provider, slug").eq("id", tenant_id).maybeSingle();
       const slug = (tenantRow as any)?.slug;
@@ -94,7 +106,9 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: credentials.error, sent: false }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const formattedPhone = formatPhoneNumber(phone);
+    const formattedPhone = isGroup
+      ? normalizeGroupJid(phone, credentials.provider)
+      : formatPhoneNumber(phone);
     let sendOk = false;
     let zapiMessageId: string | null = null;
     let zapiZaapId: string | null = null;
