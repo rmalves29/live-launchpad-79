@@ -237,6 +237,50 @@ serve(async (req) => {
         }
       }
 
+      if (action === "qr-code" || action === "get_qr") {
+        try {
+          const resp = await fetch(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, { method: "GET", headers: evoH });
+          const data = await resp.json();
+          const qr = data?.base64 || data?.qrcode?.base64 || data?.code || null;
+          return new Response(JSON.stringify({ value: qr, qrcode: qr, base64: qr }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ value: null, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      if (action === "restart") {
+        try {
+          await fetch(`${EVOLUTION_API_URL}/instance/logout/${instanceName}`, { method: "DELETE", headers: evoH });
+          const resp = await fetch(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, { method: "GET", headers: evoH });
+          return new Response(JSON.stringify({ success: resp.ok }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ success: false, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      if (action === "send-document") {
+        try {
+          const mediaPayload = await loadMediaPayload(mediaUrl, "documento.pdf");
+          const resp = await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${instanceName}`, {
+            method: "POST", headers: evoH,
+            body: JSON.stringify({ number: phone, mediatype: "document", ...mediaPayload, fileName: mediaPayload.fileName }),
+          });
+          const data = await readJsonOrText(resp);
+          return new Response(JSON.stringify({ sent: resp.ok, messageId: data?.key?.id, error: resp.ok ? undefined : data?.raw || data }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ sent: false, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      // Tags/labels: Evolution (Baileys) não tem equivalente nativo ao sistema de tags da Z-API.
+      // Retornamos respostas seguras para não quebrar a UI.
+      if (action === "list-tags") {
+        return new Response(JSON.stringify([]), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      if (action === "add-tag") {
+        return new Response(JSON.stringify({ success: false, error: "Tags não suportadas na Evolution API" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
       // For other actions not yet supported for Evolution, return safe empty response
       const payload = notConfiguredPayload("Ação não suportada para Evolution API via zapi-proxy");
       return new Response(JSON.stringify(payload), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
