@@ -95,10 +95,10 @@ function normalizeRealCustomerPhone(raw: string | null | undefined): string | nu
   let p = String(raw || "").replace(/\D/g, "").replace(/^0+/, "");
   if (!p) return null;
   if (p.startsWith("55")) {
-    if (p.length === 12 || p.length === 13) return p;
+    if (p.length === 12 || p.length === 13) return p.slice(2);
     return null;
   }
-  if (p.length === 10 || p.length === 11) return "55" + p;
+  if (p.length === 10 || p.length === 11) return p;
   return null;
 }
 
