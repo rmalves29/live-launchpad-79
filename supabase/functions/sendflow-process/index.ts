@@ -167,47 +167,82 @@ function personalizeMessage(template: string, product: Product): string {
   return message;
 }
 
-async function getZAPICredentials(supabase: any, tenantId: string) {
+async function getCredentials(supabase: any, tenantId: string) {
   const { data: integration, error } = await supabase
     .from("integration_whatsapp")
-    .select("zapi_instance_id, zapi_token, zapi_client_token, is_active, provider")
+    .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, is_active, provider")
     .eq("tenant_id", tenantId)
-    .eq("provider", "zapi")
     .eq("is_active", true)
     .maybeSingle();
 
-  if (error || !integration || !integration.zapi_instance_id || !integration.zapi_token) {
-    return null;
+  if (error || !integration) return null;
+
+  const provider = integration.provider || "zapi";
+  if (provider === "evolution") {
+    if (!integration.evolution_instance_name) return null;
+    return { provider: "evolution" as const, instanceName: integration.evolution_instance_name };
   }
 
+  if (!integration.zapi_instance_id || !integration.zapi_token) return null;
   return {
+    provider: "zapi" as const,
     instanceId: integration.zapi_instance_id,
     token: integration.zapi_token,
-    clientToken: integration.zapi_client_token
+    clientToken: integration.zapi_client_token,
   };
 }
 
 async function sendGroupMessage(
-  credentials: { instanceId: string; token: string; clientToken?: string },
+  credentials: any,
   groupId: string,
   message: string,
   imageUrl?: string
 ): Promise<{ success: boolean; error?: string }> {
-  const { instanceId, token, clientToken } = credentials;
-  
+  const variedMessage = addMessageVariation(message, false, {
+    prependGreeting: false,
+    swapEmojis: false,
+    invisibleVariation: true,
+  });
+
   try {
+    if (credentials.provider === "evolution") {
+      const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL") || "";
+      const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "";
+      const evoH = { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY };
+      const { instanceName } = credentials;
+
+      // Simulate composing presence
+      await fetch(`${EVOLUTION_API_URL}/chat/sendPresence/${instanceName}`, {
+        method: "POST", headers: evoH,
+        body: JSON.stringify({ number: groupId, options: { presence: "composing", delay: 2000 } }),
+      });
+      await new Promise((r) => setTimeout(r, 2000));
+
+      let response: Response;
+      if (imageUrl) {
+        response = await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${instanceName}`, {
+          method: "POST", headers: evoH,
+          body: JSON.stringify({ number: groupId, mediatype: "image", media: imageUrl, caption: variedMessage }),
+        });
+      } else {
+        response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
+          method: "POST", headers: evoH,
+          body: JSON.stringify({ number: groupId, text: variedMessage }),
+        });
+      }
+
+      if (response.ok) return { success: true };
+      const errorText = await response.text();
+      return { success: false, error: errorText.substring(0, 100) };
+    }
+
+    // Z-API path
+    const { instanceId, token, clientToken } = credentials;
     await simulateTyping(instanceId, token, clientToken, groupId);
-    // Modo "soft": preserva o template EXATAMENTE como configurado.
-    // Sem saudação automática, sem swap de emojis. Apenas zero-width space invisível como anti-spam.
-    const variedMessage = addMessageVariation(message, false, {
-      prependGreeting: false,
-      swapEmojis: false,
-      invisibleVariation: true,
-    });
 
     let url: string;
     let body: Record<string, unknown>;
-    
+
     if (imageUrl) {
       url = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-image`;
       body = { phone: groupId, image: imageUrl, caption: variedMessage };
@@ -215,18 +250,14 @@ async function sendGroupMessage(
       url = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-text`;
       body = { phone: groupId, message: variedMessage };
     }
-    
+
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (clientToken) headers['Client-Token'] = clientToken;
-    
+
     const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
-    
-    if (response.ok) {
-      return { success: true };
-    } else {
-      const errorText = await response.text();
-      return { success: false, error: errorText.substring(0, 100) };
-    }
+    if (response.ok) return { success: true };
+    const errorText = await response.text();
+    return { success: false, error: errorText.substring(0, 100) };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -365,12 +396,12 @@ async function processTaskQueue({
     maxGroupDelaySeconds = 15,
   } = jobData;
 
-  // Get Z-API credentials
-  const credentials = await getZAPICredentials(supabase, tenantId);
+  // Get WhatsApp credentials (Z-API or Evolution API)
+  const credentials = await getCredentials(supabase, tenantId);
   if (!credentials) {
     await supabase
       .from('sending_jobs')
-      .update({ status: 'error', error_message: 'Z-API não configurado', updated_at: new Date().toISOString() })
+      .update({ status: 'error', error_message: 'WhatsApp não configurado', updated_at: new Date().toISOString() })
       .eq('id', jobId);
     return;
   }
