@@ -14,7 +14,12 @@ const corsHeaders = {
 
 async function setEvolutionWebhook(apiUrl: string, apiKey: string, instance: string, webhookUrl: string) {
   const headers = { "Content-Type": "application/json", "apikey": apiKey };
-  const events = ["MESSAGES_UPSERT", "CONNECTION_UPDATE"];
+  const events = [
+    "MESSAGES_UPSERT",
+    "GROUP_PARTICIPANTS_UPDATE",
+    "GROUP_UPDATE",
+    "CONNECTION_UPDATE",
+  ];
 
   // Tentativa 1: payload v2 (objeto "webhook")
   const v2Body = {
