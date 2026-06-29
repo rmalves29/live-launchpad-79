@@ -83,11 +83,11 @@ Deno.serve(async (req) => {
         }
 
         const result = await getQRCode(instName);
-        if (!result.success) {
+        if (!result.qrcode) {
           return new Response(JSON.stringify({ error: result.error || "Erro ao buscar QR Code" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
 
-        return new Response(JSON.stringify({ success: true, qrCode: result.qrCode }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ success: true, qrCode: result.qrcode }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       case "status": {
