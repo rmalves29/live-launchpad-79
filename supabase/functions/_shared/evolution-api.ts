@@ -33,6 +33,32 @@ async function readEvolutionResult(res: Response): Promise<{ success: boolean; m
   return { success: false, error: `Evolution ${res.status}: ${snippet}` };
 }
 
+async function loadMediaPayload(mediaUrl: string, fallbackFileName: string): Promise<{ media: string; mimetype: string; fileName: string }> {
+  if (!/^https?:\/\//i.test(mediaUrl)) {
+    return { media: mediaUrl, mimetype: "image/jpeg", fileName: fallbackFileName };
+  }
+
+  const response = await fetch(mediaUrl);
+  if (!response.ok) {
+    throw new Error(`Falha ao baixar mídia ${response.status}`);
+  }
+
+  const contentType = response.headers.get("content-type") || "image/jpeg";
+  const extension = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+
+  return {
+    media: btoa(binary),
+    mimetype: contentType,
+    fileName: fallbackFileName.replace(/\.[a-z0-9]+$/i, "") + "." + extension,
+  };
+}
+
 export async function sendText(instanceName: string, phone: string, message: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
     const res = await fetch(evoUrl("/message/sendText/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, text: message }) });
@@ -42,7 +68,8 @@ export async function sendText(instanceName: string, phone: string, message: str
 
 export async function sendImage(instanceName: string, phone: string, imageUrl: string, caption?: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    const res = await fetch(evoUrl("/message/sendMedia/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "image", mimetype: "image/jpeg", fileName: "produto.jpg", media: imageUrl, caption: caption || "" }) });
+    const mediaPayload = await loadMediaPayload(imageUrl, "produto.jpg");
+    const res = await fetch(evoUrl("/message/sendMedia/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "image", ...mediaPayload, caption: caption || "" }) });
     return await readEvolutionResult(res);
   } catch (e: any) { return { success: false, error: e.message }; }
 }
