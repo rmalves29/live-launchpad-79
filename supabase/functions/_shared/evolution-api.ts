@@ -9,6 +9,16 @@ function evoUrl(path: string): string {
   return EVOLUTION_API_URL.replace(/\/+$/, "") + path;
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 25_000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function readEvolutionResult(res: Response): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const text = await res.text();
   let data: any = null;
@@ -61,38 +71,49 @@ async function loadMediaPayload(mediaUrl: string, fallbackFileName: string): Pro
 
 export async function sendText(instanceName: string, phone: string, message: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    const res = await fetch(evoUrl("/message/sendText/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, text: message }) });
+    const res = await fetchWithTimeout(evoUrl("/message/sendText/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, text: message }) });
     return await readEvolutionResult(res);
-  } catch (e: any) { return { success: false, error: e.message }; }
+  } catch (e: any) { return { success: false, error: e.name === "AbortError" ? "Evolution timeout ao enviar texto" : e.message }; }
 }
 
 export async function sendImage(instanceName: string, phone: string, imageUrl: string, caption?: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
     const mediaPayload = await loadMediaPayload(imageUrl, "produto.jpg");
-    const res = await fetch(evoUrl("/message/sendMedia/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "image", ...mediaPayload, caption: caption || "" }) });
+    const res = await fetchWithTimeout(evoUrl("/message/sendMedia/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "image", ...mediaPayload, caption: caption || "" }) });
     return await readEvolutionResult(res);
-  } catch (e: any) { return { success: false, error: e.message }; }
+  } catch (e: any) { return { success: false, error: e.name === "AbortError" ? "Evolution timeout ao enviar imagem" : e.message }; }
+}
+
+export async function sendImageByUrl(instanceName: string, phone: string, imageUrl: string, caption?: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(evoUrl("/message/sendMedia/" + instanceName), {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({ number: phone, mediatype: "image", mimetype: "image/jpeg", media: imageUrl, caption: caption || "" }),
+    }, 20_000);
+    return await readEvolutionResult(res);
+  } catch (e: any) { return { success: false, error: e.name === "AbortError" ? "Evolution timeout ao enviar imagem por URL" : e.message }; }
 }
 
 export async function sendAudio(instanceName: string, phone: string, audioUrl: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    const res = await fetch(evoUrl("/message/sendMedia/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "audio", media: audioUrl }) });
+    const res = await fetchWithTimeout(evoUrl("/message/sendMedia/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "audio", media: audioUrl }) });
     return await readEvolutionResult(res);
-  } catch (e: any) { return { success: false, error: e.message }; }
+  } catch (e: any) { return { success: false, error: e.name === "AbortError" ? "Evolution timeout ao enviar áudio" : e.message }; }
 }
 
 export async function sendVideo(instanceName: string, phone: string, videoUrl: string, caption?: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    const res = await fetch(evoUrl("/message/sendMedia/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "video", media: videoUrl, caption: caption || "" }) });
+    const res = await fetchWithTimeout(evoUrl("/message/sendMedia/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "video", media: videoUrl, caption: caption || "" }) });
     return await readEvolutionResult(res);
-  } catch (e: any) { return { success: false, error: e.message }; }
+  } catch (e: any) { return { success: false, error: e.name === "AbortError" ? "Evolution timeout ao enviar vídeo" : e.message }; }
 }
 
-export async function sendDocument(instanceName: string, phone: string, documentUrl: string, fileName: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+export async function sendDocument(instanceName: string, phone: string, documentUrl: string, fileName = "documento.pdf"): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    const res = await fetch(evoUrl("/message/sendMedia/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "document", media: documentUrl, fileName }) });
+    const res = await fetchWithTimeout(evoUrl("/message/sendMedia/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "document", media: documentUrl, fileName }) });
     return await readEvolutionResult(res);
-  } catch (e: any) { return { success: false, error: e.message }; }
+  } catch (e: any) { return { success: false, error: e.name === "AbortError" ? "Evolution timeout ao enviar documento" : e.message }; }
 }
 
 export async function sendPresenceComposing(instanceName: string, phone: string, durationMs?: number): Promise<void> {

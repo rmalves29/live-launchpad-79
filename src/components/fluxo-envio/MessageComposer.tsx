@@ -194,7 +194,10 @@ export default function MessageComposer() {
         scheduled_at: sendMode === 'scheduled' ? new Date(scheduledAt).toISOString() : null,
       }));
 
-      const { error } = await supabase.from('fe_messages' as any).insert(messagesToInsert as any);
+      const { data: insertedMessages, error } = await supabase
+        .from('fe_messages' as any)
+        .insert(messagesToInsert as any)
+        .select('id, group_id');
       if (error) throw error;
 
       if (sendMode === 'instant') {
@@ -206,6 +209,8 @@ export default function MessageComposer() {
             content_text: contentText,
             media_url: mediaUrl,
             mention_all: mentionAll,
+            message_ids: targetGroupIds.map(gid => (insertedMessages as any[] | null)?.find(m => m.group_id === gid)?.id).filter(Boolean),
+            async: true,
           },
         });
         if (fnError) throw fnError;

@@ -3,10 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { simulateTyping, addMessageVariation } from "../_shared/anti-block-delay.ts";
 import {
   sendText as evoSendText,
-  sendImage as evoSendImage,
-  sendPresenceAvailable,
-  sendPresenceComposing,
-  calcTypingDuration,
+  sendImageByUrl as evoSendImageByUrl,
 } from "../_shared/evolution-api.ts";
 
 const corsHeaders = {
@@ -236,18 +233,16 @@ async function sendGroupMessageEvolution(
       ? groupId
       : groupId.replace(/-group$/i, "") + "@g.us";
 
-    await sendPresenceAvailable(instanceName, evoGroupId);
-
     if (imageUrl) {
-      await sendPresenceComposing(instanceName, evoGroupId, calcTypingDuration(50));
-      const imgResult = await evoSendImage(instanceName, evoGroupId, imageUrl);
-      if (!imgResult.success) return { success: false, error: imgResult.error };
-      await sleep(1500 + Math.random() * 1000);
-      await sendPresenceComposing(instanceName, evoGroupId, calcTypingDuration(message.length));
-      return await evoSendText(instanceName, evoGroupId, message);
+      const imgResult = await evoSendImageByUrl(instanceName, evoGroupId, imageUrl, message);
+      if (imgResult.success) return imgResult;
+
+      console.warn(`[sendflow-process] Evolution media failed for group ${evoGroupId}; falling back to text. Error: ${imgResult.error}`);
+      const textResult = await evoSendText(instanceName, evoGroupId, message);
+      if (textResult.success) return textResult;
+      return { success: false, error: imgResult.error || textResult.error };
     }
 
-    await sendPresenceComposing(instanceName, evoGroupId, calcTypingDuration(message.length));
     return await evoSendText(instanceName, evoGroupId, message);
   } catch (error: any) {
     return { success: false, error: error.message };
