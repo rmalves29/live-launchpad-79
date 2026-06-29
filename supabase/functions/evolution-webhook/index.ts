@@ -138,7 +138,8 @@ async function resolvePhoneByPushName(supabase: any, tenantId: string, pushName:
     .from("customers")
     .select("phone, name")
     .eq("tenant_id", tenantId)
-    .limit(1000);
+    .ilike("name", `%${tokens[0]}%`)
+    .limit(200);
 
   const requiredTokens = tokens.length >= 2 ? [tokens[0], tokens[tokens.length - 1]] : [tokens[0]];
   const matches = (customers || [])
