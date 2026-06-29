@@ -136,6 +136,11 @@ const PedidosManual = () => {
 
     setProcessingIds(prev => new Set(prev).add(product.id));
 
+    // Rollback tracking — limpar pedido/carrinho órfãos se o cart_items falhar
+    let createdOrderId: number | null = null;
+    let createdCartId: number | null = null;
+    let cartItemInserted = false;
+
     try {
       // Check if customer is blocked
       const { data: customerData } = await supabaseTenant
@@ -309,6 +314,7 @@ const PedidosManual = () => {
 
       const { orderId, cartId: initialCartId, isNew } = await getOrCreateOrder();
       let cartId = initialCartId;
+      if (isNew) createdOrderId = orderId;
 
       // Create cart if needed
       if (!cartId) {
@@ -326,6 +332,7 @@ const PedidosManual = () => {
 
         if (cartError) throw cartError;
         cartId = newCart.id;
+        createdCartId = cartId;
 
         // Update order with cart_id
         await supabaseTenant
@@ -365,6 +372,7 @@ const PedidosManual = () => {
           throw updateCartError;
         }
         console.log('[Manual] ✅ Item do carrinho atualizado');
+        cartItemInserted = true;
       } else {
         console.log('[Manual] ➕ Inserindo novo item no carrinho:', {
           cart_id: cartId,
@@ -390,6 +398,7 @@ const PedidosManual = () => {
           throw cartItemError;
         }
         console.log('[Manual] ✅ Item inserido com sucesso:', newCartItem);
+        cartItemInserted = true;
       }
 
       // Update product stock in database
@@ -424,6 +433,24 @@ const PedidosManual = () => {
 
     } catch (error: any) {
       console.error('Error launching sale:', error);
+
+      // ROLLBACK: se o cart_items não foi inserido, limpar pedido/carrinho órfãos criados nesta chamada
+      if (!cartItemInserted && (createdOrderId || createdCartId)) {
+        try {
+          if (createdCartId) {
+            await supabaseTenant.from('cart_items').delete().eq('cart_id', createdCartId);
+            await supabaseTenant.from('carts').delete().eq('id', createdCartId);
+            console.warn('[Manual] 🧹 Rollback: carrinho órfão removido', createdCartId);
+          }
+          if (createdOrderId) {
+            await supabaseTenant.from('orders').delete().eq('id', createdOrderId);
+            console.warn('[Manual] 🧹 Rollback: pedido órfão removido', createdOrderId);
+          }
+        } catch (cleanupErr) {
+          console.error('[Manual] ❌ Falha no rollback de pedido órfão:', cleanupErr);
+        }
+      }
+
       toast({
         title: 'Erro',
         description: error?.message || 'Erro ao lançar venda',
