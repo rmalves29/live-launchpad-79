@@ -234,7 +234,7 @@ export async function getGroupParticipants(instanceName: string, groupJid: strin
 
 export async function createInstance(instanceName: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const res = await fetch(evoUrl("/instance/create"), { method: "POST", headers: getHeaders(), body: JSON.stringify({ instanceName, integration: "WHATSAPP-BAILEYS", qrcode: true }) });
+    const res = await fetch(evoUrl("/instance/create"), { method: "POST", headers: getHeaders(), body: JSON.stringify({ instanceName, integration: "evolution", qrcode: true }) });
     const data = await res.json();
     if (res.ok) return { success: true };
     return { success: false, error: JSON.stringify(data).substring(0, 200) };
