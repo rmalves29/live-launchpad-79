@@ -441,16 +441,16 @@ Deno.serve(async (req) => {
     const tenantId: string = integration.tenant_id;
     const senderPhone = await resolveSenderPhone(instanceName, remoteJid, data, senderJid, isGroup);
     if (!senderPhone) {
-      await supabase.from("whatsapp_webhook_orphans").insert({
+      await supabase.from("whatsapp_messages").insert({
         tenant_id: tenantId,
-        instance_id: instanceName,
-        group_id: isGroup ? remoteJid : null,
-        sender_jid: senderJid || null,
-        message_text: messageText.substring(0, 1000),
-        reason: "unresolved_lid_phone",
-        payload,
+        phone: phoneFromJid(senderJid) || "unresolved",
+        message: `[SISTEMA] Evolution ignorou mensagem porque não conseguiu resolver telefone real do participante (${senderJid}). Texto: ${messageText}`.substring(0, 500),
+        type: "system_log",
+        whatsapp_group_name: isGroup ? remoteJid : null,
+        received_at: new Date().toISOString(),
+        zapi_message_id: messageId || null,
       }).then(({ error }: any) => {
-        if (error) console.warn(`[evolution-webhook] orphan insert failed: ${error.message}`);
+        if (error) console.warn(`[evolution-webhook] unresolved phone log failed: ${error.message}`);
       });
       return new Response(JSON.stringify({ success: false, error: "unresolved_lid_phone" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
