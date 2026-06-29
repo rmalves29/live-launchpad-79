@@ -123,12 +123,16 @@ export async function getQRCode(instanceName: string): Promise<{ qrcode?: string
   } catch (e: any) { return { error: e.message }; }
 }
 
-export async function getInstanceStatus(instanceName: string): Promise<{ connected: boolean }> {
+export async function getInstanceStatus(instanceName: string): Promise<{ connected: boolean; status?: string; user?: { phone?: string } }> {
   try {
     const res = await fetch(EVOLUTION_API_URL + "/instance/fetchInstances?instanceName=" + instanceName, { method: "GET", headers: getHeaders() });
     const data = await res.json();
     const instance = Array.isArray(data) ? data[0] : data;
-    return { connected: instance?.instance?.state === "open" };
+    const state = instance?.instance?.state || instance?.connectionStatus || instance?.state || "";
+    const connected = state === "open";
+    const ownerJid = instance?.instance?.ownerJid || instance?.ownerJid || "";
+    const phone = ownerJid ? ownerJid.replace("@s.whatsapp.net", "").replace("@c.us", "") : undefined;
+    return { connected, status: state, user: phone ? { phone } : undefined };
   } catch (e: any) { return { connected: false }; }
 }
 
