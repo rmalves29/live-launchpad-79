@@ -139,8 +139,13 @@ async function sendToGroupEvolution(
   mediaUrl?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // Evolution API expects WhatsApp JID format "<id>@g.us"; convert from Z-API "<id>-group" if needed
+    const evoJid = groupJid.includes("@g.us")
+      ? groupJid
+      : groupJid.replace(/-group$/i, "") + "@g.us";
+
     // Simula presenca online
-    await sendPresenceAvailable(instanceName, groupJid);
+    await sendPresenceAvailable(instanceName, evoJid);
 
     // Simula digitando proporcional ao texto
     if (contentText) {
