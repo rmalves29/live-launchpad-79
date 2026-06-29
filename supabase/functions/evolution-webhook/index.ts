@@ -521,33 +521,75 @@ Deno.serve(async (req) => {
 
       if (!cartItem) { results.push({ code: codeUpper, success: false, error: "cart_item_error" }); continue; }
 
-      // Update stock
-      await supabase.from("products").update({ stock: product.stock - requestedQty }).eq("id", product.id);
+      // Update stock atomically; rollback cart item if stock changed concurrently
+      const { data: stockRows, error: stockError } = await supabase
+        .from("products")
+        .update({ stock: product.stock - requestedQty })
+        .eq("id", product.id)
+        .gte("stock", requestedQty)
+        .select("stock");
+      if (stockError || !stockRows || stockRows.length === 0) {
+        if (existingItem) {
+          await supabase.from("cart_items").update({ qty: existingItem.qty }).eq("id", existingItem.id);
+        } else {
+          await supabase.from("cart_items").delete().eq("id", cartItem.id);
+        }
+        results.push({ code: codeUpper, success: false, error: "stock_race_condition", product: product.name });
+        continue;
+      }
 
       // Update order total
       if (order?.id) await updateOrderTotal(supabase, order.id);
 
-      // Confirmation message in group (same format as zapi-webhook)
+      // Customer notification follows the same template flow used by Z-API.
+      // Do not send ad-hoc confirmation in the group: only ITEM_ADDED / PAID_ORDER / TRACKING templates are sent privately.
       if (sendConfirmation) {
-        const currentQty = cartItem.qty;
-        const unitPrice = Number(product.price).toFixed(2).replace(".", ",");
-        const total = (currentQty * Number(product.price)).toFixed(2).replace(".", ",");
-        const confirmMsg = currentQty > requestedQty
-          ? `✅ *${product.name}*\nCódigo: ${product.code}\n\nPedido atualizado!\nQuantidade total: *${currentQty}x*\nTotal: *R$ ${total}*`
-          : `✅ *${product.name}*\nCódigo: ${product.code}\n\n${requestedQty > 1 ? `Quantidade: *${requestedQty}x*\n` : ""}Valor: *R$ ${unitPrice}*\nTotal: *R$ ${total}*`;
-
-        // Send confirmation in group (to groupJid so all participants see it)
         try {
-          await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
-            method: "POST", headers: evoHeaders(),
-            body: JSON.stringify({ number: groupJid, text: addVariation(confirmMsg) }),
-          });
-        } catch (e: any) { console.error("[evolution-webhook] Erro ao enviar confirmação no grupo:", e.message); }
-
-        // Trigger item_added private notification
-        try {
-          await supabase.functions.invoke("zapi-send-item-added", {
+          const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+          const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+          await fetch(`${supabaseUrl}/functions/v1/zapi-send-item-added`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceRoleKey}` },
             body: {
+              tenant_id: tenantId,
+              customer_phone: senderPhone,
+              product_name: product.name,
+              product_code: product.code,
+              quantity: requestedQty,
+              unit_price: Number(cartItem.unit_price || product.promotional_price || product.price),
+              original_price: Number(product.price),
+              order_id: order?.id || null,
+              cart_id: cart.id,
+            } as any,
+          }).then(async (response) => {
+            const text = await response.text();
+            console.log(`[evolution-webhook] item-added dispatch status=${response.status} body=${text.substring(0, 200)}`);
+          });
+        } catch (e: any) { console.error("[evolution-webhook] Erro ao invocar zapi-send-item-added:", e.message); }
+
+        // Log system entry only; actual outgoing template is logged by zapi-send-item-added.
+        await supabase.from("whatsapp_messages").insert({
+          tenant_id: tenantId,
+          phone: senderPhone,
+          message: `[SISTEMA] Produto ${product.code} adicionado ao pedido${order?.id ? ` #${order.id}` : ""}; template ITEM_ADDED enfileirado.`,
+          type: "system_log",
+          product_name: product.name,
+          sent_at: new Date().toISOString(),
+          order_id: order?.id || null,
+          delivery_status: "QUEUED",
+        });
+      }
+
+      results.push({ code: codeUpper, success: true, product: product.name, qty: cartItem.qty, order_id: order?.id });
+    }
+
+    return new Response(JSON.stringify({ success: true, results }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+  } catch (error: any) {
+    console.error("[evolution-webhook] Error:", error.message);
+    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+});
               tenant_id: tenantId,
               customer_phone: senderPhone,
               product_name: product.name,
