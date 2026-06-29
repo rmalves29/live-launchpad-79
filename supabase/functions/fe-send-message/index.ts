@@ -2,12 +2,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   sendText as evoSendText,
-  sendImage as evoSendImage,
+  sendImageByUrl as evoSendImageByUrl,
   sendAudio as evoSendAudio,
   sendVideo as evoSendVideo,
-  sendPresenceComposing,
-  sendPresenceAvailable,
-  calcTypingDuration,
   getGroupParticipants as evoGetGroupParticipants,
 } from "../_shared/evolution-api.ts";
 
@@ -144,25 +141,16 @@ async function sendToGroupEvolution(
       ? groupJid
       : groupJid.replace(/-group$/i, "") + "@g.us";
 
-    // Simula presenca online
-    await sendPresenceAvailable(instanceName, evoJid);
-
-    // Simula digitando proporcional ao texto
-    if (contentText) {
-      const typingMs = calcTypingDuration(contentText.length);
-      await sendPresenceComposing(instanceName, evoJid, typingMs);
-    }
-
     switch (contentType) {
       case "text": {
         return await evoSendText(instanceName, evoJid, contentText || "");
       }
       case "image": {
-        // Envia imagem sem caption (1 operacao na Evolution)
-        const imgResult = await evoSendImage(instanceName, evoJid, mediaUrl || "");
-        if (contentText && contentText.trim()) {
-          await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1000));
-          await evoSendText(instanceName, evoJid, contentText);
+        const imgResult = await evoSendImageByUrl(instanceName, evoJid, mediaUrl || "", contentText || "");
+        if (!imgResult.success && contentText?.trim()) {
+          console.warn(`[fe-send-message] Evolution media failed for group ${evoJid}; falling back to text. Error: ${imgResult.error}`);
+          const textResult = await evoSendText(instanceName, evoJid, contentText);
+          if (textResult.success) return textResult;
         }
         return imgResult;
       }
