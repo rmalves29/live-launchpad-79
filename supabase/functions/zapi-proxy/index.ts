@@ -35,7 +35,7 @@ serve(async (req) => {
     // Get Z-API integration config for this tenant
     const { data: integration, error: integrationError } = await supabase
       .from("integration_whatsapp")
-      .select("zapi_instance_id, zapi_token, zapi_client_token, is_active, provider")
+      .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, is_active, provider")
       .eq("tenant_id", tenant_id)
       .eq("is_active", true)
       .maybeSingle();
@@ -83,14 +83,55 @@ serve(async (req) => {
       });
     }
 
+    if (integration.provider === "evolution") {
+      const instanceName = integration.evolution_instance_name;
+      const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL") || "";
+      const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "";
+      const evoH = { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY };
+
+      if (action === "status") {
+        try {
+          const res = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${instanceName}`, { method: "GET", headers: evoH });
+          const data = await res.json();
+          const inst = Array.isArray(data) ? data[0] : data;
+          const state = inst?.instance?.state || inst?.connectionStatus || inst?.state || "";
+          const connected = state === "open";
+          const ownerJid = inst?.instance?.ownerJid || inst?.ownerJid || "";
+          const phone = ownerJid ? ownerJid.split("@")[0] : undefined;
+          return new Response(JSON.stringify({ connected, status: state, user: phone ? { phone } : undefined }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ connected: false, status: "error", error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      if (action === "list-groups") {
+        try {
+          const res = await fetch(`${EVOLUTION_API_URL}/group/fetchAllGroups/${instanceName}?getParticipants=false`, { method: "GET", headers: evoH });
+          const data = await res.json();
+          const groups = Array.isArray(data) ? data : [];
+          // Normalize to Z-API format expected by SendFlow frontend
+          const normalized = groups.map((g: any) => ({
+            id: g.id || g.remoteJid || "",
+            name: g.subject || g.name || "",
+            isGroup: true,
+            participantCount: g.size || g.participants?.length || 0,
+            lastMessageTime: String(g.creation || "0"),
+          })).filter((g: any) => g.id && g.name)
+            .sort((a: any, b: any) => parseInt(b.lastMessageTime) - parseInt(a.lastMessageTime));
+          return new Response(JSON.stringify(normalized), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify([]), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      // For other actions not yet supported for Evolution, return safe empty response
+      const payload = notConfiguredPayload("Ação não suportada para Evolution API via zapi-proxy");
+      return new Response(JSON.stringify(payload), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     if (integration.provider !== "zapi") {
-      const payload = notConfiguredPayload(
-        "Esta integração não está configurada para Z-API"
-      );
-      return new Response(JSON.stringify(payload), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const payload = notConfiguredPayload("Esta integração não está configurada para Z-API");
+      return new Response(JSON.stringify(payload), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     if (!integration.zapi_instance_id || !integration.zapi_token) {
