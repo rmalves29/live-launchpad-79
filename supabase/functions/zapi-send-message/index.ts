@@ -89,7 +89,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const isGroup = phone.includes("@g.us") || phone.includes("-");
+    const isGroup = isGroupJid(phone);
     if (!isGroup) {
       const { data: tenantRow } = await supabase.from("tenants").select("whatsapp_provider, slug").eq("id", tenant_id).maybeSingle();
       const slug = (tenantRow as any)?.slug;
@@ -106,7 +106,9 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: credentials.error, sent: false }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const formattedPhone = formatPhoneNumber(phone);
+    const formattedPhone = isGroup
+      ? normalizeGroupJid(phone, credentials.provider)
+      : formatPhoneNumber(phone);
     let sendOk = false;
     let zapiMessageId: string | null = null;
     let zapiZaapId: string | null = null;
