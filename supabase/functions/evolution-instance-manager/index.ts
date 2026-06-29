@@ -51,6 +51,26 @@ Deno.serve(async (req) => {
           return new Response(JSON.stringify({ error: result.error || "Erro ao criar instancia" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
 
+        // Configure webhook on Evolution API to point to evolution-webhook edge function
+        const evolutionApiUrl = Deno.env.get("EVOLUTION_API_URL") || "";
+        const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY") || "";
+        const webhookUrl = `${supabaseUrl}/functions/v1/evolution-webhook`;
+        try {
+          await fetch(`${evolutionApiUrl}/webhook/set/${slugName}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "apikey": evolutionApiKey },
+            body: JSON.stringify({
+              url: webhookUrl,
+              webhook_by_events: false,
+              webhook_base64: false,
+              events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
+            }),
+          });
+          console.log(`[evolution-instance-manager] Webhook configurado: ${webhookUrl}`);
+        } catch (whErr: any) {
+          console.warn(`[evolution-instance-manager] Erro ao configurar webhook (não fatal): ${whErr.message}`);
+        }
+
         // Save to DB
         const { data: existing } = await supabase.from("integration_whatsapp").select("id").eq("tenant_id", tenant_id).maybeSingle();
 
@@ -72,7 +92,7 @@ Deno.serve(async (req) => {
           });
         }
 
-        return new Response(JSON.stringify({ success: true, instance_name: slugName }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ success: true, instance_name: slugName, webhook_url: webhookUrl }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       case "qrcode": {
