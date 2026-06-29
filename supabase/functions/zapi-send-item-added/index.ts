@@ -461,9 +461,20 @@ serve(async (req) => {
 
         if (decision.action === "send_request") {
           templateType = "A";
+          const checkoutUrlA = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
           const template = (credentials as any).templateSolicitacao || getDefaultTemplateSolicitacao();
-          message = addMessageVariation(formatMessage(template, body, orderCtx), false);
+          const baseMessageA = formatMessage(template, body, orderCtx)
+            .replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrlA)
+            .replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrlA);
+          message = addMessageVariation(baseMessageA, false);
           consentDecisionAfterSend = "request_sent";
+          if ((credentials as any).buttonEnabled && provider === "zapi") {
+            useButton = true;
+            resolvedButtonUrl = ((credentials as any).buttonUrl && (credentials as any).buttonUrl.trim()) ? (credentials as any).buttonUrl.trim() : checkoutUrlA;
+          }
+          if (provider === "evolution") {
+            message = message + "\n\n🔗 " + checkoutUrlA;
+          }
         } else {
           templateType = "B";
           activeStateId = decision.stateId;
