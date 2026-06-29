@@ -235,17 +235,19 @@ async function sendGroupMessageEvolution(
       : groupId.replace(/-group$/i, "") + "@g.us";
 
     if (imageUrl) {
-      // 1) Try base64 upload (most reliable for Baileys/Evolution with groups)
-      let imgResult = await evoSendImage(instanceName, evoGroupId, imageUrl, message);
+      const optimizedImageUrl = imageUrl
+        .replace("/storage/v1/object/public/product-images/", "/storage/v1/render/image/public/product-images/")
+        .replace(/\?.*$/, "") + "?width=800&quality=75";
+
+      // Prefer URL mode for SendFlow groups: it keeps the Edge Function payload tiny and avoids base64 upload timeouts.
+      let imgResult = await evoSendImageByUrl(instanceName, evoGroupId, optimizedImageUrl, message);
       if (imgResult.success) return imgResult;
 
-      console.warn(`[sendflow-process] Evolution sendImage (base64) failed for ${evoGroupId}: ${imgResult.error}. Trying URL mode.`);
-      // 2) Fallback to URL mode
+      console.warn(`[sendflow-process] Evolution sendImageByUrl failed for ${evoGroupId}: ${imgResult.error}. Trying original URL.`);
       imgResult = await evoSendImageByUrl(instanceName, evoGroupId, imageUrl, message);
       if (imgResult.success) return imgResult;
 
       console.warn(`[sendflow-process] Evolution media failed for ${evoGroupId}; falling back to text-only. Error: ${imgResult.error}`);
-      // 3) Last resort: text only
       const textResult = await evoSendText(instanceName, evoGroupId, message);
       if (textResult.success) return textResult;
       return { success: false, error: imgResult.error || textResult.error };
