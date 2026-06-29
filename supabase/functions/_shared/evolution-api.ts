@@ -5,48 +5,62 @@ function getHeaders(): Record<string, string> {
   return { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY };
 }
 
+async function readEvolutionResult(res: Response): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const text = await res.text();
+  let data: any = null;
+
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = null;
+    }
+  }
+
+  if (res.ok) {
+    return {
+      success: true,
+      messageId: data?.key?.id || data?.message?.key?.id || data?.id,
+    };
+  }
+
+  const body = data ? JSON.stringify(data) : text.replace(/\s+/g, " ").trim();
+  const snippet = (body || res.statusText || "sem resposta").substring(0, 300);
+  return { success: false, error: `Evolution ${res.status}: ${snippet}` };
+}
+
 export async function sendText(instanceName: string, phone: string, message: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
     const res = await fetch(EVOLUTION_API_URL + "/message/sendText/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, text: message }) });
-    const data = await res.json();
-    if (res.ok) return { success: true, messageId: data?.key?.id };
-    return { success: false, error: JSON.stringify(data).substring(0, 200) };
+    return await readEvolutionResult(res);
   } catch (e: any) { return { success: false, error: e.message }; }
 }
 
 export async function sendImage(instanceName: string, phone: string, imageUrl: string, caption?: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    const res = await fetch(EVOLUTION_API_URL + "/message/sendMedia/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "image", media: imageUrl, caption: caption || "" }) });
-    const data = await res.json();
-    if (res.ok) return { success: true, messageId: data?.key?.id };
-    return { success: false, error: JSON.stringify(data).substring(0, 200) };
+    const res = await fetch(EVOLUTION_API_URL + "/message/sendMedia/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "image", mimetype: "image/jpeg", fileName: "produto.jpg", media: imageUrl, caption: caption || "" }) });
+    return await readEvolutionResult(res);
   } catch (e: any) { return { success: false, error: e.message }; }
 }
 
 export async function sendAudio(instanceName: string, phone: string, audioUrl: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
     const res = await fetch(EVOLUTION_API_URL + "/message/sendMedia/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "audio", media: audioUrl }) });
-    const data = await res.json();
-    if (res.ok) return { success: true, messageId: data?.key?.id };
-    return { success: false, error: JSON.stringify(data).substring(0, 200) };
+    return await readEvolutionResult(res);
   } catch (e: any) { return { success: false, error: e.message }; }
 }
 
 export async function sendVideo(instanceName: string, phone: string, videoUrl: string, caption?: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
     const res = await fetch(EVOLUTION_API_URL + "/message/sendMedia/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "video", media: videoUrl, caption: caption || "" }) });
-    const data = await res.json();
-    if (res.ok) return { success: true, messageId: data?.key?.id };
-    return { success: false, error: JSON.stringify(data).substring(0, 200) };
+    return await readEvolutionResult(res);
   } catch (e: any) { return { success: false, error: e.message }; }
 }
 
 export async function sendDocument(instanceName: string, phone: string, documentUrl: string, fileName: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
     const res = await fetch(EVOLUTION_API_URL + "/message/sendMedia/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "document", media: documentUrl, fileName }) });
-    const data = await res.json();
-    if (res.ok) return { success: true, messageId: data?.key?.id };
-    return { success: false, error: JSON.stringify(data).substring(0, 200) };
+    return await readEvolutionResult(res);
   } catch (e: any) { return { success: false, error: e.message }; }
 }
 
