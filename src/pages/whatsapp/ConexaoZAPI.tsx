@@ -71,7 +71,8 @@ export default function ConexaoZAPI() {
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
-  const [provider, setProvider] = useState<Provider>('zapi');
+  const [provider, setProvider] = useState<Provider>('zapi'); // tab currently viewed
+  const [activeProvider, setActiveProvider] = useState<Provider>('zapi'); // what's saved in DB
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [loadingQR, setLoadingQR] = useState(false);
@@ -114,13 +115,15 @@ export default function ConexaoZAPI() {
     stopPolling();
     setWhatsappStatus(null);
     setLastSyncAt(null);
+    // Only poll when viewing the provider that is actually active in DB
+    if (provider !== activeProvider) return () => stopPolling();
     if (provider === 'zapi' && instanceId && token) {
       startPollingZapi();
     } else if (provider === 'evolution' && evolutionInstanceName) {
       startPollingEvolution();
     }
     return () => stopPolling();
-  }, [provider, instanceId, token, evolutionInstanceName]);
+  }, [provider, activeProvider, instanceId, token, evolutionInstanceName]);
 
   const loadIntegration = async () => {
     if (!tenant?.id) return;
@@ -140,6 +143,7 @@ export default function ConexaoZAPI() {
         setEvolutionInstanceName((data as any).evolution_instance_name || '');
         const savedProvider: Provider = (data as any).provider === 'evolution' ? 'evolution' : 'zapi';
         setProvider(savedProvider);
+        setActiveProvider(savedProvider);
       }
     } catch (e: any) {
       console.error('Error loading integration:', e);
@@ -399,8 +403,11 @@ export default function ConexaoZAPI() {
           <div className={`p-2 rounded-lg ${provider === 'zapi' ? 'bg-primary/10' : 'bg-muted'}`}>
             <Zap className={`h-5 w-5 ${provider === 'zapi' ? 'text-primary' : 'text-muted-foreground'}`} />
           </div>
-          <div>
-            <p className={`text-sm font-semibold ${provider === 'zapi' ? 'text-primary' : 'text-foreground'}`}>Z-API</p>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <p className={`text-sm font-semibold ${provider === 'zapi' ? 'text-primary' : 'text-foreground'}`}>Z-API</p>
+              {activeProvider === 'zapi' && <Badge className="text-[10px] px-1 py-0 h-4 bg-primary/10 text-primary border-primary/20">Ativo</Badge>}
+            </div>
             <p className="text-xs text-muted-foreground">Instância própria</p>
           </div>
         </button>
@@ -416,8 +423,11 @@ export default function ConexaoZAPI() {
           <div className={`p-2 rounded-lg ${provider === 'evolution' ? 'bg-violet-500/10' : 'bg-muted'}`}>
             <Shield className={`h-5 w-5 ${provider === 'evolution' ? 'text-violet-500' : 'text-muted-foreground'}`} />
           </div>
-          <div>
-            <p className={`text-sm font-semibold ${provider === 'evolution' ? 'text-violet-600 dark:text-violet-400' : 'text-foreground'}`}>Evolution API</p>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <p className={`text-sm font-semibold ${provider === 'evolution' ? 'text-violet-600 dark:text-violet-400' : 'text-foreground'}`}>Evolution API</p>
+              {activeProvider === 'evolution' && <Badge className="text-[10px] px-1 py-0 h-4 bg-violet-500/10 text-violet-600 border-violet-300 dark:text-violet-400">Ativo</Badge>}
+            </div>
             <p className="text-xs text-muted-foreground">Anti-bloqueio avançado</p>
           </div>
         </button>
@@ -428,6 +438,11 @@ export default function ConexaoZAPI() {
         {/* Status */}
         <Card>
           <CardContent className="p-6">
+            {provider !== activeProvider && (
+              <div className="mb-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+                Este provedor não está ativo. Seu sistema usa <strong>{activeProvider === 'evolution' ? 'Evolution API' : 'Z-API'}</strong> como provedor atual.
+              </div>
+            )}
             <div className="flex items-start gap-4 mb-6">
               <div className="p-3 rounded-2xl bg-emerald-100 dark:bg-emerald-950/40">
                 <Phone className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
