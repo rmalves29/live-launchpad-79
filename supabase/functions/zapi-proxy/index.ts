@@ -8,6 +8,34 @@ const corsHeaders = {
 
 const ZAPI_BASE_URL = "https://api.z-api.io";
 
+async function readJsonOrText(res: Response): Promise<any> {
+  const text = await res.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text.replace(/\s+/g, " ").trim().substring(0, 300) };
+  }
+}
+
+async function loadMediaPayload(mediaUrl: string, fallbackFileName: string): Promise<{ media: string; mimetype: string; fileName: string }> {
+  if (!/^https?:\/\//i.test(mediaUrl)) {
+    return { media: mediaUrl, mimetype: "image/jpeg", fileName: fallbackFileName };
+  }
+
+  const response = await fetch(mediaUrl);
+  if (!response.ok) throw new Error(`Falha ao baixar mídia ${response.status}`);
+  const contentType = response.headers.get("content-type") || "image/jpeg";
+  const extension = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return { media: btoa(binary), mimetype: contentType, fileName: fallbackFileName.replace(/\.[a-z0-9]+$/i, "") + "." + extension };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -139,8 +167,8 @@ serve(async (req) => {
             method: "POST", headers: evoH,
             body: JSON.stringify({ number: phone, text: message }),
           });
-          const data = await resp.json();
-          return new Response(JSON.stringify({ sent: resp.ok, messageId: data?.key?.id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          const data = await readJsonOrText(resp);
+          return new Response(JSON.stringify({ sent: resp.ok, messageId: data?.key?.id, error: resp.ok ? undefined : data?.raw || data }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (e: any) {
           return new Response(JSON.stringify({ sent: false, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
@@ -148,12 +176,13 @@ serve(async (req) => {
 
       if (action === "send-image" || action === "send-group-image") {
         try {
+          const mediaPayload = await loadMediaPayload(mediaUrl, "imagem.jpg");
           const resp = await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${instanceName}`, {
             method: "POST", headers: evoH,
-            body: JSON.stringify({ number: phone, mediatype: "image", media: mediaUrl, caption: caption || "" }),
+            body: JSON.stringify({ number: phone, mediatype: "image", ...mediaPayload, caption: caption || "" }),
           });
-          const data = await resp.json();
-          return new Response(JSON.stringify({ sent: resp.ok, messageId: data?.key?.id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          const data = await readJsonOrText(resp);
+          return new Response(JSON.stringify({ sent: resp.ok, messageId: data?.key?.id, error: resp.ok ? undefined : data?.raw || data }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (e: any) {
           return new Response(JSON.stringify({ sent: false, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
