@@ -433,6 +433,24 @@ const PedidosManual = () => {
 
     } catch (error: any) {
       console.error('Error launching sale:', error);
+
+      // ROLLBACK: se o cart_items não foi inserido, limpar pedido/carrinho órfãos criados nesta chamada
+      if (!cartItemInserted && (createdOrderId || createdCartId)) {
+        try {
+          if (createdCartId) {
+            await supabaseTenant.from('cart_items').delete().eq('cart_id', createdCartId);
+            await supabaseTenant.from('carts').delete().eq('id', createdCartId);
+            console.warn('[Manual] 🧹 Rollback: carrinho órfão removido', createdCartId);
+          }
+          if (createdOrderId) {
+            await supabaseTenant.from('orders').delete().eq('id', createdOrderId);
+            console.warn('[Manual] 🧹 Rollback: pedido órfão removido', createdOrderId);
+          }
+        } catch (cleanupErr) {
+          console.error('[Manual] ❌ Falha no rollback de pedido órfão:', cleanupErr);
+        }
+      }
+
       toast({
         title: 'Erro',
         description: error?.message || 'Erro ao lançar venda',
