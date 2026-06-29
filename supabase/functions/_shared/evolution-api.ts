@@ -85,26 +85,52 @@ export async function sendButton(
   title?: string,
   footer?: string,
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const label = (buttonLabel || "Pagar Agora").slice(0, 20);
+  const safeTitle = (title && title.trim()) ? title.trim().slice(0, 60) : "Finalize seu pedido";
+
+  // Tentativa 1: schema Evolution v2 padrão (buttons com type=url)
   try {
-    const payload: Record<string, unknown> = {
+    const payloadV2: Record<string, unknown> = {
       number: phone,
-      title: title || "",
+      title: safeTitle,
       description: message,
       footer: footer || "",
       buttons: [
-        {
-          type: "url",
-          displayText: (buttonLabel || "Pagar Agora").slice(0, 20),
-          url: buttonUrl,
-        },
+        { type: "url", displayText: label, url: buttonUrl },
       ],
     };
     const res = await fetchWithTimeout(
       evoUrl("/message/sendButtons/" + instanceName),
-      { method: "POST", headers: getHeaders(), body: JSON.stringify(payload) },
+      { method: "POST", headers: getHeaders(), body: JSON.stringify(payloadV2) },
       60_000,
     );
-    return await readEvolutionResult(res);
+    const result = await readEvolutionResult(res);
+    if (result.success && result.messageId) return result;
+    console.warn("[evolution] sendButton v2 falhou, tentando schema alternativo:", result.error || "sem messageId");
+  } catch (e: any) {
+    console.warn("[evolution] sendButton v2 erro:", e.message);
+  }
+
+  // Tentativa 2: schema antigo (buttonMessage com buttonText/url)
+  try {
+    const payloadLegacy: Record<string, unknown> = {
+      number: phone,
+      buttonMessage: {
+        title: safeTitle,
+        description: message,
+        footerText: footer || "",
+        buttons: [
+          { buttonId: "pay-now", buttonText: { displayText: label }, type: 1, url: buttonUrl },
+        ],
+        headerType: 1,
+      },
+    };
+    const res2 = await fetchWithTimeout(
+      evoUrl("/message/sendButtons/" + instanceName),
+      { method: "POST", headers: getHeaders(), body: JSON.stringify(payloadLegacy) },
+      60_000,
+    );
+    return await readEvolutionResult(res2);
   } catch (e: any) {
     return { success: false, error: e.name === "AbortError" ? "Evolution timeout ao enviar botão" : e.message };
   }

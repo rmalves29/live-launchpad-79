@@ -508,13 +508,13 @@ serve(async (req) => {
         if (useButton && resolvedButtonUrl) {
           const btnLabel = (credentials as any).buttonLabel || "Pagar Agora";
           const btnRes = await evoSendButton(instanceName, formattedPhone, message, btnLabel, resolvedButtonUrl);
-          if (btnRes.success && btnRes.messageId) {
+          if (btnRes.success) {
             buttonDelivered = true;
             sendOk = true;
-            zapiMessageId = btnRes.messageId;
+            zapiMessageId = btnRes.messageId || null;
             console.log("[zapi-send-item-added] Evolution sendButton OK | msgId:", zapiMessageId);
           } else {
-            console.warn("[zapi-send-item-added] Evolution sendButton falhou, fallback texto:", btnRes.error || "no messageId");
+            console.warn("[zapi-send-item-added] Evolution sendButton falhou, fallback texto:", btnRes.error);
           }
         }
 
