@@ -221,6 +221,105 @@ function addVariation(msg: string): string {
   return msg + invisible[Math.floor(Math.random() * invisible.length)];
 }
 
+function normalizeGroupParticipantEventType(action: string): "join" | "leave" | null {
+  const normalized = String(action || "").toLowerCase();
+  if (["add", "join", "invite", "introduced", "participant-add", "participant_add"].includes(normalized)) return "join";
+  if (["remove", "leave", "left", "exit", "participant-remove", "participant_remove"].includes(normalized)) return "leave";
+  return null;
+}
+
+function extractGroupParticipants(payload: any): string[] {
+  const data = payload?.data || payload || {};
+  const raw = data.participants || data.participant || data.id || data.jid || data.remoteJid || [];
+  const values = Array.isArray(raw) ? raw : [raw];
+  return values
+    .flatMap((participant: any) => participantFieldValues(participant))
+    .map((value: string) => normalizeRealCustomerPhone(value) || "")
+    .filter(Boolean);
+}
+
+async function sendEvolutionGroupAutoMessages(
+  supabase: any,
+  tenantId: string,
+  instanceName: string,
+  groupJid: string,
+  groupName: string,
+  eventType: "join" | "leave",
+  participantPhones: string[],
+) {
+  const { data: feGroup } = await supabase
+    .from("fe_groups")
+    .select("id, group_jid, group_name, participant_count")
+    .eq("tenant_id", tenantId)
+    .eq("group_jid", groupJid)
+    .maybeSingle();
+
+  for (const phone of Array.from(new Set(participantPhones))) {
+    const recentThreshold = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data: existingEvent } = await supabase
+      .from("fe_group_events")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("group_jid", groupJid)
+      .eq("phone", phone)
+      .eq("event_type", eventType)
+      .gte("created_at", recentThreshold)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingEvent) continue;
+
+    await supabase.from("fe_group_events").insert({
+      tenant_id: tenantId,
+      group_id: feGroup?.id || null,
+      group_jid: groupJid,
+      phone,
+      event_type: eventType,
+    });
+
+    if (!feGroup) {
+      console.log(`[evolution-webhook] Group ${groupJid} not registered in fe_groups; event recorded only`);
+      continue;
+    }
+
+    const newCount = Math.max(0, (feGroup.participant_count || 0) + (eventType === "join" ? 1 : -1));
+    feGroup.participant_count = newCount;
+    await supabase.from("fe_groups").update({ participant_count: newCount }).eq("id", feGroup.id);
+
+    const { data: campaignLinks } = await supabase.from("fe_campaign_groups").select("campaign_id").eq("group_id", feGroup.id);
+    const campaignIds = (campaignLinks || []).map((link: any) => link.campaign_id);
+    let orFilter = `group_id.eq.${feGroup.id},and(group_id.is.null,campaign_id.is.null)`;
+    if (campaignIds.length > 0) orFilter += `,campaign_id.in.(${campaignIds.join(",")})`;
+
+    const { data: autoMsgs } = await supabase
+      .from("fe_auto_messages")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .eq("event_type", eventType)
+      .eq("is_active", true)
+      .or(orFilter);
+
+    for (const autoMsg of autoMsgs || []) {
+      const text = String(autoMsg.content_text || "")
+        .replace(/\{\{phone\}\}/g, phone)
+        .replace(/\{\{group\}\}/g, feGroup.group_name || groupName || groupJid);
+      if (autoMsg.content_type !== "text" || !text.trim()) continue;
+
+      const phone55 = phone.startsWith("55") ? phone : "55" + phone;
+      const ok = await evoSendText(instanceName, phone55, addVariation(text));
+      await supabase.from("whatsapp_messages").insert({
+        tenant_id: tenantId,
+        phone,
+        message: text.substring(0, 500),
+        type: "outgoing",
+        sent_at: new Date().toISOString(),
+        delivery_status: ok ? "SENT" : "FAILED",
+      });
+      console.log(`[evolution-webhook] Auto-message ${eventType} to ${phone55}: ${ok ? "SENT" : "FAILED"}`);
+    }
+  }
+}
+
 // ─── In-memory dedup ──────────────────────────────────────────────────────────
 const processedMessages = new Map<string, number>();
 function isDuplicate(id: string): boolean {
@@ -434,6 +533,41 @@ Deno.serve(async (req) => {
     const payload = await req.json();
     const event = payload.event || payload.type || "";
     const instanceName: string = payload.instance || payload.destination || "";
+
+    const isGroupParticipantEvent = [
+      "group-participants.update",
+      "GROUP_PARTICIPANTS_UPDATE",
+      "GROUP_PARTICIPANTS.UPDATE",
+      "groups.update",
+      "GROUP_UPDATE",
+    ].includes(event);
+
+    if (isGroupParticipantEvent) {
+      const data = payload.data || {};
+      const groupJid = data.id || data.remoteJid || data.groupJid || data.chatId || "";
+      const action = data.action || data.event || payload.action || "";
+      const eventType = normalizeGroupParticipantEventType(action);
+
+      if (!instanceName || !groupJid || !eventType) {
+        return new Response(JSON.stringify({ skipped: "invalid_group_event", event, action, groupJid }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      const { data: integration } = await supabase.from("integration_whatsapp").select("tenant_id, is_active").eq("evolution_instance_name", instanceName).eq("is_active", true).maybeSingle();
+      if (!integration) return new Response(JSON.stringify({ skipped: "tenant_not_found", instance: instanceName }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+      let participants = extractGroupParticipants(payload);
+      if (participants.length === 0) {
+        const groupInfo = await getGroupInfo(instanceName, groupJid);
+        const rawParticipants = Array.isArray(groupInfo?.participants) ? groupInfo.participants : [];
+        participants = rawParticipants.flatMap((participant: any) => participantFieldValues(participant).map((value) => normalizeRealCustomerPhone(value) || "")).filter(Boolean);
+      }
+
+      const groupName = await getGroupName(instanceName, groupJid);
+      await sendEvolutionGroupAutoMessages(supabase, integration.tenant_id, instanceName, groupJid, groupName, eventType, participants);
+
+      return new Response(JSON.stringify({ success: true, event: eventType, group: groupJid, participants: participants.length }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     // Only handle message events
     if (event !== "messages.upsert" && event !== "MESSAGES_UPSERT") {
