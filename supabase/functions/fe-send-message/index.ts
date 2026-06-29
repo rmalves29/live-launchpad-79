@@ -191,20 +191,20 @@ serve(async (req) => {
 
     if (!tenant_id || !group_ids?.length) {
       return new Response(JSON.stringify({ error: "tenant_id e group_ids sao obrigatorios" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     if (content_type !== "text" && !media_url) {
       return new Response(JSON.stringify({ error: "media_url e obrigatorio para imagem, audio e video" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const creds = await getCredentials(supabase, tenant_id);
     if (!creds) {
       return new Response(JSON.stringify({ error: "WhatsApp nao configurado" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -220,7 +220,7 @@ serve(async (req) => {
 
     if (!groups?.length) {
       return new Response(JSON.stringify({ error: "Nenhum grupo encontrado" }), {
-        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
