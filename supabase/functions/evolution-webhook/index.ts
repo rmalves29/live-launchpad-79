@@ -478,7 +478,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ skipped: "tenant_not_found", instance: instanceName }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
     const tenantId: string = integration.tenant_id;
-    const senderPhone = await resolveSenderPhone(instanceName, remoteJid, data, senderJid, isGroup);
+    const senderPhone = await resolveSenderPhone(supabase, tenantId, instanceName, remoteJid, data, senderJid, isGroup, pushName);
     if (!senderPhone) {
       await supabase.from("whatsapp_messages").insert({
         tenant_id: tenantId,
