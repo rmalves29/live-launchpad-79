@@ -109,26 +109,109 @@ async function findOrCreateCustomer(supabase: any, tenantId: string, phone: stri
 
 async function findOrCreateCart(supabase: any, tenantId: string, phone: string, groupName: string, eventType: string) {
   const today = getBrasiliaDateISO();
-  const { data } = await supabase.from("carts").select("*").eq("tenant_id", tenantId).eq("customer_phone", phone).eq("status", "OPEN").eq("event_date", today).order("created_at", { ascending: false }).limit(1).maybeSingle();
-  if (data) return data;
-  const { data: newC } = await supabase.from("carts").insert({ tenant_id: tenantId, customer_phone: phone, event_date: today, event_type: eventType, status: "OPEN", whatsapp_group_name: groupName || null }).select().single();
+  const { data } = await supabase
+    .from("carts")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .eq("customer_phone", phone)
+    .eq("event_type", eventType)
+    .eq("event_date", today)
+    .eq("status", "OPEN")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (data) {
+    const { data: linkedOrder } = await supabase
+      .from("orders")
+      .select("id, is_cancelled, is_paid")
+      .eq("tenant_id", tenantId)
+      .eq("cart_id", data.id)
+      .order("id", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!linkedOrder?.is_cancelled && !linkedOrder?.is_paid) return data;
+  }
+  const { data: newC, error } = await supabase.from("carts").insert({ tenant_id: tenantId, customer_phone: phone, event_date: today, event_type: eventType, status: "OPEN", whatsapp_group_name: groupName || null }).select().single();
+  if (error) throw new Error(`cart_creation_failed: ${error.message}`);
   return newC;
 }
 
 async function findOrCreateOrder(supabase: any, tenantId: string, phone: string, cartId: number, groupName: string, eventType: string, customerName: string | null) {
-  const { data } = await supabase.from("orders").select("*").eq("tenant_id", tenantId).eq("cart_id", cartId).eq("is_cancelled", false).order("created_at", { ascending: false }).limit(1).maybeSingle();
-  if (data) return data;
-  const { data: newO } = await supabase.from("orders").insert({ tenant_id: tenantId, customer_phone: phone, cart_id: cartId, event_type: eventType, whatsapp_group_name: groupName || null, customer_name: customerName || null, status: "pending" }).select().single();
+  const today = getBrasiliaDateISO();
+  const { data: orderByCart, error: cartOrderError } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .eq("cart_id", cartId)
+    .eq("is_paid", false)
+    .eq("is_cancelled", false)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (cartOrderError) console.warn(`[evolution-webhook] order_by_cart error: ${cartOrderError.message}`);
+  if (orderByCart) {
+    if (orderByCart.event_date !== today) await supabase.from("orders").update({ event_date: today }).eq("id", orderByCart.id);
+    return orderByCart;
+  }
+
+  const { data: existingOrder, error: existingOrderError } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("tenant_id", tenantId)
+    .eq("customer_phone", phone)
+    .eq("event_type", eventType)
+    .eq("event_date", today)
+    .eq("is_paid", false)
+    .eq("is_cancelled", false)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existingOrderError) console.warn(`[evolution-webhook] existing_order error: ${existingOrderError.message}`);
+  if (existingOrder) {
+    if (existingOrder.cart_id !== cartId) await supabase.from("orders").update({ cart_id: cartId }).eq("id", existingOrder.id);
+    return { ...existingOrder, cart_id: cartId };
+  }
+
+  const { data: customerData } = await supabase
+    .from("customers")
+    .select("name, cep, street, number, complement, neighborhood, city, state")
+    .eq("tenant_id", tenantId)
+    .eq("phone", phone)
+    .limit(1)
+    .maybeSingle();
+
+  const { data: newO, error } = await supabase.from("orders").insert({
+    tenant_id: tenantId,
+    customer_phone: phone,
+    customer_name: customerData?.name || customerName || null,
+    customer_cep: customerData?.cep || null,
+    customer_street: customerData?.street || null,
+    customer_number: customerData?.number || null,
+    customer_complement: customerData?.complement || null,
+    customer_neighborhood: customerData?.neighborhood || null,
+    customer_city: customerData?.city || null,
+    customer_state: customerData?.state || null,
+    event_date: today,
+    event_type: eventType,
+    total_amount: 0,
+    is_paid: false,
+    cart_id: cartId,
+    whatsapp_group_name: groupName || null,
+    source: "whatsapp",
+  }).select().single();
+  if (error) throw new Error(`order_creation_failed: ${error.message}`);
   return newO;
 }
 
 async function updateOrderTotal(supabase: any, orderId: number) {
-  const { data: order } = await supabase.from("orders").select("cart_id, freight_value").eq("id", orderId).single();
+  const { data: order } = await supabase.from("orders").select("cart_id, observation").eq("id", orderId).single();
   if (!order) return;
   const { data: items } = await supabase.from("cart_items").select("qty, unit_price").eq("cart_id", order.cart_id);
   const productsTotal = (items || []).reduce((s: number, i: any) => s + Number(i.qty) * Number(i.unit_price), 0);
-  const total = productsTotal + Number(order.freight_value || 0);
-  await supabase.from("orders").update({ total, products_total: productsTotal }).eq("id", orderId);
+  let freightValue = 0;
+  const match = String(order.observation || "").match(/R\$\s*([\d]+[.,][\d]{2})/i);
+  if (match) freightValue = Number(match[1].replace(",", ".")) || 0;
+  await supabase.from("orders").update({ total_amount: productsTotal + freightValue }).eq("id", orderId);
 }
 
 // ─── Consent helpers (same logic as zapi-webhook) ────────────────────────────
