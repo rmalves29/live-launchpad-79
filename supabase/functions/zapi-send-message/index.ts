@@ -127,6 +127,8 @@ serve(async (req) => {
         result = await evoSendText(credentials.instanceName, formattedPhone, message);
       }
       sendOk = result.success;
+      if (!sendOk) console.error("[zapi-send-message] Evolution error:", result.error, "| phone:", formattedPhone, "| type:", messageType);
+      else console.log("[zapi-send-message] Evolution OK | phone:", formattedPhone);
     } else {
       await simulateTyping(credentials.instanceId, credentials.token, credentials.clientToken, formattedPhone);
       const baseUrl = ZAPI_BASE_URL + "/instances/" + credentials.instanceId + "/token/" + credentials.token;
