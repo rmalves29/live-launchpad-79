@@ -343,49 +343,31 @@ export default function SendFlow() {
 
     setLoadingGroups(true);
     try {
-      const { data, error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
-        body: { action: 'list-groups', tenant_id: tenant.id }
-      });
+      // Load from cached fe_groups table (fast) instead of live WhatsApp API call
+      const { data, error } = await supabaseTenant.raw
+        .from('fe_groups')
+        .select('group_jid, group_name, participant_count')
+        .eq('tenant_id', tenant.id)
+        .order('group_name');
 
       if (error) throw error;
 
-      // Z-API returns array of chats, filter only groups (isGroup: true)
-      let groupsList: WhatsAppGroup[] = [];
-      
-      if (Array.isArray(data)) {
-        const groupsFromApi = data.filter((chat: any) => chat.isGroup === true);
-        
-        // Usa os dados disponíveis diretamente, sem chamadas extras de group-metadata
-        groupsList = groupsFromApi.map((chat: any) => ({
-          id: chat.phone || chat.id,
-          name: chat.name || chat.phone || 'Grupo sem nome',
-          // Z-API /chats pode incluir participantCount em alguns casos
-          participantCount: chat.participantCount || chat.participants?.length || undefined
-        }));
-      } else if (data?.groups && Array.isArray(data.groups)) {
-        groupsList = data.groups.map((g: any) => ({
-          id: g.id || g.phone,
-          name: g.name || 'Grupo sem nome',
-          participantCount: g.participantCount || g.participants?.length || undefined
-        }));
-      }
-      
+      const groupsList: WhatsAppGroup[] = (data || []).map((g: any) => ({
+        id: g.group_jid,
+        name: g.group_name || g.group_jid,
+        participantCount: g.participant_count || undefined,
+      }));
+
       setGroups(groupsList);
-      
-      if (groupsList.length > 0) {
-        toast({
-          title: 'Grupos carregados',
-          description: `${groupsList.length} grupo(s) encontrado(s)`,
-        });
-      } else {
+
+      if (groupsList.length === 0) {
         toast({
           title: 'Aviso',
-          description: 'Nenhum grupo encontrado. Verifique se o WhatsApp está conectado.',
+          description: 'Nenhum grupo encontrado. Sincronize os grupos em Fluxo de Envio > Grupos.',
         });
       }
     } catch (error: any) {
-      // Silenciar erros de grupos quando WhatsApp não configurado
-      console.log('Erro ao carregar grupos (WhatsApp pode não estar conectado):', error?.message);
+      console.log('Erro ao carregar grupos:', error?.message);
       setGroups([]);
     } finally {
       setLoadingGroups(false);
