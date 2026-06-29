@@ -124,6 +124,79 @@ serve(async (req) => {
         }
       }
 
+      if (action === "disconnect" || action === "stop") {
+        try {
+          await fetch(`${EVOLUTION_API_URL}/instance/logout/${instanceName}`, { method: "DELETE", headers: evoH });
+          return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ success: false, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      if (action === "send-text" || action === "send-group") {
+        try {
+          const resp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
+            method: "POST", headers: evoH,
+            body: JSON.stringify({ number: phone, text: message }),
+          });
+          const data = await resp.json();
+          return new Response(JSON.stringify({ sent: resp.ok, messageId: data?.key?.id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ sent: false, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      if (action === "send-image" || action === "send-group-image") {
+        try {
+          const resp = await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${instanceName}`, {
+            method: "POST", headers: evoH,
+            body: JSON.stringify({ number: phone, mediatype: "image", media: mediaUrl, caption: caption || "" }),
+          });
+          const data = await resp.json();
+          return new Response(JSON.stringify({ sent: resp.ok, messageId: data?.key?.id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ sent: false, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      if (action === "send-button-actions") {
+        // Evolution doesn't support Z-API button format — send as plain text with link appended
+        try {
+          const linkUrl = Array.isArray(buttonActions) && buttonActions[0]?.url ? buttonActions[0].url : "";
+          const fullMsg = linkUrl ? `${message}\n\n🔗 ${linkUrl}` : message;
+          const resp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
+            method: "POST", headers: evoH,
+            body: JSON.stringify({ number: phone, text: fullMsg }),
+          });
+          return new Response(JSON.stringify({ sent: resp.ok }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ sent: false, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      if (action === "group-metadata") {
+        try {
+          const resp = await fetch(`${EVOLUTION_API_URL}/group/findGroupInfos/${instanceName}?groupJid=${encodeURIComponent(phone)}`, { method: "GET", headers: evoH });
+          const data = await resp.json();
+          return new Response(JSON.stringify(data), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      if (action === "profile-picture") {
+        try {
+          const resp = await fetch(`${EVOLUTION_API_URL}/chat/fetchProfilePictureUrl/${instanceName}`, {
+            method: "POST", headers: evoH,
+            body: JSON.stringify({ number: phone }),
+          });
+          const data = await resp.json();
+          return new Response(JSON.stringify({ profilePictureUrl: data?.profilePictureUrl || data?.url || null }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ profilePictureUrl: null }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
       // For other actions not yet supported for Evolution, return safe empty response
       const payload = notConfiguredPayload("Ação não suportada para Evolution API via zapi-proxy");
       return new Response(JSON.stringify(payload), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
