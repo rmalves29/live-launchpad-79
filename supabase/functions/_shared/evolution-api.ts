@@ -71,7 +71,7 @@ async function loadMediaPayload(mediaUrl: string, fallbackFileName: string): Pro
 
 export async function sendText(instanceName: string, phone: string, message: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    const res = await fetchWithTimeout(evoUrl("/message/sendText/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, text: message }) });
+    const res = await fetchWithTimeout(evoUrl("/message/sendText/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, text: message }) }, 90_000);
     return await readEvolutionResult(res);
   } catch (e: any) { return { success: false, error: e.name === "AbortError" ? "Evolution timeout ao enviar texto" : e.message }; }
 }
