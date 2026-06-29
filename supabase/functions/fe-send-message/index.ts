@@ -150,31 +150,31 @@ async function sendToGroupEvolution(
     // Simula digitando proporcional ao texto
     if (contentText) {
       const typingMs = calcTypingDuration(contentText.length);
-      await sendPresenceComposing(instanceName, groupJid, typingMs);
+      await sendPresenceComposing(instanceName, evoJid, typingMs);
     }
 
     switch (contentType) {
       case "text": {
-        return await evoSendText(instanceName, groupJid, contentText || "");
+        return await evoSendText(instanceName, evoJid, contentText || "");
       }
       case "image": {
         // Envia imagem sem caption (1 operacao na Evolution)
-        const imgResult = await evoSendImage(instanceName, groupJid, mediaUrl || "");
+        const imgResult = await evoSendImage(instanceName, evoJid, mediaUrl || "");
         if (contentText && contentText.trim()) {
           await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1000));
-          await evoSendText(instanceName, groupJid, contentText);
+          await evoSendText(instanceName, evoJid, contentText);
         }
         return imgResult;
       }
       case "audio":
-        return await evoSendAudio(instanceName, groupJid, mediaUrl || "");
+        return await evoSendAudio(instanceName, evoJid, mediaUrl || "");
       case "video":
-        return await evoSendVideo(instanceName, groupJid, mediaUrl || "", contentText);
+        return await evoSendVideo(instanceName, evoJid, mediaUrl || "", contentText);
       case "video_note": {
-        const res = await evoSendVideo(instanceName, groupJid, mediaUrl || "");
+        const res = await evoSendVideo(instanceName, evoJid, mediaUrl || "");
         if (contentText && contentText.trim()) {
           await new Promise((r) => setTimeout(r, 800));
-          await evoSendText(instanceName, groupJid, contentText);
+          await evoSendText(instanceName, evoJid, contentText);
         }
         return res;
       }
