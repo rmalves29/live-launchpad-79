@@ -485,10 +485,11 @@ serve(async (req) => {
           const baseMessage = formatMessage(template, body, orderCtx).replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrl).replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrl);
           message = addMessageVariation(baseMessage, false);
           consentDecisionAfterSend = "active_sent";
-          if ((credentials as any).buttonEnabled && provider === "zapi") {
+          if ((credentials as any).buttonEnabled) {
             useButton = true;
             resolvedButtonUrl = ((credentials as any).buttonUrl && (credentials as any).buttonUrl.trim()) ? (credentials as any).buttonUrl.trim() : checkoutUrl;
           }
+
         }
       }
 
