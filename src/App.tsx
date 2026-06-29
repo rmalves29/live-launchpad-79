@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import { ReactNode } from "react";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
-import Navbar from "./components/Navbar";
+import { AppShell } from "./components/layout/AppShell";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
@@ -34,12 +34,14 @@ import SendFlow from "./pages/sendflow/Index";
 import Etiquetas from "./pages/etiquetas/Index";
 import FluxoEnvio from "./pages/fluxo-envio/Index";
 import CampaignRedirect from "./pages/fluxo-envio/CampaignRedirect";
+import FilaEspera from "./pages/fila-espera/Index";
 import TenantIntegrationsPage from "./components/TenantIntegrationsPage";
 import TenantStorefront from "./pages/TenantStorefront";
 import CadastroInstagram from "./pages/tenant/CadastroInstagram";
 
 import EmpresasIndex from "./pages/empresas/Index";
 import Debug from "./pages/Debug";
+import AdminErros from "./pages/admin/Erros";
 import LandingPage from "./pages/LandingPage";
 import RenovarAssinatura from "./pages/RenovarAssinatura";
 
@@ -47,11 +49,14 @@ import RenovarAssinatura from "./pages/RenovarAssinatura";
 import WhatsappTemplates from "./pages/whatsapp/Templates";
 import Cobranca from "./pages/whatsapp/Cobranca";
 import ConexaoZAPI from "./pages/whatsapp/ConexaoZAPI";
+import WhatsAppOfficialPage from "./pages/whatsapp/Oficial";
+import EnviosAtivos from "./pages/EnviosAtivos";
 import AgenteIA from "./pages/agente-ia/Index";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfUse from "./pages/TermsOfUse";
 import SuporteIA from "./pages/suporte-ia/Index";
 import RequireAuth from "./components/RequireAuth";
+import DesignPreview from "./pages/design-preview/Index";
 import RequireTenantAuth from "./components/RequireTenantAuth";
 import { TenantProvider } from "@/contexts/TenantContext";
 import { TenantLoader } from "@/components/TenantLoader";
@@ -71,7 +76,7 @@ const queryClient = new QueryClient({
 const AppContent = () => {
   const location = useLocation();
   const { tenant, isMainSite } = useTenantContext();
-  const showNavbar = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && location.pathname !== '/politica-de-privacidade' && location.pathname !== '/termos-de-uso' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/');
+  const showShell = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && location.pathname !== '/politica-de-privacidade' && location.pathname !== '/termos-de-uso' && location.pathname !== '/design-preview' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/');
   
   // Atualiza o título da aba do navegador baseado na página atual
   usePageTitle();
@@ -81,10 +86,10 @@ const AppContent = () => {
 
   // Componente para restringir acesso apenas a super_admin
   const SuperAdminOnly = ({ children }: { children: ReactNode }) => {
-    const { profile, loading } = useAuth();
+    const { profile, isLoading } = useAuth();
     
     // Aguardar carregamento do perfil
-    if (loading) {
+    if (isLoading) {
       return <div className="flex items-center justify-center h-screen">Carregando...</div>;
     }
     
@@ -96,12 +101,34 @@ const AppContent = () => {
     return <>{children}</>;
   };
 
-  return (
-    <>
-      {showNavbar && <Navbar />}
-      <Routes>
-        {/* Landing page pública institucional */}
-        <Route path="/landing" element={<LandingPage />} />
+  // Componente para restringir acesso apenas ao usuário rafael@maniadmulher.com
+  const RafaelOnly = ({ children }: { children: ReactNode }) => {
+    const { user, isLoading } = useAuth();
+
+    if (user?.email === 'rafael@maniadmulher.com') {
+      return <>{children}</>;
+    }
+    
+    if (isLoading) {
+      return <div className="flex items-center justify-center min-h-[60vh]">Carregando...</div>;
+    }
+
+    if (!user) {
+      return <Navigate to="/auth" replace />;
+    }
+    
+    if (user.email !== 'rafael@maniadmulher.com') {
+      return <Navigate to="/" replace />;
+    }
+    
+    return <>{children}</>;
+  };
+
+  const routes = (
+    <Routes>
+      {/* Landing page pública institucional */}
+      <Route path="/landing" element={<LandingPage />} />
+
         
         {/* Rota principal - Index ou TenantAuth dependendo do contexto */}
         <Route path="/" element={
@@ -165,6 +192,9 @@ const AppContent = () => {
         <Route path="/relatorios" element={
           <RequireTenantAuth><Relatorios /></RequireTenantAuth>
         } />
+        <Route path="/fila-espera" element={
+          <RequireTenantAuth><FilaEspera /></RequireTenantAuth>
+        } />
         <Route path="/sendflow" element={
           <RequireTenantAuth><SendFlow /></RequireTenantAuth>
         } />
@@ -188,6 +218,14 @@ const AppContent = () => {
         <Route path="/whatsapp/cobranca" element={
           <RequireTenantAuth><Cobranca /></RequireTenantAuth>
         } />
+
+        {/* Painel de envios ativos */}
+        <Route path="/envios-ativos" element={
+          <RequireTenantAuth><EnviosAtivos /></RequireTenantAuth>
+        } />
+        <Route path="/whatsapp/envios-ativos" element={
+          <RequireTenantAuth><EnviosAtivos /></RequireTenantAuth>
+        } />
         
         {/* Rota para conexão WhatsApp Z-API */}
         <Route path="/whatsapp/conexao" element={
@@ -195,6 +233,9 @@ const AppContent = () => {
         } />
         <Route path="/whatsapp/zapi" element={
           <RequireTenantAuth><ConexaoZAPI /></RequireTenantAuth>
+        } />
+        <Route path="/whatsapp/oficial" element={
+          <RequireAuth><SuperAdminOnly><WhatsAppOfficialPage /></SuperAdminOnly></RequireAuth>
         } />
         
         {/* Rota para integrações (Mercado Pago, Melhor Envio) */}
@@ -237,7 +278,19 @@ const AppContent = () => {
             </SuperAdminOnly>
           </RequireAuth>
         } />
-        
+
+        {/* Painel de erros do Sentry - apenas rafael@maniadmulher.com */}
+        <Route path="/admin/erros" element={
+          <RequireAuth>
+            <RafaelOnly>
+              <AdminErros />
+            </RafaelOnly>
+          </RequireAuth>
+        } />
+        <Route path="/design-preview" element={
+          <RequireAuth><DesignPreview /></RequireAuth>
+        } />
+
         {/* Páginas públicas legais */}
         <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
         <Route path="/termos-de-uso" element={<TermsOfUse />} />
@@ -255,8 +308,9 @@ const AppContent = () => {
         
         <Route path="*" element={<NotFound />} />
       </Routes>
-    </>
   );
+
+  return showShell ? <AppShell>{routes}</AppShell> : routes;
 };
 
 

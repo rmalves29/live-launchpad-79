@@ -16,7 +16,7 @@ serve(async (req) => {
   const timestamp = new Date().toISOString();
 
   try {
-    const { action, tenant_id, message, phone, mediaUrl, caption, tagId } = await req.json();
+    const { action, tenant_id, message, phone, mediaUrl, caption, tagId, buttonActions } = await req.json();
 
     console.log(`[${timestamp}] [zapi-proxy] Action: ${action}, Tenant: ${tenant_id}`);
 
@@ -35,7 +35,7 @@ serve(async (req) => {
     // Get Z-API integration config for this tenant
     const { data: integration, error: integrationError } = await supabase
       .from("integration_whatsapp")
-      .select("zapi_instance_id, zapi_token, zapi_client_token, is_active, provider")
+      .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, is_active, provider")
       .eq("tenant_id", tenant_id)
       .eq("is_active", true)
       .maybeSingle();
@@ -83,14 +83,128 @@ serve(async (req) => {
       });
     }
 
+    if (integration.provider === "evolution") {
+      const instanceName = integration.evolution_instance_name;
+      const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL") || "";
+      const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "";
+      const evoH = { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY };
+
+      if (action === "status") {
+        try {
+          const res = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${instanceName}`, { method: "GET", headers: evoH });
+          const data = await res.json();
+          const inst = Array.isArray(data) ? data[0] : data;
+          const state = inst?.instance?.state || inst?.connectionStatus || inst?.state || "";
+          const connected = state === "open";
+          const ownerJid = inst?.instance?.ownerJid || inst?.ownerJid || "";
+          const phone = ownerJid ? ownerJid.split("@")[0] : undefined;
+          return new Response(JSON.stringify({ connected, status: state, user: phone ? { phone } : undefined }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ connected: false, status: "error", error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      if (action === "list-groups") {
+        try {
+          const res = await fetch(`${EVOLUTION_API_URL}/group/fetchAllGroups/${instanceName}?getParticipants=false`, { method: "GET", headers: evoH });
+          const data = await res.json();
+          const groups = Array.isArray(data) ? data : [];
+          // Normalize to Z-API format expected by SendFlow frontend
+          const normalized = groups.map((g: any) => ({
+            id: g.id || g.remoteJid || "",
+            name: g.subject || g.name || "",
+            isGroup: true,
+            participantCount: g.size || g.participants?.length || 0,
+            lastMessageTime: String(g.creation || "0"),
+          })).filter((g: any) => g.id && g.name)
+            .sort((a: any, b: any) => parseInt(b.lastMessageTime) - parseInt(a.lastMessageTime));
+          return new Response(JSON.stringify(normalized), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify([]), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      if (action === "disconnect" || action === "stop") {
+        try {
+          await fetch(`${EVOLUTION_API_URL}/instance/logout/${instanceName}`, { method: "DELETE", headers: evoH });
+          return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ success: false, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      if (action === "send-text" || action === "send-group") {
+        try {
+          const resp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
+            method: "POST", headers: evoH,
+            body: JSON.stringify({ number: phone, text: message }),
+          });
+          const data = await resp.json();
+          return new Response(JSON.stringify({ sent: resp.ok, messageId: data?.key?.id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ sent: false, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      if (action === "send-image" || action === "send-group-image") {
+        try {
+          const resp = await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${instanceName}`, {
+            method: "POST", headers: evoH,
+            body: JSON.stringify({ number: phone, mediatype: "image", media: mediaUrl, caption: caption || "" }),
+          });
+          const data = await resp.json();
+          return new Response(JSON.stringify({ sent: resp.ok, messageId: data?.key?.id }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ sent: false, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      if (action === "send-button-actions") {
+        // Evolution doesn't support Z-API button format — send as plain text with link appended
+        try {
+          const linkUrl = Array.isArray(buttonActions) && buttonActions[0]?.url ? buttonActions[0].url : "";
+          const fullMsg = linkUrl ? `${message}\n\n🔗 ${linkUrl}` : message;
+          const resp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
+            method: "POST", headers: evoH,
+            body: JSON.stringify({ number: phone, text: fullMsg }),
+          });
+          return new Response(JSON.stringify({ sent: resp.ok }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ sent: false, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      if (action === "group-metadata") {
+        try {
+          const resp = await fetch(`${EVOLUTION_API_URL}/group/findGroupInfos/${instanceName}?groupJid=${encodeURIComponent(phone)}`, { method: "GET", headers: evoH });
+          const data = await resp.json();
+          return new Response(JSON.stringify(data), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      if (action === "profile-picture") {
+        try {
+          const resp = await fetch(`${EVOLUTION_API_URL}/chat/fetchProfilePictureUrl/${instanceName}`, {
+            method: "POST", headers: evoH,
+            body: JSON.stringify({ number: phone }),
+          });
+          const data = await resp.json();
+          return new Response(JSON.stringify({ profilePictureUrl: data?.profilePictureUrl || data?.url || null }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return new Response(JSON.stringify({ profilePictureUrl: null }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
+      // For other actions not yet supported for Evolution, return safe empty response
+      const payload = notConfiguredPayload("Ação não suportada para Evolution API via zapi-proxy");
+      return new Response(JSON.stringify(payload), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     if (integration.provider !== "zapi") {
-      const payload = notConfiguredPayload(
-        "Esta integração não está configurada para Z-API"
-      );
-      return new Response(JSON.stringify(payload), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const payload = notConfiguredPayload("Esta integração não está configurada para Z-API");
+      return new Response(JSON.stringify(payload), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     if (!integration.zapi_instance_id || !integration.zapi_token) {
@@ -154,6 +268,23 @@ serve(async (req) => {
         };
         break;
 
+      case "send-button-actions":
+        // Z-API: /send-button-actions — mensagem com até 3 botões (URL/CALL/REPLY)
+        if (!Array.isArray(buttonActions) || buttonActions.length === 0) {
+          return new Response(
+            JSON.stringify({ error: "buttonActions é obrigatório para send-button-actions" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        endpoint = "/send-button-actions";
+        method = "POST";
+        body = {
+          phone: phone,
+          message: message,
+          buttonActions: buttonActions
+        };
+        break;
+
       case "send-document":
         endpoint = "/send-document";
         method = "POST";
@@ -162,6 +293,7 @@ serve(async (req) => {
           document: mediaUrl
         };
         break;
+
 
       case "list-groups": {
         // Fetch ALL groups using pagination - Z-API requires iterating through pages
@@ -255,7 +387,9 @@ serve(async (req) => {
         break;
 
       case "list-tags":
-        endpoint = "/tags";
+        // Z-API: /labels retorna as Etiquetas do WhatsApp Business (criadas no celular).
+        // /tags retorna os Filtros nativos do WhatsApp (Não lidas, Favoritos, Grupos).
+        endpoint = "/labels";
         method = "GET";
         break;
 
@@ -266,7 +400,8 @@ serve(async (req) => {
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        endpoint = `/chats/${phone}/tags/${tagId}/add`;
+        // Z-API: PUT /labels/{labelId}/add/{phone} adiciona etiqueta ao contato.
+        endpoint = `/labels/${tagId}/add/${phone}`;
         method = "PUT";
         break;
 
@@ -472,14 +607,30 @@ serve(async (req) => {
     // Map Z-API status to our format
     if (action === "status") {
       const isConnected = data.connected === true || data.smartphoneConnected === true;
-      
-      // Update connected phone in database if available
-      if (isConnected && data.phoneConnected) {
+
+      // Z-API /status nem sempre traz phoneConnected. Quando conectado, buscar /device
+      // para descobrir o número emparelhado (campo "phone" no retorno do /device).
+      let phoneConnected: string | null = data.phoneConnected || null;
+      if (isConnected && !phoneConnected) {
+        try {
+          const devHeaders: Record<string, string> = { "Content-Type": "application/json" };
+          if (clientToken) devHeaders["Client-Token"] = clientToken;
+          const devRes = await fetch(`${baseUrl}/device`, { method: "GET", headers: devHeaders });
+          if (devRes.ok) {
+            const devData = await devRes.json().catch(() => null);
+            phoneConnected = devData?.phone || devData?.phoneConnected || devData?.me?.user || null;
+          }
+        } catch (e) {
+          console.warn("[zapi-proxy] Falha ao buscar /device:", (e as any)?.message);
+        }
+      }
+
+      if (isConnected && phoneConnected) {
         await supabase
           .from("integration_whatsapp")
-          .update({ 
-            connected_phone: data.phoneConnected,
-            last_status_check: new Date().toISOString()
+          .update({
+            connected_phone: phoneConnected,
+            last_status_check: new Date().toISOString(),
           })
           .eq("tenant_id", tenant_id);
       }
@@ -489,18 +640,39 @@ serve(async (req) => {
           connected: isConnected,
           status: isConnected ? "connected" : "disconnected",
           message: isConnected ? "WhatsApp conectado via Z-API" : "WhatsApp desconectado",
-          user: data.phoneConnected ? { phone: data.phoneConnected } : null,
-          raw: data
+          user: phoneConnected ? { phone: phoneConnected } : null,
+          raw: data,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    // Normaliza resposta de list-tags (Z-API /labels) para sempre devolver array de {id, name, color}
+    if (action === "list-tags") {
+      let arr: any[] = [];
+      if (Array.isArray(data)) arr = data;
+      else if (Array.isArray(data?.labels)) arr = data.labels;
+      else if (Array.isArray(data?.value)) arr = data.value;
+      else if (Array.isArray(data?.tags)) arr = data.tags;
+
+      const normalized = arr.map((t: any) => ({
+        id: String(t.id ?? t.labelId ?? t.value ?? ""),
+        name: t.name ?? t.label ?? t.title ?? "Sem nome",
+        color: typeof t.color === "number" ? t.color : 0,
+        colorHex: t.colorHex ?? t.hexColor ?? null,
+      })).filter((t: any) => t.id);
+
+      return new Response(
+        JSON.stringify(normalized),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(
       JSON.stringify(data),
-      { 
-        status: response.ok ? 200 : response.status, 
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
+      {
+        status: response.ok ? 200 : response.status,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
       }
     );
 

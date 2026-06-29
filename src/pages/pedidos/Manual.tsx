@@ -252,7 +252,8 @@ const PedidosManual = () => {
               event_type: 'BAZAR',
               event_date: today,
               total_amount: subtotal,
-              is_paid: false
+              is_paid: false,
+              source: 'manual'
             }])
             .select()
             .single();

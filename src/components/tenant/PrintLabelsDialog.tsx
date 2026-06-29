@@ -4,7 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Printer, Tags, X, Plus, Minus } from 'lucide-react';
+import { Printer, Tags, X, Plus, Minus, Save } from 'lucide-react';
+import { useTenant } from '@/hooks/useTenant';
+import { toast } from 'sonner';
+
 
 interface Product {
   id: number;
@@ -27,10 +30,51 @@ interface PrintLabelsDialogProps {
 }
 
 export default function PrintLabelsDialog({ open, onOpenChange, products, preSelectedIds }: PrintLabelsDialogProps) {
+  const { tenant } = useTenant();
+  const storageKey = tenant?.id ? `printLabelsConfig:${tenant.id}` : null;
+
   const [labelWidth, setLabelWidth] = useState(33);
   const [labelHeight, setLabelHeight] = useState(18);
   const [columns, setColumns] = useState(3);
+  const [gapX, setGapX] = useState(3);
+  const [gapY, setGapY] = useState(3);
+  const [marginTop, setMarginTop] = useState(0);
+  const [marginLeft, setMarginLeft] = useState(0);
+  const [thermalMode, setThermalMode] = useState(false);
+  const [rowsPerPage, setRowsPerPage] = useState(1);
+  const [rotate180, setRotate180] = useState(false);
   const [codeInput, setCodeInput] = useState('');
+
+  // Load saved per-tenant config
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return;
+      const c = JSON.parse(raw);
+      if (typeof c.labelWidth === 'number') setLabelWidth(c.labelWidth);
+      if (typeof c.labelHeight === 'number') setLabelHeight(c.labelHeight);
+      if (typeof c.columns === 'number') setColumns(c.columns);
+      if (typeof c.gapX === 'number') setGapX(c.gapX);
+      if (typeof c.gapY === 'number') setGapY(c.gapY);
+      if (typeof c.marginTop === 'number') setMarginTop(c.marginTop);
+      if (typeof c.marginLeft === 'number') setMarginLeft(c.marginLeft);
+      if (typeof c.thermalMode === 'boolean') setThermalMode(c.thermalMode);
+      if (typeof c.rowsPerPage === 'number') setRowsPerPage(c.rowsPerPage);
+      if (typeof c.rotate180 === 'boolean') setRotate180(c.rotate180);
+    } catch {}
+  }, [storageKey]);
+
+  const saveConfig = () => {
+    if (!storageKey) {
+      toast.error('Tenant não identificado');
+      return;
+    }
+    localStorage.setItem(storageKey, JSON.stringify({
+      labelWidth, labelHeight, columns, gapX, gapY, marginTop, marginLeft, thermalMode, rowsPerPage, rotate180
+    }));
+    toast.success('Configuração de etiqueta salva para esta empresa');
+  };
   const [items, setItems] = useState<LabelItem[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -116,18 +160,39 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    const labelsHtml = items.flatMap(({ product, quantity }) =>
-      Array.from({ length: quantity }, () => {
-        const barcodeHtml = generateCode128SVG(product.code);
-        return `
-          <div class="label">
-            <div class="label-name">${escapeHtml(product.name)}</div>
-            <div class="label-barcode">${barcodeHtml}</div>
-            <div class="label-code">${escapeHtml(product.code)}</div>
-          </div>
-        `;
-      })
-    ).join('');
+    const allLabels = items.flatMap(({ product, quantity }) =>
+      Array.from({ length: quantity }, () => product)
+    );
+
+    const renderLabel = (product: Product) => {
+      const barcodeHtml = generateCode128SVG(product.code);
+      return `
+        <div class="label">
+          <div class="label-name">${escapeHtml(product.name)}</div>
+          <div class="label-barcode">${barcodeHtml}</div>
+          <div class="label-code">${escapeHtml(product.code)}</div>
+        </div>
+      `;
+    };
+
+    let bodyHtml = '';
+    let pageCss = '';
+
+    if (thermalMode) {
+      const perPage = Math.max(1, columns * rowsPerPage);
+      const pageWidth = columns * labelWidth + Math.max(0, columns - 1) * gapX;
+      const pageHeight = rowsPerPage * labelHeight + Math.max(0, rowsPerPage - 1) * gapY;
+      pageCss = `@page { size: ${pageWidth}mm ${pageHeight}mm; margin: 0; }`;
+      const pages: string[] = [];
+      for (let i = 0; i < allLabels.length; i += perPage) {
+        const chunk = allLabels.slice(i, i + perPage).map(renderLabel).join('');
+        pages.push(`<div class="page">${chunk}</div>`);
+      }
+      bodyHtml = pages.join('');
+    } else {
+      pageCss = `@page { size: auto; margin: 0; }`;
+      bodyHtml = `<div class="page">${allLabels.map(renderLabel).join('')}</div>`;
+    }
 
     printWindow.document.write(`<!DOCTYPE html>
 <html>
@@ -135,10 +200,7 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
 <meta charset="utf-8">
 <title>Etiquetas</title>
 <style>
-  @page {
-    size: auto;
-    margin: 0;
-  }
+  ${pageCss}
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
     width: 100%;
@@ -148,23 +210,29 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  .grid {
+  .page {
     display: grid;
     grid-template-columns: repeat(${columns}, ${labelWidth}mm);
-    gap: 2mm;
-    padding: 2mm;
+    column-gap: ${gapX}mm;
+    row-gap: ${gapY}mm;
+    padding-top: ${thermalMode ? 0 : marginTop}mm;
+    padding-left: ${thermalMode ? 0 : marginLeft}mm;
+    page-break-after: always;
+    break-after: page;
+    ${rotate180 ? 'transform: rotate(180deg); transform-origin: center center;' : ''}
   }
+  .page:last-child { page-break-after: auto; break-after: auto; }
   .label {
     width: ${labelWidth}mm;
     height: ${labelHeight}mm;
-    border: 0.3mm solid #000;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 1mm;
+    padding: 0.5mm;
     page-break-inside: avoid;
+    break-inside: avoid;
   }
   .label-name {
     font-size: 6pt;
@@ -194,15 +262,10 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
     text-align: center;
     letter-spacing: 0.5pt;
   }
-  @media print {
-    html, body { margin: 0; padding: 0; }
-    .grid { padding: 0; }
-    .label { border-color: #000; }
-  }
 </style>
 </head>
 <body>
-<div class="grid">${labelsHtml}</div>
+${bodyHtml}
 <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}</script>
 </body>
 </html>`);
@@ -237,6 +300,65 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
               <Label className="text-xs">Colunas</Label>
               <Input type="number" min={1} max={10} value={columns} onChange={e => setColumns(Number(e.target.value))} />
             </div>
+          </div>
+          <div className="grid grid-cols-4 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Espaço H (mm)</Label>
+              <Input type="number" min={0} max={20} step={0.5} value={gapX} onChange={e => setGapX(Number(e.target.value))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Espaço V (mm)</Label>
+              <Input type="number" min={0} max={20} step={0.5} value={gapY} onChange={e => setGapY(Number(e.target.value))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Margem topo (mm)</Label>
+              <Input type="number" min={0} max={50} step={0.5} value={marginTop} onChange={e => setMarginTop(Number(e.target.value))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Margem esq. (mm)</Label>
+              <Input type="number" min={0} max={50} step={0.5} value={marginLeft} onChange={e => setMarginLeft(Number(e.target.value))} />
+            </div>
+          </div>
+
+          {/* Thermal printer mode */}
+          <div className="flex items-center gap-3 p-3 rounded-md border bg-muted/30">
+            <input
+              type="checkbox"
+              id="thermal-mode"
+              checked={thermalMode}
+              onChange={e => setThermalMode(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <Label htmlFor="thermal-mode" className="text-xs flex-1 cursor-pointer">
+              Impressora térmica (Zebra) — define tamanho exato da página
+            </Label>
+            {thermalMode && (
+              <div className="flex items-center gap-2">
+                <Label className="text-xs whitespace-nowrap">Linhas/pág:</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={rowsPerPage}
+                  onChange={e => setRowsPerPage(Number(e.target.value))}
+                  className="w-16 h-8"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Rotate 180° */}
+          <div className="flex items-center gap-3 p-3 rounded-md border bg-muted/30">
+            <input
+              type="checkbox"
+              id="rotate-180"
+              checked={rotate180}
+              onChange={e => setRotate180(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <Label htmlFor="rotate-180" className="text-xs flex-1 cursor-pointer">
+              Girar 180° — use se a impressão sair de cabeça para baixo / começando pelo final da folha
+            </Label>
           </div>
 
           {/* Code input */}
@@ -295,7 +417,11 @@ export default function PrintLabelsDialog({ open, onOpenChange, products, preSel
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button variant="outline" onClick={saveConfig}>
+            <Save className="h-4 w-4 mr-2" />
+            Salvar config.
+          </Button>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
           <Button onClick={handlePrint} disabled={items.length === 0}>
             <Printer className="h-4 w-4 mr-2" />

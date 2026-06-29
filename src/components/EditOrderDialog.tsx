@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,9 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
-import { Loader2, Plus, Trash2, Search } from 'lucide-react';
+import { Loader2, Plus, Trash2, Search, Package, Truck, CheckCircle2, Clock } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { formatCurrency } from '@/lib/utils';
 import { getBrasiliaDateISO } from '@/lib/date-utils';
 
@@ -39,6 +41,11 @@ interface Order {
   event_date: string;
   total_amount: number;
   cart_id?: number;
+  is_paid?: boolean;
+  printed?: boolean;
+  observation?: string;
+  melhor_envio_tracking_code?: string;
+  order_status?: string | null;
   cart_items?: {
     id: number;
     qty: number;
@@ -65,15 +72,76 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
   const [products, setProducts] = useState<Product[]>([]);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [cartSearchQuery, setCartSearchQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [unitPrice, setUnitPrice] = useState(0);
   const [cartId, setCartId] = useState<number | null>(null);
-  
+  const [isPaid, setIsPaid] = useState<boolean>(false);
+  const [trackingCode, setTrackingCode] = useState<string>('');
+  const [observation, setObservation] = useState<string>('');
+  const [printed, setPrinted] = useState<boolean>(false);
+  const [orderStatus, setOrderStatus] = useState<'em_separacao' | 'envio_pendente' | 'enviado' | 'liberado_retirada' | 'entregue' | ''>('');
+  const [savingMeta, setSavingMeta] = useState(false);
+
+  // ===== Assinatura digital para edição de pedidos pagos =====
+  // IMPORTANTE: a assinatura é solicitada a CADA alteração (não é cacheada).
+  const [signerName, setSignerName] = useState<string>('');
+  const [signaturePromptOpen, setSignaturePromptOpen] = useState(false);
+  const [signatureInput, setSignatureInput] = useState('');
+  const signatureResolverRef = useRef<((name: string | null) => void) | null>(null);
+
+  const ensureSignature = (): Promise<string | null> => {
+    if (!isPaid) return Promise.resolve('');
+    // Sempre abre o prompt — nunca reaproveita assinatura anterior
+    return new Promise((resolve) => {
+      signatureResolverRef.current = resolve;
+      setSignatureInput('');
+      setSignaturePromptOpen(true);
+    });
+  };
+
+  const logSignedEdit = async (
+    signature: string,
+    actionType: string,
+    description: string,
+    details: Record<string, any>,
+  ) => {
+    if (!isPaid || !signature?.trim() || !order) return;
+    try {
+      await (supabase as any).from('audit_logs').insert({
+        entity: 'order',
+        entity_id: String(order.id),
+        action: 'paid_order_edited_with_signature',
+        tenant_id: profile?.tenant_id,
+        meta: {
+          signer_name: signature.trim(),
+          action_type: actionType,
+          description,
+          user_id: profile?.id,
+          user_email: profile?.email,
+          order_id: order.id,
+          tenant_order_number: order.tenant_order_number,
+          changed_at: new Date().toISOString(),
+          ...details,
+        },
+      });
+    } catch (e) {
+      console.error('Erro ao registrar assinatura digital:', e);
+    }
+  };
 
 useEffect(() => {
   if (open && order) {
     setCartId(order.cart_id ?? null);
+    setIsPaid(!!order.is_paid);
+    setTrackingCode(order.melhor_envio_tracking_code || '');
+    setObservation(order.observation || '');
+    setPrinted(!!order.printed);
+    setOrderStatus((order.order_status as any) || '');
+    setSignerName('');
+    setSignaturePromptOpen(false);
+    setSignatureInput('');
     loadProducts();
   }
 }, [open, order]);
@@ -169,6 +237,9 @@ useEffect(() => {
   const addProductToOrder = async () => {
     if (!selectedProduct || !order) return;
 
+    const signature = await ensureSignature();
+    if (signature === null) return;
+
     setLoading(true);
     try {
       // STOCK VALIDATION: Fresh read from DB to prevent race conditions
@@ -255,6 +326,19 @@ useEffect(() => {
       setQuantity(1);
       setUnitPrice(0);
 
+      await logSignedEdit(
+        signature,
+        'add_product',
+        `Adicionou ${quantity}x ${selectedProduct.code} - ${selectedProduct.name} (${formatCurrency(effectiveUnitPrice)} cada)`,
+        {
+          product_id: selectedProduct.id,
+          product_code: selectedProduct.code,
+          product_name: selectedProduct.name,
+          qty: quantity,
+          unit_price: effectiveUnitPrice,
+        },
+      );
+
       toast({
         title: 'Sucesso',
         description: 'Produto adicionado e mensagem enviada'
@@ -283,8 +367,23 @@ useEffect(() => {
       return;
     }
 
+    const signature = await ensureSignature();
+    if (signature === null) return;
+
     setLoading(true);
     try {
+      await logSignedEdit(
+        signature,
+        'remove_product',
+        `Removeu ${qtyToReturn}x ${productCode} - ${productName}`,
+        {
+          item_id: itemId,
+          product_id: item.product_id,
+          product_code: productCode,
+          product_name: productName,
+          qty: qtyToReturn,
+        },
+      );
       // Enviar mensagem de cancelamento via Z-API
       const { error: zapiError } = await supabase.functions.invoke('zapi-send-product-canceled', {
         body: {
@@ -355,6 +454,13 @@ useEffect(() => {
   const updateItemQuantity = async (itemId: number, newQty: number) => {
     if (newQty <= 0) return;
 
+    const existing = cartItems.find(i => i.id === itemId);
+    const oldQty = existing?.qty;
+    if (oldQty === newQty) return;
+
+    const signature = await ensureSignature();
+    if (signature === null) return;
+
     try {
       const { error } = await supabaseTenant
         .from('cart_items')
@@ -362,6 +468,20 @@ useEffect(() => {
         .eq('id', itemId);
 
       if (error) throw error;
+
+      await logSignedEdit(
+        signature,
+        'update_quantity',
+        `Alterou quantidade de ${existing?.product?.code || ''} - ${existing?.product?.name || ''} de ${oldQty} para ${newQty}`,
+        {
+          item_id: itemId,
+          product_id: existing?.product_id,
+          product_code: existing?.product?.code,
+          product_name: existing?.product?.name,
+          old_qty: oldQty,
+          new_qty: newQty,
+        },
+      );
 
       await loadCartItems(cartId);
       await updateOrderTotal(cartId);
@@ -539,6 +659,12 @@ useEffect(() => {
               <Badge variant="outline">Total: {formatCurrency(currentTotal)}</Badge>
             </div>
 
+            <Input
+              placeholder="Buscar nos itens do pedido (nome ou código)..."
+              value={cartSearchQuery}
+              onChange={(e) => setCartSearchQuery(e.target.value)}
+            />
+
             <div className="space-y-3 max-h-96 overflow-y-auto">
               {cartItems.length === 0 ? (
                 <Card>
@@ -546,8 +672,25 @@ useEffect(() => {
                     Nenhum item no pedido
                   </CardContent>
                 </Card>
-              ) : (
-                cartItems.map((item) => {
+              ) : (() => {
+                const q = cartSearchQuery.trim().toLowerCase();
+                const filtered = q
+                  ? cartItems.filter((item) => {
+                      const name = (item.product?.name || item.product_name || '').toLowerCase();
+                      const code = (item.product?.code || item.product_code || '').toLowerCase();
+                      return name.includes(q) || code.includes(q);
+                    })
+                  : cartItems;
+                if (filtered.length === 0) {
+                  return (
+                    <Card>
+                      <CardContent className="p-6 text-center text-muted-foreground">
+                        Nenhum item encontrado para "{cartSearchQuery}"
+                      </CardContent>
+                    </Card>
+                  );
+                }
+                return filtered.map((item) => {
                   const productName = item.product?.name || item.product_name || 'Produto deletado';
                   const productCode = item.product?.code || item.product_code || 'N/A';
                   const productImage = item.product?.image_url || item.product_image_url;
@@ -599,21 +742,272 @@ useEffect(() => {
                     </CardContent>
                   </Card>
                   );
-                })
-              )}
+                });
+              })()}
             </div>
           </div>
         </div>
 
+        {/* Status / Rastreio / Observação / Impresso */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+          <div>
+            <Label>Status Pagamento</Label>
+            <Select value={isPaid ? 'pago' : 'pendente'} onValueChange={(v) => setIsPaid(v === 'pago')}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pago">Pago</SelectItem>
+                <SelectItem value="pendente">Pendente</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="flex gap-2 mt-2">
+              <button
+                type="button"
+                onClick={() => setOrderStatus(orderStatus === 'em_separacao' ? '' : 'em_separacao')}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
+                  orderStatus === 'em_separacao'
+                    ? 'bg-[#fef3c7] text-[#b45309] border-[#fcd34d]'
+                    : 'bg-white text-[#6b7280] border-[#e5e7eb] hover:bg-[#f9fafb]'
+                }`}
+              >
+                <Package className="w-3 h-3" /> Em Separação
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrderStatus(orderStatus === 'envio_pendente' ? '' : 'envio_pendente')}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
+                  orderStatus === 'envio_pendente'
+                    ? 'bg-[#ffedd5] text-[#c2410c] border-[#fdba74]'
+                    : 'bg-white text-[#6b7280] border-[#e5e7eb] hover:bg-[#f9fafb]'
+                }`}
+              >
+                <Clock className="w-3 h-3" /> Envio Pendente
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrderStatus(orderStatus === 'enviado' ? '' : 'enviado')}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
+                  orderStatus === 'enviado'
+                    ? 'bg-[#dcfce7] text-[#15803d] border-[#86efac]'
+                    : 'bg-white text-[#6b7280] border-[#e5e7eb] hover:bg-[#f9fafb]'
+                }`}
+              >
+                <Truck className="w-3 h-3" /> Enviado
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrderStatus(orderStatus === 'liberado_retirada' ? '' : 'liberado_retirada')}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
+                  orderStatus === 'liberado_retirada'
+                    ? 'bg-[#e0e7ff] text-[#4338ca] border-[#a5b4fc]'
+                    : 'bg-white text-[#6b7280] border-[#e5e7eb] hover:bg-[#f9fafb]'
+                }`}
+              >
+                <Package className="w-3 h-3" /> Liberado para Retirada
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrderStatus(orderStatus === 'entregue' ? '' : 'entregue')}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
+                  orderStatus === 'entregue'
+                    ? 'bg-[#bbf7d0] text-[#166534] border-[#4ade80]'
+                    : 'bg-white text-[#6b7280] border-[#e5e7eb] hover:bg-[#f9fafb]'
+                }`}
+              >
+                <CheckCircle2 className="w-3 h-3" /> Entregue
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <Label>Código de Rastreio</Label>
+            <Input
+              value={trackingCode}
+              onChange={(e) => setTrackingCode(e.target.value)}
+              placeholder="Ex.: AA123456789BR"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Ao preencher o rastreio o status muda automaticamente para "Enviado".
+            </p>
+          </div>
+
+          <div className="md:col-span-2">
+            <Label>Observação</Label>
+            <Textarea
+              rows={3}
+              value={observation}
+              onChange={(e) => setObservation(e.target.value)}
+              placeholder="Ex.: [FRETE] Envio Fedex Express"
+            />
+          </div>
+
+          <div className="md:col-span-2 flex items-center gap-2">
+            <Checkbox id="printed-check" checked={printed} onCheckedChange={(c) => setPrinted(!!c)} />
+            <Label htmlFor="printed-check" className="cursor-pointer">Marcar como Impresso</Label>
+          </div>
+        </div>
+
         <div className="flex justify-end gap-2 pt-4 border-t">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={savingMeta}>
             Cancelar
           </Button>
-          <Button onClick={() => { onOrderUpdated(); onOpenChange(false); }}>
+          <Button
+            disabled={savingMeta}
+            onClick={async () => {
+              if (!order) return;
+
+              // Detectar mudanças relevantes em campos meta de pedido pago
+              const trimmedTracking = trackingCode.trim();
+              const finalStatus = orderStatus === 'entregue'
+                ? 'entregue'
+                : (trimmedTracking ? 'enviado' : (orderStatus || null));
+
+              const metaChanged =
+                (!!order.is_paid) !== isPaid ||
+                (order.melhor_envio_tracking_code || '') !== trimmedTracking ||
+                (order.observation || '') !== (observation || '') ||
+                (!!order.printed) !== printed ||
+                (order.order_status || null) !== finalStatus;
+
+              let metaSignature: string | null = null;
+              if (order.is_paid && metaChanged) {
+                metaSignature = await ensureSignature();
+                if (metaSignature === null) return;
+              }
+
+              setSavingMeta(true);
+              try {
+                const { error } = await (supabaseTenant as any)
+                  .from('orders')
+                  .update({
+                    is_paid: isPaid,
+                    melhor_envio_tracking_code: trimmedTracking || null,
+                    observation: observation || null,
+                    printed,
+                    order_status: finalStatus,
+                  })
+                  .eq('id', order.id);
+
+                if (error) throw error;
+
+                if (order.is_paid && metaChanged && metaSignature) {
+                  const changes: string[] = [];
+                  if ((!!order.is_paid) !== isPaid) changes.push(`pago: ${order.is_paid} → ${isPaid}`);
+                  if ((order.melhor_envio_tracking_code || '') !== trimmedTracking)
+                    changes.push(`rastreio: "${order.melhor_envio_tracking_code || ''}" → "${trimmedTracking}"`);
+                  if ((order.observation || '') !== (observation || ''))
+                    changes.push(`observação alterada`);
+                  if ((!!order.printed) !== printed) changes.push(`impresso: ${order.printed} → ${printed}`);
+                  if ((order.order_status || null) !== finalStatus)
+                    changes.push(`status: "${order.order_status || ''}" → "${finalStatus || ''}"`);
+
+                  await logSignedEdit(
+                    metaSignature,
+                    'update_order_meta',
+                    `Alterou dados do pedido: ${changes.join('; ')}`,
+                    {
+                      previous: {
+                        is_paid: order.is_paid,
+                        tracking_code: order.melhor_envio_tracking_code || null,
+                        observation: order.observation || null,
+                        printed: !!order.printed,
+                        order_status: order.order_status || null,
+                      },
+                      next: {
+                        is_paid: isPaid,
+                        tracking_code: trimmedTracking || null,
+                        observation: observation || null,
+                        printed,
+                        order_status: finalStatus,
+                      },
+                    },
+                  );
+                }
+
+                toast({ title: 'Pedido atualizado', description: 'Alterações salvas com sucesso.' });
+                onOrderUpdated();
+                onOpenChange(false);
+              } catch (e: any) {
+                console.error('Erro ao salvar pedido:', e);
+                toast({
+                  title: 'Erro ao salvar',
+                  description: e?.message || 'Não foi possível atualizar o pedido.',
+                  variant: 'destructive',
+                });
+              } finally {
+                setSavingMeta(false);
+              }
+            }}
+          >
+            {savingMeta && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
             Salvar Alterações
           </Button>
         </div>
       </DialogContent>
+
+      {/* Modal de assinatura digital para edição de pedidos pagos */}
+      <Dialog
+        open={signaturePromptOpen}
+        onOpenChange={(o) => {
+          if (!o && signatureResolverRef.current) {
+            signatureResolverRef.current(null);
+            signatureResolverRef.current = null;
+          }
+          setSignaturePromptOpen(o);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assinatura digital</DialogTitle>
+            <DialogDescription>
+              Este pedido já está pago. Informe seu nome completo para registrar quem está realizando esta alteração.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label htmlFor="signer-name">Seu nome</Label>
+            <Input
+              id="signer-name"
+              autoFocus
+              value={signatureInput}
+              onChange={(e) => setSignatureInput(e.target.value)}
+              placeholder="Ex.: Maria Silva"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && signatureInput.trim().length >= 2) {
+                  const name = signatureInput.trim();
+                  setSignerName(name);
+                  setSignaturePromptOpen(false);
+                  signatureResolverRef.current?.(name);
+                  signatureResolverRef.current = null;
+                }
+              }}
+              maxLength={120}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSignaturePromptOpen(false);
+                signatureResolverRef.current?.(null);
+                signatureResolverRef.current = null;
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={signatureInput.trim().length < 2}
+              onClick={() => {
+                const name = signatureInput.trim();
+                setSignerName(name);
+                setSignaturePromptOpen(false);
+                signatureResolverRef.current?.(name);
+                signatureResolverRef.current = null;
+              }}
+            >
+              Confirmar e assinar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 };

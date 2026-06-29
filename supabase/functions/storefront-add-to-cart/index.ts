@@ -85,9 +85,30 @@ Deno.serve(async (req) => {
       .eq('id', product_id).eq('tenant_id', tenant_id).maybeSingle();
     if (pErr || !product) return jsonResp({ error: 'Produto não encontrado' }, 404);
     if (!product.is_active) return jsonResp({ error: 'Produto indisponível' }, 400);
-    if ((product.stock ?? 0) <= 0) return jsonResp({ error: 'Produto esgotado', code: 'OUT_OF_STOCK' }, 409);
-    if ((product.stock ?? 0) < qty) {
-      return jsonResp({ error: `Apenas ${product.stock} unidade(s) disponível(is)`, code: 'INSUFFICIENT_STOCK', stock: product.stock }, 409);
+    if ((product.stock ?? 0) <= 0 || (product.stock ?? 0) < qty) {
+      // Tenta colocar na fila de espera automaticamente
+      try {
+        const { data: wl } = await supabase.functions.invoke('waitlist-enqueue', {
+          body: {
+            tenant_id, product_id: product.id, qty,
+            customer_phone, customer_instagram, source: 'storefront',
+          },
+        });
+        if (wl?.success) {
+          return jsonResp({
+            error: (product.stock ?? 0) <= 0
+              ? `Produto esgotado. Você é a ${wl.position}ª na fila de espera 🎯`
+              : `Apenas ${product.stock} disponível. Você é a ${wl.position}ª na fila de espera 🎯`,
+            code: 'WAITLISTED',
+            waitlisted: true, position: wl.position, already_in_queue: wl.already_in_queue,
+          }, 200);
+        }
+      } catch (e) { console.error('[add-to-cart] waitlist err', e); }
+      return jsonResp({
+        error: (product.stock ?? 0) <= 0 ? 'Produto esgotado' : `Apenas ${product.stock} unidade(s) disponível(is)`,
+        code: (product.stock ?? 0) <= 0 ? 'OUT_OF_STOCK' : 'INSUFFICIENT_STOCK',
+        stock: product.stock,
+      }, 409);
     }
 
     const unit_price = (product.promotional_price && Number(product.promotional_price) > 0)
@@ -149,7 +170,7 @@ Deno.serve(async (req) => {
       // Cria pedido novo
       const { data: newOrder, error: oErr } = await supabase.from('orders').insert({
         tenant_id, customer_phone, event_date: today, event_type: 'LIVE',
-        total_amount: 0, is_paid: false,
+        total_amount: 0, is_paid: false, source: 'storefront',
       }).select('id').single();
       if (oErr) {
         console.error('[add-to-cart] create order:', oErr);

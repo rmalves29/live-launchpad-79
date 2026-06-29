@@ -1,27 +1,27 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/contexts/TenantContext";
-import { 
-  Smartphone, 
-  RefreshCw, 
-  CheckCircle2, 
-  AlertCircle, 
+import {
+  Phone,
+  RefreshCw,
   Loader2,
   QrCode as QrCodeIcon,
-  Wifi,
   WifiOff,
-  MessageCircle,
+  Save,
+  Eye,
+  EyeOff,
   Zap,
   Shield,
-  ExternalLink,
-  Clock,
-  Timer
+  Trash2,
+  Plus,
 } from "lucide-react";
-import { ZAPISettings } from "@/components/ZAPISettings";
+import { ZAPIAdvancedSettings } from "@/components/ZAPIAdvancedSettings";
 
 interface WhatsAppStatus {
   connected: boolean;
@@ -34,64 +34,316 @@ interface WhatsAppStatus {
 }
 
 const POLLING_INTERVAL_MS = 5000;
-const QR_CODE_EXPIRATION_SECONDS = 60; // QR Code expira em 60 segundos
+const QR_CODE_EXPIRATION_SECONDS = 60;
+const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4';
+
+type Provider = 'zapi' | 'evolution';
+
+function maskMiddle(value: string, visible = 4): string {
+  if (!value) return '';
+  if (value.length <= visible * 2) return value;
+  return `${value.slice(0, visible)}${'•'.repeat(Math.min(8, value.length - visible * 2))}${value.slice(-visible)}`;
+}
+
+function formatPhone(phone?: string | null): string {
+  if (!phone) return '-';
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 13 && digits.startsWith('55')) {
+    return `(${digits.slice(2, 4)}) ${digits.slice(4, 9)}-${digits.slice(9, 13)}`;
+  }
+  if (digits.length === 11) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  }
+  return phone;
+}
+
+function callFunction(name: string, body: object) {
+  return fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}`, 'apikey': ANON_KEY },
+    body: JSON.stringify(body),
+  }).then(r => r.json());
+}
 
 export default function ConexaoZAPI() {
   const { tenant } = useTenantContext();
   const { toast } = useToast();
-  
+
   const [loading, setLoading] = useState(true);
-  const [hasZAPIConfig, setHasZAPIConfig] = useState(false);
+  const [provider, setProvider] = useState<Provider>('zapi');
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [loadingQR, setLoadingQR] = useState(false);
-  const [qrCountdown, setQrCountdown] = useState<number>(0);
-  
+  const [qrCountdown, setQrCountdown] = useState(0);
+  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
+
+  // Z-API fields
+  const [integrationId, setIntegrationId] = useState<string | null>(null);
+  const [instanceId, setInstanceId] = useState('');
+  const [token, setToken] = useState('');
+  const [clientToken, setClientToken] = useState('');
+  const [showToken, setShowToken] = useState(false);
+  const [showClientToken, setShowClientToken] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+
+  // Evolution API fields
+  const [evolutionInstanceName, setEvolutionInstanceName] = useState('');
+  const [evolutionDraftName, setEvolutionDraftName] = useState('');
+  const [creatingInstance, setCreatingInstance] = useState(false);
+  const [deletingInstance, setDeletingInstance] = useState(false);
+
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  const mountedRef = useRef(true);
   const qrTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-      }
-      if (qrTimerRef.current) {
-        clearInterval(qrTimerRef.current);
-      }
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (qrTimerRef.current) clearInterval(qrTimerRef.current);
     };
   }, []);
 
-  // Timer de expiração do QR Code
-  const startQRCountdown = useCallback(() => {
-    // Limpa timer anterior
-    if (qrTimerRef.current) {
-      clearInterval(qrTimerRef.current);
+  useEffect(() => {
+    if (tenant?.id) loadIntegration();
+  }, [tenant?.id]);
+
+  useEffect(() => {
+    stopPolling();
+    setWhatsappStatus(null);
+    setLastSyncAt(null);
+    if (provider === 'zapi' && instanceId && token) {
+      startPollingZapi();
+    } else if (provider === 'evolution' && evolutionInstanceName) {
+      startPollingEvolution();
     }
-    
+    return () => stopPolling();
+  }, [provider, instanceId, token, evolutionInstanceName]);
+
+  const loadIntegration = async () => {
+    if (!tenant?.id) return;
+    try {
+      setLoading(true);
+      const { data } = await supabase
+        .from('integration_whatsapp')
+        .select('id, zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, provider, is_active')
+        .eq('tenant_id', tenant.id)
+        .maybeSingle();
+
+      if (data) {
+        setIntegrationId((data as any).id);
+        setInstanceId((data as any).zapi_instance_id || '');
+        setToken((data as any).zapi_token || '');
+        setClientToken((data as any).zapi_client_token || '');
+        setEvolutionInstanceName((data as any).evolution_instance_name || '');
+        const savedProvider: Provider = (data as any).provider === 'evolution' ? 'evolution' : 'zapi';
+        setProvider(savedProvider);
+      }
+    } catch (e: any) {
+      console.error('Error loading integration:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ─── Z-API ───────────────────────────────────────────────────────────────
+
+  const saveZapiCredentials = async () => {
+    if (!tenant?.id) return;
+    if (!instanceId.trim() || !token.trim()) {
+      toast({ title: 'Erro', description: 'Instance ID e Token são obrigatórios', variant: 'destructive' });
+      return;
+    }
+    setSavingConfig(true);
+    try {
+      const payload = {
+        zapi_instance_id: instanceId,
+        zapi_token: token,
+        zapi_client_token: clientToken || null,
+        provider: 'zapi',
+        updated_at: new Date().toISOString(),
+      };
+      if (integrationId) {
+        const { error } = await supabase.from('integration_whatsapp').update(payload).eq('id', integrationId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('integration_whatsapp').insert({
+          tenant_id: tenant.id,
+          ...payload,
+          instance_name: tenant.name || 'default',
+          webhook_secret: crypto.randomUUID(),
+          is_active: true,
+        });
+        if (error) throw error;
+      }
+      toast({ title: 'Sucesso', description: 'Configurações Z-API salvas' });
+      await loadIntegration();
+    } catch (e: any) {
+      toast({ title: 'Erro', description: e.message, variant: 'destructive' });
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
+  const checkStatusZapi = async () => {
+    if (!tenant?.id || !mountedRef.current) return;
+    try {
+      const data = await callFunction('zapi-proxy', { action: 'status', tenant_id: tenant.id });
+      if (!mountedRef.current) return;
+      setLastSyncAt(new Date());
+      if (data.error) {
+        setWhatsappStatus(prev => prev?.status === 'qr_ready' && prev?.qrCode ? prev : { connected: false, status: 'error', error: data.error });
+        return;
+      }
+      if (data.connected) {
+        stopQRCountdown();
+        setWhatsappStatus({ connected: true, status: data.status, message: data.message, user: data.user });
+      } else {
+        setWhatsappStatus(prev => prev?.status === 'qr_ready' && prev?.qrCode ? prev : { connected: false, status: data.status || 'disconnected', user: data.user });
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const getQRCodeZapi = async () => {
+    if (!tenant?.id) return;
+    setLoadingQR(true);
+    try {
+      const data = await callFunction('zapi-proxy', { action: 'qr-code', tenant_id: tenant.id });
+      if (data.qrCode) {
+        setWhatsappStatus(prev => ({ ...prev, connected: false, status: 'qr_ready', qrCode: data.qrCode, hasQR: true }));
+        startQRCountdown();
+        toast({ title: 'QR Code gerado', description: 'Você tem 60 segundos para escanear' });
+      } else if (data.error) {
+        toast({ title: 'Erro', description: data.message || data.error, variant: 'destructive' });
+      }
+    } catch (e: any) {
+      toast({ title: 'Erro', description: e.message, variant: 'destructive' });
+    } finally {
+      setLoadingQR(false);
+    }
+  };
+
+  const handleDisconnectZapi = async () => {
+    if (!tenant?.id) return;
+    setIsReconnecting(true);
+    try {
+      await callFunction('zapi-proxy', { action: 'disconnect', tenant_id: tenant.id });
+      setWhatsappStatus({ connected: false, status: 'disconnected' });
+      toast({ title: 'Desconectado', description: 'Sessão WhatsApp encerrada.' });
+    } catch (e: any) {
+      toast({ title: 'Erro', description: e.message, variant: 'destructive' });
+    } finally {
+      setIsReconnecting(false);
+    }
+  };
+
+  // ─── Evolution API ────────────────────────────────────────────────────────
+
+  const createEvolutionInstance = async () => {
+    if (!tenant?.id || !evolutionDraftName.trim()) {
+      toast({ title: 'Erro', description: 'Informe um nome para a instância', variant: 'destructive' });
+      return;
+    }
+    setCreatingInstance(true);
+    try {
+      const data = await callFunction('evolution-instance-manager', { action: 'create', tenant_id: tenant.id, instance_name: evolutionDraftName.trim() });
+      if (data.success) {
+        toast({ title: 'Instância criada', description: 'Agora gere o QR Code para conectar' });
+        await loadIntegration();
+      } else {
+        toast({ title: 'Erro', description: data.error || 'Falha ao criar instância', variant: 'destructive' });
+      }
+    } catch (e: any) {
+      toast({ title: 'Erro', description: e.message, variant: 'destructive' });
+    } finally {
+      setCreatingInstance(false);
+    }
+  };
+
+  const getQRCodeEvolution = async () => {
+    if (!tenant?.id) return;
+    setLoadingQR(true);
+    try {
+      const data = await callFunction('evolution-instance-manager', { action: 'qrcode', tenant_id: tenant.id });
+      if (data.qrCode) {
+        setWhatsappStatus(prev => ({ ...prev, connected: false, status: 'qr_ready', qrCode: data.qrCode, hasQR: true }));
+        startQRCountdown();
+        toast({ title: 'QR Code gerado', description: 'Você tem 60 segundos para escanear' });
+      } else {
+        toast({ title: 'Erro', description: data.error || 'Falha ao gerar QR Code', variant: 'destructive' });
+      }
+    } catch (e: any) {
+      toast({ title: 'Erro', description: e.message, variant: 'destructive' });
+    } finally {
+      setLoadingQR(false);
+    }
+  };
+
+  const checkStatusEvolution = async () => {
+    if (!tenant?.id || !mountedRef.current) return;
+    try {
+      const data = await callFunction('evolution-instance-manager', { action: 'status', tenant_id: tenant.id });
+      if (!mountedRef.current) return;
+      setLastSyncAt(new Date());
+      if (data.connected) {
+        stopQRCountdown();
+        setWhatsappStatus({ connected: true, status: 'open', user: data.user });
+      } else if (data.status !== 'not_configured') {
+        setWhatsappStatus(prev => prev?.status === 'qr_ready' && prev?.qrCode ? prev : { connected: false, status: data.status || 'disconnected' });
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const deleteEvolutionInstance = async () => {
+    if (!tenant?.id) return;
+    if (!confirm('Tem certeza? Isso vai desconectar e remover a instância da Evolution API.')) return;
+    setDeletingInstance(true);
+    try {
+      const data = await callFunction('evolution-instance-manager', { action: 'delete', tenant_id: tenant.id });
+      if (data.success) {
+        toast({ title: 'Instância removida' });
+        setEvolutionInstanceName('');
+        setEvolutionDraftName('');
+        setWhatsappStatus(null);
+        await loadIntegration();
+      } else {
+        toast({ title: 'Erro', description: data.error, variant: 'destructive' });
+      }
+    } catch (e: any) {
+      toast({ title: 'Erro', description: e.message, variant: 'destructive' });
+    } finally {
+      setDeletingInstance(false);
+    }
+  };
+
+  // ─── Polling helpers ──────────────────────────────────────────────────────
+
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+  }, []);
+
+  const startPollingZapi = useCallback(() => {
+    stopPolling();
+    checkStatusZapi();
+    pollingRef.current = setInterval(() => { if (mountedRef.current) checkStatusZapi(); }, POLLING_INTERVAL_MS);
+  }, []);
+
+  const startPollingEvolution = useCallback(() => {
+    stopPolling();
+    checkStatusEvolution();
+    pollingRef.current = setInterval(() => { if (mountedRef.current) checkStatusEvolution(); }, POLLING_INTERVAL_MS);
+  }, []);
+
+  const startQRCountdown = useCallback(() => {
+    if (qrTimerRef.current) clearInterval(qrTimerRef.current);
     setQrCountdown(QR_CODE_EXPIRATION_SECONDS);
-    
     qrTimerRef.current = setInterval(() => {
       setQrCountdown(prev => {
         if (prev <= 1) {
-          // Timer expirou
-          if (qrTimerRef.current) {
-            clearInterval(qrTimerRef.current);
-          }
-          // Limpa o QR Code expirado
-          setWhatsappStatus(prevStatus => {
-            if (prevStatus?.status === 'qr_ready') {
-              return {
-                ...prevStatus,
-                status: 'qr_expired',
-                qrCode: undefined,
-                hasQR: false
-              };
-            }
-            return prevStatus;
-          });
+          if (qrTimerRef.current) clearInterval(qrTimerRef.current);
+          setWhatsappStatus(p => p?.status === 'qr_ready' ? { ...p, status: 'qr_expired', qrCode: undefined } : p);
           return 0;
         }
         return prev - 1;
@@ -100,540 +352,340 @@ export default function ConexaoZAPI() {
   }, []);
 
   const stopQRCountdown = useCallback(() => {
-    if (qrTimerRef.current) {
-      clearInterval(qrTimerRef.current);
-      qrTimerRef.current = null;
-    }
+    if (qrTimerRef.current) { clearInterval(qrTimerRef.current); qrTimerRef.current = null; }
     setQrCountdown(0);
   }, []);
 
-  useEffect(() => {
-    if (tenant?.id) {
-      checkZAPIConfig();
-    }
-  }, [tenant?.id]);
+  // ─── Derived state ────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    if (hasZAPIConfig && tenant?.id) {
-      startPolling();
-      return () => stopPolling();
-    }
-  }, [hasZAPIConfig, tenant?.id]);
+  const isConnected = !!whatsappStatus?.connected;
+  const isQrReady = whatsappStatus?.status === 'qr_ready' && whatsappStatus.qrCode;
 
-  const stopPolling = useCallback(() => {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-  }, []);
+  const lastSyncLabel = lastSyncAt
+    ? (() => {
+        const sec = Math.floor((Date.now() - lastSyncAt.getTime()) / 1000);
+        if (sec < 10) return 'Agora há pouco';
+        if (sec < 60) return `há ${sec}s`;
+        return `há ${Math.floor(sec / 60)}min`;
+      })()
+    : '—';
 
-  const startPolling = useCallback(() => {
-    stopPolling();
-    checkStatus();
-    pollingRef.current = setInterval(() => {
-      if (mountedRef.current) {
-        checkStatus();
-      }
-    }, POLLING_INTERVAL_MS);
-  }, []);
-
-  const checkZAPIConfig = async () => {
-    if (!tenant?.id) return;
-
-    try {
-      setLoading(true);
-      
-      const { data, error } = await supabase
-        .from('integration_whatsapp')
-        .select('zapi_instance_id, zapi_token, provider, is_active')
-        .eq('tenant_id', tenant.id)
-        .eq('provider', 'zapi')
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      const hasConfig = !!(data?.zapi_instance_id && data?.zapi_token);
-      setHasZAPIConfig(hasConfig);
-
-      if (!hasConfig) {
-        setWhatsappStatus(null);
-      }
-    } catch (error: any) {
-      console.error('Error checking Z-API config:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const checkStatus = async () => {
-    if (!tenant?.id || !mountedRef.current) return;
-
-    try {
-      const response = await fetch(
-        'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/zapi-proxy',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4`,
-            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4'
-          },
-          body: JSON.stringify({
-            action: 'status',
-            tenant_id: tenant.id
-          })
-        }
-      );
-
-      if (!mountedRef.current) return;
-
-      const data = await response.json();
-
-      if (data.error) {
-        // Se temos QR Code ativo, não substituir pelo erro - apenas atualizar se conectar
-        setWhatsappStatus(prev => {
-          if (prev?.status === 'qr_ready' && prev?.qrCode) {
-            // Preserva o QR Code atual - usuário ainda pode estar escaneando
-            return prev;
-          }
-          return {
-            connected: false,
-            status: 'error',
-            error: data.error,
-            message: data.message
-          };
-        });
-        return;
-      }
-
-      // Se está conectado, limpa o QR Code e para o timer
-      if (data.connected) {
-        stopQRCountdown();
-        setWhatsappStatus({
-          connected: true,
-          status: data.status,
-          message: data.message,
-          user: data.user
-        });
-      } else {
-        // Se não está conectado, preserva o QR Code se existir
-        setWhatsappStatus(prev => {
-          if (prev?.status === 'qr_ready' && prev?.qrCode) {
-            // Mantém o QR Code ativo para o usuário escanear
-            return prev;
-          }
-          return {
-            connected: false,
-            status: data.status || 'disconnected',
-            message: data.message,
-            user: data.user
-          };
-        });
-      }
-
-    } catch (error: any) {
-      if (!mountedRef.current) return;
-      console.error('Error checking status:', error);
-    }
-  };
-
-  const getQRCode = async () => {
-    if (!tenant?.id) return;
-
-    try {
-      setLoadingQR(true);
-
-      const response = await fetch(
-        'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/zapi-proxy',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4`,
-            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4'
-          },
-          body: JSON.stringify({
-            action: 'qr-code',
-            tenant_id: tenant.id
-          })
-        }
-      );
-
-      const data = await response.json();
-
-      if (data.qrCode) {
-        setWhatsappStatus(prev => ({
-          ...prev,
-          connected: false,
-          status: 'qr_ready',
-          qrCode: data.qrCode,
-          hasQR: true,
-          message: 'Escaneie o QR Code com seu WhatsApp'
-        }));
-
-        // Inicia contagem regressiva
-        startQRCountdown();
-
-        toast({
-          title: "QR Code gerado",
-          description: "Você tem 60 segundos para escanear",
-        });
-      } else if (data.error) {
-        toast({
-          title: "Erro",
-          description: data.message || data.error,
-          variant: "destructive"
-        });
-      }
-
-    } catch (error: any) {
-      toast({
-        title: "Erro",
-        description: error.message || "Erro ao obter QR Code",
-        variant: "destructive"
-      });
-    } finally {
-      setLoadingQR(false);
-    }
-  };
-
-  const handleDisconnect = async () => {
-    if (!tenant?.id) return;
-
-    try {
-      setIsReconnecting(true);
-
-      const response = await fetch(
-        'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/zapi-proxy',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4`,
-            'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4'
-          },
-          body: JSON.stringify({
-            action: 'disconnect',
-            tenant_id: tenant.id
-          })
-        }
-      );
-
-      setWhatsappStatus({
-        connected: false,
-        status: 'disconnected',
-        message: 'WhatsApp desconectado'
-      });
-
-      toast({
-        title: "Desconectado",
-        description: "Sessão WhatsApp encerrada.",
-      });
-
-    } catch (error: any) {
-      toast({
-        title: "Erro",
-        description: error.message,
-        variant: "destructive"
-      });
-    } finally {
-      setIsReconnecting(false);
-    }
-  };
-
-  // Loading state
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/30">
-        <div className="container mx-auto p-6">
-          <div className="flex items-center justify-center min-h-[60vh]">
-            <div className="text-center">
-              <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
-              <p className="mt-4 text-muted-foreground">Carregando...</p>
-            </div>
-          </div>
-        </div>
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
       </div>
     );
   }
 
-  const getStatusConfig = () => {
-    if (whatsappStatus?.connected) {
-      return {
-        gradient: 'from-green-500 to-emerald-500',
-        bg: 'bg-green-500/10',
-        border: 'border-green-500/30',
-        text: 'text-green-600 dark:text-green-400',
-        icon: Wifi,
-        label: 'Conectado',
-        pulse: true
-      };
-    }
-    if (whatsappStatus?.status === 'qr_ready') {
-      return {
-        gradient: 'from-purple-500 to-violet-500',
-        bg: 'bg-purple-500/10',
-        border: 'border-purple-500/30',
-        text: 'text-purple-600 dark:text-purple-400',
-        icon: QrCodeIcon,
-        label: 'Aguardando QR',
-        pulse: true
-      };
-    }
-    return {
-      gradient: 'from-gray-400 to-gray-500',
-      bg: 'bg-muted',
-      border: 'border-border',
-      text: 'text-muted-foreground',
-      icon: WifiOff,
-      label: 'Desconectado',
-      pulse: false
-    };
-  };
-
-  const statusConfig = getStatusConfig();
-  const StatusIcon = statusConfig.icon;
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/30">
-      <div className="container mx-auto p-6 max-w-4xl">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2.5 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 text-white shadow-lg">
-              <Smartphone className="h-6 w-6" />
-            </div>
-            <h1 className="text-3xl font-bold text-foreground">WhatsApp Z-API</h1>
+    <div className="max-w-[1600px] mx-auto p-6 space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">WhatsApp — Conexão</h1>
+        <p className="text-sm text-muted-foreground mt-1">Gerencie a conexão do seu WhatsApp</p>
+      </div>
+
+      {/* Provider selector */}
+      <div className="grid grid-cols-2 gap-3 max-w-md">
+        <button
+          onClick={() => setProvider('zapi')}
+          className={`flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
+            provider === 'zapi'
+              ? 'border-primary bg-primary/5'
+              : 'border-border hover:border-primary/40 bg-card'
+          }`}
+        >
+          <div className={`p-2 rounded-lg ${provider === 'zapi' ? 'bg-primary/10' : 'bg-muted'}`}>
+            <Zap className={`h-5 w-5 ${provider === 'zapi' ? 'text-primary' : 'text-muted-foreground'}`} />
           </div>
-          <p className="text-muted-foreground ml-14">
-            Conecte seu WhatsApp usando Z-API
-          </p>
-        </div>
+          <div>
+            <p className={`text-sm font-semibold ${provider === 'zapi' ? 'text-primary' : 'text-foreground'}`}>Z-API</p>
+            <p className="text-xs text-muted-foreground">Instância própria</p>
+          </div>
+        </button>
 
-        {/* Configuration Card */}
-        <div className="mb-6">
-          <ZAPISettings />
-        </div>
+        <button
+          onClick={() => setProvider('evolution')}
+          className={`flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
+            provider === 'evolution'
+              ? 'border-violet-500 bg-violet-500/5'
+              : 'border-border hover:border-violet-400/40 bg-card'
+          }`}
+        >
+          <div className={`p-2 rounded-lg ${provider === 'evolution' ? 'bg-violet-500/10' : 'bg-muted'}`}>
+            <Shield className={`h-5 w-5 ${provider === 'evolution' ? 'text-violet-500' : 'text-muted-foreground'}`} />
+          </div>
+          <div>
+            <p className={`text-sm font-semibold ${provider === 'evolution' ? 'text-violet-600 dark:text-violet-400' : 'text-foreground'}`}>Evolution API</p>
+            <p className="text-xs text-muted-foreground">Anti-bloqueio avançado</p>
+          </div>
+        </button>
+      </div>
 
-        {/* Connection Card */}
-        {hasZAPIConfig && (
-          <Card className="overflow-hidden shadow-lg">
-            <div className={`h-1.5 bg-gradient-to-r ${statusConfig.gradient}`} />
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-3">
-                  <div className={`p-2.5 rounded-xl ${statusConfig.bg} ${statusConfig.border} border`}>
-                    <StatusIcon className={`h-5 w-5 ${statusConfig.text}`} />
-                  </div>
-                  <span className={statusConfig.text}>{statusConfig.label}</span>
-                </CardTitle>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={checkStatus}
-                  className="gap-2"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Atualizar
-                </Button>
+      {/* Status + QR */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Status */}
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4 mb-6">
+              <div className="p-3 rounded-2xl bg-emerald-100 dark:bg-emerald-950/40">
+                <Phone className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
               </div>
-              {whatsappStatus?.user?.phone && (
-                <CardDescription className="ml-14">
-                  Número: {whatsappStatus.user.phone}
-                </CardDescription>
+              <div className="flex-1">
+                <h2 className="text-lg font-semibold">Status da Conexão</h2>
+                <Badge
+                  variant="outline"
+                  className={
+                    isConnected
+                      ? 'mt-1 bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400'
+                      : 'mt-1 bg-muted text-muted-foreground'
+                  }
+                >
+                  {isConnected ? 'Conectado' : (isQrReady ? 'Aguardando QR' : 'Desconectado')}
+                </Badge>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between py-2 border-b border-border/50">
+                <span className="text-muted-foreground">Número conectado</span>
+                <span className="font-semibold">{formatPhone(whatsappStatus?.user?.phone)}</span>
+              </div>
+              <div className="flex items-center justify-between py-2 border-b border-border/50">
+                <span className="text-muted-foreground">API</span>
+                <Badge variant="outline" className={provider === 'evolution' ? 'text-violet-600 border-violet-300' : ''}>
+                  {provider === 'evolution' ? 'Evolution API' : 'Z-API'}
+                </Badge>
+              </div>
+              {provider === 'zapi' && (
+                <div className="flex items-center justify-between py-2 border-b border-border/50">
+                  <span className="text-muted-foreground">Instance ID</span>
+                  <span className="font-mono">{instanceId ? maskMiddle(instanceId, 4) : '—'}</span>
+                </div>
               )}
-            </CardHeader>
-            
-            <CardContent className="space-y-4">
-              {/* Connected State */}
-              {whatsappStatus?.connected && (
-                <div className="space-y-4">
-                  <Alert className="border-green-500/30 bg-green-500/5">
-                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                    <AlertDescription className="text-foreground">
-                      WhatsApp conectado e pronto para enviar mensagens!
-                    </AlertDescription>
-                  </Alert>
-                  
-                  <Button 
-                    variant="destructive" 
-                    onClick={handleDisconnect}
-                    disabled={isReconnecting}
-                    className="w-full"
-                  >
-                    {isReconnecting ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <WifiOff className="h-4 w-4 mr-2" />
-                    )}
+              {provider === 'evolution' && (
+                <div className="flex items-center justify-between py-2 border-b border-border/50">
+                  <span className="text-muted-foreground">Instância</span>
+                  <span className="font-mono text-xs">{evolutionInstanceName || '—'}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between py-2">
+                <span className="text-muted-foreground">Última sync</span>
+                <span className={isConnected ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-muted-foreground'}>
+                  {lastSyncLabel}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mt-6">
+              {provider === 'zapi' ? (
+                <>
+                  <Button variant="outline" onClick={handleDisconnectZapi} disabled={isReconnecting || !isConnected}>
+                    {isReconnecting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <WifiOff className="h-4 w-4 mr-2" />}
                     Desconectar
                   </Button>
-                </div>
+                  <Button onClick={() => getQRCodeZapi()} disabled={loadingQR || isConnected}>
+                    {loadingQR ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                    Reconectar
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={deleteEvolutionInstance}
+                    disabled={deletingInstance || !evolutionInstanceName}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    {deletingInstance ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                    Remover
+                  </Button>
+                  <Button onClick={getQRCodeEvolution} disabled={loadingQR || !evolutionInstanceName || isConnected}>
+                    {loadingQR ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                    Reconectar
+                  </Button>
+                </>
               )}
+            </div>
+          </CardContent>
+        </Card>
 
-              {/* QR Code State */}
-              {whatsappStatus?.status === 'qr_ready' && whatsappStatus.qrCode && (
-                <div className="space-y-4">
-                  {/* Timer de expiração */}
-                  {qrCountdown > 0 && (
-                    <div className={`flex items-center justify-center gap-2 p-3 rounded-lg ${
-                      qrCountdown <= 15 
-                        ? 'bg-red-500/10 border border-red-500/30' 
-                        : qrCountdown <= 30 
-                          ? 'bg-yellow-500/10 border border-yellow-500/30'
-                          : 'bg-purple-500/10 border border-purple-500/30'
-                    }`}>
-                      <Timer className={`h-5 w-5 ${
-                        qrCountdown <= 15 
-                          ? 'text-red-500' 
-                          : qrCountdown <= 30 
-                            ? 'text-yellow-500'
-                            : 'text-purple-500'
-                      }`} />
-                      <span className={`text-lg font-bold ${
-                        qrCountdown <= 15 
-                          ? 'text-red-600 dark:text-red-400' 
-                          : qrCountdown <= 30 
-                            ? 'text-yellow-600 dark:text-yellow-400'
-                            : 'text-purple-600 dark:text-purple-400'
-                      }`}>
-                        {qrCountdown}s
-                      </span>
-                      <span className="text-sm text-muted-foreground">
-                        {qrCountdown <= 15 ? 'Expirando!' : 'para escanear'}
-                      </span>
-                    </div>
-                  )}
-                  
-                  <div className="flex flex-col items-center p-6 bg-white rounded-xl">
-                    <img 
-                      src={whatsappStatus.qrCode} 
-                      alt="QR Code WhatsApp"
-                      className="w-64 h-64"
+        {/* QR Code */}
+        <Card>
+          <CardContent className="p-6 flex flex-col items-center">
+            <div className="text-center mb-4">
+              <h2 className="text-lg font-semibold">QR Code para emparelhar</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Abra o WhatsApp → Dispositivos Conectados → Conectar Dispositivo
+              </p>
+            </div>
+
+            <div className="w-full flex justify-center my-4">
+              <div className="w-72 h-72 rounded-xl border-2 border-dashed border-border bg-muted/30 flex items-center justify-center overflow-hidden">
+                {isQrReady ? (
+                  <img src={whatsappStatus!.qrCode} alt="QR Code WhatsApp" className="w-full h-full object-contain p-3 bg-white" />
+                ) : isConnected ? (
+                  <div className="text-center text-emerald-600 dark:text-emerald-400">
+                    <Phone className="h-12 w-12 mx-auto mb-2" />
+                    <p className="text-sm font-medium">WhatsApp conectado</p>
+                  </div>
+                ) : (
+                  <div className="text-center text-muted-foreground">
+                    <QrCodeIcon className="h-16 w-16 mx-auto mb-2 opacity-40" />
+                    <p className="text-xs">QR Code</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {qrCountdown > 0 && (
+              <p className="text-xs text-muted-foreground mb-2">Expira em {qrCountdown}s</p>
+            )}
+
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={provider === 'evolution' ? getQRCodeEvolution : getQRCodeZapi}
+              disabled={loadingQR || isConnected || (provider === 'evolution' && !evolutionInstanceName)}
+            >
+              {loadingQR ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <QrCodeIcon className="h-4 w-4 mr-2" />}
+              Gerar novo QR Code
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Config section — changes based on provider */}
+      {provider === 'zapi' ? (
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center gap-2 mb-6">
+              <Zap className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold">Configurações Z-API</h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div className="space-y-2">
+                <Label htmlFor="client-token">Client Token</Label>
+                <div className="relative">
+                  <Input
+                    id="client-token"
+                    type={showClientToken ? 'text' : 'password'}
+                    value={clientToken}
+                    onChange={(e) => setClientToken(e.target.value)}
+                    placeholder="••••••••••"
+                    className="pr-10"
+                  />
+                  <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full px-3" onClick={() => setShowClientToken(v => !v)}>
+                    {showClientToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="instance-id">Instance ID</Label>
+                <Input id="instance-id" value={instanceId} onChange={(e) => setInstanceId(e.target.value)} placeholder="3DF82A-XXXX" />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="security-token">Security Token</Label>
+                <div className="relative">
+                  <Input
+                    id="security-token"
+                    type={showToken ? 'text' : 'password'}
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    placeholder="••••••••••"
+                    className="pr-10"
+                  />
+                  <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full px-3" onClick={() => setShowToken(v => !v)}>
+                    {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+              <div className="space-y-2">
+                <Label>Webhook URL</Label>
+                <Input value={`${SUPABASE_URL}/functions/v1/zapi-webhook`} readOnly className="font-mono text-xs" />
+              </div>
+              <div className="space-y-2">
+                <Label>Modo de Envio</Label>
+                <Input value="Direto" readOnly />
+              </div>
+              <Button onClick={saveZapiCredentials} disabled={savingConfig} className="h-10">
+                {savingConfig ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                Salvar configurações
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center gap-2 mb-2">
+              <Shield className="h-5 w-5 text-violet-500" />
+              <h2 className="text-lg font-semibold">Configurações Evolution API</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-6">
+              A Evolution API roda no servidor da OrderZaps e simula comportamento humano real — digitando, lendo mensagens e reagindo antes de enviar.
+            </p>
+
+            {evolutionInstanceName ? (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 p-4 rounded-lg bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800">
+                  <div className="p-2 bg-violet-100 dark:bg-violet-900/40 rounded-lg">
+                    <Shield className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-violet-800 dark:text-violet-300">Instância configurada</p>
+                    <p className="text-xs font-mono text-violet-600 dark:text-violet-400 mt-0.5">{evolutionInstanceName}</p>
+                  </div>
+                  <Badge variant="outline" className={isConnected ? 'text-emerald-600 border-emerald-300' : 'text-muted-foreground'}>
+                    {isConnected ? 'Conectado' : 'Desconectado'}
+                  </Badge>
+                </div>
+
+                {!isConnected && (
+                  <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-4 text-sm text-amber-700 dark:text-amber-400">
+                    Gere o QR Code acima e escaneie com o WhatsApp para conectar este chip.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20 p-4 text-sm text-blue-700 dark:text-blue-400">
+                  Crie uma instância para começar. Use um nome simples como <span className="font-mono font-medium">minha-loja</span> ou <span className="font-mono font-medium">chip-vendas</span>.
+                </div>
+
+                <div className="flex gap-3">
+                  <div className="flex-1 space-y-2">
+                    <Label htmlFor="evo-instance-name">Nome da instância</Label>
+                    <Input
+                      id="evo-instance-name"
+                      value={evolutionDraftName}
+                      onChange={(e) => setEvolutionDraftName(e.target.value)}
+                      placeholder="minha-loja"
+                      onKeyDown={(e) => e.key === 'Enter' && createEvolutionInstance()}
                     />
                   </div>
-                  <p className="text-center text-sm text-muted-foreground">
-                    Abra o WhatsApp no celular → Menu → Aparelhos conectados → Conectar aparelho
-                  </p>
-                  <Button 
-                    variant="outline"
-                    onClick={getQRCode}
-                    disabled={loadingQR}
-                    className="w-full"
-                  >
-                    {loadingQR ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                    )}
-                    Gerar Novo QR Code
-                  </Button>
+                  <div className="flex items-end">
+                    <Button onClick={createEvolutionInstance} disabled={creatingInstance || !evolutionDraftName.trim()} className="bg-violet-600 hover:bg-violet-700 text-white">
+                      {creatingInstance ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
+                      Criar instância
+                    </Button>
+                  </div>
                 </div>
-              )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-              {/* QR Code Expired State */}
-              {whatsappStatus?.status === 'qr_expired' && (
-                <div className="space-y-4">
-                  <Alert className="border-yellow-500/30 bg-yellow-500/5">
-                    <Clock className="h-4 w-4 text-yellow-500" />
-                    <AlertDescription className="text-foreground">
-                      O QR Code expirou. Clique no botão abaixo para gerar um novo.
-                    </AlertDescription>
-                  </Alert>
-                  
-                  <Button 
-                    onClick={getQRCode}
-                    disabled={loadingQR}
-                    className="w-full"
-                  >
-                    {loadingQR ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <QrCodeIcon className="h-4 w-4 mr-2" />
-                    )}
-                    Gerar Novo QR Code
-                  </Button>
-                </div>
-              )}
-
-              {/* Disconnected State */}
-              {(!whatsappStatus || whatsappStatus.status === 'disconnected') && (
-                <div className="space-y-4">
-                  <Alert className="border-muted">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>
-                      WhatsApp não conectado. Clique em "Gerar QR Code" para conectar.
-                    </AlertDescription>
-                  </Alert>
-                  
-                  <Button 
-                    onClick={getQRCode}
-                    disabled={loadingQR}
-                    className="w-full"
-                  >
-                    {loadingQR ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <QrCodeIcon className="h-4 w-4 mr-2" />
-                    )}
-                    Gerar QR Code
-                  </Button>
-                </div>
-              )}
-
-              {/* Error State */}
-              {whatsappStatus?.status === 'error' && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    {whatsappStatus.error || whatsappStatus.message || 'Erro desconhecido'}
-                  </AlertDescription>
-                </Alert>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Features */}
-        <div className="grid md:grid-cols-3 gap-4 mt-6">
-          <Card className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <MessageCircle className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-sm">Mensagens Automáticas</h3>
-                <p className="text-xs text-muted-foreground">Envie mensagens automaticamente</p>
-              </div>
-            </div>
-          </Card>
-          
-          <Card className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Zap className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-sm">Alta Disponibilidade</h3>
-                <p className="text-xs text-muted-foreground">Infraestrutura Z-API</p>
-              </div>
-            </div>
-          </Card>
-          
-          <Card className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10">
-                <Shield className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-sm">Conexão Segura</h3>
-                <p className="text-xs text-muted-foreground">API criptografada</p>
-              </div>
-            </div>
-          </Card>
-        </div>
-      </div>
+      {/* Mensagens automáticas + Proteção por consentimento */}
+      <ZAPIAdvancedSettings />
     </div>
   );
 }

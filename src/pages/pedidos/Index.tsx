@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import type { DateRange } from 'react-day-picker';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,7 +16,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Loader2, CalendarIcon, Eye, Filter, Download, Printer, Check, FileText, Save, Edit, Trash2, MessageCircle, Send, ArrowLeft, BarChart3, DollarSign, Clock, Package, Search, Truck, RefreshCw, Ban, RotateCcw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-import { format } from 'date-fns';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn, formatCurrency } from '@/lib/utils';
 import { formatPaymentMethodWithInstallments } from '@/lib/payment-method-utils';
@@ -47,8 +48,10 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     tenant_id: string;
     unique_order_id?: string;
     melhor_envio_tracking_code?: string;
+    order_status?: 'em_separacao' | 'envio_pendente' | 'enviado' | 'liberado_retirada' | null;
     customer_name?: string;
     bling_order_id?: number;
+    source?: string | null;
     customer?: {
       name?: string;
       cpf?: string;
@@ -100,6 +103,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     const [viewOrderOpen, setViewOrderOpen] = useState(false);
     const [activeView, setActiveView] = useState<'dashboard' | 'management'>('dashboard');
     const [searchTerm, setSearchTerm] = useState('');
+    const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
     const ensureOrderCartItems = async (order: Order): Promise<Order> => {
       if (!order?.cart_id) return order;
@@ -178,11 +182,19 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
           .limit(500); // Limitar para performance
 
         if (filterPaid === 'paid') {
-          query = query.eq('is_paid', true).eq('is_cancelled', false);
+          query = query.eq('is_paid', true).eq('is_cancelled', false).is('order_status', null);
         } else if (filterPaid === 'unpaid') {
           query = query.eq('is_paid', false).eq('is_cancelled', false);
         } else if (filterPaid === 'cancelled') {
           query = query.eq('is_cancelled', true);
+        } else if (filterPaid === 'em_separacao') {
+          query = query.eq('is_cancelled', false).eq('order_status', 'em_separacao');
+        } else if (filterPaid === 'envio_pendente') {
+          query = query.eq('is_cancelled', false).eq('order_status', 'envio_pendente');
+        } else if (filterPaid === 'enviado') {
+          query = query.eq('is_cancelled', false).eq('order_status', 'enviado');
+        } else if (filterPaid === 'liberado_retirada') {
+          query = query.eq('is_cancelled', false).eq('order_status', 'liberado_retirada');
         }
 
         if (filterEventType && filterEventType !== 'all') {
@@ -499,7 +511,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
         // O trigger trg_send_tracking_whatsapp dispara automaticamente o envio via WhatsApp
         const { error: updateError } = await supabase
           .from('orders')
-          .update({ melhor_envio_tracking_code: trackingText.trim() })
+          .update({ melhor_envio_tracking_code: trackingText.trim(), order_status: 'enviado' })
           .eq('id', orderId)
           .eq('tenant_id', order.tenant_id);
 
@@ -521,7 +533,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
         // Atualizar estado local
         setOrders(prev => prev.map(o => 
           o.id === orderId 
-            ? { ...o, melhor_envio_tracking_code: trackingText.trim() }
+            ? { ...o, melhor_envio_tracking_code: trackingText.trim(), order_status: 'enviado' as const }
             : o
         ));
 
@@ -684,6 +696,29 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
 
         if (error) throw error;
 
+        // Registrar auditoria do cancelamento/reativação
+        try {
+          await supabaseTenant.from('audit_logs').insert({
+            entity: 'order',
+            entity_id: String(orderId),
+            action: currentStatus ? 'cancellation_reverted' : 'cancelled',
+            tenant_id: order?.tenant_id,
+            meta: {
+              order_number: order?.tenant_order_number || orderId,
+              previous_is_cancelled: currentStatus,
+              new_is_cancelled: !currentStatus,
+              is_paid: order?.is_paid ?? false,
+              total_amount: order?.total_amount,
+              customer_phone: order?.customer_phone,
+              user_id: profile?.id,
+              user_email: profile?.email,
+              source: 'panel_single',
+            },
+          });
+        } catch (logErr) {
+          console.error('Falha ao registrar audit_log de cancelamento:', logErr);
+        }
+
         setOrders(prev => prev.map(order => 
           order.id === orderId 
             ? { ...order, is_cancelled: !currentStatus }
@@ -789,6 +824,32 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
           .in('id', cancelableOrders.map(o => o.id));
 
         if (error) throw error;
+
+        // Registrar auditoria de cancelamento em lote
+        try {
+          const logRows = cancelableOrders.map(o => ({
+            entity: 'order',
+            entity_id: String(o.id),
+            action: 'cancelled',
+            tenant_id: o.tenant_id,
+            meta: {
+              order_number: o.tenant_order_number || o.id,
+              previous_is_cancelled: false,
+              new_is_cancelled: true,
+              is_paid: o.is_paid ?? false,
+              total_amount: o.total_amount,
+              customer_phone: o.customer_phone,
+              user_id: profile?.id,
+              user_email: profile?.email,
+              source: 'panel_bulk',
+            },
+          }));
+          if (logRows.length > 0) {
+            await supabaseTenant.from('audit_logs').insert(logRows);
+          }
+        } catch (logErr) {
+          console.error('Falha ao registrar audit_logs de cancelamento em lote:', logErr);
+        }
 
         setOrders(prev => prev.map(order => 
           cancelableOrders.some(o => o.id === order.id)
@@ -1350,7 +1411,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
 
     // Filtrar pedidos por telefone, nome, CPF, Instagram ou número do pedido
     const filteredOrders = orders.filter(order => {
-      const search = searchTerm.trim().toLowerCase();
+      const search = debouncedSearchTerm.trim().toLowerCase();
       if (!search) return true;
 
       const numericSearch = search.replace(/\D/g, '');
@@ -1396,8 +1457,8 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
 
         return (
           normalizedPhone.includes(normalizedSearch) ||
-          order.customer_phone.includes(searchTerm) ||
-          formatPhoneForDisplay(order.customer_phone).includes(searchTerm)
+          order.customer_phone.includes(debouncedSearchTerm) ||
+          formatPhoneForDisplay(order.customer_phone).includes(debouncedSearchTerm)
         );
       }
 
@@ -1478,28 +1539,39 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
     // Reset página quando filtros mudam
     useEffect(() => {
       setCurrentPage(1);
-    }, [filterPaid, filterEventType, filterDate, filterPrinted, searchTerm]);
+    }, [filterPaid, filterEventType, filterDate, filterPrinted, debouncedSearchTerm]);
 
     const formatCurrencyLocal = (value: number) => {
       return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
     };
 
+    const isRoanneJoias = supabaseTenant.getTenantId() === '014457e5-e85f-4d62-874b-6bd0b72213bc';
     return (
       <div className="min-h-screen bg-background">
-        <div className="p-6">
-          <div className="container mx-auto space-y-6">
+        <div className="p-3 md:p-6">
+          <div className="container mx-auto space-y-4 md:space-y-6 px-0">
+
             <div className="space-y-4">
-              <h1 className="text-3xl font-bold">Gestão de Pedidos</h1>
-              <div className="flex flex-wrap gap-2">
-                <Button 
-                  onClick={exportSelectedOrders} 
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <h1 className="text-2xl font-bold tracking-tight">Gestão de Pedidos</h1>
+                <Button onClick={loadOrders} variant="ghost" size="sm" disabled={loading} className="text-muted-foreground">
+                  <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
+                  Atualizar
+                </Button>
+              </div>
+
+              {/* Action buttons row */}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  onClick={exportSelectedOrders}
                   variant="outline"
                   disabled={selectedOrders.size === 0}
+                  className="h-10 rounded-xl bg-white border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb] hover:text-[#111827] shadow-none font-medium"
                 >
-                  <FileText className="h-4 w-4 mr-2" />
-                  Imprimir Selecionados ({selectedOrders.size})
+                  <Printer className="h-4 w-4 mr-2 text-[#6b7280]" />
+                  Imprimir Selecionados ( {selectedOrders.size} )
                 </Button>
-                <Button 
+                <Button
                   onClick={() => {
                     const selectedOrdersData = orders.filter(order => selectedOrders.has(order.id));
                     if (selectedOrdersData.length === 0) {
@@ -1507,157 +1579,202 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                       return;
                     }
                     printMultipleThermalReceipts(selectedOrdersData);
-                  }} 
+                  }}
                   variant="outline"
                   disabled={selectedOrders.size === 0}
+                  className="h-10 rounded-xl bg-white border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb] hover:text-[#111827] shadow-none font-medium"
                 >
-                  <Printer className="h-4 w-4 mr-2" />
-                  Imprimir - Térmica ({selectedOrders.size})
+                  <Printer className="h-4 w-4 mr-2 text-[#6b7280]" />
+                  Imprimir Térmica ( {selectedOrders.size} )
                 </Button>
-                <Button 
-                  onClick={markOrdersAsPrinted} 
+                <Button
+                  onClick={markOrdersAsPrinted}
                   variant="outline"
                   disabled={selectedOrders.size === 0}
+                  className="h-10 rounded-xl bg-white border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb] hover:text-[#111827] shadow-none font-medium"
                 >
-                  <Printer className="h-4 w-4 mr-2" />
+                  <Check className="h-4 w-4 mr-2 text-[#6b7280]" />
                   Marcar como Impresso
                 </Button>
-                <Button 
-                  onClick={cancelSelectedOrders} 
+                <Button
+                  onClick={cancelSelectedOrders}
                   variant="outline"
                   disabled={selectedOrders.size === 0}
-                  className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                  className="h-10 rounded-xl bg-white border-[#fed7aa] text-[#ea580c] hover:bg-[#fff7ed] hover:text-[#c2410c] shadow-none font-medium disabled:opacity-50"
                 >
                   <Ban className="h-4 w-4 mr-2" />
-                  Cancelar ({selectedOrders.size})
+                  Cancelar Selecionados ( {selectedOrders.size} )
                 </Button>
-                <Button 
-                  onClick={deleteSelectedOrders} 
-                  variant="destructive"
-                  disabled={selectedOrders.size === 0}
+                {!isRoanneJoias && (
+                  <Button
+                    onClick={deleteSelectedOrders}
+                    variant="outline"
+                    disabled={selectedOrders.size === 0}
+                    className="h-10 rounded-xl bg-white border-[#fecaca] text-[#dc2626] hover:bg-[#fef2f2] hover:text-[#b91c1c] shadow-none font-medium disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Deletar Selecionados ( {selectedOrders.size} )
+                  </Button>
+                )}
+                <Button
+                  onClick={exportToCSV}
+                  variant="outline"
+                  className="h-10 rounded-xl bg-white border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb] hover:text-[#111827] shadow-none font-medium"
                 >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Deletar ({selectedOrders.size})
-                </Button>
-                <Button onClick={exportToCSV} variant="outline">
-                  <Download className="h-4 w-4 mr-2" />
+                  <Download className="h-4 w-4 mr-2 text-[#6b7280]" />
                   Exportar CSV
-                </Button>
-                <Button onClick={loadOrders} variant="outline" disabled={loading}>
-                  <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
-                  Atualizar
                 </Button>
               </div>
             </div>
 
         {/* Filters */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Filter className="h-5 w-5 mr-2" />
-              Filtros
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {/* Campo de busca por telefone */}
-              <div className="flex items-center space-x-2">
-                <Search className="h-4 w-4 text-muted-foreground" />
+        <Card className="border-[#e5e7eb] shadow-sm rounded-2xl">
+          <CardContent className="p-5 space-y-4">
+            <div className="flex items-center gap-2 text-[#374151]">
+              <Filter className="h-4 w-4" />
+              <span className="text-sm font-semibold">Filtros</span>
+            </div>
+
+            {/* Linha principal: busca + selects + limpar */}
+            <div className="flex flex-col lg:flex-row gap-3">
+              <div className="relative flex-1 min-w-0">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9ca3af]" />
                 <Input
                   placeholder="Buscar por nome, telefone, CPF, @ Instagram ou nº do pedido..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="max-w-sm"
+                  className="h-11 pl-10 rounded-xl bg-[#f9fafb] border-[#e5e7eb] focus-visible:ring-1 focus-visible:ring-[#4f46e5]"
                 />
               </div>
 
-              <Separator />
+              <Select value={filterPaid} onValueChange={(value) => setFilterPaid(value)}>
+                <SelectTrigger className="h-11 lg:w-[230px] rounded-xl bg-[#f9fafb] border-[#e5e7eb]">
+                  <SelectValue>
+                    <span className="text-[#6b7280]">Status Pagamento — </span>
+                    <span className="text-[#111827] font-medium">
+                      {filterPaid === 'all' ? 'Todos'
+                        : filterPaid === 'paid' ? 'Pagos'
+                        : filterPaid === 'em_separacao' ? 'Em Separação'
+                        : filterPaid === 'envio_pendente' ? 'Envio Pendente'
+                        : filterPaid === 'enviado' ? 'Enviados'
+                        : filterPaid === 'liberado_retirada' ? 'Liberado para Retirada'
+                        : filterPaid === 'unpaid' ? 'Não pagos'
+                        : 'Cancelados'}
+                    </span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="paid">Pagos</SelectItem>
+                  <SelectItem value="em_separacao">Em Separação</SelectItem>
+                  <SelectItem value="envio_pendente">Envio Pendente</SelectItem>
+                  <SelectItem value="enviado">Enviados</SelectItem>
+                  <SelectItem value="liberado_retirada">Liberado para Retirada</SelectItem>
+                  <SelectItem value="unpaid">Não pagos</SelectItem>
+                  <SelectItem value="cancelled">Cancelados</SelectItem>
+                </SelectContent>
+              </Select>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Status</label>
-                  <Select 
-                    value={filterPaid} 
-                    onValueChange={(value) => setFilterPaid(value)}
+              <Select value={filterEventType} onValueChange={setFilterEventType}>
+                <SelectTrigger className="h-11 lg:w-[220px] rounded-xl bg-[#f9fafb] border-[#e5e7eb]">
+                  <SelectValue>
+                    <span className="text-[#6b7280]">Tipo do Evento — </span>
+                    <span className="text-[#111827] font-medium">
+                      {filterEventType === 'all' ? 'Todos' : filterEventType}
+                    </span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="BAZAR">BAZAR</SelectItem>
+                  <SelectItem value="LIVE">LIVE</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={filterPrinted} onValueChange={setFilterPrinted}>
+                <SelectTrigger className="h-11 lg:w-[200px] rounded-xl bg-[#f9fafb] border-[#e5e7eb]">
+                  <SelectValue>
+                    <span className="text-[#6b7280]">Impressão — </span>
+                    <span className="text-[#111827] font-medium">
+                      {filterPrinted === 'all' ? 'Todos'
+                        : filterPrinted === 'printed' ? 'Impressos'
+                        : 'Não impressos'}
+                    </span>
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="not_printed">Não impressos</SelectItem>
+                  <SelectItem value="printed">Impressos</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Button
+                onClick={clearFilters}
+                variant="outline"
+                className="h-11 rounded-xl bg-white border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb] font-medium"
+              >
+                Limpar Filtros
+              </Button>
+            </div>
+
+            {/* Linha de período */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <span className="text-sm text-[#6b7280] mr-1">Período:</span>
+              {([
+                { key: 'hoje', label: 'Hoje', range: () => { const d = new Date(); return { from: d, to: d }; } },
+                { key: 'semana', label: 'Semana', range: () => { const d = new Date(); return { from: startOfWeek(d, { weekStartsOn: 0 }), to: endOfWeek(d, { weekStartsOn: 0 }) }; } },
+                { key: 'mes', label: 'Mês', range: () => { const d = new Date(); return { from: startOfMonth(d), to: endOfMonth(d) }; } },
+                { key: 'ano', label: 'Ano', range: () => { const d = new Date(); return { from: startOfYear(d), to: endOfYear(d) }; } },
+              ] as const).map((preset) => {
+                const r = preset.range();
+                const active = filterDate?.from && filterDate?.to
+                  && format(filterDate.from, 'yyyy-MM-dd') === format(r.from, 'yyyy-MM-dd')
+                  && format(filterDate.to, 'yyyy-MM-dd') === format(r.to, 'yyyy-MM-dd');
+                return (
+                  <Button
+                    key={preset.key}
+                    type="button"
+                    onClick={() => setFilterDate(r)}
+                    className={cn(
+                      "h-9 px-4 rounded-xl text-sm font-medium border shadow-none",
+                      active
+                        ? "bg-[#4f46e5] text-white border-[#4f46e5] hover:bg-[#4338ca]"
+                        : "bg-white text-[#374151] border-[#e5e7eb] hover:bg-[#f9fafb]"
+                    )}
                   >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="paid">Pagos</SelectItem>
-                      <SelectItem value="unpaid">Não pagos</SelectItem>
-                      <SelectItem value="cancelled">Cancelados</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Impressão</label>
-                  <Select value={filterPrinted} onValueChange={setFilterPrinted}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="not_printed">Não impressos</SelectItem>
-                      <SelectItem value="printed">Impressos</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Tipo do Evento</label>
-                  <Select value={filterEventType} onValueChange={setFilterEventType}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Todos os tipos" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="BAZAR">BAZAR</SelectItem>
-                      <SelectItem value="LIVE">LIVE</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Data do Evento</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !filterDate?.from && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {filterDate?.from ? (
-                          filterDate.to
-                            ? `${format(filterDate.from, "dd/MM/yy", { locale: ptBR })} - ${format(filterDate.to, "dd/MM/yy", { locale: ptBR })}`
-                            : format(filterDate.from, "PPP", { locale: ptBR })
-                        ) : "Selecionar data"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="range"
-                        selected={filterDate}
-                        onSelect={setFilterDate}
-                        initialFocus
-                        numberOfMonths={1}
-                        className="pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium invisible">Ações</label>
-                  <Button onClick={clearFilters} variant="outline" className="w-full">
-                    Limpar Filtros
+                    {preset.label}
                   </Button>
+                );
+              })}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="h-9 px-4 rounded-xl bg-white border-[#e5e7eb] text-[#374151] hover:bg-[#f9fafb] font-medium"
+                  >
+                    Período
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="range"
+                    selected={filterDate}
+                    onSelect={setFilterDate}
+                    initialFocus
+                    numberOfMonths={1}
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+              <div className="flex items-center gap-2 ml-1">
+                <div className="h-9 px-3 inline-flex items-center gap-2 rounded-xl bg-white border border-[#e5e7eb] text-sm text-[#374151] min-w-[150px]">
+                  <CalendarIcon className="h-4 w-4 text-[#9ca3af]" />
+                  {filterDate?.from
+                    ? (filterDate.to
+                        ? `${format(filterDate.from, 'dd/MM/yyyy')} – ${format(filterDate.to, 'dd/MM/yyyy')}`
+                        : format(filterDate.from, 'dd/MM/yyyy'))
+                    : <span className="text-[#9ca3af]">Selecionar data</span>}
                 </div>
               </div>
             </div>
@@ -1688,10 +1805,162 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
               </div>
             </div>
 
-            <Table className="text-xs w-full">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[40px] min-w-[40px] px-2 text-center">
+            {/* MOBILE: Cards empilhados (substitui a tabela) */}
+            <div className="md:hidden divide-y divide-[#d1d5db]">
+              {loading ? (
+                <div className="text-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+                </div>
+              ) : paginatedOrders.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground text-sm">
+                  {debouncedSearchTerm ? 'Nenhum pedido encontrado para esta busca' : 'Nenhum pedido encontrado'}
+                </div>
+              ) : (
+                paginatedOrders.map((order) => {
+                  const normalizedPhone = normalizeForStorage(order.customer_phone);
+                  const multiCount = orderCountByPhone[normalizedPhone] || 1;
+                  const hasTracking = !!(order.melhor_envio_tracking_code && order.melhor_envio_tracking_code.trim());
+                  const srcMap: Record<string, { label: string; cls: string }> = {
+                    whatsapp:   { label: 'WhatsApp',  cls: 'bg-[#dcfce7] text-[#16a34a]' },
+                    instagram:  { label: 'Instagram', cls: 'bg-[#fce7f3] text-[#db2777]' },
+                    storefront: { label: 'Vitrine',   cls: 'bg-[#fef3c7] text-[#ca8a04]' },
+                    live_admin: { label: 'Live',      cls: 'bg-[#e0e7ff] text-[#4f46e5]' },
+                    webhook:    { label: 'Auto',      cls: 'bg-[#dcfce7] text-[#16a34a]' },
+                    manual:     { label: 'Manual',    cls: 'bg-[#f1f5f9] text-[#475569]' },
+                  };
+                  const src = order.source || 'manual';
+                  const srcInfo = srcMap[src] || { label: src, cls: 'bg-[#f1f5f9] text-[#475569]' };
+                  let statusBadge: JSX.Element;
+                  if (order.is_cancelled) {
+                    statusBadge = <Badge variant="destructive" className="text-[10px]">Cancelado</Badge>;
+                  } else if (order.is_paid && (order.order_status === 'enviado' || hasTracking)) {
+                    statusBadge = <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#dbeafe] text-[#2563eb]">Enviado</Badge>;
+                  } else if (order.is_paid && order.order_status === 'em_separacao') {
+                    statusBadge = <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#fef3c7] text-[#b45309]">Em Separação</Badge>;
+                  } else if (order.is_paid && order.order_status === 'envio_pendente') {
+                    statusBadge = <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#ffedd5] text-[#c2410c]">Envio Pendente</Badge>;
+                  } else if (order.is_paid && order.order_status === 'liberado_retirada') {
+                    statusBadge = <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#e0e7ff] text-[#4338ca]">Liberado p/ Retirada</Badge>;
+                  } else {
+                    statusBadge = <Badge className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${order.is_paid ? 'bg-[#dcfce7] text-[#16a34a]' : 'bg-[#fef9c3] text-[#ca8a04]'}`}>{order.is_paid ? 'Pago' : 'Pendente'}</Badge>;
+                  }
+                  return (
+                    <div key={order.id} className={cn("p-3 space-y-2", order.is_cancelled && 'opacity-60 bg-muted/30')}>
+                      <div className="flex items-start gap-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedOrders.has(order.id)}
+                          onChange={() => toggleOrderSelection(order.id)}
+                          className="w-4 h-4 mt-1 accent-[#4f46e5]"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-mono text-[13px] font-semibold text-[#111827]">#{order.tenant_order_number || order.id}</span>
+                            <span className="text-sm font-bold text-[#111827]">{formatCurrency(order.total_amount)}</span>
+                          </div>
+                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[12px] text-[#374151] font-medium">{formatPhoneForDisplay(order.customer_phone)}</span>
+                            {order.customer?.instagram && (
+                              <span className="text-[11px] text-muted-foreground">@{order.customer.instagram.replace(/^@/, '')}</span>
+                            )}
+                            {multiCount > 1 && (
+                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-800">{multiCount} pedidos</Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5 items-center">
+                        {statusBadge}
+                        <Badge className={`text-[10px] font-semibold rounded-full px-2 py-0.5 border-0 ${String(order.event_type).toUpperCase().includes('LIVE') ? 'bg-[#dbeafe] text-[#2563eb]' : 'bg-[#f3e8ff] text-[#9333ea]'}`}>{order.event_type}</Badge>
+                        <span className={`text-[10px] font-medium rounded-full px-1.5 py-0.5 ${srcInfo.cls}`}>{srcInfo.label}</span>
+                        <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", order.printed ? 'bg-[#e5e7eb] text-[#111827] font-semibold' : 'bg-transparent text-[#9ca3af]')} onClick={() => togglePrintedStatus(order.id, order.printed || false)}>
+                          {order.printed ? 'Impresso' : 'Não impresso'}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground ml-auto">{formatBrasiliaDate(order.event_date)}</span>
+                      </div>
+
+                      {/* Rastreio */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-muted-foreground">Rastreio:</span>
+                        {editingTracking === order.id ? (
+                          <div className="flex items-center gap-1 flex-1">
+                            <Input value={trackingText} onChange={(e) => setTrackingText(e.target.value)} placeholder="Código" className="h-8 text-xs" disabled={savingTracking === order.id} />
+                            <Button size="sm" className="h-8 w-8 p-0" onClick={() => saveTrackingCode(order.id)} disabled={savingTracking === order.id}>
+                              {savingTracking === order.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                            </Button>
+                          </div>
+                        ) : order.melhor_envio_tracking_code ? (
+                          <Badge className="text-[11px] font-mono cursor-pointer rounded-full px-2 py-0.5 border-0 bg-[#dbeafe] text-[#2563eb]" onClick={() => { setEditingTracking(order.id); setTrackingText(order.melhor_envio_tracking_code || ''); }}>
+                            {order.melhor_envio_tracking_code}
+                          </Badge>
+                        ) : (
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-muted-foreground" onClick={() => { setEditingTracking(order.id); setTrackingText(''); }}>
+                            <Truck className="h-3.5 w-3.5 mr-1" /> Adicionar
+                          </Button>
+                        )}
+                      </div>
+
+                      {/* Observação */}
+                      <div className="flex items-start gap-2">
+                        <span className="text-[11px] text-muted-foreground pt-1">Obs:</span>
+                        {editingObservation === order.id ? (
+                          <div className="flex items-center gap-1 flex-1">
+                            <Input value={observationText} onChange={(e) => setObservationText(e.target.value)} placeholder="Observação" className="h-8 text-xs" />
+                            <Button size="sm" className="h-8 w-8 p-0" onClick={() => saveObservation(order.id)}>
+                              <Check className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] flex-1 cursor-pointer" onClick={() => { setEditingObservation(order.id); setObservationText(order.observation || ''); }}>
+                            {order.observation || <span className="text-muted-foreground">Sem observação</span>}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Ações */}
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#f3f4f6]">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] text-muted-foreground">Pago:</span>
+                          <Switch
+                            checked={order.is_paid}
+                            onCheckedChange={() => togglePaidStatus(order.id, order.is_paid)}
+                            disabled={processingIds.has(order.id) || order.is_cancelled}
+                            className="data-[state=checked]:bg-[#16a34a]"
+                          />
+                          {processingIds.has(order.id) && <Loader2 className="h-3 w-3 animate-spin" />}
+                          <MessageCircle className={cn("h-4 w-4 ml-1", order.item_added_delivered ? "text-green-500" : "text-muted-foreground/40")} />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => { setEditingOrder(order); setEditOrderOpen(true); }} title="Editar">
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={async () => { const withItems = await ensureOrderCartItems(order); setViewingOrder(withItems); setViewOrderOpen(true); }} title="Visualizar">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          {order.is_cancelled ? (
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-amber-600" onClick={() => toggleCancelledStatus(order.id, true)} title="Reverter">
+                              <RotateCcw className="h-4 w-4" />
+                            </Button>
+                          ) : !order.is_paid ? (
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive" onClick={() => toggleCancelledStatus(order.id, false)} title="Cancelar">
+                              <Ban className="h-4 w-4" />
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* DESKTOP: Tabela tradicional */}
+            <div className="hidden md:block">
+            <Table className="text-xs w-full [&_tbody_tr]:border-b [&_tbody_tr]:border-[#f3f4f6] [&_tbody_tr]:hover:bg-[#fafafa] [&_tbody_tr]:transition-colors">
+              <TableHeader className="bg-[#fafafa]">
+                <TableRow className="border-b border-[#e5e7eb] hover:bg-transparent">
+                  <TableHead className="w-[40px] min-w-[40px] px-3 py-3 text-center">
                     <input 
                       type="checkbox" 
                       onChange={(e) => {
@@ -1702,19 +1971,20 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                         }
                       }}
                       checked={selectedOrders.size === paginatedOrders.length && paginatedOrders.length > 0}
+                      className="w-[15px] h-[15px] accent-[#4f46e5] cursor-pointer"
                     />
                   </TableHead>
-                  <TableHead className="w-[60px] min-w-[60px] px-2 text-center">#Pedido</TableHead>
-                  <TableHead className="w-[140px] min-w-[140px] px-2">Telefone</TableHead>
-                  <TableHead className="w-[80px] min-w-[80px] px-2 text-right">Total</TableHead>
-                  <TableHead className="w-[80px] min-w-[80px] px-2 text-center">Pago?</TableHead>
-                  <TableHead className="w-[80px] min-w-[80px] px-2 text-center">Impresso?</TableHead>
-                  <TableHead className="w-[100px] min-w-[100px] px-2 text-center">Tipo Evento</TableHead>
-                  <TableHead className="w-[100px] min-w-[100px] px-2 text-center">Data Evento</TableHead>
-                  <TableHead className="w-[120px] min-w-[120px] px-2 text-center">Rastreio</TableHead>
-                  <TableHead className="w-[60px] min-w-[60px] px-2 text-center">Disparo</TableHead>
-                  <TableHead className="flex-1 min-w-[120px] px-2">Observação</TableHead>
-                  <TableHead className="w-[60px] min-w-[60px] px-2 text-center">Ações</TableHead>
+                  <TableHead className="w-[80px] min-w-[80px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">#Pedido</TableHead>
+                  <TableHead className="w-[160px] min-w-[160px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Telefone</TableHead>
+                  <TableHead className="w-[90px] min-w-[90px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Total</TableHead>
+                  <TableHead className="w-[140px] min-w-[140px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Pago?</TableHead>
+                  <TableHead className="w-[120px] min-w-[120px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Impresso?</TableHead>
+                  <TableHead className="w-[100px] min-w-[100px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Tipo Evento</TableHead>
+                  <TableHead className="w-[110px] min-w-[110px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Data Evento</TableHead>
+                  <TableHead className="w-[70px] min-w-[70px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Disparo</TableHead>
+                  <TableHead className="w-[130px] min-w-[130px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Rastreio</TableHead>
+                  <TableHead className="flex-1 min-w-[140px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Observação</TableHead>
+                  <TableHead className="w-[110px] min-w-[110px] px-3 py-3 text-left text-[11px] font-bold text-[#9ca3af] uppercase tracking-wider">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1727,14 +1997,14 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                 ) : paginatedOrders.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
-                      {searchTerm ? 'Nenhum pedido encontrado para esta busca' : 'Nenhum pedido encontrado'}
+                      {debouncedSearchTerm ? 'Nenhum pedido encontrado para esta busca' : 'Nenhum pedido encontrado'}
                     </TableCell>
                   </TableRow>
                 ) : (
                   paginatedOrders.map((order) => (
                     <TableRow key={order.id} className={order.is_cancelled ? 'opacity-50 bg-muted/30' : ''}>
                       {/* Checkbox */}
-                      <TableCell className="px-2 py-2 text-center">
+                      <TableCell className="px-3 py-3 text-center">
                         <input 
                           type="checkbox"
                           checked={selectedOrders.has(order.id)}
@@ -1743,14 +2013,12 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                       </TableCell>
                       
                       {/* Número do Pedido (por tenant) */}
-                      <TableCell className="px-2 py-2 text-center">
-                        <Badge variant="outline" className="text-xs font-mono font-semibold">
-                          #{order.tenant_order_number || order.id}
-                        </Badge>
+                      <TableCell className="px-3 py-3 text-center">
+                        <span className="font-mono text-[12px] text-[#6b7280] font-semibold">#{order.tenant_order_number || order.id}</span>
                       </TableCell>
                       
                       {/* Telefone + Badge múltiplos pedidos */}
-                      <TableCell className="px-2 py-2">
+                      <TableCell className="px-3 py-3">
                         <div className="flex flex-col gap-0.5">
                           <span className="text-xs font-medium">{formatPhoneForDisplay(order.customer_phone)}</span>
                           {order.customer?.instagram && (
@@ -1775,12 +2043,12 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                       </TableCell>
                       
                       {/* Total */}
-                      <TableCell className="px-2 py-2 text-right">
+                      <TableCell className="px-3 py-3 text-right">
                         <span className="text-xs font-semibold">{formatCurrency(order.total_amount)}</span>
                       </TableCell>
                       
                       {/* Pago */}
-                      <TableCell className="px-2 py-2 text-center">
+                      <TableCell className="px-3 py-3 text-center">
                         {order.is_cancelled ? (
                           <Badge variant="destructive" className="text-[10px]">
                             Cancelado
@@ -1791,11 +2059,28 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                               checked={order.is_paid}
                               onCheckedChange={() => togglePaidStatus(order.id, order.is_paid)}
                               disabled={processingIds.has(order.id) || order.is_cancelled}
-                              className="scale-75"
+                              className="scale-75 data-[state=checked]:bg-[#16a34a]"
                             />
-                            <Badge variant={order.is_paid ? 'default' : 'secondary'} className="text-[10px]">
-                              {order.is_paid ? 'Pago' : 'Pendente'}
-                            </Badge>
+                            {(() => {
+                              const hasTracking = !!(order.melhor_envio_tracking_code && order.melhor_envio_tracking_code.trim());
+                              if (order.is_paid && (order.order_status === 'enviado' || hasTracking)) {
+                                return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#dbeafe] text-[#2563eb] hover:bg-[#dbeafe]">Enviado</Badge>;
+                              }
+                              if (order.is_paid && order.order_status === 'em_separacao') {
+                                return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#fef3c7] text-[#b45309] hover:bg-[#fef3c7]">Em Separação</Badge>;
+                              }
+                              if (order.is_paid && order.order_status === 'envio_pendente') {
+                                return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#ffedd5] text-[#c2410c] hover:bg-[#ffedd5]">Envio Pendente</Badge>;
+                              }
+                              if (order.is_paid && order.order_status === 'liberado_retirada') {
+                                return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#e0e7ff] text-[#4338ca] hover:bg-[#e0e7ff]">Liberado p/ Retirada</Badge>;
+                              }
+                              return (
+                                <Badge className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${order.is_paid ? 'bg-[#dcfce7] text-[#16a34a] hover:bg-[#dcfce7]' : 'bg-[#fef9c3] text-[#ca8a04] hover:bg-[#fef9c3]'}`}>
+                                  {order.is_paid ? 'Pago' : 'Pendente'}
+                                </Badge>
+                              );
+                            })()}
                             {processingIds.has(order.id) && (
                               <Loader2 className="h-3 w-3 animate-spin" />
                             )}
@@ -1804,29 +2089,50 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                       </TableCell>
                       
                       {/* Impresso */}
-                      <TableCell className="px-2 py-2 text-center">
-                        <Badge 
-                          variant={order.printed ? 'default' : 'outline'} 
-                          className={cn("text-[10px] cursor-pointer", !order.printed && "text-muted-foreground")}
+                      <TableCell className="px-3 py-3 text-center">
+                        <span
                           onClick={() => togglePrintedStatus(order.id, order.printed || false)}
                           title={order.printed ? "Impresso" : "Não impresso"}
+                          className={cn("text-[12px] cursor-pointer", order.printed ? "font-bold text-[#111827]" : "font-normal text-[#9ca3af]")}
                         >
                           {order.printed ? 'Impresso' : 'Não impresso'}
-                        </Badge>
+                        </span>
                       </TableCell>
                       
                       {/* Tipo Evento */}
-                      <TableCell className="px-2 py-2 text-center">
-                        <Badge variant="outline" className="text-[10px]">{order.event_type}</Badge>
+                      <TableCell className="px-3 py-3 text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          <Badge className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${String(order.event_type).toUpperCase().includes('LIVE') ? 'bg-[#dbeafe] text-[#2563eb] hover:bg-[#dbeafe]' : 'bg-[#f3e8ff] text-[#9333ea] hover:bg-[#f3e8ff]'}`}>{order.event_type}</Badge>
+                          {(() => {
+                            const src = order.source || 'manual';
+                            const map: Record<string, { label: string; cls: string }> = {
+                              whatsapp:   { label: 'WhatsApp',  cls: 'bg-[#dcfce7] text-[#16a34a]' },
+                              instagram:  { label: 'Instagram', cls: 'bg-[#fce7f3] text-[#db2777]' },
+                              storefront: { label: 'Vitrine',   cls: 'bg-[#fef3c7] text-[#ca8a04]' },
+                              live_admin: { label: 'Live',      cls: 'bg-[#e0e7ff] text-[#4f46e5]' },
+                              webhook:    { label: 'Auto',      cls: 'bg-[#dcfce7] text-[#16a34a]' },
+                              manual:     { label: 'Manual',    cls: 'bg-[#f1f5f9] text-[#475569]' },
+                            };
+                            const m = map[src] || { label: src, cls: 'bg-[#f1f5f9] text-[#475569]' };
+                            return <span className={`text-[10px] font-medium rounded-full px-1.5 py-0.5 ${m.cls}`} title={`Origem: ${m.label}`}>{m.label}</span>;
+                          })()}
+                        </div>
                       </TableCell>
                       
                       {/* Data Evento */}
-                      <TableCell className="px-2 py-2 text-center">
+                      <TableCell className="px-3 py-3 text-center">
                         <span className="text-xs">{formatBrasiliaDate(order.event_date)}</span>
                       </TableCell>
                       
+                      {/* Disparo (Mensagens) */}
+                      <TableCell className="px-3 py-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <MessageCircle className={cn("h-4 w-4", order.item_added_delivered ? "text-green-500" : "text-muted-foreground/40")} title="Item adicionado" />
+                        </div>
+                      </TableCell>
+                      
                       {/* Rastreio */}
-                      <TableCell className="px-2 py-2">
+                      <TableCell className="px-3 py-3">
                         {editingTracking === order.id ? (
                           <div className="flex items-center gap-1">
                             <Input
@@ -1853,8 +2159,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                           <div className="flex items-center gap-1">
                             {order.melhor_envio_tracking_code ? (
                               <Badge 
-                                variant="outline" 
-                                className="text-[10px] font-mono cursor-pointer hover:bg-accent"
+                                className="text-[11px] font-mono font-semibold cursor-pointer rounded-full px-2 py-0.5 border-0 bg-[#dbeafe] text-[#2563eb] hover:bg-[#bfdbfe]"
                                 onClick={() => { setEditingTracking(order.id); setTrackingText(order.melhor_envio_tracking_code || ''); }}
                                 title="Clique para editar"
                               >
@@ -1875,15 +2180,8 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                         )}
                       </TableCell>
                       
-                      {/* Disparo (Mensagens) */}
-                      <TableCell className="px-2 py-2 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <MessageCircle className={cn("h-4 w-4", order.item_added_delivered ? "text-green-500" : "text-muted-foreground/40")} title="Item adicionado" />
-                        </div>
-                      </TableCell>
-                      
                       {/* Observação */}
-                      <TableCell className="px-2 py-2">
+                      <TableCell className="px-3 py-3">
                         {editingObservation === order.id ? (
                           <div className="flex items-center gap-1">
                             <Input
@@ -1909,7 +2207,7 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                       </TableCell>
                       
                       {/* Ações */}
-                      <TableCell className="px-2 py-2">
+                      <TableCell className="px-3 py-3">
                         <div className="flex items-center justify-center gap-1">
                           <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setEditingOrder(order); setEditOrderOpen(true); }} title="Editar">
                             <Edit className="h-3.5 w-3.5" />
@@ -1955,6 +2253,8 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                 )}
               </TableBody>
             </Table>
+            </div>
+
             
             {filteredOrders.length > 0 && (
               <div className="p-4 border-t bg-muted/30">

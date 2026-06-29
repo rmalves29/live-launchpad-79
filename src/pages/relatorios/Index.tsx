@@ -19,12 +19,17 @@ import {
   Package, 
   Users,
   Calendar,
-  Target
+  Target,
+  Wallet
 } from 'lucide-react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useTenantContext } from '@/contexts/TenantContext';
 import { formatPhoneForDisplay } from '@/lib/phone-utils';
 import { formatBrasiliaDate, getBrasiliaDateISO, getBrasiliaDate, toBrasiliaDateISO, getBrasiliaDayBoundsISO } from '@/lib/date-utils';
+import {
+  ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  BarChart, Bar, PieChart, Pie, Cell,
+} from 'recharts';
 
 const AgenteIAContent = lazy(() => import('@/pages/agente-ia/Index'));
 
@@ -127,6 +132,28 @@ const Relatorios = () => {
   
   // Cache de nomes de grupos do WhatsApp
   const [groupNamesCache, setGroupNamesCache] = useState<Map<string, string>>(new Map());
+
+  // ============ NOVOS STATES (REDESIGN) ============
+  type GlobalPeriod = 'today' | 'yesterday' | '7d' | '30d' | 'month' | 'year' | 'custom';
+  const [globalPeriod, setGlobalPeriod] = useState<GlobalPeriod>('30d');
+  const [globalStart, setGlobalStart] = useState('');
+  const [globalEnd, setGlobalEnd] = useState('');
+  const [metricMode, setMetricMode] = useState<'value' | 'qty'>('value');
+  const [tableTab, setTableTab] = useState<'produtos' | 'clientes' | 'grupos' | 'cupons'>('produtos');
+  const [dailySeries, setDailySeries] = useState<Array<{ date: string; paid: number; unpaid: number; total: number; orders: number }>>([]);
+  const [globalStats, setGlobalStats] = useState<PeriodStats | null>(null);
+  const [prodSort, setProdSort] = useState<'qty' | 'revenue'>('qty');
+  const [couponStats, setCouponStats] = useState<Array<{
+    code: string;
+    total_orders: number;
+    paid_orders: number;
+    unpaid_orders: number;
+    total_discount: number;
+    paid_discount: number;
+    total_revenue: number;
+    paid_revenue: number;
+  }>>([]);
+  const [couponSearch, setCouponSearch] = useState('');
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
@@ -1166,6 +1193,265 @@ const Relatorios = () => {
     }
   };
 
+  // ============ NOVO: série diária para o gráfico de evolução ============
+  const computeGlobalRange = (): { startISO: string; endISO: string } | null => {
+    const today = getBrasiliaDate();
+    let startDateObj: Date | null = null;
+    let endDateObj: Date | null = new Date(today);
+
+    switch (globalPeriod) {
+      case 'today':
+        startDateObj = new Date(today);
+        break;
+      case 'yesterday': {
+        const y = new Date(today);
+        y.setDate(y.getDate() - 1);
+        startDateObj = y;
+        endDateObj = y;
+        break;
+      }
+      case '7d': {
+        const s = new Date(today);
+        s.setDate(s.getDate() - 6);
+        startDateObj = s;
+        break;
+      }
+      case '30d': {
+        const s = new Date(today);
+        s.setDate(s.getDate() - 29);
+        startDateObj = s;
+        break;
+      }
+      case 'month':
+        startDateObj = new Date(today.getFullYear(), today.getMonth(), 1);
+        break;
+      case 'year':
+        startDateObj = new Date(today.getFullYear(), 0, 1);
+        break;
+      case 'custom':
+        if (!globalStart || !globalEnd) return null;
+        return {
+          startISO: getBrasiliaDayBoundsISO(globalStart).start,
+          endISO: getBrasiliaDayBoundsISO(globalEnd).end,
+        };
+    }
+    if (!startDateObj || !endDateObj) return null;
+    return {
+      startISO: getBrasiliaDayBoundsISO(toBrasiliaDateISO(startDateObj)).start,
+      endISO: getBrasiliaDayBoundsISO(toBrasiliaDateISO(endDateObj)).end,
+    };
+  };
+
+  const loadDailySeries = async () => {
+    try {
+      const range = computeGlobalRange();
+      if (!range) {
+        setDailySeries([]);
+        setGlobalStats(null);
+        return;
+      }
+      let orders = await fetchAllPaginated<any>(() =>
+        supabaseTenant
+          .from('orders')
+          .select('id, total_amount, is_paid, cart_id, created_at')
+          .or('is_cancelled.is.null,is_cancelled.eq.false')
+          .gte('created_at', range.startISO)
+          .lte('created_at', range.endISO)
+          .order('created_at', { ascending: true })
+      );
+
+      // Aplica filtro por tipo de venda (BAZAR/LIVE) usando cart_items + products.sale_type
+      if (saleTypeFilter !== 'ALL' && orders.length > 0) {
+        const cartIds = orders.map((o) => o.cart_id).filter(Boolean);
+        if (cartIds.length === 0) {
+          orders = [];
+        } else {
+          const { data: cartItems } = await supabaseTenant
+            .from('cart_items')
+            .select('cart_id, product_code')
+            .in('cart_id', cartIds);
+          const codes = [...new Set((cartItems || []).map((ci: any) => ci.product_code).filter(Boolean))];
+          const { data: products } = codes.length
+            ? await supabaseTenant.from('products').select('code, sale_type').in('code', codes)
+            : { data: [] as any[] };
+          const stMap: Record<string, string> = {};
+          (products || []).forEach((p: any) => { stMap[p.code] = p.sale_type; });
+          const validCartIds = new Set<number>();
+          (cartItems || []).forEach((ci: any) => {
+            const st = ci.product_code ? stMap[ci.product_code] : null;
+            if (st === saleTypeFilter || st === 'AMBOS') validCartIds.add(ci.cart_id);
+          });
+          orders = orders.filter((o) => o.cart_id && validCartIds.has(o.cart_id));
+        }
+      }
+
+      const byDay = new Map<string, { paid: number; unpaid: number; total: number; orders: number }>();
+      let totalSales = 0, paidSales = 0, unpaidSales = 0;
+      let paidOrdersCount = 0, unpaidOrdersCount = 0;
+      orders.forEach((o) => {
+        const day = o.created_at.slice(0, 10);
+        const cur = byDay.get(day) || { paid: 0, unpaid: 0, total: 0, orders: 0 };
+        const amt = Number(o.total_amount) || 0;
+        if (o.is_paid) { cur.paid += amt; paidSales += amt; paidOrdersCount += 1; }
+        else { cur.unpaid += amt; unpaidSales += amt; unpaidOrdersCount += 1; }
+        cur.total += amt;
+        cur.orders += 1;
+        totalSales += amt;
+        byDay.set(day, cur);
+      });
+      const arr = Array.from(byDay.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, v]) => ({ date, ...v }));
+      setDailySeries(arr);
+
+      // Conta produtos vendidos no período (qty em cart_items dos pedidos filtrados)
+      const allCartIds = orders.map((o) => o.cart_id).filter(Boolean);
+      const paidCartIds = orders.filter((o) => o.is_paid).map((o) => o.cart_id).filter(Boolean);
+      let totalProducts = 0, paidProducts = 0, unpaidProducts = 0;
+      if (allCartIds.length > 0) {
+        const { data: ci } = await supabaseTenant
+          .from('cart_items')
+          .select('cart_id, qty')
+          .in('cart_id', allCartIds);
+        const paidSet = new Set(paidCartIds);
+        (ci || []).forEach((it: any) => {
+          const q = Number(it.qty) || 0;
+          totalProducts += q;
+          if (paidSet.has(it.cart_id)) paidProducts += q;
+          else unpaidProducts += q;
+        });
+      }
+
+      const totalOrdersCount = orders.length;
+      setGlobalStats({
+        total_sales: totalSales,
+        paid_sales: paidSales,
+        unpaid_sales: unpaidSales,
+        total_orders: totalOrdersCount,
+        paid_orders: paidOrdersCount,
+        unpaid_orders: unpaidOrdersCount,
+        total_products: totalProducts,
+        paid_products: paidProducts,
+        unpaid_products: unpaidProducts,
+        avg_ticket: totalOrdersCount > 0 ? totalSales / totalOrdersCount : 0,
+        paid_avg_ticket: paidOrdersCount > 0 ? paidSales / paidOrdersCount : 0,
+        unpaid_avg_ticket: unpaidOrdersCount > 0 ? unpaidSales / unpaidOrdersCount : 0,
+      });
+    } catch (err) {
+      console.error('Error loading daily series:', err);
+    }
+  };
+
+  // Propaga mudança do período global para os filtros internos por aba
+  const propagateGlobalPeriod = (period: GlobalPeriod) => {
+    if (period === '7d' || period === '30d') {
+      const today = getBrasiliaDate();
+      const days = period === '7d' ? 6 : 29;
+      const s = new Date(today);
+      s.setDate(s.getDate() - days);
+      const startStr = toBrasiliaDateISO(s);
+      const endStr = toBrasiliaDateISO(today);
+      setSalesFilter('custom'); setSalesStartDate(startStr); setSalesEndDate(endStr);
+      setSelectedPeriod('custom'); setStartDate(startStr); setEndDate(endStr);
+      setWhatsappFilter('custom'); setWhatsappStartDate(startStr); setWhatsappEndDate(endStr);
+      setCustomersFilter('custom'); setCustomersStartDate(startStr); setCustomersEndDate(endStr);
+    } else if (period === 'custom') {
+      if (globalStart && globalEnd) {
+        setSalesFilter('custom'); setSalesStartDate(globalStart); setSalesEndDate(globalEnd);
+        setSelectedPeriod('custom'); setStartDate(globalStart); setEndDate(globalEnd);
+        setWhatsappFilter('custom'); setWhatsappStartDate(globalStart); setWhatsappEndDate(globalEnd);
+        setCustomersFilter('custom'); setCustomersStartDate(globalStart); setCustomersEndDate(globalEnd);
+      }
+    } else {
+      setSalesFilter(period as any);
+      setSelectedPeriod(period as any);
+      setWhatsappFilter(period as any);
+      setCustomersFilter(period as any);
+    }
+  };
+
+  const handleSetGlobalPeriod = (p: GlobalPeriod) => {
+    setGlobalPeriod(p);
+    if (p !== 'custom') propagateGlobalPeriod(p);
+  };
+
+  const applyCustomGlobal = () => {
+    if (!globalStart || !globalEnd) return;
+    propagateGlobalPeriod('custom');
+  };
+
+  const loadCouponStats = async () => {
+    try {
+      const range = computeGlobalRange();
+      if (!range) { setCouponStats([]); return; }
+
+      let orders = await fetchAllPaginated<any>(() =>
+        supabaseTenant
+          .from('orders')
+          .select('id, total_amount, coupon_code, coupon_discount, is_paid, cart_id, created_at')
+          .or('is_cancelled.is.null,is_cancelled.eq.false')
+          .not('coupon_code', 'is', null)
+          .neq('coupon_code', '')
+          .gte('created_at', range.startISO)
+          .lte('created_at', range.endISO)
+      );
+
+      // Filtro por tipo de venda
+      if (saleTypeFilter !== 'ALL' && orders.length > 0) {
+        const cartIds = orders.map((o) => o.cart_id).filter(Boolean);
+        if (cartIds.length === 0) { orders = []; }
+        else {
+          const { data: cartItems } = await supabaseTenant
+            .from('cart_items')
+            .select('cart_id, product_code')
+            .in('cart_id', cartIds);
+          const productCodes = [...new Set((cartItems || []).map((ci: any) => ci.product_code).filter(Boolean))];
+          let productSaleTypes: Record<string, string> = {};
+          if (productCodes.length > 0) {
+            const { data: products } = await supabaseTenant
+              .from('products')
+              .select('code, sale_type')
+              .in('code', productCodes);
+            (products || []).forEach((p: any) => { productSaleTypes[p.code] = p.sale_type; });
+          }
+          const validCartIds = new Set<number>();
+          (cartItems || []).forEach((item: any) => {
+            const st = item.product_code ? productSaleTypes[item.product_code] : null;
+            if (st === saleTypeFilter || st === 'AMBOS') validCartIds.add(item.cart_id);
+          });
+          orders = orders.filter((o: any) => o.cart_id && validCartIds.has(o.cart_id));
+        }
+      }
+
+      const map = new Map<string, any>();
+      for (const o of orders) {
+        const code = String(o.coupon_code).toUpperCase().trim();
+        if (!code) continue;
+        const entry = map.get(code) || {
+          code, total_orders: 0, paid_orders: 0, unpaid_orders: 0,
+          total_discount: 0, paid_discount: 0, total_revenue: 0, paid_revenue: 0,
+        };
+        const discount = Number(o.coupon_discount) || 0;
+        const total = Number(o.total_amount) || 0;
+        entry.total_orders += 1;
+        entry.total_discount += discount;
+        entry.total_revenue += total;
+        if (o.is_paid) {
+          entry.paid_orders += 1;
+          entry.paid_discount += discount;
+          entry.paid_revenue += total;
+        } else {
+          entry.unpaid_orders += 1;
+        }
+        map.set(code, entry);
+      }
+      const list = Array.from(map.values()).sort((a, b) => b.paid_revenue - a.paid_revenue);
+      setCouponStats(list);
+    } catch (e: any) {
+      console.error('Erro ao carregar relatório de cupons:', e);
+    }
+  };
+
   const loadAllReports = async () => {
     setLoading(true);
     try {
@@ -1174,7 +1460,9 @@ const Relatorios = () => {
         loadPeriodStats(),
         loadTopProducts(),
         loadWhatsAppGroupStats(),
-        loadTopCustomers()
+        loadTopCustomers(),
+        loadDailySeries(),
+        loadCouponStats(),
       ]);
     } finally {
       setLoading(false);
@@ -1183,8 +1471,11 @@ const Relatorios = () => {
 
   useEffect(() => {
     if (tenantId) {
+      // Inicializa propagando o período padrão
+      propagateGlobalPeriod(globalPeriod);
       loadAllReports();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
   useEffect(() => {
@@ -1208,738 +1499,578 @@ const Relatorios = () => {
     if (tenantId) {
       loadAllReports();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saleTypeFilter]);
 
+  // Recarrega série diária quando o período global muda
+  useEffect(() => {
+    if (tenantId) { loadDailySeries(); loadCouponStats(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [globalPeriod, globalStart, globalEnd, saleTypeFilter, tenantId]);
+
+  // ============ HELPERS DE FORMATAÇÃO PARA O REDESIGN ============
+  const formatShortDate = (iso: string) => {
+    try {
+      const d = new Date(iso + 'T12:00:00-03:00');
+      return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    } catch {
+      return iso;
+    }
+  };
+  const formatNumber = (n: number) => new Intl.NumberFormat('pt-BR').format(n);
+  const formatCompactCurrency = (v: number) => {
+    if (Math.abs(v) >= 1000) {
+      return 'R$ ' + (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + 'k';
+    }
+    return formatCurrency(v);
+  };
+
+  // ============ EXPORT CSV ============
+  const exportCSV = () => {
+    const rows: string[] = [];
+    rows.push('Tipo,Item,Qtd,Receita');
+    topProducts.forEach((p) => {
+      rows.push(`Produto,"${p.product_name.replace(/"/g, '""')}",${p.total_sold},${p.total_revenue.toFixed(2)}`);
+    });
+    topCustomers.forEach((c) => {
+      rows.push(`Cliente,"${c.customer_name.replace(/"/g, '""')}",${c.total_orders},${c.paid_revenue.toFixed(2)}`);
+    });
+    whatsappGroupStats.forEach((g) => {
+      rows.push(`Grupo,"${g.group_name.replace(/"/g, '""')}",${g.total_orders},${g.paid_revenue.toFixed(2)}`);
+    });
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `relatorio-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: 'Exportado', description: 'Arquivo CSV gerado com sucesso.' });
+  };
+
+  // ============ DERIVADOS PARA OS WIDGETS ============
+  const stats = globalStats; // KPIs e donut respeitam o filtro global de período + tipo de venda
+  const totalOrdersAll = stats?.total_orders ?? 0;
+  const conversionRate = totalOrdersAll > 0 ? (stats!.paid_orders / totalOrdersAll) * 100 : 0;
+
+  const topProdChartData = [...topProducts]
+    .sort((a, b) => (prodSort === 'qty' ? b.total_sold - a.total_sold : b.total_revenue - a.total_revenue))
+    .slice(0, 8)
+    .map((p) => ({
+      name: p.product_name.length > 22 ? p.product_name.slice(0, 22) + '…' : p.product_name,
+      value: prodSort === 'qty' ? p.total_sold : p.total_revenue,
+    }));
+
+  const groupChartData = whatsappGroupStats.slice(0, 10).map((g) => ({
+    name: g.group_name.length > 16 ? g.group_name.slice(0, 16) + '…' : g.group_name,
+    pago: g.paid_revenue,
+    pendente: g.unpaid_revenue,
+  }));
+
+  const lineSeries = dailySeries.map((d) => ({
+    date: formatShortDate(d.date),
+    Pagas: metricMode === 'value' ? d.paid : 0,
+    Pendentes: metricMode === 'value' ? d.unpaid : 0,
+    Total: metricMode === 'value' ? d.total : d.orders,
+  }));
+
+  const donutData = [
+    { name: 'Pagos', value: stats?.paid_orders ?? 0, color: 'hsl(142, 71%, 45%)' },
+    { name: 'Pendentes', value: stats?.unpaid_orders ?? 0, color: 'hsl(24, 95%, 53%)' },
+  ];
+
+  const periodPills: { id: GlobalPeriod; label: string }[] = [
+    { id: 'today', label: 'Hoje' },
+    { id: 'yesterday', label: 'Ontem' },
+    { id: '7d', label: '7 dias' },
+    { id: '30d', label: '30 dias' },
+    { id: 'month', label: 'Este mês' },
+    { id: 'year', label: 'Este ano' },
+    { id: 'custom', label: 'Personalizado' },
+  ];
+
+  // recharts já importado no topo do arquivo
+
   return (
-    <div className="container mx-auto py-6 max-w-7xl space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <h1 className="text-3xl font-bold flex items-center">
-          <BarChart3 className="h-8 w-8 mr-3 text-primary" />
-          Relatórios
-        </h1>
-        <div className="flex items-center gap-3">
-          {/* Filtro Global de Tipo de Venda */}
-          <div className="flex items-center gap-2">
-            <Label className="text-sm whitespace-nowrap">Tipo:</Label>
-            <Select value={saleTypeFilter} onValueChange={(value: 'ALL' | 'BAZAR' | 'LIVE') => setSaleTypeFilter(value)}>
-              <SelectTrigger className="w-32 bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-background z-50">
-                <SelectItem value="ALL">Todos</SelectItem>
-                <SelectItem value="BAZAR">Bazar</SelectItem>
-                <SelectItem value="LIVE">Live</SelectItem>
+    <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5">
+      {/* ================= TOPBAR ================= */}
+      <div className="bg-card/70 backdrop-blur-xl border border-border/60 rounded-2xl shadow-sm px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-lg font-bold text-foreground flex items-center gap-2 whitespace-nowrap" style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>
+            <BarChart3 className="h-5 w-5 text-primary" />
+            Relatórios
+          </h1>
+          <div className="hidden md:block w-px h-5 bg-border" />
+          <div className="flex flex-wrap gap-1.5">
+            {periodPills.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => handleSetGlobalPeriod(p.id)}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                  globalPeriod === p.id
+                    ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                    : 'bg-background text-muted-foreground border-border hover:border-primary/40 hover:text-primary'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {globalPeriod === 'custom' && (
+            <div className="flex items-center gap-2">
+              <Input type="date" value={globalStart} onChange={(e) => setGlobalStart(e.target.value)} className="h-8 w-36 text-xs" />
+              <span className="text-xs text-muted-foreground">até</span>
+              <Input type="date" value={globalEnd} onChange={(e) => setGlobalEnd(e.target.value)} className="h-8 w-36 text-xs" />
+              <Button size="sm" className="h-8" onClick={applyCustomGlobal}>Aplicar</Button>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex border border-border rounded-lg overflow-hidden">
+            {(['ALL', 'LIVE', 'BAZAR'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setSaleTypeFilter(t)}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                  saleTypeFilter === t ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                {t === 'ALL' ? 'Todos' : t === 'LIVE' ? 'Live' : 'Bazar'}
+              </button>
+            ))}
+          </div>
+          <div className="flex border border-border rounded-lg overflow-hidden">
+            <button
+              onClick={() => setMetricMode('value')}
+              className={`px-3 py-1.5 text-xs font-semibold ${metricMode === 'value' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+            >R$</button>
+            <button
+              onClick={() => setMetricMode('qty')}
+              className={`px-3 py-1.5 text-xs font-semibold ${metricMode === 'qty' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+            >Qtd</button>
+          </div>
+          <Button size="sm" variant="outline" onClick={loadAllReports} disabled={loading} className="h-8">
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+            Atualizar
+          </Button>
+          <Button size="sm" onClick={exportCSV} className="h-8">Exportar</Button>
+        </div>
+      </div>
+
+      {/* ================= KPI CARDS ================= */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {[
+          { label: 'Receita Paga', value: formatCurrency(stats?.paid_sales ?? 0), sub: `${stats?.paid_orders ?? 0} pedidos`, color: 'bg-emerald-500', icon: DollarSign },
+          { label: 'Valor Vendido', value: formatCurrency(stats?.total_sales ?? 0), sub: `Pendente: ${formatCurrency(stats?.unpaid_sales ?? 0)}`, color: 'bg-cyan-500', icon: Wallet },
+          { label: 'Pedidos', value: formatNumber(stats?.total_orders ?? 0), sub: `${stats?.paid_orders ?? 0} pagos · ${stats?.unpaid_orders ?? 0} pendentes`, color: 'bg-blue-500', icon: ShoppingBag },
+          { label: 'Produtos Vendidos', value: formatNumber(stats?.total_products ?? 0), sub: `${formatNumber(stats?.paid_products ?? 0)} pagos`, color: 'bg-violet-500', icon: Package },
+          { label: 'Ticket Médio', value: formatCurrency(stats?.avg_ticket ?? 0), sub: `Pago: ${formatCurrency(stats?.paid_avg_ticket ?? 0)}`, color: 'bg-orange-500', icon: TrendingUp },
+        ].map((kpi, i) => {
+          const Icon = kpi.icon;
+          return (
+            <div key={i} className="relative bg-card border border-border/60 rounded-2xl p-5 overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all">
+              <div className={`absolute left-0 top-0 h-full w-1 ${kpi.color}`} />
+              <Icon className="absolute top-4 right-4 h-7 w-7 text-foreground/5" />
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">{kpi.label}</div>
+              <div className="text-2xl font-bold text-foreground leading-none mb-1.5" style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>{kpi.value}</div>
+              <div className="text-xs text-muted-foreground">{kpi.sub}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ================= LINE CHART: EVOLUÇÃO ================= */}
+      <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-border/60 flex items-center justify-between flex-wrap gap-2">
+          <div className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-primary" />
+            Evolução de Vendas
+          </div>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-primary inline-block" />Pagas</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block" />Pendentes</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />{metricMode === 'value' ? 'Total' : 'Pedidos'}</span>
+          </div>
+        </div>
+        <div className="px-3 py-3" style={{ height: 260 }}>
+          {lineSeries.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Sem dados no período selecionado</div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={lineSeries} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
+                <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(v: number) => metricMode === 'value' ? formatCompactCurrency(v) : formatNumber(v)} />
+                <Tooltip formatter={(v: any) => metricMode === 'value' ? formatCurrency(Number(v)) : formatNumber(Number(v))} contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', fontSize: 12 }} />
+                {metricMode === 'value' && <Line type="monotone" dataKey="Pagas" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={false} />}
+                {metricMode === 'value' && <Line type="monotone" dataKey="Pendentes" stroke="hsl(24, 95%, 53%)" strokeWidth={2} dot={false} />}
+                <Line type="monotone" dataKey="Total" stroke="hsl(142, 71%, 45%)" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* ================= CHARTS ROW: TOP PRODUTOS + DONUT ================= */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-4">
+        <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-border/60 flex items-center justify-between flex-wrap gap-2">
+            <div className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <Package className="h-4 w-4 text-primary" />
+              Top 8 Produtos
+            </div>
+            <Select value={prodSort} onValueChange={(v: any) => setProdSort(v)}>
+              <SelectTrigger className="h-7 w-40 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="qty">Por quantidade</SelectItem>
+                <SelectItem value="revenue">Por receita</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          <Button onClick={loadAllReports} disabled={loading}>
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : null}
-            Atualizar
-          </Button>
+          <div className="px-3 py-3" style={{ height: 260 }}>
+            {topProdChartData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Sem dados</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={topProdChartData} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(v: number) => prodSort === 'revenue' ? formatCompactCurrency(v) : formatNumber(v)} />
+                  <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} width={140} />
+                  <Tooltip formatter={(v: any) => prodSort === 'revenue' ? formatCurrency(Number(v)) : formatNumber(Number(v))} contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', fontSize: 12 }} />
+                  <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 6, 6, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
         </div>
+
+        <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-border/60">
+            <div className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <Target className="h-4 w-4 text-primary" />
+              Taxa de Conversão
+            </div>
+          </div>
+          <div className="px-3 py-3 relative" style={{ height: 260 }}>
+            {totalOrdersAll === 0 ? (
+              <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Sem dados</div>
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={donutData} dataKey="value" innerRadius={60} outerRadius={88} paddingAngle={2}>
+                      {donutData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                    </Pie>
+                    <Tooltip formatter={(v: any, n: any) => [formatNumber(Number(v)), n]} contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', fontSize: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <div className="text-2xl font-bold text-foreground" style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>{conversionRate.toFixed(1)}%</div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">pagos</div>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="px-5 pb-4 flex justify-center gap-4 text-xs">
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: 'hsl(142, 71%, 45%)' }} />Pagos ({stats?.paid_orders ?? 0})</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: 'hsl(24, 95%, 53%)' }} />Pendentes ({stats?.unpaid_orders ?? 0})</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ================= BAR CHART: GRUPOS WHATSAPP ================= */}
+      <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-border/60 flex items-center justify-between flex-wrap gap-2">
+          <div className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <Users className="h-4 w-4 text-primary" />
+            Receita por Grupo WhatsApp
+          </div>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: 'hsl(142, 71%, 45%)' }} />Pago</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: 'hsl(24, 95%, 53%)' }} />Pendente</span>
+          </div>
+        </div>
+        <div className="px-3 py-3" style={{ height: 220 }}>
+          {groupChartData.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Sem dados</div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={groupChartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} interval={0} angle={-15} textAnchor="end" height={60} />
+                <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(v: number) => formatCompactCurrency(v)} />
+                <Tooltip formatter={(v: any) => formatCurrency(Number(v))} contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', fontSize: 12 }} />
+                <Bar dataKey="pago" stackId="a" fill="hsl(142, 71%, 45%)" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="pendente" stackId="a" fill="hsl(24, 95%, 53%)" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* ================= TABLE SECTION COM 3 ABAS ================= */}
+      <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
+        <div className="flex border-b-2 border-border/60 px-3">
+          {([
+            { id: 'produtos', label: '🏆 Produtos' },
+            { id: 'clientes', label: '👥 Clientes' },
+            { id: 'grupos', label: '💬 Grupos' },
+            { id: 'cupons', label: '🎟️ Cupons' },
+          ] as const).map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTableTab(t.id)}
+              className={`px-4 py-3 text-sm font-medium transition-colors -mb-[2px] border-b-2 ${
+                tableTab === t.id ? 'text-primary border-primary' : 'text-muted-foreground border-transparent hover:text-primary'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {tableTab === 'produtos' && (
+          <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+            <Table>
+              <TableHeader className="sticky top-0 bg-muted/40 backdrop-blur z-10">
+                <TableRow>
+                  <TableHead className="w-12">#</TableHead>
+                  <TableHead>Produto</TableHead>
+                  <TableHead>Código</TableHead>
+                  <TableHead className="text-right">Qtd</TableHead>
+                  <TableHead className="min-w-[140px]">Participação</TableHead>
+                  <TableHead className="text-right">Receita</TableHead>
+                  <TableHead className="text-right">Preço Médio</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {topProducts.length === 0 ? (
+                  <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Sem dados</TableCell></TableRow>
+                ) : (() => {
+                  const maxQty = Math.max(...topProducts.map(p => p.total_sold));
+                  return topProducts.map((p, i) => {
+                    const pct = maxQty > 0 ? (p.total_sold / maxQty) * 100 : 0;
+                    return (
+                      <TableRow key={i} className="hover:bg-muted/30">
+                        <TableCell className="font-medium text-muted-foreground">{i + 1}</TableCell>
+                        <TableCell className="font-medium">{p.product_name}</TableCell>
+                        <TableCell><Badge variant="outline" className="text-[10px]">{p.product_code}</Badge></TableCell>
+                        <TableCell className="text-right font-semibold">{formatNumber(p.total_sold)}</TableCell>
+                        <TableCell>
+                          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-semibold text-emerald-600">{formatCurrency(p.total_revenue)}</TableCell>
+                        <TableCell className="text-right text-muted-foreground">{formatCurrency(p.avg_price)}</TableCell>
+                      </TableRow>
+                    );
+                  });
+                })()}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+
+        {tableTab === 'clientes' && (
+          <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+            <Table>
+              <TableHeader className="sticky top-0 bg-muted/40 backdrop-blur z-10">
+                <TableRow>
+                  <TableHead className="text-center w-16">Score</TableHead>
+                  <TableHead className="w-12">#</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Telefone</TableHead>
+                  <TableHead className="text-center">Pedidos</TableHead>
+                  <TableHead className="text-center">Pagos</TableHead>
+                  <TableHead className="text-right">Receita Total</TableHead>
+                  <TableHead className="text-right">Receita Paga</TableHead>
+                  <TableHead className="text-center">Taxa</TableHead>
+                  <TableHead>Última compra</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {topCustomers.length === 0 ? (
+                  <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">Sem dados</TableCell></TableRow>
+                ) : topCustomers.map((c, i) => {
+                  const taxa = c.total_orders > 0 ? (c.paid_orders / c.total_orders) * 100 : 0;
+                  return (
+                    <TableRow key={i} className="hover:bg-muted/30">
+                      <TableCell className="text-center">
+                        <Badge className={`${i === 0 ? 'bg-yellow-100 text-yellow-800' : i === 1 ? 'bg-slate-100 text-slate-700' : i === 2 ? 'bg-orange-100 text-orange-800' : 'bg-muted text-muted-foreground'} text-[10px]`}>
+                          {(c.score ?? 0).toFixed(0)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-medium text-muted-foreground">{i + 1}</TableCell>
+                      <TableCell className="font-medium">{c.customer_name}</TableCell>
+                      <TableCell className="text-muted-foreground">{formatPhoneForDisplay(c.customer_phone)}</TableCell>
+                      <TableCell className="text-center">{c.total_orders}</TableCell>
+                      <TableCell className="text-center"><Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">{c.paid_orders}</Badge></TableCell>
+                      <TableCell className="text-right font-semibold">{formatCurrency(c.total_revenue)}</TableCell>
+                      <TableCell className="text-right font-semibold text-emerald-600">{formatCurrency(c.paid_revenue)}</TableCell>
+                      <TableCell className="text-center"><Badge className={taxa >= 50 ? 'bg-emerald-100 text-emerald-800' : 'bg-orange-100 text-orange-800'}>{taxa.toFixed(0)}%</Badge></TableCell>
+                      <TableCell className="text-muted-foreground text-xs">{formatDate(c.last_order_date)}</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+
+        {tableTab === 'grupos' && (
+          <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+            <Table>
+              <TableHeader className="sticky top-0 bg-muted/40 backdrop-blur z-10">
+                <TableRow>
+                  <TableHead className="w-12">#</TableHead>
+                  <TableHead>Grupo</TableHead>
+                  <TableHead className="text-center">Pedidos</TableHead>
+                  <TableHead className="text-center">Pagos</TableHead>
+                  <TableHead className="text-center">Pendentes</TableHead>
+                  <TableHead className="text-right">Receita Paga</TableHead>
+                  <TableHead className="text-right">Receita Pendente</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-center">Taxa</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {whatsappGroupStats.length === 0 ? (
+                  <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Sem dados</TableCell></TableRow>
+                ) : whatsappGroupStats.map((g, i) => {
+                  const taxa = g.total_orders > 0 ? (g.paid_orders / g.total_orders) * 100 : 0;
+                  return (
+                    <TableRow key={i} className="hover:bg-muted/30">
+                      <TableCell className="font-medium text-muted-foreground">{i + 1}</TableCell>
+                      <TableCell className="font-medium">{g.group_name}</TableCell>
+                      <TableCell className="text-center">{g.total_orders}</TableCell>
+                      <TableCell className="text-center"><Badge className="bg-emerald-100 text-emerald-800">{g.paid_orders}</Badge></TableCell>
+                      <TableCell className="text-center"><Badge className="bg-orange-100 text-orange-800">{g.unpaid_orders}</Badge></TableCell>
+                      <TableCell className="text-right font-semibold text-emerald-600">{formatCurrency(g.paid_revenue)}</TableCell>
+                      <TableCell className="text-right font-semibold text-orange-600">{formatCurrency(g.unpaid_revenue)}</TableCell>
+                      <TableCell className="text-right font-semibold">{formatCurrency(g.total_revenue)}</TableCell>
+                      <TableCell className="text-center"><Badge className={taxa >= 50 ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-700'}>{taxa.toFixed(0)}%</Badge></TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+
+        {tableTab === 'cupons' && (() => {
+          const filtered = couponStats.filter(c =>
+            !couponSearch.trim() || c.code.toLowerCase().includes(couponSearch.toLowerCase().trim())
+          );
+          const totals = filtered.reduce((acc, c) => ({
+            orders: acc.orders + c.total_orders,
+            paid_orders: acc.paid_orders + c.paid_orders,
+            discount: acc.discount + c.total_discount,
+            paid_discount: acc.paid_discount + c.paid_discount,
+            paid_revenue: acc.paid_revenue + c.paid_revenue,
+            total_revenue: acc.total_revenue + c.total_revenue,
+          }), { orders: 0, paid_orders: 0, discount: 0, paid_discount: 0, paid_revenue: 0, total_revenue: 0 });
+
+          const exportCouponsCSV = (rowsData: typeof filtered, filename: string) => {
+            const lines: string[] = [];
+            lines.push('Cupom;Pedidos;Pedidos Pagos;Desconto Total;Desconto Pago;Receita Total;Receita Paga');
+            rowsData.forEach(r => {
+              lines.push([
+                `"${r.code.replace(/"/g, '""')}"`,
+                r.total_orders,
+                r.paid_orders,
+                r.total_discount.toFixed(2).replace('.', ','),
+                r.paid_discount.toFixed(2).replace('.', ','),
+                r.total_revenue.toFixed(2).replace('.', ','),
+                r.paid_revenue.toFixed(2).replace('.', ','),
+              ].join(';'));
+            });
+            const blob = new Blob(["\uFEFF" + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            toast({ title: 'Exportado', description: 'Arquivo CSV gerado com sucesso.' });
+          };
+
+          return (
+            <div>
+              <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b border-border/60">
+                <Input
+                  placeholder="Buscar cupom por código..."
+                  value={couponSearch}
+                  onChange={(e) => setCouponSearch(e.target.value)}
+                  className="h-9 max-w-xs"
+                />
+                <div className="ml-auto flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    {filtered.length} cupom(ns) · {totals.paid_orders} pedidos pagos · {formatCurrency(totals.paid_revenue)} em receita paga
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => exportCouponsCSV(filtered, `cupons-${new Date().toISOString().slice(0, 10)}.csv`)}
+                    disabled={filtered.length === 0}
+                  >
+                    Exportar CSV
+                  </Button>
+                </div>
+              </div>
+              <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-muted/40 backdrop-blur z-10">
+                    <TableRow>
+                      <TableHead className="w-12">#</TableHead>
+                      <TableHead>Cupom</TableHead>
+                      <TableHead className="text-center">Pedidos</TableHead>
+                      <TableHead className="text-center">Pagos</TableHead>
+                      <TableHead className="text-right">Desconto Total</TableHead>
+                      <TableHead className="text-right">Desconto Pago</TableHead>
+                      <TableHead className="text-right">Receita Total</TableHead>
+                      <TableHead className="text-right">Receita Paga</TableHead>
+                      <TableHead className="text-center w-24">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.length === 0 ? (
+                      <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Nenhum cupom utilizado no período</TableCell></TableRow>
+                    ) : filtered.map((c, i) => (
+                      <TableRow key={c.code} className="hover:bg-muted/30">
+                        <TableCell className="font-medium text-muted-foreground">{i + 1}</TableCell>
+                        <TableCell><Badge variant="outline" className="font-mono">{c.code}</Badge></TableCell>
+                        <TableCell className="text-center">{c.total_orders}</TableCell>
+                        <TableCell className="text-center"><Badge className="bg-emerald-100 text-emerald-800">{c.paid_orders}</Badge></TableCell>
+                        <TableCell className="text-right text-orange-600">{formatCurrency(c.total_discount)}</TableCell>
+                        <TableCell className="text-right font-semibold text-orange-600">{formatCurrency(c.paid_discount)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(c.total_revenue)}</TableCell>
+                        <TableCell className="text-right font-semibold text-emerald-600">{formatCurrency(c.paid_revenue)}</TableCell>
+                        <TableCell className="text-center">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs"
+                            onClick={() => exportCouponsCSV([c], `cupom-${c.code}-${new Date().toISOString().slice(0, 10)}.csv`)}
+                          >
+                            Exportar
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {saleTypeFilter !== 'ALL' && (
         <Badge variant="outline" className="w-fit">
-          Filtrando por: {saleTypeFilter === 'BAZAR' ? 'Bazar (Manual/Automático)' : 'Live'}
+          Filtrando por: {saleTypeFilter === 'BAZAR' ? 'Bazar' : 'Live'}
         </Badge>
       )}
-
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="flex-wrap h-auto">
-          <TabsTrigger value="overview">Visão Geral</TabsTrigger>
-          <TabsTrigger value="products">Produtos Mais Vendidos</TabsTrigger>
-          <TabsTrigger value="customers">Clientes com Mais Compras</TabsTrigger>
-          <TabsTrigger value="whatsapp">Grupos WhatsApp</TabsTrigger>
-          <TabsTrigger value="agente-ia">🤖 Agente IA</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="overview" className="space-y-6">
-          {/* Vendas de Hoje */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span className="flex items-center">
-                  <Calendar className="h-5 w-5 mr-2" />
-                  Vendas por Período
-                </span>
-                <div className="flex items-center space-x-4">
-                  <Select value={salesFilter} onValueChange={(value: any) => setSalesFilter(value)}>
-                    <SelectTrigger className="w-36">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Geral</SelectItem>
-                      <SelectItem value="today">Hoje</SelectItem>
-                      <SelectItem value="yesterday">Ontem</SelectItem>
-                      <SelectItem value="month">Este Mês</SelectItem>
-                      <SelectItem value="year">Este Ano</SelectItem>
-                      <SelectItem value="custom">Personalizado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {salesFilter === 'custom' && (
-                    <div className="flex items-center space-x-2">
-                      <Input
-                        type="date"
-                        value={salesStartDate}
-                        onChange={(e) => setSalesStartDate(e.target.value)}
-                        className="w-36"
-                      />
-                      <span>até</span>
-                      <Input
-                        type="date"
-                        value={salesEndDate}
-                        onChange={(e) => setSalesEndDate(e.target.value)}
-                        className="w-36"
-                      />
-                    </div>
-                  )}
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                  <span>Carregando...</span>
-                </div>
-              ) : todaySales ? (
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-green-600">
-                      {formatCurrency(todaySales.total_paid)}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Vendas Pagas</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-yellow-600">
-                      {formatCurrency(todaySales.total_unpaid)}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Vendas Pendentes</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600">
-                      {todaySales.total_orders}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Total de Pedidos</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-orange-600">
-                      {todaySales.total_products}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Produtos Vendidos</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-purple-600">
-                      {formatCurrency(todaySales.ticket_medio)}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Ticket Médio</div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  Nenhum dado disponível para hoje
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Estatísticas Históricas */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center text-lg">
-                  <TrendingUp className="h-5 w-5 mr-2" />
-                  Hoje
-                </CardTitle>
-              </CardHeader>  
-              <CardContent>
-                {periodStats && (
-                  <div className="space-y-4">
-                    {/* Vendas */}
-                    <div className="space-y-1">
-                      <div className="text-sm font-medium text-muted-foreground">Vendas</div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-green-600">Pagas:</span>
-                        <span className="font-semibold text-green-600">{formatCurrency(periodStats.daily.paid_sales)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-orange-600">Não Pagas:</span>
-                        <span className="font-semibold text-orange-600">{formatCurrency(periodStats.daily.unpaid_sales)}</span>
-                      </div>
-                    </div>
-                    
-                    {/* Pedidos */}
-                    <div className="space-y-1 pt-2 border-t">
-                      <div className="text-sm font-medium text-muted-foreground">Pedidos</div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-green-600">Pagos:</span>
-                        <span className="font-semibold text-green-600">{periodStats.daily.paid_orders}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-orange-600">Não Pagos:</span>
-                        <span className="font-semibold text-orange-600">{periodStats.daily.unpaid_orders}</span>
-                      </div>
-                    </div>
-                    
-                    {/* Produtos */}
-                    <div className="space-y-1 pt-2 border-t">
-                      <div className="text-sm font-medium text-muted-foreground">Produtos</div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-green-600">Pagos:</span>
-                        <span className="font-semibold text-green-600">{periodStats.daily.paid_products}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-orange-600">Não Pagos:</span>
-                        <span className="font-semibold text-orange-600">{periodStats.daily.unpaid_products}</span>
-                      </div>
-                    </div>
-                    
-                    {/* Ticket Médio */}
-                    <div className="space-y-1 pt-2 border-t">
-                      <div className="text-sm font-medium text-muted-foreground">Ticket Médio</div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-green-600">Pago:</span>
-                        <span className="font-semibold text-green-600">{formatCurrency(periodStats.daily.paid_avg_ticket)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-orange-600">Não Pago:</span>
-                        <span className="font-semibold text-orange-600">{formatCurrency(periodStats.daily.unpaid_avg_ticket)}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center text-lg">
-                  <DollarSign className="h-5 w-5 mr-2" />
-                  Este Mês
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {periodStats && (
-                  <div className="space-y-4">
-                    {/* Vendas */}
-                    <div className="space-y-1">
-                      <div className="text-sm font-medium text-muted-foreground">Vendas</div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-green-600">Pagas:</span>
-                        <span className="font-semibold text-green-600">{formatCurrency(periodStats.monthly.paid_sales)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-orange-600">Não Pagas:</span>
-                        <span className="font-semibold text-orange-600">{formatCurrency(periodStats.monthly.unpaid_sales)}</span>
-                      </div>
-                    </div>
-                    
-                    {/* Pedidos */}
-                    <div className="space-y-1 pt-2 border-t">
-                      <div className="text-sm font-medium text-muted-foreground">Pedidos</div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-green-600">Pagos:</span>
-                        <span className="font-semibold text-green-600">{periodStats.monthly.paid_orders}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-orange-600">Não Pagos:</span>
-                        <span className="font-semibold text-orange-600">{periodStats.monthly.unpaid_orders}</span>
-                      </div>
-                    </div>
-                    
-                    {/* Produtos */}
-                    <div className="space-y-1 pt-2 border-t">
-                      <div className="text-sm font-medium text-muted-foreground">Produtos</div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-green-600">Pagos:</span>
-                        <span className="font-semibold text-green-600">{periodStats.monthly.paid_products}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-orange-600">Não Pagos:</span>
-                        <span className="font-semibold text-orange-600">{periodStats.monthly.unpaid_products}</span>
-                      </div>
-                    </div>
-                    
-                    {/* Ticket Médio */}
-                    <div className="space-y-1 pt-2 border-t">
-                      <div className="text-sm font-medium text-muted-foreground">Ticket Médio</div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-green-600">Pago:</span>
-                        <span className="font-semibold text-green-600">{formatCurrency(periodStats.monthly.paid_avg_ticket)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-orange-600">Não Pago:</span>
-                        <span className="font-semibold text-orange-600">{formatCurrency(periodStats.monthly.unpaid_avg_ticket)}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center text-lg">
-                  <Target className="h-5 w-5 mr-2" />
-                  Este Ano
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {periodStats && (
-                  <div className="space-y-4">
-                    {/* Vendas */}
-                    <div className="space-y-1">
-                      <div className="text-sm font-medium text-muted-foreground">Vendas</div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-green-600">Pagas:</span>
-                        <span className="font-semibold text-green-600">{formatCurrency(periodStats.yearly.paid_sales)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-orange-600">Não Pagas:</span>
-                        <span className="font-semibold text-orange-600">{formatCurrency(periodStats.yearly.unpaid_sales)}</span>
-                      </div>
-                    </div>
-                    
-                    {/* Pedidos */}
-                    <div className="space-y-1 pt-2 border-t">
-                      <div className="text-sm font-medium text-muted-foreground">Pedidos</div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-green-600">Pagos:</span>
-                        <span className="font-semibold text-green-600">{periodStats.yearly.paid_orders}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-orange-600">Não Pagos:</span>
-                        <span className="font-semibold text-orange-600">{periodStats.yearly.unpaid_orders}</span>
-                      </div>
-                    </div>
-                    
-                    {/* Produtos */}
-                    <div className="space-y-1 pt-2 border-t">
-                      <div className="text-sm font-medium text-muted-foreground">Produtos</div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-green-600">Pagos:</span>
-                        <span className="font-semibold text-green-600">{periodStats.yearly.paid_products}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-orange-600">Não Pagos:</span>
-                        <span className="font-semibold text-orange-600">{periodStats.yearly.unpaid_products}</span>
-                      </div>
-                    </div>
-                    
-                    {/* Ticket Médio */}
-                    <div className="space-y-1 pt-2 border-t">
-                      <div className="text-sm font-medium text-muted-foreground">Ticket Médio</div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-green-600">Pago:</span>
-                        <span className="font-semibold text-green-600">{formatCurrency(periodStats.yearly.paid_avg_ticket)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-orange-600">Não Pago:</span>
-                        <span className="font-semibold text-orange-600">{formatCurrency(periodStats.yearly.unpaid_avg_ticket)}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="products" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span className="flex items-center">
-                  <Package className="h-5 w-5 mr-2" />
-                  Produtos Mais Vendidos
-                </span>
-                <div className="flex items-center space-x-4">
-                  <Select value={selectedPeriod} onValueChange={(value: any) => setSelectedPeriod(value)}>
-                    <SelectTrigger className="w-32">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="today">Hoje</SelectItem>
-                      <SelectItem value="yesterday">Ontem</SelectItem>
-                      <SelectItem value="month">Este Mês</SelectItem>
-                      <SelectItem value="year">Este Ano</SelectItem>
-                      <SelectItem value="custom">Personalizado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {selectedPeriod === 'custom' && (
-                    <div className="flex items-center space-x-2">
-                      <Input
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="w-36"
-                      />
-                      <span>até</span>
-                      <Input
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="w-36"
-                      />
-                    </div>
-                  )}
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                  <span>Carregando...</span>
-                </div>
-              ) : topProducts.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Nenhum produto vendido no período selecionado
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Posição</TableHead>
-                        <TableHead>Produto</TableHead>
-                        <TableHead>Código</TableHead>
-                        <TableHead className="text-right">Qtd Vendida</TableHead>
-                        <TableHead className="text-right">Receita Total</TableHead>
-                        <TableHead className="text-right">Preço Médio</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {topProducts.map((product, index) => (
-                        <TableRow key={`${product.product_name}-${product.product_code}`}>
-                          <TableCell>
-                            <Badge variant={index < 3 ? "default" : "secondary"}>
-                              {index + 1}º
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="font-medium">{product.product_name}</TableCell>
-                          <TableCell className="font-mono text-sm">{product.product_code}</TableCell>
-                          <TableCell className="text-right font-semibold">
-                            {product.total_sold}
-                          </TableCell>
-                          <TableCell className="text-right font-semibold text-green-600">
-                            {formatCurrency(product.total_revenue)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {formatCurrency(product.avg_price)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="customers" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span className="flex items-center">
-                  <Users className="h-5 w-5 mr-2" />
-                  Clientes com Mais Compras
-                </span>
-                <div className="flex items-center space-x-4">
-                  <Select value={customersFilter} onValueChange={(value: any) => setCustomersFilter(value)}>
-                    <SelectTrigger className="w-36">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Geral</SelectItem>
-                      <SelectItem value="today">Hoje</SelectItem>
-                      <SelectItem value="yesterday">Ontem</SelectItem>
-                      <SelectItem value="month">Este Mês</SelectItem>
-                      <SelectItem value="year">Este Ano</SelectItem>
-                      <SelectItem value="custom">Personalizado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {customersFilter === 'custom' && (
-                    <div className="flex items-center space-x-2">
-                      <Input
-                        type="date"
-                        value={customersStartDate}
-                        onChange={(e) => setCustomersStartDate(e.target.value)}
-                        className="w-36"
-                      />
-                      <span>até</span>
-                      <Input
-                        type="date"
-                        value={customersEndDate}
-                        onChange={(e) => setCustomersEndDate(e.target.value)}
-                        className="w-36"
-                      />
-                    </div>
-                  )}
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                  <span>Carregando...</span>
-                </div>
-              ) : topCustomers.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Nenhum cliente encontrado no período selecionado
-                </div>
-              ) : (
-                <div className="overflow-x-auto -mx-6">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead
-                          className="pl-6 text-center w-28"
-                          title="Score Composto Ponderado = (Receita Paga / Máx) × 70 + (Total Pedidos / Máx) × 30"
-                        >
-                          Score
-                        </TableHead>
-                        <TableHead className="text-center w-20">Posição</TableHead>
-                        <TableHead>Cliente</TableHead>
-                        <TableHead>Telefone</TableHead>
-                        <TableHead className="text-center">Total Pedidos</TableHead>
-                        <TableHead className="text-center">Pedidos Pagos</TableHead>
-                        <TableHead className="text-center">Total Produtos</TableHead>
-                        <TableHead className="text-right">Receita Total</TableHead>
-                        <TableHead className="text-right">Receita Paga</TableHead>
-                        <TableHead className="text-right">Receita Pendente</TableHead>
-                        <TableHead className="text-center">Taxa Pagamento</TableHead>
-                        <TableHead>Primeira Compra</TableHead>
-                        <TableHead className="pr-6">Última Compra</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {topCustomers.map((customer, index) => {
-                        const conversionRate = customer.total_orders > 0 
-                          ? (customer.paid_orders / customer.total_orders) * 100 
-                          : 0;
-                        const score = customer.score ?? 0;
-                        
-                        // Premiação exclusiva apenas para o Top 3 (baseado em posição após ordenação por score)
-                        const podium = index === 0
-                          ? { label: '🏆 Ouro', badgeClass: 'bg-yellow-100 text-yellow-800 border-yellow-300', rowClass: 'bg-yellow-50/40' }
-                          : index === 1
-                          ? { label: '🥈 Prata', badgeClass: 'bg-slate-100 text-slate-600 border-slate-300', rowClass: 'bg-slate-50/60' }
-                          : index === 2
-                          ? { label: '🥉 Bronze', badgeClass: 'bg-orange-100 text-orange-700 border-orange-300', rowClass: 'bg-orange-50/30' }
-                          : null;
-                        
-                        return (
-                          <TableRow key={customer.customer_phone} className={podium?.rowClass ?? ''}>
-                            <TableCell className="pl-6">
-                              <div
-                                className="flex flex-col items-center gap-1"
-                                title="Score = (Receita Paga / Máx Receita Paga) × 70 + (Total Pedidos / Máx Total Pedidos) × 30"
-                              >
-                                <span className="text-lg font-bold text-foreground">{score.toFixed(1)}</span>
-                                {podium && (
-                                  <Badge
-                                    variant="outline"
-                                    className={`text-xs font-semibold px-2 py-0.5 ${podium.badgeClass}`}
-                                  >
-                                    {podium.label}
-                                  </Badge>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Badge variant={index < 3 ? "default" : "secondary"}>
-                                {index + 1}º
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              {customer.customer_name}
-                            </TableCell>
-                            <TableCell className="font-mono text-sm">
-                              {formatPhoneForDisplay(customer.customer_phone)}
-                            </TableCell>
-                            <TableCell className="text-center font-semibold">
-                              {customer.total_orders}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                {customer.paid_orders}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-center font-semibold text-orange-600">
-                              {customer.total_products}
-                            </TableCell>
-                            <TableCell className="text-right font-semibold">
-                              {formatCurrency(customer.total_revenue)}
-                            </TableCell>
-                            <TableCell className="text-right text-green-600 font-semibold">
-                              {formatCurrency(customer.paid_revenue)}
-                            </TableCell>
-                            <TableCell className="text-right text-yellow-600 font-semibold">
-                              {formatCurrency(customer.unpaid_revenue)}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Badge 
-                                variant={conversionRate >= 90 ? "default" : conversionRate >= 50 ? "secondary" : "outline"}
-                                className={
-                                  conversionRate >= 90 ? "bg-green-100 text-green-800" :
-                                  conversionRate >= 50 ? "bg-yellow-100 text-yellow-800" :
-                                  "bg-red-100 text-red-800"
-                                }
-                              >
-                                {conversionRate.toFixed(1)}%
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {formatDate(customer.first_order_date)}
-                            </TableCell>
-                            <TableCell className="pr-6 text-sm text-muted-foreground">
-                              {formatDate(customer.last_order_date)}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="whatsapp" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span className="flex items-center">
-                  <Users className="h-5 w-5 mr-2" />
-                  Relatório por Grupos de WhatsApp
-                </span>
-                <div className="flex items-center space-x-4">
-                  <Select value={whatsappFilter} onValueChange={(value: any) => setWhatsappFilter(value)}>
-                    <SelectTrigger className="w-36">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Geral</SelectItem>
-                      <SelectItem value="today">Hoje</SelectItem>
-                      <SelectItem value="yesterday">Ontem</SelectItem>
-                      <SelectItem value="month">Este Mês</SelectItem>
-                      <SelectItem value="year">Este Ano</SelectItem>
-                      <SelectItem value="custom">Personalizado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {whatsappFilter === 'custom' && (
-                    <div className="flex items-center space-x-2">
-                      <Input
-                        type="date"
-                        value={whatsappStartDate}
-                        onChange={(e) => setWhatsappStartDate(e.target.value)}
-                        className="w-36"
-                      />
-                      <span>até</span>
-                      <Input
-                        type="date"
-                        value={whatsappEndDate}
-                        onChange={(e) => setWhatsappEndDate(e.target.value)}
-                        className="w-36"
-                      />
-                    </div>
-                  )}
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                  <span>Carregando...</span>
-                </div>
-              ) : whatsappGroupStats.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  Nenhum dado disponível por grupo de WhatsApp
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Grupo</TableHead>
-                        <TableHead className="text-center">Total Pedidos</TableHead>
-                        <TableHead className="text-center">Pedidos Pagos</TableHead>
-                        <TableHead className="text-center">Total Produtos</TableHead>
-                        <TableHead className="text-center">Produtos Pagos</TableHead>
-                        <TableHead className="text-center">Produtos Pendentes</TableHead>
-                        <TableHead className="text-right">Receita Paga</TableHead>
-                        <TableHead className="text-right">Receita Pendente</TableHead>
-                        <TableHead className="text-right">Receita Total</TableHead>
-                        <TableHead className="text-center">Taxa Conversão</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {whatsappGroupStats.map((group, index) => (
-                        <TableRow key={group.group_name}>
-                          <TableCell className="font-medium">{group.group_name}</TableCell>
-                          <TableCell className="text-center font-semibold">
-                            {group.total_orders}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge variant="default" className="bg-green-100 text-green-800">
-                              {group.paid_orders}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-center font-semibold">
-                            {group.total_products}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge variant="default" className="bg-green-100 text-green-800">
-                              {group.paid_products}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
-                              {group.unpaid_products}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right font-semibold text-green-600">
-                            {formatCurrency(group.paid_revenue)}
-                          </TableCell>
-                          <TableCell className="text-right font-semibold text-yellow-600">
-                            {formatCurrency(group.unpaid_revenue)}
-                          </TableCell>
-                          <TableCell className="text-right font-semibold">
-                            {formatCurrency(group.total_revenue)}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <Badge 
-                              variant={group.paid_orders / group.total_orders >= 0.5 ? "default" : "secondary"}
-                              className={group.paid_orders / group.total_orders >= 0.5 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}
-                            >
-                              {((group.paid_orders / group.total_orders) * 100).toFixed(1)}%
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Agente IA Tab */}
-        <TabsContent value="agente-ia">
-          <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}>
-            <AgenteIAContent />
-          </Suspense>
-        </TabsContent>
-      </Tabs>
     </div>
   );
 };

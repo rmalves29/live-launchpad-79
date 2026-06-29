@@ -148,7 +148,9 @@ const Sorteio = () => {
       let totalWeight = 0;
 
       customerMap.forEach((value, phone) => {
-        const weight = 1.0 + (value.revenue / 100) * 0.1;
+        // Peso proporcional puro: quem gastou mais tem chance diretamente proporcional ao valor
+        // Piso mínimo de R$ 1 para evitar peso zero em pedidos de valor irrisório
+        const weight = Math.max(1, value.revenue);
         totalWeight += weight;
         candidateList.push({
           customer_phone: phone,
@@ -252,30 +254,30 @@ const Sorteio = () => {
   };
 
   return (
-    <div className="container mx-auto py-6 max-w-5xl space-y-6">
+    <div className="container mx-auto py-6 max-w-[1600px] space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold flex items-center">
-          <Trophy className="h-8 w-8 mr-3 text-primary" />
-          Sorteio Ponderado
-        </h1>
+      <div className="flex justify-between items-start gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Sorteio</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Realize sorteios ponderados por valor de compra
+          </p>
+        </div>
         {(candidates.length > 0 || winner) && (
-          <Button onClick={newRaffle} variant="outline">
+          <Button onClick={newRaffle} variant="outline" size="sm">
             Novo Sorteio
           </Button>
         )}
       </div>
 
-      {/* Configuração */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Sparkles className="h-5 w-5 mr-2" />
-            Configuração
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
+      {/* 3 colunas */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        {/* Coluna 1: Configurações */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Configurações do Sorteio</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Data do Evento</label>
               <Popover>
@@ -301,186 +303,139 @@ const Sorteio = () => {
               size="lg"
             >
               {loadingCandidates ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Users className="h-4 w-4 mr-2" />}
-              {loadingCandidates ? 'Carregando...' : 'Carregar Candidatos'}
+              {loadingCandidates ? 'Carregando...' : 'Calcular participantes'}
             </Button>
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Regras */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Regras do Sorteio Ponderado</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3 text-sm">
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-primary rounded-full" />
-              <span>Apenas pedidos <strong>PAGOS</strong> da data selecionada participam</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-primary rounded-full" />
-              <span><strong>Peso</strong> = 1.0 + (Receita Paga ÷ 100) × 0.1</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-primary rounded-full" />
-              <span>Quem compra mais tem <strong>maior chance</strong>, mas todos participam</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-primary rounded-full" />
-              <span>Ganhadores são <strong>removidos automaticamente</strong> da roleta na mesma sessão</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            <Separator />
 
-      {/* Lista de Candidatos */}
-      {candidatesWithProbability.length > 0 && (
+            <div className="space-y-2 text-xs text-muted-foreground">
+              <div className="flex items-start gap-2">
+                <div className="w-1.5 h-1.5 bg-primary rounded-full mt-1.5 shrink-0" />
+                <span>Apenas pedidos <strong className="text-foreground">PAGOS</strong> da data participam</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <div className="w-1.5 h-1.5 bg-primary rounded-full mt-1.5 shrink-0" />
+                <span><strong className="text-foreground">Peso</strong> = Receita Paga (proporcional puro)</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <div className="w-1.5 h-1.5 bg-primary rounded-full mt-1.5 shrink-0" />
+                <span>Quem compra mais tem <strong className="text-foreground">maior chance</strong></span>
+              </div>
+              <div className="flex items-start gap-2">
+                <div className="w-1.5 h-1.5 bg-primary rounded-full mt-1.5 shrink-0" />
+                <span>Ganhadores são <strong className="text-foreground">removidos</strong> da roleta na sessão</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Coluna 2: Participantes */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center">
-                <Users className="h-5 w-5 mr-2" />
-                Participantes ({candidatesWithProbability.length})
-              </span>
-              {excludedPhones.size > 0 && (
-                <span className="text-sm font-normal text-muted-foreground">
-                  {excludedPhones.size} já sorteado(s)
+            <CardTitle className="flex items-center justify-between text-lg">
+              <span>Participantes</span>
+              {candidatesWithProbability.length > 0 && (
+                <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-primary/10 text-primary">
+                  {candidatesWithProbability.length} participantes
                 </span>
               )}
             </CardTitle>
+            {excludedPhones.size > 0 && (
+              <p className="text-xs text-muted-foreground">{excludedPhones.size} já sorteado(s)</p>
+            )}
           </CardHeader>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-foreground/20">
-                  <TableHead>Cliente</TableHead>
-                  <TableHead className="text-right">Receita Paga</TableHead>
-                  <TableHead className="text-right">Peso</TableHead>
-                  <TableHead className="text-right">Probabilidade</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {candidatesWithProbability.map((candidate, index) => (
-                  <TableRow key={candidate.customer_phone} className="border-foreground/10">
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{candidate.customer_name}</div>
-                        <div className="text-xs text-muted-foreground font-mono">
-                          {formatPhoneForDisplay(candidate.customer_phone)}
-                          {candidate.order_count > 1 && ` · ${candidate.order_count} pedidos`}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {formatCurrency(candidate.total_revenue)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {candidate.weight.toFixed(2)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <div className="w-16 h-2 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-primary rounded-full transition-all"
-                            style={{ width: `${Math.min(candidate.probability, 100)}%` }}
-                          />
-                        </div>
-                        <span className="font-mono text-sm min-w-[3rem] text-right">
-                          {candidate.probability.toFixed(1)}%
-                        </span>
-                      </div>
-                    </TableCell>
+            {candidatesWithProbability.length === 0 ? (
+              <div className="px-6 pb-6 text-sm text-muted-foreground text-center py-8">
+                Selecione uma data e clique em "Calcular participantes"
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-foreground/10">
+                    <TableHead className="text-xs uppercase tracking-wide">Cliente</TableHead>
+                    <TableHead className="text-xs uppercase tracking-wide">Rec. Paga</TableHead>
+                    <TableHead className="text-xs uppercase tracking-wide text-right">Peso</TableHead>
+                    <TableHead className="text-xs uppercase tracking-wide text-right">Prob.</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-
-            <div className="p-4">
-              <Button
-                onClick={performRaffle}
-                disabled={loading || candidatesWithProbability.length === 0}
-                className="w-full"
-                size="lg"
-              >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trophy className="h-4 w-4 mr-2" />}
-                {loading ? 'Sorteando...' : 'Girar Roleta'}
-              </Button>
-            </div>
+                </TableHeader>
+                <TableBody>
+                  {candidatesWithProbability.slice(0, 8).map((candidate) => (
+                    <TableRow key={candidate.customer_phone} className="border-foreground/5">
+                      <TableCell className="py-3">
+                        <div className="font-medium text-sm">{candidate.customer_name}</div>
+                      </TableCell>
+                      <TableCell className="py-3 font-mono text-sm">
+                        {formatCurrency(candidate.total_revenue)}
+                      </TableCell>
+                      <TableCell className="py-3 text-right font-mono text-sm">
+                        {candidate.weight.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="py-3 text-right font-mono text-sm text-primary">
+                        {candidate.probability.toFixed(1)}%
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+            {candidatesWithProbability.length > 8 && (
+              <div className="px-6 py-3 text-xs italic text-muted-foreground">
+                ... mais {candidatesWithProbability.length - 8} participantes
+              </div>
+            )}
           </CardContent>
         </Card>
-      )}
 
-      {/* Vencedor */}
-      {winner && (
-        <Card className="border-primary/20 bg-gradient-to-r from-primary/5 to-primary/10">
+        {/* Coluna 3: Realizar Sorteio */}
+        <Card>
           <CardHeader>
-            <CardTitle className="text-center text-2xl text-primary flex items-center justify-center">
-              <Trophy className="h-6 w-6 mr-2" />
-              🎉 VENCEDOR(A) DO SORTEIO! 🎉
-            </CardTitle>
+            <CardTitle className="text-lg text-center">Realizar Sorteio</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-center space-y-6">
-              <div className="bg-background/50 rounded-lg p-6 space-y-4">
-                <div className="flex flex-col items-center space-y-4">
-                  <div className="relative">
-                    <div className="w-32 h-32 rounded-2xl shadow-2xl overflow-hidden transform hover:scale-105 transition-all duration-300 rotate-3 hover:rotate-6">
-                      {winner.profile_image ? (
-                        <img
-                          src={winner.profile_image}
-                          alt={`Foto de ${winner.customer_name}`}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-amber-400 via-amber-500 to-orange-500 flex items-center justify-center">
-                          <Gift className="w-20 h-20 text-white" strokeWidth={2.5} />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xl font-bold">{winner.customer_name}</div>
-                    <div className="text-sm text-muted-foreground">{formatPhoneForDisplay(winner.customer_phone)}</div>
-                  </div>
+          <CardContent className="space-y-5">
+            <div className="flex items-center justify-center py-4">
+              <div className={cn(
+                "w-40 h-40 rounded-full border-[6px] border-primary/30 bg-primary/5 flex items-center justify-center transition-transform",
+                loading && "animate-spin border-primary"
+              )}>
+                {winner?.profile_image ? (
+                  <img
+                    src={winner.profile_image}
+                    alt={winner.customer_name}
+                    className="w-32 h-32 rounded-full object-cover"
+                  />
+                ) : (
+                  <Trophy className="w-16 h-16 text-primary" strokeWidth={1.5} />
+                )}
+              </div>
+            </div>
+
+            <Button
+              onClick={performRaffle}
+              disabled={loading || candidatesWithProbability.length === 0}
+              className="w-full"
+              size="lg"
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
+              {loading ? 'Sorteando...' : 'Girar Roleta'}
+            </Button>
+
+            {winner && (
+              <div className="rounded-lg bg-primary/5 border border-primary/20 p-4 text-center space-y-1">
+                <div className="text-sm text-primary font-medium">🎉 Ganhadora</div>
+                <div className="text-xl font-bold">{winner.customer_name}</div>
+                <div className="text-sm text-muted-foreground">{formatPhoneForDisplay(winner.customer_phone)}</div>
+                <div className="text-xs text-muted-foreground pt-1">
+                  Receita: {formatCurrency(winner.total_revenue)} · Probabilidade: {winner.probability.toFixed(1)}%
                 </div>
-
-                <Separator />
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
-                  <div>
-                    <div className="text-sm text-muted-foreground mb-1">Receita Paga</div>
-                    <div className="font-mono font-bold text-lg">{formatCurrency(winner.total_revenue)}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground mb-1">Peso no Sorteio</div>
-                    <div className="font-mono font-bold text-lg">{winner.weight.toFixed(2)}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground mb-1">Probabilidade</div>
-                    <div className="font-mono font-bold text-lg">{winner.probability.toFixed(1)}%</div>
-                  </div>
-                </div>
-
-                <Separator />
-
-                <div className="text-sm text-muted-foreground">
-                  Data do evento: <strong>{formatBrasiliaDate(winner.event_date)}</strong>
-                  {' · '}
-                  {winner.order_count} pedido(s) pago(s)
+                <div className="text-xs text-muted-foreground">
+                  {formatBrasiliaDate(winner.event_date)} · {winner.order_count} pedido(s)
                 </div>
               </div>
-
-              {candidatesWithProbability.length > 0 && (
-                <Button onClick={performRaffle} disabled={loading} size="lg" variant="outline">
-                  <Trophy className="h-4 w-4 mr-2" />
-                  Sortear Próximo Prêmio
-                </Button>
-              )}
-            </div>
+            )}
           </CardContent>
         </Card>
-      )}
+      </div>
     </div>
   );
 };

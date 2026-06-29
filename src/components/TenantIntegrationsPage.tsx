@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Zap, Instagram, Printer, MessageSquare, ShoppingBag, Sparkles } from 'lucide-react';
 import PaymentIntegrations from '@/components/integrations/PaymentIntegrations';
 import PagarMeIntegration from '@/components/integrations/PagarMeIntegration';
+import SipagIntegration from '@/components/integrations/SipagIntegration';
 import AppmaxIntegration from '@/components/integrations/AppmaxIntegration';
 import InfinitePayIntegration from '@/components/integrations/InfinitePayIntegration';
 import ShippingIntegrations from '@/components/integrations/ShippingIntegrations';
@@ -94,6 +95,15 @@ export default function TenantIntegrationsPage() {
     queryFn: async () => {
       const { data } = await supabase.from('integration_pagarme').select('is_active').eq('tenant_id', tenantId).maybeSingle();
       return data;
+    },
+    enabled: !!tenantId,
+  });
+
+  const { data: sipagIntegration } = useQuery({
+    queryKey: ['sipag-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase.from('integration_sipag' as any).select('is_active').eq('tenant_id', tenantId).maybeSingle();
+      return data as { is_active: boolean } | null;
     },
     enabled: !!tenantId,
   });
@@ -207,14 +217,15 @@ export default function TenantIntegrationsPage() {
   const showAdvancedIntegrations = ALLOWED_ADVANCED_SLUGS.includes(tenant.slug || '');
 
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
-      <h1 className="text-3xl font-bold mb-2">Integrações</h1>
-      <p className="text-muted-foreground mb-6">
-        Configure suas integrações de pagamento, envio e ERP para a empresa <strong>{tenant.name}</strong>
-      </p>
+    <div className="bg-white -mx-4 sm:-mx-6 lg:-mx-8 -my-4 sm:-my-6 lg:-my-8 min-h-screen">
+      <div className="container mx-auto p-6 max-w-7xl">
+        <h1 className="text-3xl font-bold mb-2">Integrações</h1>
+        <p className="text-muted-foreground mb-6">
+          Configure suas integrações de pagamento, envio e ERP para a empresa <strong>{tenant.name}</strong>
+        </p>
 
-      <Tabs defaultValue={new URLSearchParams(window.location.search).get('instagram_success') || new URLSearchParams(window.location.search).get('instagram_error') ? 'instagram' : 'bling'} className="w-full">
-        <TabsList className="flex flex-wrap h-auto gap-1 w-full">
+        <Tabs defaultValue={new URLSearchParams(window.location.search).get('instagram_success') || new URLSearchParams(window.location.search).get('instagram_error') ? 'instagram' : 'bling'} className="w-full">
+          <TabsList className="flex flex-wrap h-auto gap-1 w-full bg-white border border-border">
           <TabsTrigger value="instagram" className="flex items-center gap-2">
             <Instagram className="h-4 w-4" />
             <span className="hidden sm:inline">Instagram</span>
@@ -258,6 +269,12 @@ export default function TenantIntegrationsPage() {
             <span className="hidden sm:inline">Pagar.me</span>
             <span className="sm:hidden">PG</span>
             {pagarmeIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
+          </TabsTrigger>
+          <TabsTrigger value="sipag" className="flex items-center gap-2">
+            <Building2 className="h-4 w-4" />
+            <span className="hidden sm:inline">Sipag (Sicoob)</span>
+            <span className="sm:hidden">SP</span>
+            {sipagIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
           <TabsTrigger value="appmax" className="flex items-center gap-2">
             <Zap className="h-4 w-4" />
@@ -326,6 +343,9 @@ export default function TenantIntegrationsPage() {
         <TabsContent value="pagarme" className="mt-6">
           <PagarMeIntegration tenantId={tenantId} />
         </TabsContent>
+        <TabsContent value="sipag" className="mt-6">
+          <SipagIntegration tenantId={tenantId} />
+        </TabsContent>
         <TabsContent value="appmax" className="mt-6">
           <AppmaxIntegration tenantId={tenantId} />
         </TabsContent>
@@ -347,7 +367,8 @@ export default function TenantIntegrationsPage() {
         <TabsContent value="meuscorreios" className="mt-6">
           <MeusCorreiosIntegration tenantId={tenantId} />
         </TabsContent>
-      </Tabs>
+        </Tabs>
+      </div>
     </div>
   );
 }

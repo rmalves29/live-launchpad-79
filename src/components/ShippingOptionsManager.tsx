@@ -31,6 +31,7 @@ interface ShippingOption {
   coverage_states: string[] | null;
   coverage_city: string | null;
   coverage_state: string | null;
+  free_shipping_min_order: number | null;
 }
 
 interface CarrierService {
@@ -120,7 +121,8 @@ export const ShippingOptionsManager = () => {
     coverage_type: 'national' as CoverageType,
     coverage_states: [] as string[],
     coverage_city: '',
-    coverage_state: ''
+    coverage_state: '',
+    free_shipping_min_order: null as number | null
   });
 
   const loadConfig = async () => {
@@ -170,7 +172,8 @@ export const ShippingOptionsManager = () => {
           coverage_type: opt.coverage_type || 'national',
           coverage_states: opt.coverage_states || null,
           coverage_city: opt.coverage_city || null,
-          coverage_state: opt.coverage_state || null
+          coverage_state: opt.coverage_state || null,
+          free_shipping_min_order: opt.free_shipping_min_order != null ? Number(opt.free_shipping_min_order) : null
         })));
       } else {
         console.log('Tabela custom_shipping_options não existe ou erro:', shippingError);
@@ -215,7 +218,8 @@ export const ShippingOptionsManager = () => {
         coverage_type: option.coverage_type || 'national',
         coverage_states: option.coverage_states || [],
         coverage_city: option.coverage_city || '',
-        coverage_state: option.coverage_state || ''
+        coverage_state: option.coverage_state || '',
+        free_shipping_min_order: option.free_shipping_min_order ?? null
       });
     } else {
       setEditingOption(null);
@@ -230,7 +234,8 @@ export const ShippingOptionsManager = () => {
         coverage_type: 'national',
         coverage_states: [],
         coverage_city: '',
-        coverage_state: ''
+        coverage_state: '',
+        free_shipping_min_order: null
       });
     }
     setIsDialogOpen(true);
@@ -284,6 +289,7 @@ export const ShippingOptionsManager = () => {
             coverage_states: formData.coverage_states.length > 0 ? formData.coverage_states : null,
             coverage_city: formData.coverage_city || null,
             coverage_state: formData.coverage_state || null,
+            free_shipping_min_order: formData.price === 0 ? (formData.free_shipping_min_order || null) : null,
             updated_at: new Date().toISOString()
           })
           .eq('id', editingOption.id)
@@ -313,7 +319,8 @@ export const ShippingOptionsManager = () => {
             coverage_type: formData.coverage_type,
             coverage_states: formData.coverage_states.length > 0 ? formData.coverage_states : null,
             coverage_city: formData.coverage_city || null,
-            coverage_state: formData.coverage_state || null
+            coverage_state: formData.coverage_state || null,
+            free_shipping_min_order: formData.price === 0 ? (formData.free_shipping_min_order || null) : null
           })
           .select()
           .single();
@@ -332,7 +339,8 @@ export const ShippingOptionsManager = () => {
           coverage_type: data.coverage_type || 'national',
           coverage_states: data.coverage_states || null,
           coverage_city: data.coverage_city || null,
-          coverage_state: data.coverage_state || null
+          coverage_state: data.coverage_state || null,
+          free_shipping_min_order: data.free_shipping_min_order != null ? Number(data.free_shipping_min_order) : null
         };
         setOptions(prev => [...prev, newOption]);
         toast({ title: 'Sucesso', description: 'Opção de frete criada' });
@@ -534,6 +542,34 @@ export const ShippingOptionsManager = () => {
                         onChange={(e) => setFormData(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))}
                       />
                     </div>
+                  </div>
+
+                  {/* Campo de pedido mínimo para frete grátis */}
+                  <div className="space-y-2">
+                    <Label htmlFor="free_shipping_min_order">
+                      Pedido mínimo para liberar frete grátis (R$)
+                    </Label>
+                    <Input
+                      id="free_shipping_min_order"
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      placeholder="Ex: 99.00 — deixe em branco para sempre disponível"
+                      disabled={formData.price > 0}
+                      value={formData.free_shipping_min_order ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData(prev => ({
+                          ...prev,
+                          free_shipping_min_order: val === '' ? null : parseFloat(val) || null
+                        }));
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {formData.price > 0
+                        ? 'Disponível somente quando o Valor estiver em R$ 0,00 (frete grátis).'
+                        : 'Se preenchido, este frete grátis só aparecerá no checkout quando o pedido atingir este valor (ex.: 99,00).'}
+                    </p>
                   </div>
                   
                   {/* Carrier selection */}

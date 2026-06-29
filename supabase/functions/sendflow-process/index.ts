@@ -1,6 +1,13 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { simulateTyping, addMessageVariation } from "../_shared/anti-block-delay.ts";
+import {
+  sendText as evoSendText,
+  sendImage as evoSendImage,
+  sendPresenceAvailable,
+  sendPresenceComposing,
+  calcTypingDuration,
+} from "../_shared/evolution-api.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,8 +16,7 @@ const corsHeaders = {
 
 const ZAPI_BASE_URL = "https://api.z-api.io";
 
-// Max wall-clock time before self-reinvoking (leave margin for cleanup)
-const MAX_EXECUTION_MS = 120_000; // 120s safe limit (Supabase max ~150s)
+const MAX_EXECUTION_MS = 120_000;
 
 interface Product {
   id: number;
@@ -43,22 +49,22 @@ function getRandomDelay(minSeconds: number, maxSeconds: number): number {
 }
 
 function formatPrice(price: number): string {
-  return `R$ ${price.toFixed(2).replace('.', ',')}`;
+  return "R$ " + price.toFixed(2).replace(".", ",");
 }
 
 function removePromotionalSegment(line: string): string {
   return line
     .replace(
       /(\s*[,;|/\\-]\s*)?(?:🤑|💸)?\s*\*?\s*(por|promo(?:cional)?|valor\s+promo(?:cional)?)\s*\*?\s*:?\s*\*?\s*\{\{?\s*valor_promo\s*\}?\}\*?/giu,
-      ''
+      ""
     )
-    .replace(/(?:🤑|💸)/gu, '')
-    .replace(/\{\{?\s*valor_promo\s*\}?\}/gi, '')
-    .replace(/\s{2,}/g, ' ')
-    .replace(/\s+([,.;!?])/g, '$1')
-    .replace(/\*\*/g, '')
-    .replace(/^\*+|\*+$/g, '')
-    .replace(/[|,;:–—-]\s*$/g, '')
+    .replace(/(?:🤑|💸)/gu, "")
+    .replace(/\{\{?\s*valor_promo\s*\}?\}/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.;!?])/g, "$1")
+    .replace(/\*\*/g, "")
+    .replace(/^\*+|\*+$/g, "")
+    .replace(/[|,;:–—-]\s*$/g, "")
     .trim();
 }
 
@@ -66,61 +72,41 @@ function applyPromotionalPriceFallback(template: string, product: Product): stri
   const promoRegex = /\{\{?\s*valor_promo\s*\}?\}/gi;
   const hasPromotionalPrice = !!(product.promotional_price && product.promotional_price > 0);
 
-  // IMPORTANTE: preservamos linhas em branco do template (não filtramos por trim().length).
-  // Apenas linhas que continham SOMENTE {{valor_promo}} (sem preço base) e que ficariam
-  // sem nenhum conteúdo são removidas — junto com o \n da própria linha (feito depois).
   return template
-    .split('\n')
+    .split("\n")
     .map((line): string | null => {
       if (!promoRegex.test(line)) {
         return line;
       }
-
       promoRegex.lastIndex = 0;
-
       if (hasPromotionalPrice) {
         return line.replace(promoRegex, formatPrice(product.promotional_price!));
       }
-
       const hasBasePriceOnSameLine = /\{\{?\s*(valor|valor_original)\s*\}?\}/i.test(line);
-
       if (!hasBasePriceOnSameLine) {
-        // Sem preço promocional e {{valor_promo}} sozinho na linha → marca para remoção total
         return null;
       }
-
       return removePromotionalSegment(line);
     })
     .filter((line): line is string => line !== null)
-    .join('\n');
+    .join("\n");
 }
 
-/**
- * Remove a linha inteira (incluindo o \n final) quando uma variável vazia é encontrada.
- * Preserva 100% da estrutura de quebras do template original ao redor.
- */
 function removeLineWithVariable(message: string, variableName: string): string {
-  const re = new RegExp(`^[^\\n]*\\{\\{?\\s*${variableName}\\s*\\}?\\}[^\\n]*\\n?`, 'gim');
-  return message.replace(re, '');
+  const re = new RegExp("^[^\\n]*\\{\\{?\\s*" + variableName + "\\s*\\}?\\}[^\\n]*\\n?", "gim");
+  return message.replace(re, "");
 }
 
-/**
- * Z-API/WhatsApp colapsam linhas COMPLETAMENTE vazias em legendas de imagem.
- * Inserir um zero-width space (\u200B) em cada linha vazia força o WhatsApp
- * a tratá-la como linha "com conteúdo" e renderizar a quebra — invisível para o usuário.
- * Preserva exatamente o número de linhas em branco do template original.
- */
 function preserveBlankLines(message: string): string {
   return message
-    .split('\n')
-    .map((line) => (line.length === 0 ? '\u200B' : line))
-    .join('\n');
+    .split("\n")
+    .map((line) => (line.length === 0 ? "​" : line))
+    .join("\n");
 }
 
 function personalizeMessage(template: string, product: Product): string {
   let message = applyPromotionalPriceFallback(template, product);
 
-  // {{valor}} and {{valor_original}} always show the BASE price (without discount)
   message = message
     .replace(/\{\{?\s*codigo\s*\}?\}/gi, product.code.trim())
     .replace(/\{\{?\s*nome\s*\}?\}/gi, product.name.trim())
@@ -132,161 +118,150 @@ function personalizeMessage(template: string, product: Product): string {
     message = message.replace(/\{\{?\s*valor_promo\s*\}?\}/gi, formatPrice(product.promotional_price));
   }
 
-  // Para variáveis vazias, removemos a LINHA INTEIRA (incluindo o \n) para
-  // não deixar uma linha em branco extra que distorce a estrutura do template.
   if (product.color && product.color.trim()) {
     message = message.replace(/\{\{?\s*cor\s*\}?\}/gi, product.color.trim());
   } else {
-    message = removeLineWithVariable(message, 'cor');
+    message = removeLineWithVariable(message, "cor");
   }
 
   if (product.size && product.size.trim()) {
     message = message.replace(/\{\{?\s*tamanho\s*\}?\}/gi, product.size.trim());
   } else {
-    message = removeLineWithVariable(message, 'tamanho');
+    message = removeLineWithVariable(message, "tamanho");
   }
 
   if (product.observation && product.observation.trim()) {
     message = message.replace(/\{\{?\s*observacao\s*\}?\}/gi, product.observation.trim());
   } else {
-    message = removeLineWithVariable(message, 'observacao');
+    message = removeLineWithVariable(message, "observacao");
   }
 
-  // NÃO colapsamos múltiplas quebras — respeitamos exatamente o que o usuário cadastrou.
-  // Apenas removemos espaços em branco no final das linhas e do final da mensagem.
   message = message
-    .split('\n')
-    .map((line) => line.replace(/[ \t]+$/g, ''))
-    .join('\n')
-    .replace(/\s+$/g, '');
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+$/g, ""))
+    .join("\n")
+    .replace(/\s+$/g, "");
 
-  // Anti-colapso da Z-API: garante que linhas em branco sobrevivam à renderização
-  // tanto em send-text quanto em send-image (caption).
   message = preserveBlankLines(message);
 
   return message;
 }
 
 async function getCredentials(supabase: any, tenantId: string) {
-  const { data: integration, error } = await supabase
+  const { data, error } = await supabase
     .from("integration_whatsapp")
-    .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, is_active, provider")
+    .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, provider")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .maybeSingle();
 
-  if (error || !integration) return null;
+  if (error || !data) return null;
 
-  const provider = integration.provider || "zapi";
+  const provider = data.provider || "zapi";
+
   if (provider === "evolution") {
-    if (!integration.evolution_instance_name) return null;
-    return { provider: "evolution" as const, instanceName: integration.evolution_instance_name };
+    if (!data.evolution_instance_name) return null;
+    return { provider: "evolution" as const, instanceName: data.evolution_instance_name };
   }
 
-  if (!integration.zapi_instance_id || !integration.zapi_token) return null;
+  if (!data.zapi_instance_id || !data.zapi_token) return null;
   return {
     provider: "zapi" as const,
-    instanceId: integration.zapi_instance_id,
-    token: integration.zapi_token,
-    clientToken: integration.zapi_client_token,
+    instanceId: data.zapi_instance_id,
+    token: data.zapi_token,
+    clientToken: data.zapi_client_token || "",
   };
 }
 
-async function sendGroupMessage(
-  credentials: any,
+async function sendGroupMessageZapi(
+  credentials: { instanceId: string; token: string; clientToken?: string },
   groupId: string,
   message: string,
-  imageUrl?: string
+  imageUrl?: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const variedMessage = addMessageVariation(message, false, {
-    prependGreeting: false,
-    swapEmojis: false,
-    invisibleVariation: true,
-  });
+  const { instanceId, token, clientToken } = credentials;
 
   try {
-    if (credentials.provider === "evolution") {
-      const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL") || "";
-      const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "";
-      const evoH = { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY };
-      const { instanceName } = credentials;
-
-      // Simulate composing presence
-      await fetch(`${EVOLUTION_API_URL}/chat/sendPresence/${instanceName}`, {
-        method: "POST", headers: evoH,
-        body: JSON.stringify({ number: groupId, options: { presence: "composing", delay: 2000 } }),
-      });
-      await new Promise((r) => setTimeout(r, 2000));
-
-      let response: Response;
-      if (imageUrl) {
-        response = await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${instanceName}`, {
-          method: "POST", headers: evoH,
-          body: JSON.stringify({ number: groupId, mediatype: "image", media: imageUrl, caption: variedMessage }),
-        });
-      } else {
-        response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
-          method: "POST", headers: evoH,
-          body: JSON.stringify({ number: groupId, text: variedMessage }),
-        });
-      }
-
-      if (response.ok) return { success: true };
-      const errorText = await response.text();
-      return { success: false, error: errorText.substring(0, 100) };
-    }
-
-    // Z-API path
-    const { instanceId, token, clientToken } = credentials;
     await simulateTyping(instanceId, token, clientToken, groupId);
+    const variedMessage = addMessageVariation(message, false, {
+      prependGreeting: false,
+      swapEmojis: false,
+      invisibleVariation: true,
+    });
 
-    let url: string;
-    let body: Record<string, unknown>;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (clientToken) headers["Client-Token"] = clientToken;
+
+    const base = ZAPI_BASE_URL + "/instances/" + instanceId + "/token/" + token;
 
     if (imageUrl) {
-      url = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-image`;
-      body = { phone: groupId, image: imageUrl, caption: variedMessage };
-    } else {
-      url = `${ZAPI_BASE_URL}/instances/${instanceId}/token/${token}/send-text`;
-      body = { phone: groupId, message: variedMessage };
+      const imgRes = await fetch(base + "/send-image", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ phone: groupId, image: imageUrl }),
+      });
+      if (!imgRes.ok) {
+        return { success: false, error: (await imgRes.text()).substring(0, 100) };
+      }
+      await sleep(1500 + Math.random() * 1000);
+      const txtRes = await fetch(base + "/send-text", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ phone: groupId, message: variedMessage }),
+      });
+      if (txtRes.ok) return { success: true };
+      return { success: false, error: (await txtRes.text()).substring(0, 100) };
     }
 
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (clientToken) headers['Client-Token'] = clientToken;
-
-    const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+    const response = await fetch(base + "/send-text", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ phone: groupId, message: variedMessage }),
+    });
     if (response.ok) return { success: true };
-    const errorText = await response.text();
-    return { success: false, error: errorText.substring(0, 100) };
+    return { success: false, error: (await response.text()).substring(0, 100) };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
 }
 
-/**
- * Self-reinvoke this edge function to continue processing after timeout-safe limit.
- * This prevents the function from being killed mid-execution.
- */
+async function sendGroupMessageEvolution(
+  instanceName: string,
+  groupId: string,
+  message: string,
+  imageUrl?: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await sendPresenceAvailable(instanceName, groupId);
+
+    if (imageUrl) {
+      await sendPresenceComposing(instanceName, groupId, calcTypingDuration(50));
+      const imgResult = await evoSendImage(instanceName, groupId, imageUrl);
+      if (!imgResult.success) return { success: false, error: imgResult.error };
+      await sleep(1500 + Math.random() * 1000);
+      await sendPresenceComposing(instanceName, groupId, calcTypingDuration(message.length));
+      return await evoSendText(instanceName, groupId, message);
+    }
+
+    await sendPresenceComposing(instanceName, groupId, calcTypingDuration(message.length));
+    return await evoSendText(instanceName, groupId, message);
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
 async function selfReinvoke(supabaseUrl: string, jobId: string, tenantId: string) {
-  const functionUrl = `${supabaseUrl}/functions/v1/sendflow-process`;
+  const functionUrl = supabaseUrl + "/functions/v1/sendflow-process";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-  console.log(`[sendflow-process] ♻️ Self-reinvoking for job ${jobId}`);
-
   try {
     const resp = await fetch(functionUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${serviceKey}`,
-      },
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + serviceKey },
       body: JSON.stringify({ job_id: jobId, tenant_id: tenantId }),
     });
-    console.log(`[sendflow-process] ♻️ Reinvoke response status: ${resp.status}`);
-    // Consume the body to prevent resource leak
     await resp.text();
   } catch (e: any) {
-    console.error(`[sendflow-process] ♻️ Reinvoke failed:`, e?.message);
+    console.error("[sendflow-process] Reinvoke failed:", e?.message);
   }
 }
 
@@ -305,40 +280,38 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { job_id, tenant_id, mode } = body;
 
-    console.log(`[${timestamp}] [sendflow-process] Starting job ${job_id} for tenant ${tenant_id}`);
-
     if (!job_id || !tenant_id) {
       return new Response(
-        JSON.stringify({ error: "job_id e tenant_id são obrigatórios" }),
+        JSON.stringify({ error: "job_id e tenant_id sao obrigatorios" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const { data: job, error: jobError } = await supabase
-      .from('sending_jobs')
-      .select('*')
-      .eq('id', job_id)
-      .eq('tenant_id', tenant_id)
+      .from("sending_jobs")
+      .select("*")
+      .eq("id", job_id)
+      .eq("tenant_id", tenant_id)
       .single();
 
     if (jobError || !job) {
       return new Response(
-        JSON.stringify({ error: "Job não encontrado" }),
+        JSON.stringify({ error: "Job nao encontrado" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    if (mode === 'sync') {
+    if (mode === "sync") {
       await processTaskQueue({ supabase, supabaseUrl, job, jobId: job_id, tenantId: tenant_id, timestamp });
       return new Response(
-        JSON.stringify({ queued: false, mode: 'sync' }),
+        JSON.stringify({ queued: false, mode: "sync" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     EdgeRuntime.waitUntil(
       processTaskQueue({ supabase, supabaseUrl, job, jobId: job_id, tenantId: tenant_id, timestamp })
-        .catch((e) => console.error(`[${timestamp}] [sendflow-process] Background error:`, e?.message || e))
+        .catch((e) => console.error("[sendflow-process] Background error:", e?.message || e))
     );
 
     return new Response(
@@ -346,7 +319,7 @@ Deno.serve(async (req) => {
       { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error: any) {
-    console.error(`[sendflow-process] Error:`, error.message);
+    console.error("[sendflow-process] Error:", error.message);
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -371,20 +344,18 @@ async function processTaskQueue({
 }) {
   const startTime = Date.now();
 
-  /** Returns true if we're approaching the timeout limit */
   function isNearTimeout(): boolean {
     return (Date.now() - startTime) >= MAX_EXECUTION_MS;
   }
 
-  if (job.status === 'completed' || job.status === 'cancelled') {
-    console.log(`[${timestamp}] [sendflow-process] Job ${jobId} already ${job.status}`);
+  if (job.status === "completed" || job.status === "cancelled") {
     return;
   }
 
   await supabase
-    .from('sending_jobs')
-    .update({ status: 'running', updated_at: new Date().toISOString() })
-    .eq('id', jobId);
+    .from("sending_jobs")
+    .update({ status: "running", updated_at: new Date().toISOString() })
+    .eq("id", jobId);
 
   const jobData = job.job_data;
   const {
@@ -396,46 +367,44 @@ async function processTaskQueue({
     maxGroupDelaySeconds = 15,
   } = jobData;
 
-  // Get WhatsApp credentials (Z-API or Evolution API)
   const credentials = await getCredentials(supabase, tenantId);
   if (!credentials) {
     await supabase
-      .from('sending_jobs')
-      .update({ status: 'error', error_message: 'WhatsApp não configurado', updated_at: new Date().toISOString() })
-      .eq('id', jobId);
+      .from("sending_jobs")
+      .update({ status: "error", error_message: "WhatsApp nao configurado", updated_at: new Date().toISOString() })
+      .eq("id", jobId);
     return;
   }
 
-  // Fetch all pending/running tasks ordered by sequence
+  console.log("[sendflow-process] Job " + jobId + " | provider: " + credentials.provider);
+
   const { data: tasks, error: tasksError } = await supabase
-    .from('sendflow_tasks')
-    .select('*')
-    .eq('job_id', jobId)
-    .in('status', ['pending', 'running'])
-    .order('sequence', { ascending: true });
+    .from("sendflow_tasks")
+    .select("*")
+    .eq("job_id", jobId)
+    .in("status", ["pending", "running"])
+    .order("sequence", { ascending: true });
 
   if (tasksError || !tasks || tasks.length === 0) {
-    console.log(`[${timestamp}] [sendflow-process] No pending tasks for job ${jobId}`);
     await supabase
-      .from('sending_jobs')
-      .update({ status: 'completed', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-      .eq('id', jobId);
+      .from("sending_jobs")
+      .update({ status: "completed", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq("id", jobId);
     return;
   }
 
-  // Get all unique product IDs from tasks
   const productIds = [...new Set(tasks.map((t: SendFlowTask) => t.product_id))];
   const { data: products, error: productsError } = await supabase
-    .from('products')
-    .select('id, code, name, color, size, price, promotional_price, observation, image_url')
-    .eq('tenant_id', tenantId)
-    .in('id', productIds);
+    .from("products")
+    .select("id, code, name, color, size, price, promotional_price, observation, image_url")
+    .eq("tenant_id", tenantId)
+    .in("id", productIds);
 
   if (productsError || !products || products.length === 0) {
     await supabase
-      .from('sending_jobs')
-      .update({ status: 'error', error_message: 'Produtos não encontrados', updated_at: new Date().toISOString() })
-      .eq('id', jobId);
+      .from("sending_jobs")
+      .update({ status: "error", error_message: "Produtos nao encontrados", updated_at: new Date().toISOString() })
+      .eq("id", jobId);
     return;
   }
 
@@ -444,257 +413,172 @@ async function processTaskQueue({
   let sentMessages = jobData.sentMessages || 0;
   let errorMessages = jobData.errorMessages || 0;
 
-  // Determine the last completed product to detect product changes correctly
   let lastProductId: number | null = null;
   {
     const { data: lastCompleted } = await supabase
-      .from('sendflow_tasks')
-      .select('product_id')
-      .eq('job_id', jobId)
-      .in('status', ['completed', 'skipped', 'error'])
-      .order('sequence', { ascending: false })
+      .from("sendflow_tasks")
+      .select("product_id")
+      .eq("job_id", jobId)
+      .in("status", ["completed", "skipped", "error"])
+      .order("sequence", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (lastCompleted) {
-      lastProductId = lastCompleted.product_id;
-    }
+    if (lastCompleted) lastProductId = lastCompleted.product_id;
   }
 
-  console.log(`[${timestamp}] [sendflow-process] Processing ${tasks.length} pending tasks (lastProductId=${lastProductId})`);
-
   const checkJobStatus = async (): Promise<string> => {
-    const { data } = await supabase
-      .from('sending_jobs')
-      .select('status')
-      .eq('id', jobId)
-      .single();
-    return data?.status || 'running';
+    const { data } = await supabase.from("sending_jobs").select("status").eq("id", jobId).single();
+    return data?.status || "running";
   };
 
   const updateJobProgress = async (extra: Record<string, any> = {}) => {
     const { count: completedCount } = await supabase
-      .from('sendflow_tasks')
-      .select('*', { count: 'exact', head: true })
-      .eq('job_id', jobId)
-      .in('status', ['completed', 'skipped', 'error']);
-
-    const processed = completedCount || 0;
-
+      .from("sendflow_tasks")
+      .select("*", { count: "exact", head: true })
+      .eq("job_id", jobId)
+      .in("status", ["completed", "skipped", "error"]);
     await supabase
-      .from('sending_jobs')
+      .from("sending_jobs")
       .update({
-        processed_items: processed,
+        processed_items: completedCount || 0,
         job_data: { ...jobData, sentMessages, errorMessages, ...extra },
         updated_at: new Date().toISOString(),
       })
-      .eq('id', jobId);
+      .eq("id", jobId);
   };
 
   for (let i = 0; i < tasks.length; i++) {
     const task = tasks[i] as SendFlowTask;
     const product = productsMap.get(task.product_id);
     if (!product) {
-      await supabase.from('sendflow_tasks').update({ status: 'error', error_message: 'Produto não encontrado', completed_at: new Date().toISOString() }).eq('id', task.id);
+      await supabase.from("sendflow_tasks").update({ status: "error", error_message: "Produto nao encontrado", completed_at: new Date().toISOString() }).eq("id", task.id);
       errorMessages++;
       continue;
     }
 
-    // ─── Timeout check: reinvoke before being killed ───
     if (isNearTimeout()) {
-      console.log(`[${timestamp}] [sendflow-process] ⏱️ Near timeout after ${Math.round((Date.now() - startTime) / 1000)}s, reinvoking...`);
       await updateJobProgress({ countdownSeconds: 0, isWaitingForNextProduct: false });
       await selfReinvoke(supabaseUrl, jobId, tenantId);
       return;
     }
 
-    // Check if job was paused/cancelled
-    const status = await checkJobStatus();
-    if (status === 'paused' || status === 'cancelled') {
-      console.log(`[${timestamp}] [sendflow-process] Job ${jobId} ${status}, stopping`);
+    const jobStatus = await checkJobStatus();
+    if (jobStatus === "paused" || jobStatus === "cancelled") {
       await updateJobProgress();
       return;
     }
 
-    // Delay between products (when product changes)
     if (lastProductId !== null && task.product_id !== lastProductId && perProductDelayMinutes > 0) {
-      // Check if we're resuming a partial delay from a previous invocation that timed out
       let delayMs: number;
       if (jobData._pendingProductDelayMs && jobData._pendingProductId === task.product_id) {
         delayMs = jobData._pendingProductDelayMs;
-        console.log(`[${timestamp}] [sendflow-process] Resuming partial product delay: ${Math.ceil(delayMs / 1000)}s remaining for ${product.code}`);
-        // Clear the flag from jobData so it's not used again
         jobData._pendingProductDelayMs = null;
         jobData._pendingProductId = null;
       } else {
         delayMs = perProductDelayMinutes * 60 * 1000;
-        console.log(`[${timestamp}] [sendflow-process] Waiting ${perProductDelayMinutes}min before next product (${product.code})`);
       }
 
       const delayStep = 5000;
       let elapsed = 0;
-
-      await updateJobProgress({
-        countdownSeconds: Math.ceil(delayMs / 1000),
-        isWaitingForNextProduct: true,
-        nextTaskId: task.id,
-      });
+      await updateJobProgress({ countdownSeconds: Math.ceil(delayMs / 1000), isWaitingForNextProduct: true, nextTaskId: task.id });
 
       while (elapsed < delayMs) {
-        // ─── Timeout check during product delay ───
         if (isNearTimeout()) {
           const remainingMs = delayMs - elapsed;
-          console.log(`[${timestamp}] [sendflow-process] ⏱️ Near timeout during product delay, reinvoking with ${Math.ceil(remainingMs / 1000)}s remaining...`);
-          await updateJobProgress({
-            countdownSeconds: Math.ceil(remainingMs / 1000),
-            isWaitingForNextProduct: true,
-            nextTaskId: task.id,
-            _pendingProductDelayMs: remainingMs,
-            _pendingProductId: task.product_id,
-          });
+          await updateJobProgress({ countdownSeconds: Math.ceil(remainingMs / 1000), isWaitingForNextProduct: true, nextTaskId: task.id, _pendingProductDelayMs: remainingMs, _pendingProductId: task.product_id });
           await selfReinvoke(supabaseUrl, jobId, tenantId);
           return;
         }
-
-        const status = await checkJobStatus();
-        if (status === 'paused' || status === 'cancelled') {
+        const s = await checkJobStatus();
+        if (s === "paused" || s === "cancelled") {
           await updateJobProgress({ countdownSeconds: 0, isWaitingForNextProduct: false });
-          console.log(`[${timestamp}] [sendflow-process] Job ${jobId} ${status} during delay`);
           return;
         }
-
         await sleep(Math.min(delayStep, delayMs - elapsed));
         elapsed += delayStep;
-
         const remainingSeconds = Math.ceil((delayMs - elapsed) / 1000);
-        await updateJobProgress({
-          countdownSeconds: Math.max(0, remainingSeconds),
-          isWaitingForNextProduct: remainingSeconds > 0,
-          nextTaskId: task.id,
-        });
+        await updateJobProgress({ countdownSeconds: Math.max(0, remainingSeconds), isWaitingForNextProduct: remainingSeconds > 0, nextTaskId: task.id });
       }
-
       await updateJobProgress({ countdownSeconds: 0, isWaitingForNextProduct: false, _pendingProductDelayMs: null, _pendingProductId: null });
     }
 
     lastProductId = task.product_id;
+    await supabase.from("sendflow_tasks").update({ status: "running", started_at: new Date().toISOString() }).eq("id", task.id);
 
-    // Mark task as running
-    await supabase.from('sendflow_tasks').update({ status: 'running', started_at: new Date().toISOString() }).eq('id', task.id);
-
-    // Idempotency check - 15 minutes window (anti-spam Z-API).
-    // Consulta direta no histórico para suportar janela em minutos sem depender de RPC.
     const DUPLICATE_WINDOW_MINUTES = 15;
     const cutoffIso = new Date(Date.now() - DUPLICATE_WINDOW_MINUTES * 60 * 1000).toISOString();
     const { data: recentSends } = await supabase
-      .from('sendflow_history')
-      .select('id')
-      .eq('tenant_id', tenantId)
-      .eq('product_id', task.product_id)
-      .eq('group_id', task.group_id)
-      .gte('sent_at', cutoffIso)
+      .from("sendflow_history")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("product_id", task.product_id)
+      .eq("group_id", task.group_id)
+      .gte("sent_at", cutoffIso)
       .limit(1);
-    const alreadySent = Array.isArray(recentSends) && recentSends.length > 0;
 
-    if (alreadySent) {
-      console.log(`[${timestamp}] [sendflow-process] SKIP duplicate (${DUPLICATE_WINDOW_MINUTES}min): ${product.code} -> ${task.group_id}`);
-      await supabase.from('sendflow_tasks').update({ status: 'skipped', completed_at: new Date().toISOString(), error_message: `Duplicata (${DUPLICATE_WINDOW_MINUTES}min)` }).eq('id', task.id);
+    if (Array.isArray(recentSends) && recentSends.length > 0) {
+      await supabase.from("sendflow_tasks").update({ status: "skipped", completed_at: new Date().toISOString(), error_message: "Duplicata (" + DUPLICATE_WINDOW_MINUTES + "min)" }).eq("id", task.id);
       await updateJobProgress();
-
-      // Still apply group delay even for skipped
       if (i < tasks.length - 1 && tasks[i + 1].product_id === task.product_id) {
-        const delayMs = useRandomDelay
-          ? getRandomDelay(minGroupDelaySeconds, maxGroupDelaySeconds)
-          : perGroupDelaySeconds * 1000;
+        const delayMs = useRandomDelay ? getRandomDelay(minGroupDelaySeconds, maxGroupDelaySeconds) : perGroupDelaySeconds * 1000;
         if (delayMs > 0) await sleep(delayMs);
       }
       continue;
     }
 
-    // Send the message
     const message = personalizeMessage(messageTemplate, product);
-    const result = await sendGroupMessage(credentials, task.group_id, message, product.image_url || undefined);
+
+    let result: { success: boolean; error?: string };
+    if (credentials.provider === "evolution") {
+      result = await sendGroupMessageEvolution(credentials.instanceName, task.group_id, message, product.image_url || undefined);
+    } else {
+      result = await sendGroupMessageZapi(credentials, task.group_id, message, product.image_url || undefined);
+    }
 
     if (result.success) {
       sentMessages++;
-      await supabase.from('sendflow_tasks').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', task.id);
-
-      // Record in sendflow_history
-      await supabase.from('sendflow_history').insert({
-        tenant_id: tenantId,
-        product_id: task.product_id,
-        group_id: task.group_id,
-        job_id: jobId,
-      });
+      await supabase.from("sendflow_tasks").update({ status: "completed", completed_at: new Date().toISOString() }).eq("id", task.id);
+      await supabase.from("sendflow_history").insert({ tenant_id: tenantId, product_id: task.product_id, group_id: task.group_id, job_id: jobId });
     } else {
       errorMessages++;
-      console.log(`[${timestamp}] [sendflow-process] Error: ${product.code} -> ${task.group_id}: ${result.error}`);
-      await supabase.from('sendflow_tasks').update({ status: 'error', error_message: result.error || 'Unknown error', completed_at: new Date().toISOString() }).eq('id', task.id);
+      await supabase.from("sendflow_tasks").update({ status: "error", error_message: result.error || "Unknown error", completed_at: new Date().toISOString() }).eq("id", task.id);
     }
 
     await updateJobProgress();
 
-    // Delay between groups (same product)
     if (i < tasks.length - 1) {
       const nextTask = tasks[i + 1];
-      const isProductChange = nextTask.product_id !== task.product_id;
-      
-      if (!isProductChange) {
-        const delayMs = useRandomDelay
-          ? getRandomDelay(minGroupDelaySeconds, maxGroupDelaySeconds)
-          : perGroupDelaySeconds * 1000;
-        
+      if (nextTask.product_id === task.product_id) {
+        const delayMs = useRandomDelay ? getRandomDelay(minGroupDelaySeconds, maxGroupDelaySeconds) : perGroupDelaySeconds * 1000;
         if (delayMs > 0) {
-          const delaySec = Math.ceil(delayMs / 1000);
-          await updateJobProgress({
-            countdownSeconds: delaySec,
-            isWaitingForNextGroup: true,
-            isWaitingForNextProduct: false,
-            nextTaskId: nextTask.id,
-          });
-
+          await updateJobProgress({ countdownSeconds: Math.ceil(delayMs / 1000), isWaitingForNextGroup: true, isWaitingForNextProduct: false, nextTaskId: nextTask.id });
           const step = 2000;
           let elapsed = 0;
           while (elapsed < delayMs) {
             await sleep(Math.min(step, delayMs - elapsed));
             elapsed += step;
             const remaining = Math.max(0, Math.ceil((delayMs - elapsed) / 1000));
-            await updateJobProgress({
-              countdownSeconds: remaining,
-              isWaitingForNextGroup: remaining > 0,
-              isWaitingForNextProduct: false,
-              nextTaskId: nextTask.id,
-            });
+            await updateJobProgress({ countdownSeconds: remaining, isWaitingForNextGroup: remaining > 0, isWaitingForNextProduct: false, nextTaskId: nextTask.id });
           }
         }
       }
     }
   }
 
-  // Job completed
   const { count: totalCompleted } = await supabase
-    .from('sendflow_tasks')
-    .select('*', { count: 'exact', head: true })
-    .eq('job_id', jobId)
-    .in('status', ['completed', 'skipped', 'error']);
+    .from("sendflow_tasks")
+    .select("*", { count: "exact", head: true })
+    .eq("job_id", jobId)
+    .in("status", ["completed", "skipped", "error"]);
 
   await supabase
-    .from('sending_jobs')
+    .from("sending_jobs")
     .update({
-      status: 'completed',
+      status: "completed",
       completed_at: new Date().toISOString(),
       processed_items: totalCompleted || 0,
-      job_data: {
-        ...jobData,
-        sentMessages,
-        errorMessages,
-        countdownSeconds: 0,
-        isWaitingForNextProduct: false,
-        _pendingProductDelayMs: null,
-        _pendingProductId: null,
-      },
+      job_data: { ...jobData, sentMessages, errorMessages, countdownSeconds: 0, isWaitingForNextProduct: false, _pendingProductDelayMs: null, _pendingProductId: null },
       updated_at: new Date().toISOString(),
     })
-    .eq('id', jobId);
-
-  console.log(`[${timestamp}] [sendflow-process] Job ${jobId} completed: sent=${sentMessages}, errors=${errorMessages}`);
+    .eq("id", jobId);
 }

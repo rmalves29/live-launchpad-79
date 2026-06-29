@@ -6,14 +6,17 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { AlertTriangle, Check, Crown, Rocket, Building2, Loader2, Zap } from "lucide-react";
+import { AlertTriangle, Check, Crown, Rocket, Building2, Loader2, Zap, RefreshCw, XCircle, CreditCard } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { PagarmeSubscribeDialog } from "@/components/billing/PagarmeSubscribeDialog";
 
 interface Plan {
   id: string;
   name: string;
   days: number;
   price: number;
+  monthlyPrice?: number;
+  totalCycles?: number;
   displayPrice?: string;
   discount?: string;
   features: string[];
@@ -45,7 +48,9 @@ const getPlans = (tenantId?: string | null): Plan[] => {
       id: "pro",
       name: "Pro",
       days: 185,
-      price: isJuBijoux ? 2100.00 : 2694.60,
+      price: isJuBijoux ? 350.00 : 449.10,
+      monthlyPrice: isJuBijoux ? 350.00 : 449.10,
+      totalCycles: 6,
       displayPrice: isJuBijoux ? "6x de R$ 350,00" : "6x de R$ 449,10",
       discount: isJuBijoux ? "Preço especial" : "10% de desconto",
       features: [
@@ -62,7 +67,9 @@ const getPlans = (tenantId?: string | null): Plan[] => {
       id: "enterprise",
       name: "Enterprise",
       days: 365,
-      price: isJuBijoux ? 3588.00 : 5089.80,
+      price: isJuBijoux ? 299.00 : 424.15,
+      monthlyPrice: isJuBijoux ? 299.00 : 424.15,
+      totalCycles: 12,
       displayPrice: isJuBijoux ? "12x de R$ 299,00" : "12x de R$ 424,15",
       discount: isJuBijoux ? "Preço especial" : "15% de desconto",
       features: [
@@ -81,12 +88,27 @@ export default function RenovarAssinatura() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user, profile } = useAuth();
-  const [loading, setLoading] = useState<string | null>(null);
+  
   const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
   const [tenantInfo, setTenantInfo] = useState<{
     name: string;
     subscription_ends_at: string | null;
   } | null>(null);
+  const [recurringDialog, setRecurringDialog] = useState<Plan | null>(null);
+  const [activeRecurring, setActiveRecurring] = useState<any | null>(null);
+  const [cancelingRec, setCancelingRec] = useState(false);
+
+  const loadRecurring = async (tid: string) => {
+    const { data } = await supabase
+      .from("subscription_recurrences" as any)
+      .select("*")
+      .eq("tenant_id", tid)
+      .in("status", ["active", "past_due", "pending"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    setActiveRecurring(data || null);
+  };
 
   useEffect(() => {
     document.title = "Renovar Assinatura - OrderZap";
@@ -125,83 +147,18 @@ export default function RenovarAssinatura() {
         console.log('[RenovarAssinatura] Tenant info:', data);
         setTenantInfo(data);
         setCurrentTenantId(tenantId);
+        loadRecurring(tenantId);
       }
     };
 
     fetchTenantInfo();
   }, [profile?.tenant_id, user]);
 
-  const handleSelectPlan = async (plan: Plan) => {
-    if (!user) {
-      toast({
-        title: "Erro",
-        description: "Usuário não autenticado",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    // Buscar tenant_id direto se não tiver no profile
-    let tenantId = profile?.tenant_id;
-    if (!tenantId) {
-      const { data: userProfile } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .maybeSingle();
-      
-      tenantId = userProfile?.tenant_id;
-    }
-    
-    if (!tenantId) {
-      toast({
-        title: "Erro",
-        description: "Empresa não identificada",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setLoading(plan.id);
-
-    try {
-      console.log('[RenovarAssinatura] Criando pagamento:', { tenantId, plan });
-      
-      const { data, error } = await supabase.functions.invoke("create-subscription-payment", {
-        body: {
-          tenant_id: tenantId,
-          plan_id: plan.id,
-          plan_name: plan.name,
-          plan_days: plan.days,
-          plan_price: plan.price,
-          user_email: user.email,
-        },
-      });
-
-      if (error) throw error;
-
-      if (data?.init_point) {
-        // Redirecionar para o link de pagamento
-        window.location.href = data.init_point;
-      } else {
-        throw new Error("Link de pagamento não gerado");
-      }
-    } catch (err: any) {
-      console.error("Erro ao criar pagamento:", err);
-      toast({
-        title: "Erro ao processar",
-        description: err.message || "Tente novamente mais tarde",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(null);
-    }
-  };
-
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "Não definido";
     return new Date(dateStr).toLocaleDateString("pt-BR");
   };
+
 
   const isExpired = tenantInfo?.subscription_ends_at
     ? new Date(tenantInfo.subscription_ends_at) < new Date()
@@ -295,32 +252,107 @@ export default function RenovarAssinatura() {
                   ))}
                 </ul>
               </CardContent>
-              <CardFooter>
-                <Button
-                  className="w-full"
-                  variant={plan.popular ? "default" : "outline"}
-                  size="lg"
-                  onClick={() => handleSelectPlan(plan)}
-                  disabled={loading !== null}
-                >
-                  {loading === plan.id ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Processando...
-                    </>
-                  ) : (
-                    "Selecionar Plano"
-                  )}
-                </Button>
+              <CardFooter className="flex-col gap-2">
+                {plan.id === "basic" ? (
+                  <Button
+                    className="w-full"
+                    variant={plan.popular ? "default" : "outline"}
+                    size="lg"
+                    onClick={() => currentTenantId && setRecurringDialog(plan)}
+                    disabled={!currentTenantId}
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Pagar com cartão
+                  </Button>
+                ) : (
+                  <Button
+                    className="w-full"
+                    variant={plan.popular ? "default" : "outline"}
+                    size="lg"
+                    onClick={() => currentTenantId && setRecurringDialog(plan)}
+                    disabled={!currentTenantId || !!activeRecurring}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Assinar (renovação automática)
+                  </Button>
+                )}
               </CardFooter>
             </Card>
           ))}
         </div>
 
+        {/* Status assinatura recorrente ativa */}
+        {activeRecurring && currentTenantId && (
+          <Card className="mt-8 max-w-2xl mx-auto border-primary/40">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <RefreshCw className="h-5 w-5 text-primary" />
+                Renovação automática ativa
+              </CardTitle>
+              <CardDescription>
+                Plano <strong className="capitalize">{activeRecurring.plan_id}</strong> —
+                cobrança a cada {activeRecurring.interval_months} meses no cartão
+                {activeRecurring.card_brand ? ` ${activeRecurring.card_brand}` : ""}
+                {activeRecurring.card_last4 ? ` final ${activeRecurring.card_last4}` : ""}.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground space-y-1">
+              <div>Status: <span className="font-medium">{activeRecurring.status}</span></div>
+              {activeRecurring.current_period_end && (
+                <div>Próxima cobrança: <strong>{formatDate(activeRecurring.current_period_end)}</strong></div>
+              )}
+            </CardContent>
+            <CardFooter>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={cancelingRec}
+                onClick={async () => {
+                  if (!confirm("Cancelar renovação automática? Você manterá o acesso até o fim do ciclo já pago.")) return;
+                  setCancelingRec(true);
+                  try {
+                    const { data, error } = await supabase.functions.invoke("pagarme-cancel-subscription", {
+                      body: { subscription_id: activeRecurring.id },
+                    });
+                    if (error) throw error;
+                    if (!data?.success) throw new Error(data?.error || "Erro");
+                    toast({ title: "Renovação cancelada" });
+                    await loadRecurring(currentTenantId);
+                  } catch (e: any) {
+                    toast({ title: "Erro", description: e.message, variant: "destructive" });
+                  } finally {
+                    setCancelingRec(false);
+                  }
+                }}
+              >
+                {cancelingRec ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <XCircle className="h-4 w-4 mr-2" />}
+                Cancelar renovação
+              </Button>
+            </CardFooter>
+          </Card>
+        )}
+
+        {recurringDialog && currentTenantId && user?.email && (
+          <PagarmeSubscribeDialog
+            open={!!recurringDialog}
+            onOpenChange={(v) => !v && setRecurringDialog(null)}
+            tenantId={currentTenantId}
+            planId={recurringDialog.id as "basic" | "pro" | "enterprise"}
+            planName={recurringDialog.name}
+            planPrice={recurringDialog.monthlyPrice ?? recurringDialog.price}
+            intervalMonths={1}
+            totalCycles={recurringDialog.totalCycles}
+            planDays={recurringDialog.days}
+            mode={recurringDialog.id === "basic" ? "one_time" : "subscription"}
+            userEmail={user.email}
+            onSuccess={() => loadRecurring(currentTenantId)}
+          />
+        )}
+
         {/* Info adicional */}
         <div className="mt-8 text-center text-sm text-muted-foreground">
           <p>
-            Pagamento seguro processado via Mercado Pago.
+            Pagamento seguro processado via Pagar.me.
             <br />
             Após a confirmação do pagamento, seu acesso será liberado
             automaticamente.

@@ -20,6 +20,8 @@ interface IntegrationData {
   handle: string | null;
   environment: string;
   pix_discount_percent: number | null;
+  enable_pix: boolean | null;
+  enable_credit_card: boolean | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -32,6 +34,8 @@ export default function InfinitePayIntegration({ tenantId }: InfinitePayIntegrat
     handle: '',
     environment: 'production' as 'sandbox' | 'production',
     pix_discount_percent: 0,
+    enable_pix: true,
+    enable_credit_card: true,
   });
   const [isEditing, setIsEditing] = useState(false);
 
@@ -69,6 +73,8 @@ export default function InfinitePayIntegration({ tenantId }: InfinitePayIntegrat
         handle: integration.handle || '',
         environment: (integration.environment as 'sandbox' | 'production') || 'production',
         pix_discount_percent: integration.pix_discount_percent || 0,
+        enable_pix: integration.enable_pix !== false,
+        enable_credit_card: integration.enable_credit_card !== false,
       });
     }
   }, [integration]);
@@ -85,6 +91,9 @@ export default function InfinitePayIntegration({ tenantId }: InfinitePayIntegrat
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (!formData.enable_pix && !formData.enable_credit_card) {
+        throw new Error('Pelo menos um método (PIX ou Cartão) deve estar habilitado');
+      }
       // Sanitiza: remove @, $, espaços e qualquer sufixo após "/" (links fixos não servem aqui)
       const cleanHandle = formData.handle
         .trim()
@@ -99,6 +108,8 @@ export default function InfinitePayIntegration({ tenantId }: InfinitePayIntegrat
         environment: formData.environment,
         is_active: true,
         pix_discount_percent: formData.pix_discount_percent || 0,
+        enable_pix: formData.enable_pix,
+        enable_credit_card: formData.enable_credit_card,
         updated_at: new Date().toISOString(),
       };
 
@@ -292,6 +303,27 @@ export default function InfinitePayIntegration({ tenantId }: InfinitePayIntegrat
                 </p>
               </div>
             </div>
+
+            <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+              <h4 className="font-medium flex items-center gap-2">
+                <Zap className="h-4 w-4" />
+                Métodos de Pagamento Aceitos
+              </h4>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="ip-enable-pix" className="cursor-pointer">Aceitar PIX no checkout</Label>
+                <Switch id="ip-enable-pix" checked={formData.enable_pix}
+                  onCheckedChange={(v) => setFormData({ ...formData, enable_pix: v })} />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="ip-enable-card" className="cursor-pointer">Aceitar Cartão de Crédito no checkout</Label>
+                <Switch id="ip-enable-card" checked={formData.enable_credit_card}
+                  onCheckedChange={(v) => setFormData({ ...formData, enable_credit_card: v })} />
+              </div>
+              {!formData.enable_pix && !formData.enable_credit_card && (
+                <p className="text-xs text-destructive">Pelo menos um método deve estar habilitado.</p>
+              )}
+            </div>
+
 
             <Alert>
               <AlertCircle className="h-4 w-4" />

@@ -8,7 +8,7 @@ const corsHeaders = {
 
 // Bling OAuth2 URLs
 const BLING_AUTH_URL = "https://www.bling.com.br/Api/v3/oauth/authorize";
-const BLING_TOKEN_URL = "https://www.bling.com.br/Api/v3/oauth/token";
+const BLING_TOKEN_URL = "https://api.bling.com.br/Api/v3/oauth/token";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {

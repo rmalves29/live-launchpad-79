@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
@@ -13,13 +14,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags } from 'lucide-react';
+import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags, FolderTree } from 'lucide-react';
 import PrintLabelsDialog from '@/components/tenant/PrintLabelsDialog';
+import CategoriasManagerDialog from '@/components/produtos/CategoriasManagerDialog';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useAuth } from '@/hooks/useAuth';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { formatCurrency } from '@/lib/utils';
 import * as XLSX from 'xlsx';
+
+interface Categoria {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
 
 interface Product {
   id: number;
@@ -35,6 +43,7 @@ interface Product {
   image_url?: string;
   is_active: boolean;
   sale_type: 'LIVE' | 'BAZAR' | 'AMBOS';
+  category_id?: string | null;
 }
 
 interface ImportRow {
@@ -61,12 +70,32 @@ const Produtos = () => {
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [selectedProducts, setSelectedProducts] = useState<number[]>([]);
   const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | 'LIVE' | 'BAZAR'>('ALL');
   const [importing, setImporting] = useState(false);
   const [isLabelsOpen, setIsLabelsOpen] = useState(false);
+  const [isCategoriasOpen, setIsCategoriasOpen] = useState(false);
+  
+  // Paginação
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [categoriaFilter, setCategoriaFilter] = useState<string>('ALL');
+  const [bulkCategoryValue, setBulkCategoryValue] = useState<string>('');
+  const [assigningCategory, setAssigningCategory] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
-  const [importResults, setImportResults] = useState<{ success: number; errors: string[]; skipped: number; skippedDetails: string[] } | null>(null);
+  const [importUpdateOnly, setImportUpdateOnly] = useState(false);
+  const [importResults, setImportResults] = useState<{
+    updated: number;
+    inserted: number;
+    insertedCodes: string[];
+    notFoundUpdateOnly: string[];
+    errors: string[];
+    skipped: number;
+    skippedDetails: string[];
+  } | null>(null);
 
   const [formData, setFormData] = useState({
     code: '',
@@ -90,6 +119,7 @@ const Produtos = () => {
     const currentTenantId = (supabaseTenant as any).getTenantId?.();
     if (currentTenantId) {
       loadProducts();
+      loadCategorias();
     } else {
       // Verificar novamente após um breve delay (tenant pode estar carregando)
       const checkTenant = setInterval(() => {
@@ -97,6 +127,7 @@ const Produtos = () => {
         if (tenantId) {
           clearInterval(checkTenant);
           loadProducts();
+          loadCategorias();
         }
       }, 100);
       
@@ -109,6 +140,24 @@ const Produtos = () => {
       return () => clearInterval(checkTenant);
     }
   }, []);
+
+  // Resetar paginação quando filtros mudam
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchTerm, saleTypeFilter, categoriaFilter]);
+
+  const loadCategorias = async () => {
+    try {
+      const { data, error } = await (supabaseTenant as any)
+        .from('product_categories')
+        .select('id, name, is_active')
+        .order('name', { ascending: true });
+      if (error) throw error;
+      setCategorias((data || []) as Categoria[]);
+    } catch (e) {
+      console.warn('[Produtos] Falha ao carregar categorias:', e);
+    }
+  };
 
   const loadProducts = async () => {
     const currentTenantId = (supabaseTenant as any).getTenantId?.();
@@ -434,7 +483,7 @@ const Produtos = () => {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedProducts(filteredProducts.map(p => p.id));
+      setSelectedProducts(paginatedProducts.map(p => p.id));
     } else {
       setSelectedProducts([]);
     }
@@ -448,14 +497,64 @@ const Produtos = () => {
     }
   };
 
+  const handleAssignCategory = async (categoryIdValue: string) => {
+    if (selectedProducts.length === 0) return;
+    // "__none__" significa remover categoria (set null)
+    const newCategoryId = categoryIdValue === '__none__' ? null : categoryIdValue;
+    const targetName =
+      newCategoryId === null
+        ? 'sem categoria'
+        : categorias.find((c) => c.id === newCategoryId)?.name || 'categoria';
+
+    const confirmed = await confirm({
+      description: `Aplicar "${targetName}" a ${selectedProducts.length} produto(s)?`,
+      confirmText: 'Aplicar',
+    });
+    if (!confirmed) return;
+
+    setAssigningCategory(true);
+    try {
+      const { error } = await (supabaseTenant as any)
+        .from('products')
+        .update({ category_id: newCategoryId })
+        .in('id', selectedProducts);
+      if (error) throw error;
+
+      toast({
+        title: 'Categoria atualizada',
+        description: `${selectedProducts.length} produto(s) atualizado(s).`,
+      });
+      setBulkCategoryValue('');
+      setSelectedProducts([]);
+      loadProducts();
+    } catch (e: any) {
+      console.error('Erro ao atribuir categoria:', e);
+      toast({
+        title: 'Erro',
+        description: e?.message || 'Falha ao atribuir categoria',
+        variant: 'destructive',
+      });
+    } finally {
+      setAssigningCategory(false);
+    }
+  };
+
   const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.code.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = product.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+      product.code.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
     const matchesType = saleTypeFilter === 'ALL' || 
       product.sale_type === saleTypeFilter || 
       (product.sale_type === 'AMBOS' && (saleTypeFilter === 'BAZAR' || saleTypeFilter === 'LIVE'));
-    return matchesSearch && matchesType;
+    const matchesCategoria =
+      categoriaFilter === 'ALL' ||
+      (categoriaFilter === '__none__' ? !product.category_id : product.category_id === categoriaFilter);
+    return matchesSearch && matchesType && matchesCategoria;
   });
+
+  // Paginação
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const paginatedProducts = filteredProducts.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -597,7 +696,8 @@ const Produtos = () => {
       const workbook = XLSX.read(data);
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
-      const rawData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet);
+      // raw:false faz o xlsx aplicar formatação (preserva zeros à esquerda e evita 51461 virar 51461.0)
+      const rawData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { raw: false, defval: '' });
 
       // Normalizar nomes das colunas: remover acentos, lowercase, trim
       const normalizeKey = (key: string) =>
@@ -639,7 +739,10 @@ const Produtos = () => {
 
       const errors: string[] = [];
       const skippedDetails: string[] = [];
-      let successCount = 0;
+      const insertedCodes: string[] = [];
+      const notFoundUpdateOnly: string[] = [];
+      let updatedCount = 0;
+      let insertedCount = 0;
       let skippedCount = 0;
 
       for (let i = 0; i < jsonData.length; i++) {
@@ -647,11 +750,11 @@ const Produtos = () => {
         setImportProgress(Math.round(((i + 1) / jsonData.length) * 100));
 
         // Validate required fields
-        if (!row.codigo || !row.nome || row.preco === undefined) {
+        if (!row.codigo || !row.nome || row.preco === undefined || String(row.preco).trim() === '') {
           const missing: string[] = [];
           if (!row.codigo) missing.push('codigo');
           if (!row.nome) missing.push('nome');
-          if (row.preco === undefined) missing.push('preco');
+          if (row.preco === undefined || String(row.preco).trim() === '') missing.push('preco');
           const rowPreview = row.codigo || row.nome || `(vazia)`;
           skippedDetails.push(`Linha ${i + 2} (${rowPreview}): faltando ${missing.join(', ')}`);
           skippedCount++;
@@ -668,13 +771,13 @@ const Produtos = () => {
         }
 
         const promoPrice = row.preco_promocional != null && String(row.preco_promocional).trim() !== ''
-          ? (typeof row.preco_promocional === 'number' ? row.preco_promocional : parseFloat(String(row.preco_promocional).replace(',', '.')))
+          ? parseFloat(String(row.preco_promocional).replace(',', '.'))
           : null;
 
         const productData = {
           code: String(row.codigo).trim(),
           name: String(row.nome).trim(),
-          price: typeof row.preco === 'number' ? row.preco : parseFloat(String(row.preco).replace(',', '.')),
+          price: parseFloat(String(row.preco).replace(',', '.')),
           promotional_price: isNaN(promoPrice as number) ? null : promoPrice,
           observation: row.observacao ? String(row.observacao).trim() : null,
           sku_erp: row.sku_erp ? String(row.sku_erp).trim() : null,
@@ -691,26 +794,37 @@ const Produtos = () => {
           sale_type: saleType
         };
 
-        // Check if product with same code exists
-        const { data: existing } = await supabaseTenant
+        // Busca por código exato OU com espaços/case diferentes (ilike pega trailing spaces).
+        // Filtramos em JS pra garantir match por código normalizado (trim + lowercase).
+        const { data: candidates } = await supabaseTenant
           .from('products')
-          .select('id')
-          .eq('code', productData.code)
-          .maybeSingle();
+          .select('id, code')
+          .ilike('code', `%${productData.code}%`);
 
-        if (existing) {
-          // Update existing product
+        const target = productData.code.toLowerCase();
+        const matches = (candidates || []).filter(
+          (p: any) => String(p.code || '').trim().toLowerCase() === target
+        );
+
+        if (matches.length > 0) {
+          // Atualiza TODOS os registros com esse código (incluindo duplicatas com espaço sobrando)
+          const ids = matches.map((m: any) => m.id);
           const { error } = await supabaseTenant
             .from('products')
             .update(productData)
-            .eq('id', existing.id);
+            .in('id', ids);
 
           if (error) {
             errors.push(`Linha ${i + 2}: Erro ao atualizar ${productData.code} - ${error.message}`);
           } else {
-            successCount++;
+            updatedCount++;
           }
         } else {
+          // Modo "somente atualização": não cria produtos novos
+          if (importUpdateOnly) {
+            notFoundUpdateOnly.push(`Linha ${i + 2}: código "${productData.code}" não encontrado (não inserido)`);
+            continue;
+          }
           // Insert new product
           const { error } = await supabaseTenant
             .from('products')
@@ -719,24 +833,36 @@ const Produtos = () => {
           if (error) {
             errors.push(`Linha ${i + 2}: Erro ao inserir ${productData.code} - ${error.message}`);
           } else {
-            successCount++;
+            insertedCount++;
+            insertedCodes.push(productData.code);
           }
         }
       }
 
-      setImportResults({ success: successCount, errors, skipped: skippedCount, skippedDetails });
+      setImportResults({
+        updated: updatedCount,
+        inserted: insertedCount,
+        insertedCodes,
+        notFoundUpdateOnly,
+        errors,
+        skipped: skippedCount,
+        skippedDetails,
+      });
 
-      if (errors.length === 0 && skippedCount === 0) {
+      const totalOk = updatedCount + insertedCount;
+      const hasIssues = errors.length > 0 || skippedCount > 0 || notFoundUpdateOnly.length > 0;
+      if (!hasIssues) {
         toast({
           title: 'Importação concluída',
-          description: `${successCount} produto(s) importado(s) com sucesso`
+          description: `${updatedCount} atualizado(s), ${insertedCount} inserido(s)`
         });
       } else {
-        const parts = [`${successCount} importado(s)`];
+        const parts = [`${updatedCount} atualizado(s)`, `${insertedCount} inserido(s)`];
+        if (notFoundUpdateOnly.length > 0) parts.push(`${notFoundUpdateOnly.length} não encontrado(s)`);
         if (skippedCount > 0) parts.push(`${skippedCount} pulado(s)`);
         if (errors.length > 0) parts.push(`${errors.length} erro(s)`);
         toast({
-          title: skippedCount > 0 || errors.length > 0 ? 'Importação parcial' : 'Importação concluída',
+          title: errors.length > 0 ? 'Importação com erros' : 'Importação parcial',
           description: parts.join(', '),
           variant: errors.length > 0 ? 'destructive' : undefined
         });
@@ -772,6 +898,10 @@ const Produtos = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setIsCategoriasOpen(true)}>
+              <FolderTree className="h-4 w-4 mr-2" />
+              Categorias
+            </Button>
             <Button variant="outline" onClick={() => setIsLabelsOpen(true)}>
               <Tags className="h-4 w-4 mr-2" />
               Imprimir Etiquetas{selectedProducts.length > 0 ? ` (${selectedProducts.length})` : ''}
@@ -812,6 +942,22 @@ const Produtos = () => {
                     <p className="text-sm text-muted-foreground mb-3">
                       Selecione o arquivo Excel (.xlsx) preenchido com seus produtos.
                     </p>
+                    <div className="flex items-start gap-2 mb-3 p-2 rounded bg-background border">
+                      <Checkbox
+                        id="update-only-mode"
+                        checked={importUpdateOnly}
+                        onCheckedChange={(v) => setImportUpdateOnly(v === true)}
+                        disabled={importing}
+                      />
+                      <div className="grid gap-0.5 leading-none">
+                        <Label htmlFor="update-only-mode" className="text-sm font-medium cursor-pointer">
+                          Modo somente atualização
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          Códigos não encontrados não serão inseridos como novos. Útil para zerar estoque sem criar duplicatas.
+                        </p>
+                      </div>
+                    </div>
                     <div className="space-y-2">
                       <Input
                         type="file"
@@ -836,8 +982,18 @@ const Produtos = () => {
                       <h4 className="font-medium mb-2">Resultado da Importação</h4>
                       <div className="space-y-2">
                         <p className="text-sm text-green-600">
-                          ✓ {importResults.success} produto(s) importado(s) com sucesso
+                          ✓ {importResults.updated} produto(s) atualizado(s)
                         </p>
+                        {importResults.inserted > 0 && (
+                          <p className="text-sm text-blue-600">
+                            ➕ {importResults.inserted} produto(s) inserido(s) como novo(s)
+                          </p>
+                        )}
+                        {importResults.notFoundUpdateOnly.length > 0 && (
+                          <p className="text-sm text-orange-600">
+                            ⊘ {importResults.notFoundUpdateOnly.length} código(s) não encontrado(s) (modo somente atualização)
+                          </p>
+                        )}
                         {importResults.skipped > 0 && (
                           <p className="text-sm text-yellow-600">
                             ⚠ {importResults.skipped} linha(s) pulada(s) por campos obrigatórios vazios
@@ -848,9 +1004,27 @@ const Produtos = () => {
                             ✗ {importResults.errors.length} erro(s) ao salvar
                           </p>
                         )}
-                        {(importResults.errors.length > 0 || (importResults.skippedDetails && importResults.skippedDetails.length > 0)) && (
-                          <div className="max-h-48 overflow-y-auto mt-2 space-y-1 border-t pt-2">
-                            {importResults.skippedDetails?.map((detail, idx) => (
+                        {(importResults.errors.length > 0 ||
+                          importResults.skippedDetails.length > 0 ||
+                          importResults.notFoundUpdateOnly.length > 0 ||
+                          importResults.insertedCodes.length > 0) && (
+                          <div className="max-h-60 overflow-y-auto mt-2 space-y-1 border-t pt-2">
+                            {importResults.insertedCodes.length > 0 && (
+                              <details className="text-xs">
+                                <summary className="text-blue-600 cursor-pointer font-medium">
+                                  ➕ Ver códigos inseridos como novos ({importResults.insertedCodes.length}) — revise se houve erro de digitação
+                                </summary>
+                                <div className="pl-3 pt-1 font-mono text-blue-600">
+                                  {importResults.insertedCodes.join(', ')}
+                                </div>
+                              </details>
+                            )}
+                            {importResults.notFoundUpdateOnly.map((detail, idx) => (
+                              <p key={`nf-${idx}`} className="text-xs text-orange-600 font-mono">
+                                ⊘ {detail}
+                              </p>
+                            ))}
+                            {importResults.skippedDetails.map((detail, idx) => (
                               <p key={`skip-${idx}`} className="text-xs text-yellow-600 font-mono">
                                 ⚠ {detail}
                               </p>
@@ -886,8 +1060,8 @@ const Produtos = () => {
                   Novo Produto
                 </Button>
               </DialogTrigger>
-            <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col">
-              <DialogHeader>
+            <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col gap-0 p-0">
+              <DialogHeader className="p-6 pb-2 flex-shrink-0">
                 <DialogTitle>
                   {editingProduct ? 'Editar Produto' : 'Novo Produto'}
                 </DialogTitle>
@@ -895,7 +1069,7 @@ const Produtos = () => {
                   Preencha as informações do produto
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-3 overflow-y-auto flex-1 pr-1">
+              <div className="space-y-3 overflow-y-auto flex-1 min-h-0 px-6 pb-6">
                 <div>
                   <Label htmlFor="code">Código *</Label>
                   <Input
@@ -1086,23 +1260,82 @@ const Produtos = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
+            <CardTitle className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap items-center gap-3">
                 <span>Lista de Produtos ({filteredProducts.length})</span>
                 {selectedProducts.length > 0 && (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={handleDeleteSelected}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Deletar Selecionados ({selectedProducts.length})
-                  </Button>
+                  <>
+                    <Select
+                      value={bulkCategoryValue}
+                      onValueChange={(v) => {
+                        setBulkCategoryValue(v);
+                        handleAssignCategory(v);
+                      }}
+                      disabled={assigningCategory}
+                    >
+                      <SelectTrigger className="w-[240px] h-9">
+                        <SelectValue
+                          placeholder={
+                            assigningCategory
+                              ? 'Aplicando...'
+                              : `Atribuir categoria (${selectedProducts.length})`
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Remover categoria</SelectItem>
+                        {categorias
+                          .filter((c) => c.is_active)
+                          .map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        {categorias.length === 0 && (
+                          <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                            Nenhuma categoria. Crie em "Categorias".
+                          </div>
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={handleDeleteSelected}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Deletar ({selectedProducts.length})
+                    </Button>
+                  </>
                 )}
               </div>
               <div className="flex items-center space-x-2">
-                <Select value={saleTypeFilter} onValueChange={(value: 'ALL' | 'LIVE' | 'BAZAR') => setSaleTypeFilter(value)}>
+                <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
+                  <SelectTrigger className="w-[100px]">
+                    <SelectValue placeholder="Itens" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={categoriaFilter} onValueChange={setCategoriaFilter}>
                   <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Todas as categorias</SelectItem>
+                    <SelectItem value="__none__">Sem categoria</SelectItem>
+                    {categorias.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={saleTypeFilter} onValueChange={(value: 'ALL' | 'LIVE' | 'BAZAR') => setSaleTypeFilter(value)}>
+                  <SelectTrigger className="w-[160px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1138,7 +1371,7 @@ const Produtos = () => {
                       <TableRow>
                         <TableHead className="w-[50px]">
                           <Checkbox
-                            checked={selectedProducts.length === filteredProducts.length && filteredProducts.length > 0}
+                            checked={selectedProducts.length === paginatedProducts.length && paginatedProducts.length > 0}
                             onCheckedChange={handleSelectAll}
                           />
                         </TableHead>
@@ -1149,12 +1382,13 @@ const Produtos = () => {
                         <TableHead>Preço</TableHead>
                         <TableHead>Estoque</TableHead>
                         <TableHead>Tipo de Evento</TableHead>
+                        <TableHead>Categoria</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredProducts.map((product) => (
+                      {paginatedProducts.map((product) => (
                         <TableRow key={product.id}>
                           <TableCell>
                             <Checkbox
@@ -1199,6 +1433,16 @@ const Produtos = () => {
                             )}
                           </TableCell>
                           <TableCell>
+                            {(() => {
+                              const cat = categorias.find((c) => c.id === product.category_id);
+                              return cat ? (
+                                <Badge variant="secondary">{cat.name}</Badge>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              );
+                            })()}
+                          </TableCell>
+                          <TableCell>
                             <Badge variant={product.is_active ? 'default' : 'secondary'}>
                               {product.is_active ? 'Ativo' : 'Inativo'}
                             </Badge>
@@ -1225,6 +1469,69 @@ const Produtos = () => {
                       ))}
                     </TableBody>
                   </Table>
+                  {/* Controles de Paginação */}
+                  {filteredProducts.length > 0 && (
+                    <div className="flex items-center justify-between mt-4 px-1">
+                      <div className="text-sm text-muted-foreground">
+                        Página {safePage} de {totalPages} ({paginatedProducts.length} de {filteredProducts.length} produtos)
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPage(1)}
+                          disabled={safePage <= 1}
+                        >
+                          {'<<'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPage(p => Math.max(1, p - 1))}
+                          disabled={safePage <= 1}
+                        >
+                          {'<'}
+                        </Button>
+                        {Array.from({ length: totalPages }, (_, i) => i + 1)
+                          .filter(p => {
+                            if (totalPages <= 5) return true;
+                            if (p === 1 || p === totalPages) return true;
+                            if (Math.abs(p - safePage) <= 1) return true;
+                            return false;
+                          })
+                          .map((p, idx, arr) => (
+                            <div key={p} className="flex items-center">
+                              {idx > 0 && arr[idx - 1] !== p - 1 && (
+                                <span className="px-2 text-muted-foreground">...</span>
+                              )}
+                              <Button
+                                variant={p === safePage ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setPage(p)}
+                              >
+                                {p}
+                              </Button>
+                            </div>
+                          ))}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                          disabled={safePage >= totalPages}
+                        >
+                          {'>'}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPage(totalPages)}
+                          disabled={safePage >= totalPages}
+                        >
+                          {'>>'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
               </div>
             )}
           </CardContent>
@@ -1232,6 +1539,15 @@ const Produtos = () => {
       </div>
       {confirmDialogElement}
       <PrintLabelsDialog open={isLabelsOpen} onOpenChange={setIsLabelsOpen} products={products} preSelectedIds={selectedProducts} />
+      <CategoriasManagerDialog
+        open={isCategoriasOpen}
+        onOpenChange={setIsCategoriasOpen}
+        onChanged={() => {
+          loadCategorias();
+          loadProducts();
+        }}
+      />
+      
     </div>
   );
 };

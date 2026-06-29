@@ -199,54 +199,10 @@ serve(async (req) => {
                           body.current_status === 'chargedback';
 
     if (isCancelEvent) {
-      console.log("[pagarme-webhook] Processing CANCELLATION/REFUND event:", eventType);
-
-      const metadata = eventData.metadata || eventData.charge?.metadata || body.metadata || body.order?.metadata || {};
-      const externalReference = metadata.external_reference || metadata.externalReference ||
-                                 eventData.external_reference || eventData.code ||
-                                 body.external_reference || body.code || "";
-
-      const orderIds = parseOrderIds(externalReference);
-      const parsedTenantId = parseTenantId(externalReference) || tenantId;
-
-      let ordersToCancel: any[] = [];
-
-      if (orderIds.length > 0) {
-        const { data } = await sb.from("orders").select("id, is_paid, tenant_id")
-          .in("id", orderIds);
-        if (data) ordersToCancel = data;
-      }
-
-      // Fallback: buscar por payment_link
-      if (ordersToCancel.length === 0) {
-        const pagarmeOrderId = body.id || eventData.id || eventData.code || "";
-        const pagarmeCheckoutId = eventData.checkouts?.[0]?.id || "";
-
-        if (pagarmeOrderId) {
-          const { data } = await sb.from("orders").select("id, is_paid, tenant_id")
-            .ilike("payment_link", `%${pagarmeOrderId}%`);
-          if (data && data.length > 0) ordersToCancel = data;
-        }
-        if (ordersToCancel.length === 0 && pagarmeCheckoutId) {
-          const { data } = await sb.from("orders").select("id, is_paid, tenant_id")
-            .ilike("payment_link", `%${pagarmeCheckoutId}%`);
-          if (data && data.length > 0) ordersToCancel = data;
-        }
-      }
-
-      if (ordersToCancel.length > 0) {
-        for (const order of ordersToCancel) {
-          await markOrderAsCancelled(sb, order.id, order.tenant_id || parsedTenantId, body.id || "unknown", eventType || "cancelled");
-        }
-        return new Response(
-          JSON.stringify({ status: "ok", orders_cancelled: ordersToCancel.map((o: any) => o.id) }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      console.log("[pagarme-webhook] No orders found for cancellation event");
+      // Política: notificações de cancelamento/estorno do gateway são ignoradas silenciosamente.
+      console.log("[pagarme-webhook] Cancellation/refund event ignored by policy:", eventType);
       return new Response(
-        JSON.stringify({ status: "ok", message: "Cancellation event logged, no orders found" }),
+        JSON.stringify({ status: "ok", ignored: "cancellation event ignored by policy" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -360,7 +316,9 @@ async function markOrderAsCancelled(
   reason: string
 ) {
   try {
-    console.log(`[pagarme-webhook] Cancelling order ${orderId} (reason: ${reason})`);
+    // NOVA REGRA: webhooks de estorno/cancelamento NÃO alteram o pedido.
+    // Apenas registram um alerta para o admin decidir manualmente.
+    console.log(`[pagarme-webhook] ⚠️ ALERTA de cancelamento para pedido ${orderId} (reason: ${reason}) — NÃO será cancelado automaticamente`);
 
     const { data: existingOrder } = await sb
       .from("orders")
@@ -369,58 +327,34 @@ async function markOrderAsCancelled(
       .single();
 
     if (!existingOrder) {
-      console.log(`[pagarme-webhook] Order ${orderId} not found for cancellation`);
-      return;
-    }
-
-    if (existingOrder.is_cancelled) {
-      console.log(`[pagarme-webhook] Order ${orderId} already cancelled`);
-      return;
-    }
-
-    // GUARD: Se o pedido já está pago, NÃO cancelar automaticamente
-    // Isso evita que um order.closed por falha de validação (ex: CPF inválido)
-    // cancele um pedido que já foi pago com sucesso em outra tentativa
-    if (existingOrder.is_paid) {
-      console.log(`[pagarme-webhook] Order ${orderId} is already PAID — skipping cancellation (reason: ${reason})`);
-      await sb.from("webhook_logs").insert({
-        webhook_type: "pagarme_cancel_skipped_paid",
-        status_code: 200,
-        payload: { order_id: orderId, reason, webhook_event_id: webhookEventId },
-        tenant_id: existingOrder.tenant_id || tenantId,
-      });
+      console.log(`[pagarme-webhook] Order ${orderId} not found`);
       return;
     }
 
     const orderTenantId = existingOrder.tenant_id || tenantId;
 
-    const { error } = await sb
-      .from("orders")
-      .update({ is_paid: false, is_cancelled: true })
-      .eq("id", orderId);
-
-    if (error) {
-      console.error(`[pagarme-webhook] Error cancelling order ${orderId}:`, error);
-      return;
-    }
-
-    console.log(`[pagarme-webhook] ✅ Order ${orderId} cancelled and unmarked as paid`);
-
     await sb.from("audit_logs").insert({
       entity: "order",
       entity_id: String(orderId),
-      action: "auto_cancel_payment_refunded",
+      action: "payment_refund_alert",
       tenant_id: orderTenantId,
-      meta: { reason, webhook_event_id: webhookEventId, previous_is_paid: existingOrder.is_paid },
+      meta: {
+        reason,
+        webhook_event_id: webhookEventId,
+        current_is_paid: existingOrder.is_paid,
+        current_is_cancelled: existingOrder.is_cancelled,
+        note: "Webhook de cancelamento recebido — nenhuma ação automática tomada. Cancelar manualmente se necessário.",
+      },
     });
 
     await sb.from("webhook_logs").insert({
-      webhook_type: "pagarme_payment_cancelled",
+      webhook_type: "pagarme_payment_cancelled_alert",
       status_code: 200,
       payload: { order_id: orderId, reason, webhook_event_id: webhookEventId },
       tenant_id: orderTenantId,
-      response: `Order ${orderId} cancelled`,
+      response: `Alert logged for order ${orderId} — no auto-cancel`,
     });
+
   } catch (e) {
     console.error(`[pagarme-webhook] Exception cancelling order ${orderId}:`, e);
   }

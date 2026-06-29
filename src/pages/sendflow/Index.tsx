@@ -8,6 +8,7 @@ import type { SendingJob } from '@/hooks/useSendingJob';
 import { getLatestWhatsAppTemplate, saveWhatsAppTemplate } from '@/lib/whatsapp-templates';
 import SendingControl from '@/components/SendingControl';
 import SendingProgressLive from '@/components/SendingProgressLive';
+import SendflowTodayHistory from '@/components/sendflow/SendflowTodayHistory';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -609,11 +610,14 @@ export default function SendFlow() {
   }, [backendSendFlow]);
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">SendFlow</h1>
-          <p className="text-muted-foreground">Envio automatizado de produtos para grupos do WhatsApp</p>
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground" style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>
+            SendFlow
+          </h1>
+          <p className="text-muted-foreground mt-1">Envio automatizado de produtos para grupos do WhatsApp</p>
         </div>
         <div className="flex items-center gap-3">
           <Button
@@ -621,6 +625,7 @@ export default function SendFlow() {
             size="sm"
             onClick={checkWhatsAppConnection}
             disabled={checkingConnection}
+            className="rounded-xl"
           >
             {checkingConnection ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -629,19 +634,16 @@ export default function SendFlow() {
             )}
             <span className="ml-2">Verificar Conexão</span>
           </Button>
-          <Badge variant={whatsappConnected ? 'default' : 'destructive'}>
-            {whatsappConnected ? (
-              <>
-                <CheckCircle2 className="h-3 w-3 mr-1" />
-                WhatsApp Conectado
-              </>
-            ) : (
-              <>
-                <XCircle className="h-3 w-3 mr-1" />
-                WhatsApp Desconectado
-              </>
-            )}
-          </Badge>
+          <div
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium ${
+              whatsappConnected
+                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-400'
+                : 'bg-destructive/10 border-destructive/20 text-destructive'
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full ${whatsappConnected ? 'bg-emerald-500 animate-pulse' : 'bg-destructive'}`}></span>
+            {whatsappConnected ? 'WhatsApp Conectado' : 'WhatsApp Desconectado'}
+          </div>
         </div>
       </div>
 
@@ -672,11 +674,13 @@ export default function SendFlow() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
+        <Card className="rounded-2xl border-border/60 bg-card/70 backdrop-blur-xl shadow-sm">
         <CardHeader>
           <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 text-primary rounded-lg">
+                <Users className="h-5 w-5" />
+              </div>
               <CardTitle>Grupos do WhatsApp</CardTitle>
             </div>
             <div className="flex gap-2">
@@ -757,11 +761,13 @@ export default function SendFlow() {
         </Card>
 
         {/* Produtos */}
-        <Card>
+        <Card className="rounded-2xl border-border/60 bg-card/70 backdrop-blur-xl shadow-sm">
         <CardHeader>
           <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <Package className="h-5 w-5" />
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 text-primary rounded-lg">
+                <Package className="h-5 w-5" />
+              </div>
               <CardTitle>Produtos</CardTitle>
             </div>
             <div className="flex items-center gap-2">
@@ -867,11 +873,13 @@ export default function SendFlow() {
 
       {/* Ordem de Envio / Priorização com Drag & Drop */}
       {prioritizedProducts.length > 0 && (
-        <Card>
+        <Card className="rounded-2xl border-border/60 bg-card/70 backdrop-blur-xl shadow-sm">
           <CardHeader>
             <div className="flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <GripVertical className="h-5 w-5" />
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-primary/10 text-primary rounded-lg">
+                  <GripVertical className="h-5 w-5" />
+                </div>
                 <CardTitle>Ordem de Envio</CardTitle>
               </div>
               <Badge variant="outline">
@@ -910,10 +918,15 @@ export default function SendFlow() {
       )}
 
       {/* Template de Mensagem */}
-      <Card>
+      <Card className="rounded-2xl border-border/60 bg-card/70 backdrop-blur-xl shadow-sm">
         <CardHeader>
-          <CardTitle>Template de Mensagem</CardTitle>
-          <CardDescription>
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary/10 text-primary rounded-lg">
+              <Send className="h-5 w-5" />
+            </div>
+            <CardTitle>Template de Mensagem</CardTitle>
+          </div>
+          <CardDescription className="pt-1">
             Use as variáveis: {'{'}{'{'} codigo {'}'}{'}'}, {'{'}{'{'} nome {'}'}{'}'}, {'{'}{'{'} cor {'}'}{'}'}, {'{'}{'{'} tamanho {'}'}{'}'}, {'{'}{'{'} valor {'}'}{'}'}, {'{'}{'{'} valor_original {'}'}{'}'}, {'{'}{'{'} valor_promo {'}'}{'}'}, {'{'}{'{'} observacao {'}'}{'}'}
           </CardDescription>
         </CardHeader>
@@ -923,6 +936,7 @@ export default function SendFlow() {
             onChange={(e) => setMessageTemplate(e.target.value)}
             rows={8}
             placeholder="Digite o template da mensagem..."
+            className="font-mono text-sm rounded-xl"
           />
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={saveTemplate}>
@@ -934,10 +948,15 @@ export default function SendFlow() {
       </Card>
 
       {/* Configurações de Envio */}
-      <Card>
+      <Card className="rounded-2xl border-border/60 bg-card/70 backdrop-blur-xl shadow-sm">
         <CardHeader>
-          <CardTitle>Configurações de Envio</CardTitle>
-          <CardDescription>
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary/10 text-primary rounded-lg">
+              <Clock className="h-5 w-5" />
+            </div>
+            <CardTitle>Configurações de Envio</CardTitle>
+          </div>
+          <CardDescription className="pt-1">
             Configure os intervalos entre mensagens para evitar bloqueios do WhatsApp
           </CardDescription>
         </CardHeader>
@@ -1039,13 +1058,15 @@ export default function SendFlow() {
       {/* Status do Envio - Gerenciado pelo SendingProgressLive acima */}
 
       {/* Agendamento + Botão de Envio */}
-      <Card>
+      <Card className="rounded-2xl border-border/60 bg-card/70 backdrop-blur-xl shadow-sm">
         <CardContent className="pt-6 space-y-4">
           {/* Toggle de agendamento */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CalendarClock className="h-5 w-5 text-muted-foreground" />
-              <Label htmlFor="schedule-toggle" className="font-medium">Agendar envio</Label>
+          <div className="flex items-center justify-between p-3 rounded-xl bg-muted/40 border border-border/50">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 text-primary rounded-lg">
+                <CalendarClock className="h-5 w-5" />
+              </div>
+              <Label htmlFor="schedule-toggle" className="font-medium cursor-pointer">Agendar envio</Label>
             </div>
             <Switch
               id="schedule-toggle"
@@ -1055,7 +1076,7 @@ export default function SendFlow() {
           </div>
 
           {scheduleEnabled && (
-            <div className="flex gap-3 items-end p-3 rounded-lg border bg-muted/30">
+            <div className="flex gap-3 items-end p-3 rounded-xl border bg-muted/30">
               <div className="flex-1">
                 <Label htmlFor="schedule-date" className="text-sm">Data</Label>
                 <Input
@@ -1081,7 +1102,7 @@ export default function SendFlow() {
           )}
 
           {selectedProducts.size > 0 && selectedGroups.size > 0 && (
-            <div className="text-center text-sm text-muted-foreground bg-muted/50 px-4 py-2 rounded-lg">
+            <div className="text-center text-sm text-muted-foreground bg-muted/50 px-4 py-2 rounded-xl">
               <Clock className="inline h-4 w-4 mr-1" />
               <span>
                 Tempo estimado: {(() => {
@@ -1114,7 +1135,7 @@ export default function SendFlow() {
               (scheduleEnabled && (!scheduleDate || !scheduleTime))
             }
             size="lg"
-            className="w-full"
+            className="w-full h-14 rounded-xl text-base font-semibold shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 transition-all hover:-translate-y-0.5"
           >
             {sending ? (
               <>
@@ -1139,6 +1160,8 @@ export default function SendFlow() {
           </Button>
         </CardContent>
       </Card>
+
+      <SendflowTodayHistory />
     </div>
   );
 }

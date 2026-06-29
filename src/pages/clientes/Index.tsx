@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useDebounce } from '@/hooks/useDebounce';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
@@ -93,6 +94,7 @@ const Clientes = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [newCustomer, setNewCustomer] = useState({ phone: '', name: '', instagram: '' });
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -172,56 +174,69 @@ const Clientes = () => {
   const loadCustomers = async () => {
     setLoading(true);
     try {
-      const { data: customersData, error: customersError } = await supabaseTenant
-        .from('customers')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Paginação em lotes de 1000 para contornar limite do PostgREST
+      const PAGE_SIZE = 1000;
+      let customersData: any[] = [];
+      let from = 0;
+      while (true) {
+        const { data: batch, error: customersError } = await supabaseTenant
+          .from('customers')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(from, from + PAGE_SIZE - 1);
 
-      if (customersError) throw customersError;
+        if (customersError) throw customersError;
+        if (!batch || batch.length === 0) break;
+        customersData = customersData.concat(batch);
+        if (batch.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+      }
 
-      // Get order statistics and tags for each customer
-      const customersWithStats = await Promise.all(
-        (customersData || []).map(async (customer) => {
-          // Load orders
-            const { data: orders, error: ordersError } = await supabaseTenant
-              .from('orders')
-              .select('total_amount, is_paid, created_at')
-              .eq('customer_phone', customer.phone);
+      // Batch: busca TODOS os pedidos de uma vez (evita N+1 queries por cliente)
+      const PAGE_SIZE_ORDERS = 1000;
+      let allOrdersData: Array<{ customer_phone: string; total_amount: number; is_paid: boolean; created_at: string }> = [];
+      let ordFrom = 0;
+      while (true) {
+        const { data: ordBatch, error: ordBatchErr } = await supabaseTenant
+          .from('orders')
+          .select('customer_phone, total_amount, is_paid, created_at')
+          .range(ordFrom, ordFrom + PAGE_SIZE_ORDERS - 1);
 
-          // Load customer tags - temporarily disabled due to TypeScript complexity
-          // TODO: Re-implement tags loading with simpler approach
-          const customerTags: any[] = [];
-          const tagsError = null;
+        if (ordBatchErr) {
+          console.error('Error loading orders batch:', ordBatchErr);
+          break;
+        }
+        if (!ordBatch || ordBatch.length === 0) break;
+        allOrdersData = allOrdersData.concat(ordBatch);
+        if (ordBatch.length < PAGE_SIZE_ORDERS) break;
+        ordFrom += PAGE_SIZE_ORDERS;
+      }
 
-          if (ordersError) {
-            console.error('Error loading orders for customer:', customer.phone, ordersError);
-          }
+      // Agrupa pedidos por customer_phone em memória — O(n), sem queries extras
+      type OrderStat = { total_amount: number; is_paid: boolean; created_at: string };
+      const ordersByPhone = allOrdersData.reduce<Record<string, OrderStat[]>>((acc, ord) => {
+        const ph = ord.customer_phone;
+        if (!acc[ph]) acc[ph] = [];
+        acc[ph].push({ total_amount: ord.total_amount, is_paid: ord.is_paid, created_at: ord.created_at });
+        return acc;
+      }, {});
 
-          if (tagsError) {
-            console.error('Error loading tags for customer:', customer.id, tagsError);
-          }
+      const customersWithStats = (customersData || []).map(customer => {
+        const orders = ordersByPhone[customer.phone] || [];
+        const paidOrders = orders.filter(o => o.is_paid);
+        const lastOrderDate = orders.length > 0
+          ? orders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
+          : undefined;
 
-          const totalOrders = orders?.length || 0;
-          // Only sum paid orders for total_spent
-          const paidOrders = orders?.filter(order => order.is_paid) || [];
-          const totalSpent = paidOrders.reduce((sum, order) => sum + Number(order.total_amount), 0);
-          const paidOrdersCount = paidOrders.length;
-          const lastOrderDate = orders?.length > 0 
-            ? orders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
-            : undefined;
-
-          const tags = customerTags?.map(ct => ct.customer_tags).filter(Boolean) || [];
-
-          return {
-            ...customer,
-            total_orders: totalOrders,
-            total_spent: totalSpent,
-            paid_orders_count: paidOrdersCount,
-            last_order_date: lastOrderDate,
-            tags
-          };
-        })
-      );
+        return {
+          ...customer,
+          total_orders: orders.length,
+          total_spent: paidOrders.reduce((sum, o) => sum + Number(o.total_amount), 0),
+          paid_orders_count: paidOrders.length,
+          last_order_date: lastOrderDate,
+          tags: [] as any[],
+        };
+      });
 
       setCustomers(customersWithStats);
     } catch (error) {
@@ -466,7 +481,7 @@ const Clientes = () => {
   const loadAllOrdersWithCustomers = async () => {
     setLoading(true);
     try {
-      // Load all orders
+      // 1. Busca todos os pedidos
       const { data: ordersData, error: ordersError } = await supabaseTenant
         .from('orders')
         .select(`
@@ -490,54 +505,82 @@ const Clientes = () => {
 
       if (ordersError) throw ordersError;
 
-      // Get cart items for each order
-      const ordersWithItems = await Promise.all(
-        (ordersData || []).map(async (order) => {
-          const { data: cartItems, error: itemsError } = await supabaseTenant
-            .from('cart_items')
-            .select(`
-              qty,
-              unit_price,
-              products(name, code, image_url)
-            `)
-            .eq('cart_id', order.cart_id || 0);
+      const orders = ordersData || [];
 
-          // Find customer info
-          const customer = customers.find(c => c.phone === order.customer_phone) || {
-            id: 0,
-            phone: order.customer_phone,
-            name: order.customer_name || 'Cliente',
-            created_at: order.created_at,
-            updated_at: order.created_at,
-            total_orders: 0,
-            total_spent: 0,
-            paid_orders_count: 0,
-          };
+      // 2. Coleta todos os cart_ids válidos (uma única query em vez de N queries)
+      const cartIds = orders
+        .map(o => o.cart_id)
+        .filter((id): id is number => !!id);
 
-          if (itemsError) {
-            console.error('Error loading cart items:', itemsError);
-            return {
-              ...order,
-              customer,
-              cart_items: []
-            } as OrderWithCustomer;
-          }
+      let cartItemsByCartId: Record<number, Array<{
+        qty: number;
+        unit_price: number;
+        product: { name: string; code: string; image_url?: string };
+      }>> = {};
 
-          return {
-            ...order,
-            customer,
-            cart_items: (cartItems || []).map(item => ({
-              qty: item.qty,
-              unit_price: item.unit_price,
-              product: {
-                name: item.products?.name || 'Produto removido',
-                code: item.products?.code || 'N/A',
-                image_url: item.products?.image_url || undefined
-              }
-            }))
-          } as OrderWithCustomer;
-        })
-      );
+      if (cartIds.length > 0) {
+        // Chunking: evita URL >8KB no PostgREST (.in() com muitos IDs)
+        const CHUNK_SIZE = 200;
+        const chunks: number[][] = [];
+        for (let i = 0; i < cartIds.length; i += CHUNK_SIZE) {
+          chunks.push(cartIds.slice(i, i + CHUNK_SIZE));
+        }
+
+        const chunkResults = await Promise.all(
+          chunks.map(chunk =>
+            supabaseTenant
+              .from('cart_items')
+              .select(`cart_id, qty, unit_price, products(name, code, image_url)`)
+              .in('cart_id', chunk)
+          )
+        );
+
+        const allCartItems = chunkResults.flatMap(r => r.data || []);
+        const itemsError = chunkResults.find(r => r.error)?.error || null;
+
+        if (itemsError) {
+          console.error('Error loading cart items:', itemsError);
+        } else {
+          // 3. Agrupa os itens por cart_id em memória — O(n), sem queries extras
+          cartItemsByCartId = (allCartItems || []).reduce<typeof cartItemsByCartId>(
+            (acc, item) => {
+              const cid = item.cart_id as number;
+              if (!acc[cid]) acc[cid] = [];
+              acc[cid].push({
+                qty: item.qty,
+                unit_price: item.unit_price,
+                product: {
+                  name: (item.products as { name?: string } | null)?.name || 'Produto removido',
+                  code: (item.products as { code?: string } | null)?.code || 'N/A',
+                  image_url: (item.products as { image_url?: string } | null)?.image_url || undefined,
+                },
+              });
+              return acc;
+            },
+            {}
+          );
+        }
+      }
+
+      // 4. Monta o array final combinando pedidos + itens + cliente (sem queries)
+      const ordersWithItems: OrderWithCustomer[] = orders.map(order => {
+        const customer = customers.find(c => c.phone === order.customer_phone) || {
+          id: 0,
+          phone: order.customer_phone,
+          name: order.customer_name || 'Cliente',
+          created_at: order.created_at,
+          updated_at: order.created_at,
+          total_orders: 0,
+          total_spent: 0,
+          paid_orders_count: 0,
+        };
+
+        return {
+          ...order,
+          customer,
+          cart_items: cartItemsByCartId[order.cart_id ?? 0] || [],
+        } as OrderWithCustomer;
+      });
 
       setAllOrders(ordersWithItems);
     } catch (error) {
@@ -569,17 +612,17 @@ const Clientes = () => {
     if (filterBlocked === 'blocked' && !customer.is_blocked) return false;
     if (filterBlocked === 'active' && customer.is_blocked) return false;
 
-    const searchLower = searchTerm.toLowerCase().trim();
+    const searchLower = debouncedSearchTerm.toLowerCase().trim();
     if (!searchLower) return true;
-    
+
     if (customer.name.toLowerCase().includes(searchLower)) return true;
-    
-    const normalizedSearch = normalizeForStorage(searchTerm);
+
+    const normalizedSearch = normalizeForStorage(debouncedSearchTerm);
     const normalizedCustomerPhone = normalizeForStorage(customer.phone);
     if (normalizedSearch && normalizedCustomerPhone.includes(normalizedSearch)) return true;
-    if (customer.phone.includes(searchTerm)) return true;
-    
-    if (customer.cpf && customer.cpf.includes(searchTerm)) return true;
+    if (customer.phone.includes(debouncedSearchTerm)) return true;
+
+    if (customer.cpf && customer.cpf.includes(debouncedSearchTerm)) return true;
     if (customer.instagram && customer.instagram.toLowerCase().includes(searchLower)) return true;
     
     return false;
@@ -911,8 +954,9 @@ const Clientes = () => {
   const loadCustomerOrders = async (customer: Customer) => {
     setLoadingOrders(true);
     setSelectedCustomer(customer);
-    
+
     try {
+      // 1. Busca pedidos do cliente
       const { data, error } = await supabaseTenant
         .from('orders')
         .select(`
@@ -929,39 +973,58 @@ const Clientes = () => {
 
       if (error) throw error;
 
-      // Get cart items for each order
-      const ordersWithItems = await Promise.all(
-        (data || []).map(async (order) => {
-          const { data: cartItems, error: itemsError } = await supabaseTenant
-            .from('cart_items')
-            .select(`
-              qty,
-              unit_price,
-              products(name, code)
-            `)
-            .eq('cart_id', order.cart_id || 0);
+      const orders = data || [];
 
-          if (itemsError) {
-            console.error('Error loading cart items:', itemsError);
-            return {
-              ...order,
-              cart_items: []
-            };
-          }
+      // 2. Busca todos os cart_items de uma vez (IN query)
+      const cartIds = orders
+        .map(o => o.cart_id)
+        .filter((id): id is number => !!id);
 
-          return {
-            ...order,
-            cart_items: (cartItems || []).map(item => ({
-              qty: item.qty,
-              unit_price: item.unit_price,
-              product: {
-                name: item.products?.name || 'Produto removido',
-                code: item.products?.code || 'N/A'
-              }
-            }))
-          };
-        })
-      );
+      let cartItemsByCartId: Record<number, Array<{
+        qty: number;
+        unit_price: number;
+        product: { name: string; code: string };
+      }>> = {};
+
+      if (cartIds.length > 0) {
+        const { data: allCartItems, error: itemsError } = await supabaseTenant
+          .from('cart_items')
+          .select(`
+            cart_id,
+            qty,
+            unit_price,
+            products(name, code)
+          `)
+          .in('cart_id', cartIds);
+
+        if (itemsError) {
+          console.error('Error loading cart items:', itemsError);
+        } else {
+          // 3. Agrupa em memória por cart_id
+          cartItemsByCartId = (allCartItems || []).reduce<typeof cartItemsByCartId>(
+            (acc, item) => {
+              const cid = item.cart_id as number;
+              if (!acc[cid]) acc[cid] = [];
+              acc[cid].push({
+                qty: item.qty,
+                unit_price: item.unit_price,
+                product: {
+                  name: (item.products as { name?: string } | null)?.name || 'Produto removido',
+                  code: (item.products as { code?: string } | null)?.code || 'N/A',
+                },
+              });
+              return acc;
+            },
+            {}
+          );
+        }
+      }
+
+      // 4. Monta resultado final sem queries adicionais
+      const ordersWithItems = orders.map(order => ({
+        ...order,
+        cart_items: cartItemsByCartId[order.cart_id ?? 0] || [],
+      }));
 
       setCustomerOrders(ordersWithItems);
     } catch (error) {
@@ -1183,7 +1246,7 @@ const Clientes = () => {
                   </div>
                 ) : filteredCustomers.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
-                    {searchTerm ? 'Nenhum cliente encontrado com os critérios de busca.' : 'Nenhum cliente cadastrado.'}
+                    {debouncedSearchTerm ? 'Nenhum cliente encontrado com os critérios de busca.' : 'Nenhum cliente cadastrado.'}
                   </div>
                 ) : (
                   <div className="overflow-x-auto">

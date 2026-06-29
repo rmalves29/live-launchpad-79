@@ -8,6 +8,25 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Normaliza nome de estado brasileiro para UF de 2 letras (exigido por Pagar.me, etc.)
+const BR_STATE_MAP: Record<string, string> = {
+  "acre":"AC","alagoas":"AL","amapa":"AP","amapá":"AP","amazonas":"AM","bahia":"BA",
+  "ceara":"CE","ceará":"CE","distrito federal":"DF","espirito santo":"ES","espírito santo":"ES",
+  "goias":"GO","goiás":"GO","maranhao":"MA","maranhão":"MA","mato grosso":"MT",
+  "mato grosso do sul":"MS","minas gerais":"MG","para":"PA","pará":"PA","paraiba":"PB","paraíba":"PB",
+  "parana":"PR","paraná":"PR","pernambuco":"PE","piaui":"PI","piauí":"PI","rio de janeiro":"RJ",
+  "rio grande do norte":"RN","rio grande do sul":"RS","rondonia":"RO","rondônia":"RO","roraima":"RR",
+  "santa catarina":"SC","sao paulo":"SP","são paulo":"SP","sergipe":"SE","tocantins":"TO",
+};
+function normalizeBrState(state: string | null | undefined): string {
+  const raw = String(state || "").trim();
+  if (!raw) return "";
+  if (raw.length === 2) return raw.toUpperCase();
+  const key = raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return BR_STATE_MAP[key] || raw.toUpperCase().slice(0, 2);
+}
+
+
 type CartItem = {
   product_name: string;
   product_code: string;
@@ -76,11 +95,13 @@ function buildFreightNote(shipping: ShippingData, shippingCost: number) {
 function buildInstallmentsConfig(
   totalAmountCents: number,
   minInstallmentValue: number | null,
-  maxInstallmentsWithoutInterest: number | null
+  maxInstallmentsWithoutInterest: number | null,
+  maxInstallments: number | null
 ): { number: number; total: number }[] {
   const totalAmountReais = totalAmountCents / 100;
   const minValue = minInstallmentValue || 0;
   const maxFreeInstallments = maxInstallmentsWithoutInterest || 1;
+  const hardCap = Math.min(12, Math.max(1, maxInstallments || 12));
 
   const installments: { number: number; total: number }[] = [];
 
@@ -92,30 +113,22 @@ function buildInstallmentsConfig(
     return installments;
   }
 
-  // Calcular parcelas disponíveis (máximo 12)
-  for (let i = 2; i <= 12; i++) {
+  // Calcular parcelas disponíveis (limitadas pelo teto configurado pelo lojista)
+  for (let i = 2; i <= hardCap; i++) {
     const installmentValue = totalAmountReais / i;
-    
-    // Se o valor da parcela for menor que R$5 (mínimo comum), para de calcular
-    if (installmentValue < 5) break;
 
-    // Se houver um mínimo configurado e a parcela for menor, para
+    if (installmentValue < 5) break;
     if (minValue > 0 && installmentValue < minValue) break;
 
-    // Parcelas sem juros (até o limite configurado)
-    if (i <= maxFreeInstallments) {
-      installments.push({ number: i, total: totalAmountCents });
-    }
-    // Depois do limite, são parcelas com juros (o Pagar.me calcula automaticamente)
-    // Mas para o checkout, precisamos informar o total - deixamos o mesmo valor
-    // e o Pagar.me aplicará juros conforme configurado na conta
-    else {
-      installments.push({ number: i, total: totalAmountCents });
-    }
+    // Até maxFreeInstallments → sem juros; acima → o Pagar.me aplica os juros
+    // da conta automaticamente. Para a UI, basta listar a parcela.
+    installments.push({ number: i, total: totalAmountCents });
+    void maxFreeInstallments; // mantido apenas para clareza semântica
   }
 
   return installments;
 }
+
 
 function validate(body: any): { ok: true; data: CreatePaymentRequest } | { ok: false; error: string } {
   if (!body || typeof body !== "object") return { ok: false, error: "Body inválido" };
@@ -402,11 +415,49 @@ serve(async (req) => {
     // Prioridade: InfinitePay > App Max > Pagar.me > Mercado Pago
     const { data: infinitepayIntegration } = await sb
       .from("integration_infinitepay")
-      .select("is_active, handle")
+      .select("is_active, handle, enable_pix, enable_credit_card")
       .eq("tenant_id", payload.tenant_id)
       .maybeSingle();
 
+    // Helper: força payment_method conforme flags do gateway ativo (defesa em profundidade)
+    const enforcePaymentMethod = (
+      enablePix: boolean | null | undefined,
+      enableCard: boolean | null | undefined,
+      providerName: string,
+    ): { ok: true } | { ok: false; error: string } => {
+      const pixOn = enablePix !== false;
+      const cardOn = enableCard !== false;
+      if (!pixOn && !cardOn) {
+        return { ok: false, error: "Nenhum método de pagamento está habilitado para este lojista." };
+      }
+      const choice = String(payload.payment_method || "").toLowerCase();
+      const isPix = choice === "pix";
+      const isCard = !isPix && choice.length > 0;
+      if (!pixOn && isPix) {
+        console.log(`[create-payment] ${providerName}: PIX desabilitado, forçando cartão`);
+        payload.payment_method = "credit_card";
+      } else if (!cardOn && isCard) {
+        console.log(`[create-payment] ${providerName}: Cartão desabilitado, forçando PIX`);
+        payload.payment_method = "pix";
+      } else if (!choice) {
+        if (pixOn && !cardOn) payload.payment_method = "pix";
+        else if (cardOn && !pixOn) payload.payment_method = "credit_card";
+      }
+      return { ok: true };
+    };
+
     if (infinitepayIntegration?.is_active && infinitepayIntegration?.handle) {
+      const enforced = enforcePaymentMethod(
+        infinitepayIntegration.enable_pix,
+        infinitepayIntegration.enable_credit_card,
+        "infinitepay",
+      );
+      if (!enforced.ok) {
+        return new Response(JSON.stringify({ success: false, error: enforced.error }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       console.log("[create-payment] Delegating to create-infinitepay-payment for tenant:", payload.tenant_id);
       const ipPayload = {
         ...payload,
@@ -430,19 +481,19 @@ serve(async (req) => {
 
     const { data: appmaxIntegration } = await sb
       .from("integration_appmax")
-      .select("access_token, environment, is_active")
+      .select("access_token, environment, is_active, enable_pix, enable_credit_card")
       .eq("tenant_id", payload.tenant_id)
       .maybeSingle();
 
     const { data: mpIntegration } = await sb
       .from("integration_mp")
-      .select("access_token, environment, is_active")
+      .select("access_token, environment, is_active, enable_pix, enable_credit_card")
       .eq("tenant_id", payload.tenant_id)
       .maybeSingle();
 
     const { data: pagarmeIntegration } = await sb
       .from("integration_pagarme")
-      .select("api_key, public_key, environment, is_active, min_installment_value, max_installments_without_interest")
+      .select("api_key, public_key, environment, is_active, min_installment_value, max_installments_without_interest, max_installments, enable_pix, enable_credit_card")
       .eq("tenant_id", payload.tenant_id)
       .maybeSingle();
 
@@ -450,6 +501,18 @@ serve(async (req) => {
     const useAppmax = appmaxIntegration?.is_active && appmaxIntegration?.access_token;
     const usePagarme = !useAppmax && pagarmeIntegration?.is_active && pagarmeIntegration?.api_key;
     const useMercadoPago = !useAppmax && !usePagarme && mpIntegration?.is_active && mpIntegration?.access_token;
+
+    // Defesa em profundidade: aplica restrição de método conforme flags do gateway escolhido
+    if (useAppmax) {
+      const e = enforcePaymentMethod(appmaxIntegration!.enable_pix, appmaxIntegration!.enable_credit_card, "appmax");
+      if (!e.ok) return new Response(JSON.stringify({ success: false, error: e.error }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    } else if (usePagarme) {
+      const e = enforcePaymentMethod(pagarmeIntegration!.enable_pix, pagarmeIntegration!.enable_credit_card, "pagarme");
+      if (!e.ok) return new Response(JSON.stringify({ success: false, error: e.error }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    } else if (useMercadoPago) {
+      const e = enforcePaymentMethod(mpIntegration!.enable_pix, mpIntegration!.enable_credit_card, "mercado_pago");
+      if (!e.ok) return new Response(JSON.stringify({ success: false, error: e.error }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     const fallbackMpAccessToken = Deno.env.get("MP_ACCESS_TOKEN");
 
     if (!useAppmax && !usePagarme && !useMercadoPago && !fallbackMpAccessToken) {
@@ -804,7 +867,7 @@ serve(async (req) => {
         shipping: {
           address: {
             country: "BR",
-            state: payload.addressData.state,
+            state: normalizeBrState(payload.addressData.state),
             city: payload.addressData.city,
             neighborhood: payload.addressData.neighborhood,
             street: payload.addressData.street,
@@ -841,7 +904,8 @@ serve(async (req) => {
                 installments: buildInstallmentsConfig(
                   totalAmount,
                   pagarmeIntegration.min_installment_value,
-                  pagarmeIntegration.max_installments_without_interest
+                  pagarmeIntegration.max_installments_without_interest,
+                  (pagarmeIntegration as any).max_installments
                 ),
               },
             },
@@ -949,6 +1013,39 @@ serve(async (req) => {
       },
       auto_return: "approved",
     };
+
+    // Se cliente escolheu PIX, validar antes que a conta MP da loja tem PIX habilitado.
+    // Sem isso, o MP ignora as exclusões e mostra cartão — cliente paga com desconto PIX
+    // indevido. Ver mp-diagnose para inspecionar métodos ativos da conta.
+    const normalizedChoice = String(payload.payment_method || "").toLowerCase().trim();
+    if (normalizedChoice === "pix") {
+      try {
+        const pmRes = await fetch("https://api.mercadopago.com/v1/payment_methods", {
+          headers: { Authorization: `Bearer ${effectiveMpAccessToken}` },
+        });
+        if (pmRes.ok) {
+          const methods = await pmRes.json();
+          const hasPixActive = Array.isArray(methods) && methods.some(
+            (m: any) => (m?.id === "pix" || m?.payment_type_id === "bank_transfer") && m?.status === "active",
+          );
+          if (!hasPixActive) {
+            console.log("[create-payment] MP account has no active PIX for tenant:", payload.tenant_id);
+            return new Response(
+              JSON.stringify({
+                success: false,
+                error: "PIX não está habilitado na conta Mercado Pago desta loja. Escolha pagar com cartão ou peça à loja para ativar o PIX no painel do Mercado Pago (Configurações → Meios de cobrança).",
+              }),
+              { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+            );
+          }
+        } else {
+          console.log("[create-payment] Could not verify MP payment_methods, status:", pmRes.status);
+        }
+      } catch (e) {
+        console.log("[create-payment] Error verifying MP payment_methods:", e);
+        // Em caso de falha na verificação, segue o fluxo normal (não bloqueia checkout).
+      }
+    }
 
     // Trava método de pagamento (PIX-only ou Cartão-only) conforme escolha do cliente
     applyPaymentMethodLock("mercado_pago", preferenceBody, payload.payment_method);

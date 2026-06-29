@@ -20,16 +20,21 @@ interface Coupon {
   discount_type: 'percentage' | 'fixed' | 'progressive';
   discount_value: number;
   expires_at?: string;
+  starts_at?: string | null;
   is_active: boolean;
   usage_limit?: number;
   used_count: number;
   tenant_id?: string;
+  min_purchase_amount?: number | null;
+  min_items_quantity?: number | null;
   progressive_tiers?: Array<{
     min_value: number;
     max_value: number | null;
     discount: number;
   }>;
 }
+
+type MinConditionType = 'none' | 'amount' | 'quantity';
 
 export const CouponsManager = () => {
   const { tenant } = useTenantContext();
@@ -45,9 +50,13 @@ export const CouponsManager = () => {
     code: '',
     discount_type: 'percentage' as 'percentage' | 'fixed' | 'progressive',
     discount_value: 0,
+    starts_at: '',
     expires_at: '',
     usage_limit: '',
     is_active: true,
+    min_condition_type: 'none' as MinConditionType,
+    min_purchase_amount: '' as string,
+    min_items_quantity: '' as string,
     progressive_tiers: [{ min_value: 0, max_value: 100, discount: 5 }]
   });
 
@@ -139,14 +148,36 @@ export const CouponsManager = () => {
     }
 
     try {
+      // Construir datas explicitamente em fuso de Brasília (-03:00)
+      const startsAtIso = newCoupon.starts_at
+        ? `${newCoupon.starts_at}T00:00:00-03:00`
+        : null;
+      const expiresAtIso = newCoupon.expires_at
+        ? `${newCoupon.expires_at}T23:59:59-03:00`
+        : null;
+
+      // Condição mínima (somente para % e valor fixo); progressivo ignora
+      const isProgressive = newCoupon.discount_type === 'progressive';
+      const minAmount =
+        !isProgressive && newCoupon.min_condition_type === 'amount' && newCoupon.min_purchase_amount
+          ? parseFloat(newCoupon.min_purchase_amount)
+          : null;
+      const minQty =
+        !isProgressive && newCoupon.min_condition_type === 'quantity' && newCoupon.min_items_quantity
+          ? parseInt(newCoupon.min_items_quantity, 10)
+          : null;
+
       const couponData: any = {
         code: newCoupon.code.toUpperCase(),
         discount_type: newCoupon.discount_type,
-        discount_value: newCoupon.discount_type === 'progressive' ? 0 : newCoupon.discount_value,
-        expires_at: newCoupon.expires_at || null,
+        discount_value: isProgressive ? 0 : newCoupon.discount_value,
+        starts_at: startsAtIso,
+        expires_at: expiresAtIso,
         usage_limit: newCoupon.usage_limit ? parseInt(newCoupon.usage_limit) : null,
         is_active: newCoupon.is_active,
-        progressive_tiers: newCoupon.discount_type === 'progressive' ? newCoupon.progressive_tiers : null
+        min_purchase_amount: minAmount,
+        min_items_quantity: minQty,
+        progressive_tiers: isProgressive ? newCoupon.progressive_tiers : null
       };
 
       if (hasTenantColumn) {
@@ -217,9 +248,13 @@ export const CouponsManager = () => {
       code: '',
       discount_type: 'percentage',
       discount_value: 0,
+      starts_at: '',
       expires_at: '',
       usage_limit: '',
       is_active: true,
+      min_condition_type: 'none',
+      min_purchase_amount: '',
+      min_items_quantity: '',
       progressive_tiers: [{ min_value: 0, max_value: 100, discount: 5 }]
     });
     setIsAddingCoupon(false);
@@ -228,13 +263,33 @@ export const CouponsManager = () => {
 
   const startEditing = (coupon: Coupon) => {
     setEditingCoupon(coupon);
+    // Extrai YYYY-MM-DD preservando o dia em Brasília (-03:00)
+    const isoDateBR = (iso?: string | null) => {
+      if (!iso) return '';
+      // Se já vier "YYYY-MM-DD..." sem timezone, usa direto
+      const m = iso.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (!m) return '';
+      // Para timestamps com hora UTC armazenados como 23:59:59-03:00,
+      // a parte de data já é o dia correto em Brasília.
+      return m[1];
+    };
+    const minType: MinConditionType =
+      coupon.min_purchase_amount != null && Number(coupon.min_purchase_amount) > 0
+        ? 'amount'
+        : coupon.min_items_quantity != null && Number(coupon.min_items_quantity) > 0
+        ? 'quantity'
+        : 'none';
     setNewCoupon({
       code: coupon.code,
       discount_type: coupon.discount_type,
       discount_value: coupon.discount_value,
-      expires_at: coupon.expires_at ? coupon.expires_at.split('T')[0] : '',
+      starts_at: isoDateBR(coupon.starts_at),
+      expires_at: isoDateBR(coupon.expires_at),
       usage_limit: coupon.usage_limit?.toString() || '',
       is_active: coupon.is_active,
+      min_condition_type: minType,
+      min_purchase_amount: coupon.min_purchase_amount != null ? String(coupon.min_purchase_amount) : '',
+      min_items_quantity: coupon.min_items_quantity != null ? String(coupon.min_items_quantity) : '',
       progressive_tiers: coupon.progressive_tiers || [{ min_value: 0, max_value: 100, discount: 5 }]
     });
     setIsAddingCoupon(true);
@@ -345,14 +400,84 @@ export const CouponsManager = () => {
               )}
 
               <div>
-                <Label htmlFor="expires_at">Data de Expiração (opcional)</Label>
+                <Label htmlFor="starts_at">Data de Início (opcional)</Label>
+                <Input
+                  id="starts_at"
+                  type="date"
+                  value={newCoupon.starts_at}
+                  onChange={(e) => setNewCoupon({ ...newCoupon, starts_at: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="expires_at">Data de Fim (opcional)</Label>
                 <Input
                   id="expires_at"
                   type="date"
                   value={newCoupon.expires_at}
                   onChange={(e) => setNewCoupon({ ...newCoupon, expires_at: e.target.value })}
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Expira às 23:59:59 (horário de Brasília) do dia selecionado.
+                </p>
               </div>
+
+              {newCoupon.discount_type !== 'progressive' && (
+                <>
+                  <div>
+                    <Label htmlFor="min_condition_type">Condição mínima (opcional)</Label>
+                    <Select
+                      value={newCoupon.min_condition_type}
+                      onValueChange={(value) =>
+                        setNewCoupon({
+                          ...newCoupon,
+                          min_condition_type: value as MinConditionType,
+                          min_purchase_amount: value === 'amount' ? newCoupon.min_purchase_amount : '',
+                          min_items_quantity: value === 'quantity' ? newCoupon.min_items_quantity : '',
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sem mínimo</SelectItem>
+                        <SelectItem value="amount">Valor mínimo do pedido (R$)</SelectItem>
+                        <SelectItem value="quantity">Quantidade mínima de peças</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {newCoupon.min_condition_type === 'amount' && (
+                    <div>
+                      <Label htmlFor="min_purchase_amount">Valor mínimo do pedido (R$)</Label>
+                      <Input
+                        id="min_purchase_amount"
+                        type="number"
+                        step="0.01"
+                        value={newCoupon.min_purchase_amount}
+                        onChange={(e) => setNewCoupon({ ...newCoupon, min_purchase_amount: e.target.value })}
+                        placeholder="100.00"
+                      />
+                    </div>
+                  )}
+
+                  {newCoupon.min_condition_type === 'quantity' && (
+                    <div>
+                      <Label htmlFor="min_items_quantity">Quantidade mínima de peças</Label>
+                      <Input
+                        id="min_items_quantity"
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={newCoupon.min_items_quantity}
+                        onChange={(e) => setNewCoupon({ ...newCoupon, min_items_quantity: e.target.value })}
+                        placeholder="10"
+                      />
+                    </div>
+                  )}
+                </>
+              )}
 
               <div>
                 <Label htmlFor="usage_limit">Limite de Uso (opcional)</Label>
@@ -435,6 +560,10 @@ export const CouponsManager = () => {
               </div>
             )}
 
+            <p className="text-xs text-muted-foreground mt-3">
+              O desconto incide somente sobre o valor dos produtos. O frete nunca é descontado.
+            </p>
+
             <div className="flex justify-end space-x-2 mt-4">
               <Button variant="outline" onClick={resetForm}>
                 Cancelar
@@ -479,9 +608,24 @@ export const CouponsManager = () => {
                           : formatCurrency(coupon.discount_value)} de desconto
                       </span>
                     )}
+                    {coupon.starts_at && (
+                      <p className="text-sm text-muted-foreground">
+                        Início: {formatBrasiliaDate(coupon.starts_at)}
+                      </p>
+                    )}
                     {coupon.expires_at && (
                       <p className="text-sm text-muted-foreground">
-                        Expira em: {formatBrasiliaDate(coupon.expires_at)}
+                        Fim: {formatBrasiliaDate(coupon.expires_at)} (23:59 Brasília)
+                      </p>
+                    )}
+                    {coupon.min_purchase_amount != null && Number(coupon.min_purchase_amount) > 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        Mínimo: {formatCurrency(Number(coupon.min_purchase_amount))} em produtos
+                      </p>
+                    )}
+                    {coupon.min_items_quantity != null && Number(coupon.min_items_quantity) > 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        Mínimo: {coupon.min_items_quantity} peças
                       </p>
                     )}
                     {coupon.usage_limit && (

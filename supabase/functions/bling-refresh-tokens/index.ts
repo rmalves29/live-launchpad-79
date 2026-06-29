@@ -7,7 +7,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const BLING_TOKEN_URL = "https://www.bling.com.br/Api/v3/oauth/token";
+const BLING_TOKEN_URL = "https://api.bling.com.br/Api/v3/oauth/token";
 const PROACTIVE_HOURS = 48; // Refresh if expiring within 48h
 
 interface RefreshResult {

@@ -1,0 +1,1 @@
+UPDATE integration_whatsapp SET item_added_button_url = 'https://app.orderzaps.com/t/app/checkout' WHERE item_added_button_url LIKE 'ttps://%' OR item_added_button_url LIKE 'ttp://%';

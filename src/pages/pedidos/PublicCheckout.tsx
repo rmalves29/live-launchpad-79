@@ -37,6 +37,7 @@ interface OrderItem {
   image_url?: string;
   color?: string;
   size?: string;
+  category_id?: string | null;
 }
 
 interface Order {
@@ -54,6 +55,8 @@ interface Order {
   coupon_code?: string;
   coupon_discount?: number;
   gift_name?: string;
+  melhor_envio_tracking_code?: string | null;
+  order_status?: 'em_separacao' | 'envio_pendente' | 'enviado' | 'liberado_retirada' | null;
 }
 
 async function getEdgeFunctionErrorMessage(err: any): Promise<string> {
@@ -114,7 +117,12 @@ function concatUint8(chunks: Uint8Array[]): Uint8Array {
 }
 
 const PublicCheckout = () => {
-  const { slug } = useParams<{ slug: string }>();
+  const { slug: rawSlug } = useParams<{ slug: string }>();
+  const slug = (() => {
+    if (!rawSlug) return rawSlug;
+    try { return decodeURIComponent(rawSlug).replace(/[\u200B-\u200D\uFEFF\u2060\u00AD]/g, '').trim().toLowerCase(); }
+    catch { return rawSlug.replace(/[\u200B-\u200D\uFEFF\u2060\u00AD]/g, '').trim().toLowerCase(); }
+  })();
   const { toast } = useToast();
   
   const [tenant, setTenant] = useState<Tenant | null>(null);
@@ -164,6 +172,8 @@ const PublicCheckout = () => {
   const [pixDiscountLoading, setPixDiscountLoading] = useState(true);
   const [pixDiscountValue, setPixDiscountValue] = useState(0);
   const [activePaymentProvider, setActivePaymentProvider] = useState<'infinitepay' | 'mp' | 'pagarme' | 'appmax' | null>(null);
+  const [acceptPix, setAcceptPix] = useState(true);
+  const [acceptCard, setAcceptCard] = useState(true);
 
   // Cupom
   const [couponCode, setCouponCode] = useState('');
@@ -175,6 +185,9 @@ const PublicCheckout = () => {
   const [activeGifts, setActiveGifts] = useState<any[]>([]);
   const [eligibleGift, setEligibleGift] = useState<any>(null);
   const [progressGift, setProgressGift] = useState<any>(null);
+
+  // Promoções BOGO (Compre X Ganhe Y)
+  const [activePromotions, setActivePromotions] = useState<any[]>([]);
 
   // Hook para verificar pedidos pagos recentes (juntar pedidos)
   const { hasPaidOrderWithinPeriod, mergeableOrders, orderMergeDays } = useOrderMerge(
@@ -247,6 +260,30 @@ const PublicCheckout = () => {
     loadActiveGifts();
   }, [tenant?.id]);
 
+  // Carregar promoções BOGO ativas (Compre X Ganhe Y) por categoria
+  useEffect(() => {
+    const loadActivePromotions = async () => {
+      if (!tenant?.id) { setActivePromotions([]); return; }
+      try {
+        const nowIso = new Date().toISOString();
+        const { data, error } = await (supabase as any)
+          .from('product_promotions')
+          .select('id, name, category_id, buy_qty, get_qty, discount_percent, starts_at, ends_at, is_active')
+          .eq('tenant_id', tenant.id)
+          .eq('is_active', true);
+        if (error) throw error;
+        const filtered = (data || []).filter((p: any) =>
+          (!p.starts_at || p.starts_at <= nowIso) && (!p.ends_at || p.ends_at >= nowIso)
+        );
+        setActivePromotions(filtered);
+      } catch (e) {
+        console.error('Erro ao carregar promoções:', e);
+        setActivePromotions([]);
+      }
+    };
+    loadActivePromotions();
+  }, [tenant?.id]);
+
   // Carregar handling days
   useEffect(() => {
     const loadHandlingDays = async () => {
@@ -293,29 +330,35 @@ const PublicCheckout = () => {
     const loadPixDiscount = async () => {
       try {
         const [appmaxRes, pagarmeRes, mpRes, infRes] = await Promise.all([
-          supabase.from('integration_appmax').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
-          supabase.from('integration_pagarme').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
-          supabase.from('integration_mp').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
-          supabase.from('integration_infinitepay').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
+          supabase.from('integration_appmax').select('pix_discount_percent, is_active, enable_pix, enable_credit_card').eq('tenant_id', tenant.id).maybeSingle(),
+          supabase.from('integration_pagarme').select('pix_discount_percent, is_active, enable_pix, enable_credit_card').eq('tenant_id', tenant.id).maybeSingle(),
+          supabase.from('integration_mp').select('pix_discount_percent, is_active, enable_pix, enable_credit_card').eq('tenant_id', tenant.id).maybeSingle(),
+          supabase.from('integration_infinitepay').select('pix_discount_percent, is_active, enable_pix, enable_credit_card').eq('tenant_id', tenant.id).maybeSingle(),
         ]);
 
         let discount = 0;
         let provider: 'infinitepay' | 'mp' | 'pagarme' | 'appmax' | null = null;
-        if (appmaxRes.data?.is_active) {
-          provider = 'appmax';
-          if (appmaxRes.data?.pix_discount_percent) discount = Number(appmaxRes.data.pix_discount_percent);
-        } else if (pagarmeRes.data?.is_active) {
-          provider = 'pagarme';
-          if (pagarmeRes.data?.pix_discount_percent) discount = Number(pagarmeRes.data.pix_discount_percent);
-        } else if (mpRes.data?.is_active) {
-          provider = 'mp';
-          if (mpRes.data?.pix_discount_percent) discount = Number(mpRes.data.pix_discount_percent);
-        } else if (infRes.data?.is_active) {
-          provider = 'infinitepay';
-          if (infRes.data?.pix_discount_percent) discount = Number(infRes.data.pix_discount_percent);
-        }
+        let pixEnabled = true;
+        let cardEnabled = true;
+        const pick = (row: any) => {
+          if (row?.pix_discount_percent) discount = Number(row.pix_discount_percent);
+          pixEnabled = row?.enable_pix !== false;
+          cardEnabled = row?.enable_credit_card !== false;
+        };
+        if (appmaxRes.data?.is_active) { provider = 'appmax'; pick(appmaxRes.data); }
+        else if (pagarmeRes.data?.is_active) { provider = 'pagarme'; pick(pagarmeRes.data); }
+        else if (mpRes.data?.is_active) { provider = 'mp'; pick(mpRes.data); }
+        else if (infRes.data?.is_active) { provider = 'infinitepay'; pick(infRes.data); }
+
         setActivePaymentProvider(provider);
+        setAcceptPix(pixEnabled);
+        setAcceptCard(cardEnabled);
+        // Auto-seleciona método disponível
         if (provider === 'infinitepay') {
+          setPaymentMethod('pix');
+        } else if (!pixEnabled && cardEnabled) {
+          setPaymentMethod('card');
+        } else if (pixEnabled && !cardEnabled) {
           setPaymentMethod('pix');
         }
 
@@ -400,7 +443,8 @@ const PublicCheckout = () => {
       const customs = await fetchCustomShippingOptions(
         tenant.id,
         customerData.state || undefined,
-        customerData.city || undefined
+        customerData.city || undefined,
+        combinedSubtotal
       );
       if (cancelled || customs.length === 0) return;
       setShippingOptions(prev => {
@@ -528,8 +572,8 @@ const PublicCheckout = () => {
         }));
       }
 
-      // 2. Buscar opções de frete customizadas FILTRADAS por cobertura geográfica
-      const customOptions = await fetchCustomShippingOptions(tenant.id, customerState, customerCity);
+      // 2. Buscar opções de frete customizadas FILTRADAS por cobertura geográfica e valor mínimo
+      const customOptions = await fetchCustomShippingOptions(tenant.id, customerState, customerCity, combinedSubtotal);
     
       // Usar opções customizadas do banco ou fallback padrão
       const fallbackShipping = customOptions;
@@ -706,7 +750,12 @@ const PublicCheckout = () => {
       if (error) throw error;
 
       if (coupon) {
-        if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
+        const nowMs = Date.now();
+        if ((coupon as any).starts_at && new Date((coupon as any).starts_at).getTime() > nowMs) {
+          toast({ title: 'Cupom Indisponível', description: 'Este cupom ainda não está válido', variant: 'destructive' });
+          return;
+        }
+        if (coupon.expires_at && new Date(coupon.expires_at).getTime() < nowMs) {
           toast({ title: 'Cupom Expirado', description: 'Este cupom já expirou', variant: 'destructive' });
           return;
         }
@@ -719,6 +768,35 @@ const PublicCheckout = () => {
         const productsTotal = ordersToApply.reduce((total, order) => {
           return total + order.items.reduce((sum, item) => sum + (Number(item.unit_price) * item.qty), 0);
         }, 0);
+        const itemsCount = ordersToApply.reduce(
+          (total, order) => total + order.items.reduce((sum, item) => sum + Number(item.qty || 0), 0),
+          0
+        );
+
+        // Condição mínima (não vale para progressivo) — aplica só sobre produtos
+        const minAmount = (coupon as any).min_purchase_amount;
+        const minQty = (coupon as any).min_items_quantity;
+        if (coupon.discount_type !== 'progressive') {
+          if (minAmount != null && Number(minAmount) > 0 && productsTotal < Number(minAmount)) {
+            const falta = Number(minAmount) - productsTotal;
+            toast({
+              title: 'Valor Mínimo não Atingido',
+              description: `Este cupom exige R$ ${Number(minAmount).toFixed(2)} em produtos. Faltam R$ ${falta.toFixed(2)}.`,
+              variant: 'destructive'
+            });
+            return;
+          }
+          if (minQty != null && Number(minQty) > 0 && itemsCount < Number(minQty)) {
+            const falta = Number(minQty) - itemsCount;
+            toast({
+              title: 'Quantidade Mínima não Atingida',
+              description: `Este cupom exige ${minQty} peças. Faltam ${falta}.`,
+              variant: 'destructive'
+            });
+            return;
+          }
+        }
+
         let discount = 0;
 
         if (coupon.discount_type === 'progressive') {
@@ -892,11 +970,19 @@ const PublicCheckout = () => {
       // Calcular total combinado de todos os pedidos
       const allItems = ordersToProcess.flatMap(order => order.items);
       const productsTotal = allItems.reduce((sum, item) => sum + (Number(item.unit_price) * item.qty), 0);
+
+      // Recalcular BOGO somente com os pedidos selecionados (alinhado ao backend)
+      const bogoCalc = computeBogoDiscount(allItems, activePromotions);
+      const bogoDiscountValue = bogoCalc.total;
+
       const effectivePixPercentForPayment = typeof pixDiscountPercent === 'number' ? pixDiscountPercent : 0;
+      const baseForPixPay = Math.max(0, productsTotal - bogoDiscountValue);
       const pixDiscount = paymentMethod === 'pix' && effectivePixPercentForPayment > 0
-        ? Math.round((productsTotal * effectivePixPercentForPayment / 100) * 100) / 100
+        ? Math.round((baseForPixPay * effectivePixPercentForPayment / 100) * 100) / 100
         : 0;
-      const totalWithDiscount = Math.max(0, productsTotal - couponDiscount - pixDiscount);
+      // Soma BOGO ao coupon_discount para reaproveitar a distribuição proporcional dos gateways
+      const totalCouponDiscount = Math.round((couponDiscount + bogoDiscountValue) * 100) / 100;
+      const totalWithDiscount = Math.max(0, productsTotal - totalCouponDiscount - pixDiscount);
       const totalAmount = totalWithDiscount + shippingCost;
 
       if (appliedCoupon) {
@@ -952,8 +1038,10 @@ const PublicCheckout = () => {
         shippingCost: shippingCost,
         shippingData: shippingData,
         total: totalAmount.toString(),
-        coupon_discount: couponDiscount,
-        coupon_code: appliedCoupon?.code || null,
+        coupon_discount: totalCouponDiscount,
+        coupon_code: bogoDiscountValue > 0
+          ? (appliedCoupon?.code ? `${appliedCoupon.code}+BOGO` : 'BOGO')
+          : (appliedCoupon?.code || null),
         tenant_id: tenant.id,
         tenant_slug: tenant.slug || undefined,
         merge_observation: mergeObservation,
@@ -966,6 +1054,11 @@ const PublicCheckout = () => {
       });
 
       if (error) throw error;
+
+      if (data?.success === false && data?.error) {
+        toast({ title: 'Não foi possível processar o pagamento', description: data.error, variant: 'destructive' });
+        return;
+      }
 
       if (data && (data.init_point || data.sandbox_init_point)) {
         const paymentUrl = data.init_point || data.sandbox_init_point;
@@ -1007,56 +1100,19 @@ const PublicCheckout = () => {
     setShowCheckout(false);
 
     try {
-      // Buscar pedidos via RPC segura (evita policy USING(true) na tabela orders)
-      const { data: allOrders, error: ordersError } = await supabase
-        .rpc('get_orders_by_phone_public', {
-          p_tenant_slug: slug!,
-          p_customer_phone: normalizedPhone
-        });
+      const { data: checkoutOrders, error: checkoutOrdersError } = await supabase.functions.invoke('public-checkout-orders', {
+        body: { tenant_slug: slug!, customer_phone: normalizedPhone }
+      });
 
-      if (ordersError) throw ordersError;
+      if (checkoutOrdersError) throw checkoutOrdersError;
+      if (checkoutOrders?.success === false) throw new Error(checkoutOrders.error || 'Erro ao buscar seus pedidos');
+
+      const allOrders = checkoutOrders?.orders || [];
 
       // Filtrar apenas pedidos não pagos E não cancelados para seleção
-      const customerOrders = (allOrders || [])
+      const ordersWithItems = (allOrders || [])
         .filter((o: any) => !o.is_paid && !o.is_cancelled)
         .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-      const ordersWithItems = await Promise.all(
-        (customerOrders || []).map(async (order) => {
-          if (!order.cart_id) return { ...order, items: [] };
-
-          const { data: cartItems } = await supabase
-            .from('cart_items')
-            .select('id, qty, unit_price, product_id')
-            .eq('cart_id', order.cart_id)
-            .eq('tenant_id', tenant.id);
-
-          if (!cartItems || cartItems.length === 0) return { ...order, items: [] };
-
-          const productIds = cartItems.map(item => item.product_id);
-          const { data: products } = await supabase
-            .from('products')
-            .select('id, name, code, image_url, color, size')
-            .in('id', productIds)
-            .eq('tenant_id', tenant.id);
-
-          const items = cartItems.map(item => {
-            const product = (products || []).find(p => p.id === item.product_id);
-            return {
-              id: item.id,
-              product_name: product?.name || `Produto ID ${item.product_id}`,
-              product_code: product?.code || '',
-              qty: item.qty,
-              unit_price: Number(item.unit_price),
-              image_url: product?.image_url,
-              color: product?.color,
-              size: product?.size
-            };
-          });
-
-          return { ...order, items };
-        })
-      );
 
       setOrders(ordersWithItems);
 
@@ -1117,7 +1173,7 @@ const PublicCheckout = () => {
         });
       }
 
-      if ((customerOrders || []).length === 0) {
+      if ((ordersWithItems || []).length === 0) {
         toast({ title: 'Nenhum pedido encontrado', description: 'Não há pedidos em aberto para este telefone' });
       }
     } catch (error: any) {
@@ -1179,56 +1235,19 @@ const PublicCheckout = () => {
 
     setLoadingHistory(true);
     try {
-      // Buscar pedidos via RPC segura (evita policy USING(true) na tabela orders)
-      const { data: allOrders, error: ordersError } = await supabase
-        .rpc('get_orders_by_phone_public', {
-          p_tenant_slug: slug!,
-          p_customer_phone: normalizedPhone
-        });
+      const { data: checkoutOrders, error: checkoutOrdersError } = await supabase.functions.invoke('public-checkout-orders', {
+        body: { tenant_slug: slug!, customer_phone: normalizedPhone }
+      });
 
-      if (ordersError) throw ordersError;
+      if (checkoutOrdersError) throw checkoutOrdersError;
+      if (checkoutOrders?.success === false) throw new Error(checkoutOrders.error || 'Erro ao buscar histórico de pedidos');
+
+      const allOrders = checkoutOrders?.orders || [];
 
       // Filtrar apenas pedidos pagos OU cancelados para o histórico
-      const paidOrdersData = (allOrders || [])
+      const ordersWithItems = (allOrders || [])
         .filter((o: any) => o.is_paid || o.is_cancelled)
         .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-      const ordersWithItems = await Promise.all(
-        (paidOrdersData || []).map(async (order) => {
-          if (!order.cart_id) return { ...order, items: [] };
-
-          const { data: cartItems } = await supabase
-            .from('cart_items')
-            .select('id, qty, unit_price, product_id')
-            .eq('cart_id', order.cart_id)
-            .eq('tenant_id', tenant.id);
-
-          if (!cartItems || cartItems.length === 0) return { ...order, items: [] };
-
-          const productIds = cartItems.map(item => item.product_id);
-          const { data: products } = await supabase
-            .from('products')
-            .select('id, name, code, image_url, color, size')
-            .in('id', productIds)
-            .eq('tenant_id', tenant.id);
-
-          const items = cartItems.map(item => {
-            const product = (products || []).find(p => p.id === item.product_id);
-            return {
-              id: item.id,
-              product_name: product?.name || `Produto ID ${item.product_id}`,
-              product_code: product?.code || '',
-              qty: item.qty,
-              unit_price: Number(item.unit_price),
-              image_url: product?.image_url,
-              color: product?.color,
-              size: product?.size
-            };
-          });
-
-          return { ...order, items };
-        })
-      );
 
       setPaidOrders(ordersWithItems);
     } catch (error) {
@@ -1278,12 +1297,49 @@ const PublicCheckout = () => {
   
   const allSelectedItems = selectedOrders.flatMap(order => order.items);
 
+  // Calcular desconto BOGO (Compre X, Ganhe Y) por categoria
+  const computeBogoDiscount = (items: any[], promos: any[]) => {
+    if (!items?.length || !promos?.length) return { total: 0, lines: [] as any[] };
+    // Expandir itens por unidade
+    const byCategory: Record<string, number[]> = {};
+    for (const it of items) {
+      const catId = it.category_id || it.product_category_id;
+      if (!catId) continue;
+      const price = Number(it.unit_price) || 0;
+      const qty = Number(it.qty) || 0;
+      if (!byCategory[catId]) byCategory[catId] = [];
+      for (let i = 0; i < qty; i++) byCategory[catId].push(price);
+    }
+    let total = 0;
+    const lines: any[] = [];
+    for (const promo of promos) {
+      const units = byCategory[promo.category_id];
+      if (!units || units.length === 0) continue;
+      const sorted = [...units].sort((a, b) => a - b); // mais baratos primeiro
+      const groupSize = (promo.buy_qty || 1) + (promo.get_qty || 1);
+      const groups = Math.floor(sorted.length / groupSize);
+      if (groups <= 0) continue;
+      const freeCount = groups * (promo.get_qty || 1);
+      const pct = Math.min(100, Math.max(0, Number(promo.discount_percent) || 100)) / 100;
+      let promoDiscount = 0;
+      for (let i = 0; i < freeCount; i++) promoDiscount += sorted[i] * pct;
+      promoDiscount = Math.round(promoDiscount * 100) / 100;
+      if (promoDiscount > 0) {
+        total += promoDiscount;
+        lines.push({ name: promo.name, discount: promoDiscount, freeCount });
+      }
+    }
+    return { total: Math.round(total * 100) / 100, lines };
+  };
+
+  const bogo = computeBogoDiscount(allSelectedItems, activePromotions);
+  const bogoDiscount = bogo.total;
+
   // Recalcular desconto PIX quando método de pagamento ou subtotal mudam
-  // Trata pixDiscountPercent === null (carregando) como 0 para a UI; o backend
-  // sempre recalcula o valor real antes de criar o pedido (blindagem servidor).
   const effectivePixPercent = typeof pixDiscountPercent === 'number' ? pixDiscountPercent : 0;
+  const baseForPix = Math.max(0, combinedSubtotal - bogoDiscount);
   const currentPixDiscount = paymentMethod === 'pix' && effectivePixPercent > 0
-    ? Math.round((combinedSubtotal * effectivePixPercent / 100) * 100) / 100
+    ? Math.round((baseForPix * effectivePixPercent / 100) * 100) / 100
     : 0;
 
   // Função para formatar telefone com máscara
@@ -1320,44 +1376,41 @@ const PublicCheckout = () => {
 
       <div className="max-w-3xl mx-auto px-4 md:px-6 pb-12 space-y-8">
         {/* Título da página */}
-        <div className="text-center space-y-2 pt-4">
-          <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground via-foreground to-foreground/60 bg-clip-text">
-            Finalizar Compra
-          </h1>
-          <p className="text-muted-foreground text-lg">
+        <div className="space-y-1 pt-2">
+          <h1 className="text-3xl font-bold tracking-tight">Checkout</h1>
+          <p className="text-muted-foreground">
             Localize seus pedidos e finalize o pagamento
           </p>
         </div>
 
         {/* Card de busca pedidos em aberto */}
         <Card className="overflow-hidden border-0 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50 bg-white dark:bg-slate-800/50 backdrop-blur-sm">
-          <CardHeader className="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border-b border-slate-100 dark:border-slate-700/50 pb-5">
+          <CardHeader className="border-b border-slate-100 dark:border-slate-700/50 pb-5">
             <CardTitle className="flex items-center gap-3 text-lg">
-              <div className="p-2 bg-emerald-500/10 rounded-lg">
-                <ShoppingCart className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              </div>
+              <Search className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
               Buscar Pedidos em Aberto
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
+            <label className="text-sm font-medium mb-2 block">Telefone do cliente</label>
             <div className="flex gap-3">
               <div className="relative flex-1">
                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="(31) 99999-9999"
+                  placeholder="(11) 98765-4321"
                   value={phone}
                   onChange={(e) => handlePhoneChange(e.target.value, setPhone)}
                   onKeyPress={(e) => e.key === 'Enter' && searchOrders()}
-                  className="pl-10 h-12 text-base border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-emerald-500/20"
+                  className="pl-10 h-12 text-base border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500/20"
                 />
               </div>
               <Button 
                 onClick={searchOrders} 
                 disabled={loadingOrders} 
-                className="h-12 px-6 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-lg shadow-emerald-500/25 transition-all duration-200"
+                className="h-12 px-6 bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all duration-200"
               >
                 {loadingOrders ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
-                <span className="ml-2 font-medium">Buscar</span>
+                <span className="ml-2 font-medium">Buscar Pedidos</span>
               </Button>
             </div>
             {!searched && (
@@ -1426,6 +1479,7 @@ const PublicCheckout = () => {
                             <div className="pt-1">
                               <Checkbox 
                                 checked={isSelected}
+                                onClick={(e) => e.stopPropagation()}
                                 onCheckedChange={() => toggleOrderSelection(order.id)}
                                 disabled={isCancelled}
                                 className={`h-5 w-5 ${isCancelled ? 'opacity-50' : 'data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500'}`}
@@ -1612,8 +1666,8 @@ const PublicCheckout = () => {
                   {/* Dados do Cliente */}
                   <div>
                     <h4 className="font-medium mb-4 flex items-center gap-2">
-                      <User className="h-4 w-4" />
-                      Seus Dados
+                      <User className="h-4 w-4 text-indigo-600" />
+                      Dados do Cliente
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
@@ -1668,7 +1722,7 @@ const PublicCheckout = () => {
                   {/* Endereço */}
                   <div>
                     <h4 className="font-medium mb-4 flex items-center gap-2">
-                      <MapPin className="h-4 w-4" />
+                      <MapPin className="h-4 w-4 text-indigo-600" />
                       Endereço de Entrega
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1752,35 +1806,50 @@ const PublicCheckout = () => {
                   {/* Opções de Frete */}
                   <div>
                     <h4 className="font-medium mb-4 flex items-center gap-2">
-                      <Truck className="h-4 w-4" />
+                      <Truck className="h-4 w-4 text-indigo-600" />
                       Opções de Frete *
                     </h4>
                     {!selectedShipping && (
                       <p className="text-xs text-red-500 mb-2">Selecione uma opção de frete para continuar</p>
                     )}
                     <div className="space-y-2">
-                      {shippingOptions.map((option) => (
-                        <div key={option.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="radio"
-                              id={option.id}
-                              name="frete"
-                              value={option.id}
-                              checked={selectedShipping === option.id}
-                              onChange={(e) => handleShippingChange(e.target.value)}
-                              className="w-4 h-4"
-                            />
-                            <label htmlFor={option.id} className="cursor-pointer">
-                              <span className="font-medium">{option.name}</span>
-                              <p className="text-sm text-muted-foreground">
-                                {option.company} - {formatDeliveryTime(option.delivery_time, option.company, option.id)}
-                              </p>
-                            </label>
+                      {shippingOptions.map((option) => {
+                        const isSelected = selectedShipping === option.id;
+                        const price = parseFloat(option.custom_price || option.price);
+                        const isFree = !price;
+                        return (
+                          <div
+                            key={option.id}
+                            onClick={() => handleShippingChange(option.id)}
+                            className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                              isSelected
+                                ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/20'
+                                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="radio"
+                                id={option.id}
+                                name="frete"
+                                value={option.id}
+                                checked={isSelected}
+                                onChange={(e) => handleShippingChange(e.target.value)}
+                                className="w-4 h-4 accent-indigo-600"
+                              />
+                              <label htmlFor={option.id} className="cursor-pointer">
+                                <span className="font-medium">{option.name}</span>
+                                <p className="text-sm text-muted-foreground">
+                                  {option.company} · {formatDeliveryTime(option.delivery_time, option.company, option.id)}
+                                </p>
+                              </label>
+                            </div>
+                            <span className={`font-bold ${isFree ? 'text-emerald-600' : ''}`}>
+                              {isFree ? 'Grátis' : formatCurrency(price)}
+                            </span>
                           </div>
-                          <span className="font-bold">{formatCurrency(parseFloat(option.custom_price || option.price))}</span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -1795,42 +1864,46 @@ const PublicCheckout = () => {
                           Forma de Pagamento
                         </h4>
                         <div className="space-y-2">
-                          <div 
-                            className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
-                              paymentMethod === 'pix' 
-                                ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20' 
-                                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                            }`}
-                            onClick={() => setPaymentMethod('pix')}
-                          >
-                            <div className="flex items-center gap-3">
-                              <input type="radio" checked={paymentMethod === 'pix'} onChange={() => setPaymentMethod('pix')} className="w-4 h-4" />
-                              <div>
-                                <span className="font-medium">PIX</span>
-                                {pixDiscountLoading ? (
-                                  <Badge variant="secondary" className="ml-2 text-xs">Carregando…</Badge>
-                                ) : effectivePixPercent > 0 ? (
-                                  <Badge className="ml-2 bg-emerald-500 text-white text-xs">{effectivePixPercent}% OFF</Badge>
-                                ) : null}
+                          {acceptPix && (
+                            <div 
+                              className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                                paymentMethod === 'pix' 
+                                  ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20' 
+                                  : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                              }`}
+                              onClick={() => setPaymentMethod('pix')}
+                            >
+                              <div className="flex items-center gap-3">
+                                <input type="radio" checked={paymentMethod === 'pix'} onChange={() => setPaymentMethod('pix')} className="w-4 h-4" />
+                                <div>
+                                  <span className="font-medium">PIX</span>
+                                  {pixDiscountLoading ? (
+                                    <Badge variant="secondary" className="ml-2 text-xs">Carregando…</Badge>
+                                  ) : effectivePixPercent > 0 ? (
+                                    <Badge className="ml-2 bg-emerald-500 text-white text-xs">{effectivePixPercent}% OFF</Badge>
+                                  ) : null}
+                                </div>
+                              </div>
+                              {currentPixDiscount > 0 && (
+                                <span className="text-emerald-600 font-semibold text-sm">- {formatCurrency(currentPixDiscount)}</span>
+                              )}
+                            </div>
+                          )}
+                          {acceptCard && (
+                            <div 
+                              className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                                paymentMethod === 'card' 
+                                  ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/20' 
+                                  : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                              }`}
+                              onClick={() => setPaymentMethod('card')}
+                            >
+                              <div className="flex items-center gap-3">
+                                <input type="radio" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} className="w-4 h-4" />
+                                <span className="font-medium">Cartão de Crédito</span>
                               </div>
                             </div>
-                            {currentPixDiscount > 0 && (
-                              <span className="text-emerald-600 font-semibold text-sm">- {formatCurrency(currentPixDiscount)}</span>
-                            )}
-                          </div>
-                          <div 
-                            className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
-                              paymentMethod === 'card' 
-                                ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/20' 
-                                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
-                            }`}
-                            onClick={() => setPaymentMethod('card')}
-                          >
-                            <div className="flex items-center gap-3">
-                              <input type="radio" checked={paymentMethod === 'card'} onChange={() => setPaymentMethod('card')} className="w-4 h-4" />
-                              <span className="font-medium">Cartão de Crédito</span>
-                            </div>
-                          </div>
+                          )}
                         </div>
                       </div>
                     </>
@@ -1937,14 +2010,27 @@ const PublicCheckout = () => {
                         <span>- {formatCurrency(couponDiscount)}</span>
                       </div>
                     )}
-                    
+
+                    {bogoDiscount > 0 && (
+                      <div className="space-y-1">
+                        {bogo.lines.map((l, i) => (
+                          <div key={i} className="flex justify-between items-center text-purple-600">
+                            <span className="flex items-center gap-1">
+                              <Gift className="h-4 w-4" /> {l.name}:
+                            </span>
+                            <span>- {formatCurrency(l.discount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     <Separator />
                     
                     <div className="flex justify-between items-center text-xl font-bold">
                       <span>Total:</span>
                       <span className="text-green-600">
                         {formatCurrency(
-                          Math.max(0, combinedSubtotal - currentPixDiscount - couponDiscount) +
+                          Math.max(0, combinedSubtotal - currentPixDiscount - couponDiscount - bogoDiscount) +
                           (selectedShipping && selectedShipping !== 'retirada' ? parseFloat(shippingOptions.find(opt => opt.id === selectedShipping)?.custom_price || shippingOptions.find(opt => opt.id === selectedShipping)?.price || '0') : 0)
                         )}
                       </span>
@@ -1952,7 +2038,7 @@ const PublicCheckout = () => {
                   </div>
 
                   <Button
-                    className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold py-3 text-lg shadow-lg shadow-emerald-500/25"
+                    className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 text-lg shadow-md"
                     onClick={() => processMultipleOrdersPayment(selectedOrders)}
                     disabled={loadingPayment || (paymentMethod === 'pix' && pixDiscountLoading)}
                   >
@@ -2026,9 +2112,28 @@ const PublicCheckout = () => {
                             <Badge variant="secondary" className="bg-slate-200 dark:bg-slate-700 font-medium">
                               Pedido #{order.id}
                             </Badge>
-                            <Badge className="bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0">
-                              ✓ Pago
-                            </Badge>
+                            {(() => {
+                              const hasTracking = !!(order.melhor_envio_tracking_code && order.melhor_envio_tracking_code.trim());
+                              if (order.is_cancelled) {
+                                return <Badge className="bg-gradient-to-r from-red-500 to-rose-500 text-white border-0">✕ Cancelado</Badge>;
+                              }
+                              if (order.is_paid && (order.order_status === 'enviado' || hasTracking)) {
+                                return <Badge className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white border-0">🚚 Enviado</Badge>;
+                              }
+                              if (order.is_paid && order.order_status === 'em_separacao') {
+                                return <Badge className="bg-gradient-to-r from-amber-500 to-yellow-500 text-white border-0">📦 Em Separação</Badge>;
+                              }
+                              if (order.is_paid && order.order_status === 'envio_pendente') {
+                                return <Badge className="bg-gradient-to-r from-orange-500 to-amber-500 text-white border-0">⏱ Envio Pendente</Badge>;
+                              }
+                              if (order.is_paid && order.order_status === 'liberado_retirada') {
+                                return <Badge className="bg-gradient-to-r from-indigo-500 to-violet-500 text-white border-0">🏬 Liberado p/ Retirada</Badge>;
+                              }
+                              if (order.is_paid) {
+                                return <Badge className="bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0">✓ Pago</Badge>;
+                              }
+                              return <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0">⏳ Pendente</Badge>;
+                            })()}
                           </div>
                           <p className="text-sm text-muted-foreground">
                             {formatBrasiliaDateLong(order.event_date)} • {order.event_type}
@@ -2036,6 +2141,25 @@ const PublicCheckout = () => {
                           <p className="text-sm text-muted-foreground">
                             {order.items.length} {order.items.length === 1 ? 'produto' : 'produtos'}
                           </p>
+                          {order.melhor_envio_tracking_code && (
+                            <div className="flex items-center gap-2 flex-wrap pt-1">
+                              <Badge variant="outline" className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-mono text-xs">
+                                📦 Rastreio: {order.melhor_envio_tracking_code}
+                              </Badge>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs"
+                                onClick={() => {
+                                  navigator.clipboard?.writeText(order.melhor_envio_tracking_code || '');
+                                  toast({ title: 'Código copiado!' });
+                                }}
+                              >
+                                Copiar
+                              </Button>
+                            </div>
+                          )}
                         </div>
                         <div className="text-right space-y-2">
                           <div className="text-xl font-bold text-green-600 dark:text-green-400">

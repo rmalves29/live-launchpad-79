@@ -331,6 +331,76 @@ serve(async (req) => {
     if (!isReadStatus) {
       console.log(`[zapi-webhook] 📋 EVENT type=${evtType} notification=${evtNotif} action=${evtAction} phone=${evtPhone} isGroup=${evtIsGroup} participant=${evtParticipant} participants=${JSON.stringify(evtParticipants)} instanceId=${payload.instanceId || ''}`);
     }
+
+    // ─── AUDITORIA: Eventos de conexão/desconexão Z-API ──────────────────
+    // Persiste em whatsapp_messages (type=system_log) toda vez que a Z-API
+    // notifica conexão/desconexão, para diagnosticar quedas frequentes.
+    const isConnectionEvent =
+      evtType === 'DisconnectedCallback' ||
+      evtType === 'ConnectedCallback' ||
+      evtType === 'NotificationDisconnectedCallback';
+    if (isConnectionEvent) {
+      try {
+        const integ = await resolveZapiIntegration(supabase, payload.instanceId, payload.connectedPhone);
+        if (integ?.tenant_id) {
+          const reason = (payload as any).reason || (payload as any).cause || (payload as any).error || '';
+          const connectedPhoneStr = payload.connectedPhone || '';
+          const msg = `Z-API ${evtType}${reason ? ` | reason=${reason}` : ''} | phone=${connectedPhoneStr} | instanceId=${payload.instanceId || ''}`;
+          await supabase.from('whatsapp_messages').insert({
+            tenant_id: integ.tenant_id,
+            phone: connectedPhoneStr || 'system',
+            message: msg,
+            type: 'system_log',
+            created_at: new Date().toISOString(),
+          });
+          console.log(`[zapi-webhook] 🔌 ${msg}`);
+
+          // 🛑 Auto-pausar envios em massa (sendflow/mass_message) quando o telefone desconectar
+          const isDisconnect =
+            evtType === 'DisconnectedCallback' ||
+            evtType === 'NotificationDisconnectedCallback';
+          if (isDisconnect) {
+            try {
+              const { data: pausedJobs, error: pauseErr } = await supabase
+                .from('sending_jobs')
+                .update({
+                  status: 'paused',
+                  paused_at: new Date().toISOString(),
+                  error_message: 'Pausado automaticamente: WhatsApp desconectado',
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('tenant_id', integ.tenant_id)
+                .eq('status', 'running')
+                .in('job_type', ['sendflow', 'mass_message', 'cobranca'])
+                .select('id, job_type');
+
+              if (pauseErr) {
+                console.error('[zapi-webhook] Erro ao pausar envios automáticos:', pauseErr.message);
+              } else if (pausedJobs && pausedJobs.length > 0) {
+                console.log(`[zapi-webhook] ⏸️ ${pausedJobs.length} envio(s) pausado(s) por desconexão do tenant ${integ.tenant_id}`);
+                await supabase.from('whatsapp_messages').insert({
+                  tenant_id: integ.tenant_id,
+                  phone: connectedPhoneStr || 'system',
+                  message: `Envios pausados automaticamente por desconexão (${pausedJobs.length} job(s)): ${pausedJobs.map((j: any) => `${j.job_type}#${String(j.id).slice(0, 8)}`).join(', ')}`,
+                  type: 'system_log',
+                  created_at: new Date().toISOString(),
+                });
+              }
+            } catch (pauseCatch: any) {
+              console.error('[zapi-webhook] Exceção ao auto-pausar envios:', pauseCatch?.message);
+            }
+          }
+        } else {
+          console.log(`[zapi-webhook] 🔌 ${evtType} (no tenant resolved) instanceId=${payload.instanceId}`);
+        }
+      } catch (logErr: any) {
+        console.error('[zapi-webhook] Failed to log connection event:', logErr?.message);
+      }
+      return new Response(JSON.stringify({ ok: true, logged: true }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
     
     // Log detalhado APENAS para eventos de grupo (participantes)
     const isGroupParticipantEvent = 
@@ -1220,7 +1290,27 @@ serve(async (req) => {
       // STOCK VALIDATION: Block if no stock available
       if (product.stock <= 0) {
         console.log(`[zapi-webhook] ❌ ESTOQUE ESGOTADO para ${product.code}: estoque atual = ${product.stock}`);
-        
+
+        // Tenta colocar na fila de espera automaticamente
+        let waitlistPosition: number | null = null;
+        try {
+          const { data: wl } = await supabase.functions.invoke('waitlist-enqueue', {
+            body: {
+              tenant_id: tenantId,
+              product_id: product.id,
+              qty: 1,
+              customer_phone: normalizedPhone,
+              source: 'whatsapp',
+            },
+          });
+          if (wl?.success) {
+            waitlistPosition = wl.position;
+            console.log(`[zapi-webhook] 🎯 Cliente ${normalizedPhone} entrou na fila de ${product.code} - posição ${wl.position}`);
+          }
+        } catch (wlErr) {
+          console.error(`[zapi-webhook] erro enqueue waitlist:`, wlErr);
+        }
+
         // Send out of stock message to customer via Z-API
         try {
           const { data: whatsappConfig } = await supabase
@@ -1234,7 +1324,9 @@ serve(async (req) => {
           if (whatsappConfig?.send_out_of_stock_msg === false) {
             console.log(`[zapi-webhook] ⏭️ Mensagem de estoque esgotado desativada para este tenant`);
           } else if (whatsappConfig?.zapi_instance_id && whatsappConfig?.zapi_token) {
-            const baseOutOfStockMessage = `😔 *Produto Esgotado*\n\nO produto *${product.name}* (código *${product.code}*) acabou no momento.💚`;
+            const baseOutOfStockMessage = waitlistPosition
+              ? `😔 *Produto Esgotado*\n\nO produto *${product.name}* (código *${product.code}*) acabou no momento.\n\n🎯 Te coloquei na *fila de espera*! Você é a *${waitlistPosition}ª* da fila. Assim que voltar ao estoque, separo uma unidade pra você e te aviso aqui no WhatsApp com o link de pagamento. 💚`
+              : `😔 *Produto Esgotado*\n\nO produto *${product.name}* (código *${product.code}*) acabou no momento.💚`;
             const outOfStockMessage = addMessageVariation(baseOutOfStockMessage);
             
             // Format phone for Z-API (needs 55 prefix)
@@ -1568,17 +1660,41 @@ serve(async (req) => {
         
         if (!preCheckStock || preCheckStock.stock < requestedQty) {
           console.log(`[zapi-webhook] ❌ ESTOQUE ESGOTADO (pre-check) para novo item ${product.code}: estoque real=${preCheckStock?.stock}`);
-          results.push({ 
-            code, 
-            success: false, 
+
+          // Tenta colocar na fila de espera automaticamente
+          let waitlistPosition: number | null = null;
+          try {
+            const { data: wl } = await supabase.functions.invoke('waitlist-enqueue', {
+              body: {
+                tenant_id: tenantId,
+                product_id: product.id,
+                qty: requestedQty,
+                customer_phone: normalizedPhone,
+                source: 'whatsapp',
+              },
+            });
+            if (wl?.success) {
+              waitlistPosition = wl.position;
+              console.log(`[zapi-webhook] 🎯 Cliente ${normalizedPhone} entrou na fila de ${product.code} - posição ${wl.position}`);
+            }
+          } catch (wlErr) {
+            console.error(`[zapi-webhook] erro enqueue waitlist:`, wlErr);
+          }
+
+          results.push({
+            code,
+            success: false,
             error: 'out_of_stock',
             product_name: product.name,
-            current_stock: 0
+            current_stock: 0,
+            waitlist_position: waitlistPosition,
           });
-          
+
           // Send out of stock message
           if (whatsappConfig?.send_out_of_stock_msg !== false) {
-            const outOfStockMsg = `❌ *Produto Esgotado!*\n\nO produto *${product.name}* (${product.code}) está esgotado.\n\nDesculpe pelo inconveniente! 😔`;
+            const outOfStockMsg = waitlistPosition
+              ? `😔 *Produto Esgotado*\n\nO produto *${product.name}* (${product.code}) está esgotado.\n\n🎯 Te coloquei na *fila de espera*! Você é a *${waitlistPosition}ª* da fila. Assim que voltar ao estoque, separo uma unidade pra você e te aviso aqui no WhatsApp com o link de pagamento. 💚`
+              : `❌ *Produto Esgotado!*\n\nO produto *${product.name}* (${product.code}) está esgotado.\n\nDesculpe pelo inconveniente! 😔`;
             await sendZAPIMessage(supabase, tenantId, senderPhone, outOfStockMsg);
           }
           continue;
@@ -2107,6 +2223,7 @@ async function findOrCreateOrder(
       is_paid: false,
       cart_id: cartId,
       whatsapp_group_name: groupName || null,
+      source: 'whatsapp',
     })
     .select()
     .single();
@@ -2309,70 +2426,80 @@ async function updateOrderTotal(supabase: any, orderId: number) {
               sent_at: now.toISOString(),
             });
 
-            // Se a loja tiver Template B (Com Link) configurado, envia agora.
-            // Se estiver em branco, NÃO envia nada (próxima adição que vai com link).
+            // Se a loja tiver Template B (Com Link) configurado, envia agora com botão se habilitado.
             try {
               const { data: integ } = await supabase
                 .from('integration_whatsapp')
-                .select('zapi_instance_id, zapi_token, zapi_client_token, template_com_link, is_active')
+                .select('zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, provider, template_com_link, item_added_button_enabled, item_added_button_label, item_added_button_url, is_active')
                 .eq('tenant_id', resolvedTenantId)
                 .eq('is_active', true)
                 .maybeSingle();
 
               const tplB = (integ?.template_com_link || '').trim();
               if (integ && tplB) {
-                // Monta link de checkout do tenant
-                const { data: tenantRow } = await supabase
-                  .from('tenants')
-                  .select('slug')
-                  .eq('id', resolvedTenantId)
-                  .maybeSingle();
-                const { data: settings } = await supabase
-                  .from('app_settings')
-                  .select('public_base_url')
-                  .limit(1)
-                  .maybeSingle();
+                const { data: tenantRow } = await supabase.from('tenants').select('slug').eq('id', resolvedTenantId).maybeSingle();
+                const { data: settings } = await supabase.from('app_settings').select('public_base_url').limit(1).maybeSingle();
                 const baseUrlPublic = settings?.public_base_url || 'https://live-launchpad-79.lovable.app';
                 const slug = tenantRow?.slug || resolvedTenantId;
                 const checkoutUrl = `${baseUrlPublic}/t/${slug}/checkout`;
 
-                // Substitui variáveis básicas (sem dados de produto: cliente respondeu SIM "solto").
-                // Remove linhas que dependem exclusivamente de variáveis de produto.
-                let body = tplB
+                let msgBody = tplB
                   .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
                   .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
-                body = body
+                msgBody = msgBody
                   .split('\n')
                   .filter((line: string) => !/\{\{(produto|quantidade|qtd_aleatoria|valor|preco|total|subtotal|codigo|valor_original|valor_promo)\}\}/.test(line))
                   .join('\n')
                   .trim();
 
-                if (body) {
-                  const zInstance = integ.zapi_instance_id;
-                  const zToken = integ.zapi_token;
-                  const zClient = integ.zapi_client_token;
-                  if (zInstance && zToken) {
-                    const sendUrl = `https://api.z-api.io/instances/${zInstance}/token/${zToken}/send-text`;
-                    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-                    if (zClient) headers['Client-Token'] = zClient;
-                    const finalMsg = addMessageVariation(body);
-                    const resp = await fetch(sendUrl, {
-                      method: 'POST',
-                      headers,
-                      body: JSON.stringify({ phone: normalizedPhone, message: finalMsg }),
-                    });
-                    const respText = await resp.text();
-                    console.log(`[zapi-webhook] 📤 Template B enviado pós-SIM (${resp.status}): ${respText.substring(0, 200)}`);
+                if (msgBody) {
+                  const finalMsg = addMessageVariation(msgBody);
+                  const provider = integ.provider || 'zapi';
+                  const buttonEnabled = integ.item_added_button_enabled !== false;
+                  const buttonLabel = (integ.item_added_button_label || 'Pagar Agora').toString().slice(0, 20);
+                  const buttonUrl = (integ.item_added_button_url || '').trim() || checkoutUrl;
 
-                    await supabase.from('whatsapp_messages').insert({
-                      tenant_id: resolvedTenantId,
-                      phone: normalizedPhone,
-                      message: finalMsg.substring(0, 500),
-                      type: 'consent_link',
-                      sent_at: new Date().toISOString(),
-                      delivery_status: resp.ok ? 'SENT' : 'FAILED',
-                    });
+                  let sendOk = false;
+
+                  if (provider === 'evolution') {
+                    const instanceName = integ.evolution_instance_name;
+                    if (instanceName) {
+                      const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL') || '';
+                      const EVOLUTION_API_KEY = Deno.env.get('EVOLUTION_API_KEY') || '';
+                      const evoHeaders = { 'Content-Type': 'application/json', 'apikey': EVOLUTION_API_KEY };
+                      await fetch(`${EVOLUTION_API_URL}/chat/sendPresence/${instanceName}`, { method: 'POST', headers: evoHeaders, body: JSON.stringify({ number: normalizedPhone, options: { presence: 'composing', delay: 2000 } }) });
+                      await new Promise((r) => setTimeout(r, 2000));
+                      const resp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, { method: 'POST', headers: evoHeaders, body: JSON.stringify({ number: normalizedPhone, text: finalMsg }) });
+                      sendOk = resp.ok;
+                      console.log(`[zapi-webhook] 📤 Template B pós-SIM (Evolution, ${resp.status})`);
+                    }
+                  } else {
+                    const zInstance = integ.zapi_instance_id;
+                    const zToken = integ.zapi_token;
+                    const zClient = integ.zapi_client_token;
+                    if (zInstance && zToken) {
+                      const zapiHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+                      if (zClient) zapiHeaders['Client-Token'] = zClient;
+                      const baseZapiUrl = `https://api.z-api.io/instances/${zInstance}/token/${zToken}`;
+                      const useButton = buttonEnabled && buttonUrl;
+                      const sendUrl = useButton ? `${baseZapiUrl}/send-button-actions` : `${baseZapiUrl}/send-text`;
+                      const reqBody = useButton
+                        ? { phone: normalizedPhone, message: finalMsg, buttonActions: [{ id: '1', type: 'URL', url: buttonUrl, label: buttonLabel }] }
+                        : { phone: normalizedPhone, message: finalMsg };
+                      const resp = await fetch(sendUrl, { method: 'POST', headers: zapiHeaders, body: JSON.stringify(reqBody) });
+                      sendOk = resp.ok;
+                      console.log(`[zapi-webhook] 📤 Template B pós-SIM (Z-API${useButton ? ' + botão' : ''}, ${resp.status})`);
+                    }
                   }
+
+                  await supabase.from('whatsapp_messages').insert({
+                    tenant_id: resolvedTenantId,
+                    phone: normalizedPhone,
+                    message: finalMsg.substring(0, 500),
+                    type: 'consent_link',
+                    sent_at: new Date().toISOString(),
+                    delivery_status: sendOk ? 'SENT' : 'FAILED',
+                  });
                 } else {
                   console.log('[zapi-webhook] ℹ️ Template B ficou vazio após filtrar variáveis de produto. Não enviando.');
                 }

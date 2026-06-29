@@ -7,10 +7,31 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const BLING_API_URL = 'https://www.bling.com.br/Api/v3';
+const BLING_API_URL = 'https://api.bling.com.br/Api/v3';
 
 // Helper to delay between requests (Bling limit: 3 req/second)
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const createProcessingStatus = () => `processing:${crypto.randomUUID()}`;
+const isActiveProcessingStatus = (status?: string | null) => Boolean(status?.startsWith('processing:'));
+
+// Normaliza UF: converte nome do estado (ex: "São Paulo", "Goias") para sigla de 2 letras (ex: "SP", "GO")
+const UF_MAP: Record<string, string> = {
+  'acre': 'AC', 'alagoas': 'AL', 'amapa': 'AP', 'amazonas': 'AM',
+  'bahia': 'BA', 'ceara': 'CE', 'distrito federal': 'DF', 'espirito santo': 'ES',
+  'goias': 'GO', 'maranhao': 'MA', 'mato grosso': 'MT', 'mato grosso do sul': 'MS',
+  'minas gerais': 'MG', 'para': 'PA', 'paraiba': 'PB', 'parana': 'PR',
+  'pernambuco': 'PE', 'piaui': 'PI', 'rio de janeiro': 'RJ', 'rio grande do norte': 'RN',
+  'rio grande do sul': 'RS', 'rondonia': 'RO', 'roraima': 'RR', 'santa catarina': 'SC',
+  'sao paulo': 'SP', 'sergipe': 'SE', 'tocantins': 'TO',
+};
+function normalizeUF(state: string | null | undefined): string {
+  if (!state) return '';
+  const trimmed = state.trim();
+  if (trimmed.length === 2) return trimmed.toUpperCase();
+  const key = trimmed.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return UF_MAP[key] || trimmed.toUpperCase().slice(0, 2);
+}
 
 /** Log a Bling sync operation to bling_sync_logs table */
 async function logBlingSync(
@@ -308,7 +329,7 @@ async function refreshBlingToken(supabase: any, integration: any): Promise<strin
   try {
     const credentials = btoa(`${integration.client_id}:${integration.client_secret}`);
 
-    const response = await fetch('https://www.bling.com.br/Api/v3/oauth/token', {
+    const response = await fetch('https://api.bling.com.br/Api/v3/oauth/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -516,7 +537,7 @@ async function getOrCreateBlingContactId(
   const customerComplement = order.customer_complement || customer?.complement || '';
   const customerNeighborhood = order.customer_neighborhood || customer?.neighborhood || '';
   const customerCity = order.customer_city || customer?.city || '';
-  const customerState = order.customer_state || customer?.state || '';
+  const customerState = normalizeUF(order.customer_state || customer?.state || '');
   const customerEmail = customer?.email || '';
 
   // Helper to build address data for updates
@@ -863,7 +884,7 @@ async function sendOrderToBling(
   const customerComplement = order.customer_complement || customer?.complement || '';
   const customerNeighborhood = order.customer_neighborhood || customer?.neighborhood || '';
   const customerCity = order.customer_city || customer?.city || '';
-  const customerState = order.customer_state || customer?.state || '';
+  const customerState = normalizeUF(order.customer_state || customer?.state || '');
   const customerName = order.customer_name || customer?.name || 'Cliente';
 
   // Determinar CFOP com base no estado do cliente vs estado da loja
@@ -1647,7 +1668,7 @@ serve(async (req) => {
         }
 
         // TRAVA DE CONCORRÊNCIA: Verificar se outro processo já está sincronizando este pedido
-        if (order.bling_sync_status === 'processing') {
+        if (isActiveProcessingStatus(order.bling_sync_status)) {
           console.log(`[bling-sync-orders] Order ${order.id} is already being processed by another request`);
           result = {
             skipped: true,
@@ -1658,15 +1679,30 @@ serve(async (req) => {
         }
 
         // Marcar como "processing" IMEDIATAMENTE para evitar envios paralelos
-        const { error: lockError } = await supabase
+        const processingStatus = createProcessingStatus();
+        let lockQuery = supabase
           .from('orders')
-          .update({ bling_sync_status: 'processing' })
+          .update({ bling_sync_status: processingStatus })
           .eq('id', order.id)
           .eq('tenant_id', tenant_id)
-          .is('bling_order_id', null); // Só trava se ainda não tem bling_order_id
+          .is('bling_order_id', null);
 
-        if (lockError) {
+        lockQuery = order.bling_sync_status
+          ? lockQuery.eq('bling_sync_status', order.bling_sync_status)
+          : lockQuery.is('bling_sync_status', null);
+
+        const { data: lockedOrder, error: lockError } = await lockQuery
+          .select('id')
+          .maybeSingle();
+
+        if (lockError || !lockedOrder) {
           console.error(`[bling-sync-orders] Failed to acquire lock for order ${order.id}:`, lockError);
+          result = {
+            skipped: true,
+            reason: 'order_already_processing',
+            order_id: order.id,
+          };
+          break;
         }
 
         let cartItems: any[] = [];
@@ -1910,6 +1946,14 @@ serve(async (req) => {
       }
 
       case 'sync_all': {
+        // Recuperar locks antigos do formato legado que podiam ficar presos em "processing" após timeout/interrupção.
+        await supabase
+          .from('orders')
+          .update({ bling_sync_status: 'error' })
+          .eq('tenant_id', tenant_id)
+          .is('bling_order_id', null)
+          .eq('bling_sync_status', 'processing');
+
         // Buscar pedidos pagos que ainda não foram sincronizados e não estão sendo processados
         let ordersQuery = supabase
           .from('orders')
@@ -1917,7 +1961,7 @@ serve(async (req) => {
           .eq('tenant_id', tenant_id)
           .eq('is_paid', true)
           .is('bling_order_id', null)
-          .or('bling_sync_status.is.null,bling_sync_status.eq.error'); // Ignorar pedidos em 'processing'
+          .or('bling_sync_status.is.null,bling_sync_status.eq.error'); // Ignorar pedidos em processamento ativo
         
         // Aplicar filtro de data se fornecido
         if (start_date) {
@@ -1973,14 +2017,23 @@ serve(async (req) => {
 
           try {
             // TRAVA DE CONCORRÊNCIA: Marcar como processing antes de enviar
-            const { error: lockErr } = await supabase
+            const processingStatus = createProcessingStatus();
+            let lockQuery = supabase
               .from('orders')
-              .update({ bling_sync_status: 'processing' })
+              .update({ bling_sync_status: processingStatus })
               .eq('id', order.id)
               .eq('tenant_id', tenant_id)
               .is('bling_order_id', null);
 
-            if (lockErr) {
+            lockQuery = order.bling_sync_status
+              ? lockQuery.eq('bling_sync_status', order.bling_sync_status)
+              : lockQuery.is('bling_sync_status', null);
+
+            const { data: lockedOrder, error: lockErr } = await lockQuery
+              .select('id')
+              .maybeSingle();
+
+            if (lockErr || !lockedOrder) {
               console.log(`[bling-sync-orders] Could not lock order ${order.id}, skipping`);
               results.push({ order_id: order.id, success: false, error: 'Lock failed' });
               continue;
@@ -2006,8 +2059,8 @@ serve(async (req) => {
             // Skip orders without items
             if (cartItems.length === 0) {
               console.log(`[bling-sync-orders] Skipping order ${order.id}: no items`);
-              await supabase.from('orders').update({ bling_sync_status: null }).eq('id', order.id);
-              results.push({ order_id: order.id, success: false, error: 'Pedido sem itens' });
+              await supabase.from('orders').update({ bling_sync_status: 'skipped_no_items' }).eq('id', order.id).eq('tenant_id', tenant_id);
+              results.push({ order_id: order.id, success: true, skipped: true, error: 'Pedido sem itens' });
               continue;
             }
 
@@ -2085,7 +2138,7 @@ serve(async (req) => {
           .eq('tenant_id', tenant_id);
 
         result = {
-          synced: results.filter(r => r.success).length,
+          synced: results.filter(r => r.success && !r.skipped).length,
           failed: results.filter(r => !r.success).length,
           skipped: results.filter(r => r.error === 'Pedido sem itens').length,
           details: results,
@@ -2364,7 +2417,7 @@ serve(async (req) => {
             bairro: testCustomer.neighborhood || '',
             cep: customerCep,
             municipio: testCustomer.city || '',
-            uf: testCustomer.state || '',
+            uf: normalizeUF(testCustomer.state),
           },
         };
 
@@ -2397,7 +2450,7 @@ serve(async (req) => {
               bairro: testCustomer.neighborhood || '',
               cep: customerCep,
               municipio: testCustomer.city || '',
-              uf: testCustomer.state || '',
+              uf: normalizeUF(testCustomer.state),
             },
           };
         }
