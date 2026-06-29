@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { simulateTyping, addMessageVariation } from "../_shared/anti-block-delay.ts";
 import {
   sendText as evoSendText,
+  sendImage as evoSendImage,
   sendImageByUrl as evoSendImageByUrl,
 } from "../_shared/evolution-api.ts";
 
@@ -234,10 +235,17 @@ async function sendGroupMessageEvolution(
       : groupId.replace(/-group$/i, "") + "@g.us";
 
     if (imageUrl) {
-      const imgResult = await evoSendImageByUrl(instanceName, evoGroupId, imageUrl, message);
+      // 1) Try base64 upload (most reliable for Baileys/Evolution with groups)
+      let imgResult = await evoSendImage(instanceName, evoGroupId, imageUrl, message);
       if (imgResult.success) return imgResult;
 
-      console.warn(`[sendflow-process] Evolution media failed for group ${evoGroupId}; falling back to text. Error: ${imgResult.error}`);
+      console.warn(`[sendflow-process] Evolution sendImage (base64) failed for ${evoGroupId}: ${imgResult.error}. Trying URL mode.`);
+      // 2) Fallback to URL mode
+      imgResult = await evoSendImageByUrl(instanceName, evoGroupId, imageUrl, message);
+      if (imgResult.success) return imgResult;
+
+      console.warn(`[sendflow-process] Evolution media failed for ${evoGroupId}; falling back to text-only. Error: ${imgResult.error}`);
+      // 3) Last resort: text only
       const textResult = await evoSendText(instanceName, evoGroupId, message);
       if (textResult.success) return textResult;
       return { success: false, error: imgResult.error || textResult.error };

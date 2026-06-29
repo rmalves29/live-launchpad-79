@@ -79,7 +79,7 @@ export async function sendText(instanceName: string, phone: string, message: str
 export async function sendImage(instanceName: string, phone: string, imageUrl: string, caption?: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
     const mediaPayload = await loadMediaPayload(imageUrl, "produto.jpg");
-    const res = await fetchWithTimeout(evoUrl("/message/sendMedia/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "image", ...mediaPayload, caption: caption || "" }) });
+    const res = await fetchWithTimeout(evoUrl("/message/sendMedia/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "image", ...mediaPayload, caption: caption || "" }) }, 60_000);
     return await readEvolutionResult(res);
   } catch (e: any) { return { success: false, error: e.name === "AbortError" ? "Evolution timeout ao enviar imagem" : e.message }; }
 }
@@ -90,7 +90,7 @@ export async function sendImageByUrl(instanceName: string, phone: string, imageU
       method: "POST",
       headers: getHeaders(),
       body: JSON.stringify({ number: phone, mediatype: "image", mimetype: "image/jpeg", media: imageUrl, caption: caption || "" }),
-    }, 20_000);
+    }, 60_000);
     return await readEvolutionResult(res);
   } catch (e: any) { return { success: false, error: e.name === "AbortError" ? "Evolution timeout ao enviar imagem por URL" : e.message }; }
 }
