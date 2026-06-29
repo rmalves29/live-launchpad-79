@@ -12,6 +12,40 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+async function setEvolutionWebhook(apiUrl: string, apiKey: string, instance: string, webhookUrl: string) {
+  const headers = { "Content-Type": "application/json", "apikey": apiKey };
+  const events = ["MESSAGES_UPSERT", "CONNECTION_UPDATE"];
+
+  // Tentativa 1: payload v2 (objeto "webhook")
+  const v2Body = {
+    webhook: {
+      enabled: true,
+      url: webhookUrl,
+      webhookByEvents: false,
+      webhookBase64: false,
+      events,
+    },
+  };
+  try {
+    const r = await fetch(`${apiUrl}/webhook/set/${instance}`, { method: "POST", headers, body: JSON.stringify(v2Body) });
+    const txt = await r.text();
+    console.log(`[evolution-webhook-setup] v2 status=${r.status} body=${txt.slice(0,300)}`);
+    if (r.ok) return { ok: true, format: "v2", response: txt };
+  } catch (e: any) { console.warn(`[evolution-webhook-setup] v2 erro: ${e.message}`); }
+
+  // Tentativa 2: payload plano (compat antiga)
+  const flatBody = { url: webhookUrl, enabled: true, webhook_by_events: false, webhook_base64: false, events };
+  try {
+    const r = await fetch(`${apiUrl}/webhook/set/${instance}`, { method: "POST", headers, body: JSON.stringify(flatBody) });
+    const txt = await r.text();
+    console.log(`[evolution-webhook-setup] flat status=${r.status} body=${txt.slice(0,300)}`);
+    return { ok: r.ok, format: "flat", response: txt };
+  } catch (e: any) {
+    console.error(`[evolution-webhook-setup] flat erro: ${e.message}`);
+    return { ok: false, error: e.message };
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
