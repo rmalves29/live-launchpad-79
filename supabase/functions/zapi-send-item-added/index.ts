@@ -504,20 +504,33 @@ serve(async (req) => {
         await sendPresenceAvailable(instanceName, formattedPhone);
         await sendPresenceComposing(instanceName, formattedPhone, calcTypingDuration(message.length));
 
-        // IMPORTANTE: Evolution /message/sendButtons frequentemente retorna 200 OK
-        // mas NÃO entrega em instâncias Baileys. Para garantir entrega, sempre
-        // enviamos como texto com o link embutido.
-        let finalMessage = message;
-        if (useButton && resolvedButtonUrl && !finalMessage.includes(resolvedButtonUrl)) {
-          finalMessage = message + "\n\n🔗 " + resolvedButtonUrl;
+        let buttonDelivered = false;
+        if (useButton && resolvedButtonUrl) {
+          const btnLabel = (credentials as any).buttonLabel || "Pagar Agora";
+          const btnRes = await evoSendButton(instanceName, formattedPhone, message, btnLabel, resolvedButtonUrl);
+          if (btnRes.success && btnRes.messageId) {
+            buttonDelivered = true;
+            sendOk = true;
+            zapiMessageId = btnRes.messageId;
+            console.log("[zapi-send-item-added] Evolution sendButton OK | msgId:", zapiMessageId);
+          } else {
+            console.warn("[zapi-send-item-added] Evolution sendButton falhou, fallback texto:", btnRes.error || "no messageId");
+          }
         }
-        const result = await evoSendText(instanceName, formattedPhone, finalMessage);
-        sendOk = result.success;
-        zapiMessageId = result.messageId || null;
-        if (!sendOk) {
-          console.error("[zapi-send-item-added] Evolution sendText falhou:", result.error);
-        } else {
-          console.log("[zapi-send-item-added] Evolution OK | phone:", formattedPhone, "| msgId:", zapiMessageId);
+
+        if (!buttonDelivered) {
+          let finalMessage = message;
+          if (useButton && resolvedButtonUrl && !finalMessage.includes(resolvedButtonUrl)) {
+            finalMessage = message + "\n\n🔗 " + resolvedButtonUrl;
+          }
+          const result = await evoSendText(instanceName, formattedPhone, finalMessage);
+          sendOk = result.success;
+          zapiMessageId = result.messageId || null;
+          if (!sendOk) {
+            console.error("[zapi-send-item-added] Evolution sendText falhou:", result.error);
+          } else {
+            console.log("[zapi-send-item-added] Evolution sendText OK | phone:", formattedPhone, "| msgId:", zapiMessageId);
+          }
         }
       } else {
 
