@@ -244,20 +244,21 @@ export default function SendFlow() {
 
     setCheckingConnection(true);
     try {
-      const { data, error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
-        body: { action: 'status', tenant_id: tenant.id }
-      });
+      // Read connection status from DB (instant) instead of live API call
+      const { data, error } = await supabaseTenant.raw
+        .from('integration_whatsapp')
+        .select('status, provider')
+        .eq('tenant_id', tenant.id)
+        .maybeSingle();
 
-      // Silenciar erros - apenas definir como desconectado
       if (error) {
-        console.log('WhatsApp não configurado ou erro de conexão:', error.message);
+        console.log('Erro ao verificar conexão WhatsApp:', error.message);
         setWhatsappConnected(false);
         return;
       }
 
-      setWhatsappConnected(data?.connected === true);
+      setWhatsappConnected(data?.status === 'connected');
     } catch (error) {
-      // Silenciar erros - não exibir toast
       console.log('WhatsApp não conectado');
       setWhatsappConnected(false);
     } finally {
