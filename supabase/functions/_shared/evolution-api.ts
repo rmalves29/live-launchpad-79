@@ -76,6 +76,41 @@ export async function sendText(instanceName: string, phone: string, message: str
   } catch (e: any) { return { success: false, error: e.name === "AbortError" ? "Evolution timeout ao enviar texto" : e.message }; }
 }
 
+export async function sendButton(
+  instanceName: string,
+  phone: string,
+  message: string,
+  buttonLabel: string,
+  buttonUrl: string,
+  title?: string,
+  footer?: string,
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const payload: Record<string, unknown> = {
+      number: phone,
+      title: title || "",
+      description: message,
+      footer: footer || "",
+      buttons: [
+        {
+          type: "url",
+          displayText: (buttonLabel || "Pagar Agora").slice(0, 20),
+          url: buttonUrl,
+        },
+      ],
+    };
+    const res = await fetchWithTimeout(
+      evoUrl("/message/sendButtons/" + instanceName),
+      { method: "POST", headers: getHeaders(), body: JSON.stringify(payload) },
+      60_000,
+    );
+    return await readEvolutionResult(res);
+  } catch (e: any) {
+    return { success: false, error: e.name === "AbortError" ? "Evolution timeout ao enviar botão" : e.message };
+  }
+}
+
+
 export async function sendImage(instanceName: string, phone: string, imageUrl: string, caption?: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
     const mediaPayload = await loadMediaPayload(imageUrl, "produto.jpg");

@@ -10,10 +10,12 @@ import {
 } from "../_shared/anti-block-delay.ts";
 import {
   sendText as evoSendText,
+  sendButton as evoSendButton,
   sendPresenceAvailable,
   sendPresenceComposing,
   calcTypingDuration,
 } from "../_shared/evolution-api.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -446,10 +448,11 @@ serve(async (req) => {
         const template = templateFromTable || (credentials as any).templateItemAdded || (credentials as any).templateComLink || getDefaultTemplateComLink();
         const baseMessage = formatMessage(template, body, orderCtx).replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrl).replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrl);
         message = addMessageVariation(baseMessage, false);
-        if ((credentials as any).buttonEnabled && provider === "zapi") {
+        if ((credentials as any).buttonEnabled) {
           useButton = true;
           resolvedButtonUrl = ((credentials as any).buttonUrl && (credentials as any).buttonUrl.trim()) ? (credentials as any).buttonUrl.trim() : checkoutUrl;
         }
+
       } else {
         const decision = await evaluateConsent(supabase, tenant_id, formattedPhone);
 
@@ -468,13 +471,11 @@ serve(async (req) => {
             .replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrlA);
           message = addMessageVariation(baseMessageA, false);
           consentDecisionAfterSend = "request_sent";
-          if ((credentials as any).buttonEnabled && provider === "zapi") {
+          if ((credentials as any).buttonEnabled) {
             useButton = true;
             resolvedButtonUrl = ((credentials as any).buttonUrl && (credentials as any).buttonUrl.trim()) ? (credentials as any).buttonUrl.trim() : checkoutUrlA;
           }
-          if (provider === "evolution") {
-            message = message + "\n\n🔗 " + checkoutUrlA;
-          }
+
         } else {
           templateType = "B";
           activeStateId = decision.stateId;
@@ -484,10 +485,11 @@ serve(async (req) => {
           const baseMessage = formatMessage(template, body, orderCtx).replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrl).replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrl);
           message = addMessageVariation(baseMessage, false);
           consentDecisionAfterSend = "active_sent";
-          if ((credentials as any).buttonEnabled && provider === "zapi") {
+          if ((credentials as any).buttonEnabled) {
             useButton = true;
             resolvedButtonUrl = ((credentials as any).buttonUrl && (credentials as any).buttonUrl.trim()) ? (credentials as any).buttonUrl.trim() : checkoutUrl;
           }
+
         }
       }
 
@@ -501,9 +503,27 @@ serve(async (req) => {
         const instanceName = (credentials as any).instanceName;
         await sendPresenceAvailable(instanceName, formattedPhone);
         await sendPresenceComposing(instanceName, formattedPhone, calcTypingDuration(message.length));
-        const result = await evoSendText(instanceName, formattedPhone, message);
-        sendOk = result.success;
+
+        if (useButton && resolvedButtonUrl) {
+          const buttonLabel = (credentials as any).buttonLabel || "Pagar Agora";
+          const btnResult = await evoSendButton(instanceName, formattedPhone, message, buttonLabel, resolvedButtonUrl);
+          if (btnResult.success) {
+            sendOk = true;
+            zapiMessageId = btnResult.messageId || null;
+          } else {
+            console.warn("[zapi-send-item-added] Evolution sendButton falhou, fallback texto:", btnResult.error);
+            const fallbackMessage = message + "\n\n🔗 " + resolvedButtonUrl;
+            const result = await evoSendText(instanceName, formattedPhone, fallbackMessage);
+            sendOk = result.success;
+            zapiMessageId = result.messageId || null;
+          }
+        } else {
+          const result = await evoSendText(instanceName, formattedPhone, message);
+          sendOk = result.success;
+          zapiMessageId = result.messageId || null;
+        }
       } else {
+
         const { instanceId, token, clientToken } = credentials as any;
         const baseUrl = ZAPI_BASE_URL + "/instances/" + instanceId + "/token/" + token;
 
