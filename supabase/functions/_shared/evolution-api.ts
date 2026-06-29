@@ -5,6 +5,10 @@ function getHeaders(): Record<string, string> {
   return { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY };
 }
 
+function evoUrl(path: string): string {
+  return EVOLUTION_API_URL.replace(/\/+$/, "") + path;
+}
+
 async function readEvolutionResult(res: Response): Promise<{ success: boolean; messageId?: string; error?: string }> {
   const text = await res.text();
   let data: any = null;
@@ -31,35 +35,35 @@ async function readEvolutionResult(res: Response): Promise<{ success: boolean; m
 
 export async function sendText(instanceName: string, phone: string, message: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    const res = await fetch(EVOLUTION_API_URL + "/message/sendText/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, text: message }) });
+    const res = await fetch(evoUrl("/message/sendText/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, text: message }) });
     return await readEvolutionResult(res);
   } catch (e: any) { return { success: false, error: e.message }; }
 }
 
 export async function sendImage(instanceName: string, phone: string, imageUrl: string, caption?: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    const res = await fetch(EVOLUTION_API_URL + "/message/sendMedia/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "image", mimetype: "image/jpeg", fileName: "produto.jpg", media: imageUrl, caption: caption || "" }) });
+    const res = await fetch(evoUrl("/message/sendMedia/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "image", mimetype: "image/jpeg", fileName: "produto.jpg", media: imageUrl, caption: caption || "" }) });
     return await readEvolutionResult(res);
   } catch (e: any) { return { success: false, error: e.message }; }
 }
 
 export async function sendAudio(instanceName: string, phone: string, audioUrl: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    const res = await fetch(EVOLUTION_API_URL + "/message/sendMedia/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "audio", media: audioUrl }) });
+    const res = await fetch(evoUrl("/message/sendMedia/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "audio", media: audioUrl }) });
     return await readEvolutionResult(res);
   } catch (e: any) { return { success: false, error: e.message }; }
 }
 
 export async function sendVideo(instanceName: string, phone: string, videoUrl: string, caption?: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    const res = await fetch(EVOLUTION_API_URL + "/message/sendMedia/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "video", media: videoUrl, caption: caption || "" }) });
+    const res = await fetch(evoUrl("/message/sendMedia/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "video", media: videoUrl, caption: caption || "" }) });
     return await readEvolutionResult(res);
   } catch (e: any) { return { success: false, error: e.message }; }
 }
 
 export async function sendDocument(instanceName: string, phone: string, documentUrl: string, fileName: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
-    const res = await fetch(EVOLUTION_API_URL + "/message/sendMedia/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "document", media: documentUrl, fileName }) });
+    const res = await fetch(evoUrl("/message/sendMedia/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, mediatype: "document", media: documentUrl, fileName }) });
     return await readEvolutionResult(res);
   } catch (e: any) { return { success: false, error: e.message }; }
 }
@@ -67,7 +71,7 @@ export async function sendDocument(instanceName: string, phone: string, document
 export async function sendPresenceComposing(instanceName: string, phone: string, durationMs?: number): Promise<void> {
   try {
     const wait = durationMs || 3000;
-    await fetch(EVOLUTION_API_URL + "/chat/sendPresence/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, options: { presence: "composing", delay: wait } }) });
+    await fetch(evoUrl("/chat/sendPresence/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, options: { presence: "composing", delay: wait } }) });
     await new Promise((r) => setTimeout(r, wait));
   } catch (e: any) { console.warn("[evolution] sendPresenceComposing error: " + e.message); }
 }
@@ -80,20 +84,20 @@ export function calcTypingDuration(messageLength: number): number {
 
 export async function sendPresenceAvailable(instanceName: string, phone: string): Promise<void> {
   try {
-    await fetch(EVOLUTION_API_URL + "/chat/sendPresence/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, options: { presence: "available" } }) });
+    await fetch(evoUrl("/chat/sendPresence/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ number: phone, options: { presence: "available" } }) });
     await new Promise((r) => setTimeout(r, 500 + Math.random() * 500));
   } catch (e: any) { console.warn("[evolution] sendPresenceAvailable error: " + e.message); }
 }
 
 export async function markMessageAsRead(instanceName: string, phone: string, messageId: string): Promise<void> {
   try {
-    await fetch(EVOLUTION_API_URL + "/chat/markMessageAsRead/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ readMessages: [{ remoteJid: phone, id: messageId, fromMe: false }] }) });
+    await fetch(evoUrl("/chat/markMessageAsRead/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ readMessages: [{ remoteJid: phone, id: messageId, fromMe: false }] }) });
   } catch (e: any) { console.warn("[evolution] markMessageAsRead error: " + e.message); }
 }
 
 export async function sendReaction(instanceName: string, phone: string, messageId: string, emoji: string): Promise<void> {
   try {
-    await fetch(EVOLUTION_API_URL + "/message/sendReaction/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ key: { remoteJid: phone, id: messageId, fromMe: false }, reaction: emoji }) });
+    await fetch(evoUrl("/message/sendReaction/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ key: { remoteJid: phone, id: messageId, fromMe: false }, reaction: emoji }) });
     await new Promise((r) => setTimeout(r, 800 + Math.random() * 700));
   } catch (e: any) { console.warn("[evolution] sendReaction error: " + e.message); }
 }
@@ -103,7 +107,7 @@ export function getRandomReactionEmoji(): string { return REACTION_EMOJIS[Math.f
 
 export async function checkPhone(instanceName: string, phone: string): Promise<string> {
   try {
-    const res = await fetch(EVOLUTION_API_URL + "/chat/whatsappNumbers/" + instanceName, { method: "POST", headers: getHeaders(), body: JSON.stringify({ numbers: [phone] }) });
+    const res = await fetch(evoUrl("/chat/whatsappNumbers/" + instanceName), { method: "POST", headers: getHeaders(), body: JSON.stringify({ numbers: [phone] }) });
     const data = await res.json();
     const result = Array.isArray(data) ? data[0] : null;
     if (result?.exists && result?.jid) return result.jid.replace("@s.whatsapp.net", "").replace("@g.us", "");
@@ -113,7 +117,7 @@ export async function checkPhone(instanceName: string, phone: string): Promise<s
 
 export async function getGroupParticipants(instanceName: string, groupJid: string): Promise<string[]> {
   try {
-    const res = await fetch(EVOLUTION_API_URL + "/group/findGroupInfos/" + instanceName + "?groupJid=" + groupJid, { method: "GET", headers: getHeaders() });
+    const res = await fetch(evoUrl("/group/findGroupInfos/" + instanceName + "?groupJid=" + groupJid), { method: "GET", headers: getHeaders() });
     const data = await res.json();
     return (data?.participants || []).map((p: any) => p.id || p);
   } catch (e: any) { console.warn("[evolution] getGroupParticipants error: " + e.message); return []; }
@@ -121,7 +125,7 @@ export async function getGroupParticipants(instanceName: string, groupJid: strin
 
 export async function createInstance(instanceName: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const res = await fetch(EVOLUTION_API_URL + "/instance/create", { method: "POST", headers: getHeaders(), body: JSON.stringify({ instanceName, integration: "WHATSAPP-BAILEYS", qrcode: true }) });
+    const res = await fetch(evoUrl("/instance/create"), { method: "POST", headers: getHeaders(), body: JSON.stringify({ instanceName, integration: "WHATSAPP-BAILEYS", qrcode: true }) });
     const data = await res.json();
     if (res.ok) return { success: true };
     return { success: false, error: JSON.stringify(data).substring(0, 200) };
@@ -130,7 +134,7 @@ export async function createInstance(instanceName: string): Promise<{ success: b
 
 export async function getQRCode(instanceName: string): Promise<{ qrcode?: string; error?: string }> {
   try {
-    const res = await fetch(EVOLUTION_API_URL + "/instance/connect/" + instanceName, { method: "GET", headers: getHeaders() });
+    const res = await fetch(evoUrl("/instance/connect/" + instanceName), { method: "GET", headers: getHeaders() });
     const data = await res.json();
     if (res.ok) return { qrcode: data?.base64 || data?.qrcode?.base64 };
     return { error: JSON.stringify(data).substring(0, 200) };
@@ -139,7 +143,7 @@ export async function getQRCode(instanceName: string): Promise<{ qrcode?: string
 
 export async function getInstanceStatus(instanceName: string): Promise<{ connected: boolean; status?: string; user?: { phone?: string } }> {
   try {
-    const res = await fetch(EVOLUTION_API_URL + "/instance/fetchInstances?instanceName=" + instanceName, { method: "GET", headers: getHeaders() });
+    const res = await fetch(evoUrl("/instance/fetchInstances?instanceName=" + instanceName), { method: "GET", headers: getHeaders() });
     const data = await res.json();
     const instance = Array.isArray(data) ? data[0] : data;
     const state = instance?.instance?.state || instance?.connectionStatus || instance?.state || "";
@@ -152,8 +156,8 @@ export async function getInstanceStatus(instanceName: string): Promise<{ connect
 
 export async function deleteInstance(instanceName: string): Promise<{ success: boolean; error?: string }> {
   try {
-    await fetch(EVOLUTION_API_URL + "/instance/logout/" + instanceName, { method: "DELETE", headers: getHeaders() });
-    const res = await fetch(EVOLUTION_API_URL + "/instance/delete/" + instanceName, { method: "DELETE", headers: getHeaders() });
+    await fetch(evoUrl("/instance/logout/" + instanceName), { method: "DELETE", headers: getHeaders() });
+    const res = await fetch(evoUrl("/instance/delete/" + instanceName), { method: "DELETE", headers: getHeaders() });
     if (res.ok) return { success: true };
     return { success: false, error: "Erro ao deletar instancia" };
   } catch (e: any) { return { success: false, error: e.message }; }
