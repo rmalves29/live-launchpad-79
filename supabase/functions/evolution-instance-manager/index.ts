@@ -55,21 +55,7 @@ Deno.serve(async (req) => {
         const evolutionApiUrl = Deno.env.get("EVOLUTION_API_URL") || "";
         const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY") || "";
         const webhookUrl = `${supabaseUrl}/functions/v1/evolution-webhook`;
-        try {
-          await fetch(`${evolutionApiUrl}/webhook/set/${slugName}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "apikey": evolutionApiKey },
-            body: JSON.stringify({
-              url: webhookUrl,
-              webhook_by_events: false,
-              webhook_base64: false,
-              events: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
-            }),
-          });
-          console.log(`[evolution-instance-manager] Webhook configurado: ${webhookUrl}`);
-        } catch (whErr: any) {
-          console.warn(`[evolution-instance-manager] Erro ao configurar webhook (não fatal): ${whErr.message}`);
-        }
+        await setEvolutionWebhook(evolutionApiUrl, evolutionApiKey, slugName, webhookUrl);
 
         // Save to DB
         const { data: existing } = await supabase.from("integration_whatsapp").select("id").eq("tenant_id", tenant_id).maybeSingle();
