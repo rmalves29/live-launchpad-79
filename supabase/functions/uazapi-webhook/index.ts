@@ -165,23 +165,11 @@ Deno.serve(async (req) => {
       const chatName = data?.chatname || data?.chatName || data?.groupName || data?.pushName || "";
       const connectedPhone = data?.owner || data?.wid || data?.phoneconnected || "";
 
-      // Insere registro espelho em whatsapp_messages (também serve para dedup)
-      try {
-        await supabase.from("whatsapp_messages").insert({
-          tenant_id: tenantId,
-          phone: senderPhone,
-          message: (text || "[mídia]").substring(0, 1000),
-          type: fromMe ? "outgoing" : "incoming",
-          zapi_message_id: messageId,
-          delivery_status: fromMe ? "SENT" : "RECEIVED",
-          created_at: new Date().toISOString(),
-        });
-      } catch (e: any) {
-        // Pode dar conflito se já inserido — ok, é só log
-        if (!String(e.message || "").includes("duplicate")) {
-          console.warn("[uazapi-webhook] insert whatsapp_messages erro:", e.message);
-        }
-      }
+      // NÃO inserir em whatsapp_messages aqui — o zapi-webhook faz o próprio
+      // controle de deduplicação/inserção. Se inserirmos antes, ele pula o
+      // processamento com skipped=duplicate_message_db e nenhum item-added é
+      // disparado, nenhum pedido é criado.
+
 
       // ─── BRIDGE: re-emite o evento em formato Z-API para zapi-webhook ────
       // Assim a lógica de consentimento/SIM-NÃO/grupos/códigos de produto/sorteio
