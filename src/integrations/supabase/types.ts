@@ -1914,6 +1914,9 @@ export type Database = {
           template_item_added: string | null
           template_solicitacao: string | null
           tenant_id: string
+          uazapi_admin_token: string | null
+          uazapi_token: string | null
+          uazapi_url: string | null
           updated_at: string | null
           webhook_secret: string
           zapi_client_token: string | null
@@ -1945,6 +1948,9 @@ export type Database = {
           template_item_added?: string | null
           template_solicitacao?: string | null
           tenant_id: string
+          uazapi_admin_token?: string | null
+          uazapi_token?: string | null
+          uazapi_url?: string | null
           updated_at?: string | null
           webhook_secret: string
           zapi_client_token?: string | null
@@ -1976,6 +1982,9 @@ export type Database = {
           template_item_added?: string | null
           template_solicitacao?: string | null
           tenant_id?: string
+          uazapi_admin_token?: string | null
+          uazapi_token?: string | null
+          uazapi_url?: string | null
           updated_at?: string | null
           webhook_secret?: string
           zapi_client_token?: string | null

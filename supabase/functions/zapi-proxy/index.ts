@@ -63,7 +63,7 @@ serve(async (req) => {
     // Get Z-API integration config for this tenant
     const { data: integration, error: integrationError } = await supabase
       .from("integration_whatsapp")
-      .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, is_active, provider")
+      .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, uazapi_url, uazapi_token, is_active, provider")
       .eq("tenant_id", tenant_id)
       .eq("is_active", true)
       .maybeSingle();
@@ -111,22 +111,24 @@ serve(async (req) => {
       });
     }
 
-    if (integration.provider === "evolution") {
-      const instanceName = integration.evolution_instance_name;
-      const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL") || "";
-      const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "";
-      const evoH = { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY };
+    if (integration.provider === "uazapi") {
+      const uazUrl = (integration.uazapi_url || "").replace(/\/+$/, "");
+      const uazTok = integration.uazapi_token || "";
+      if (!uazUrl || !uazTok) {
+        return new Response(JSON.stringify(notConfiguredPayload("uazapi não configurada")), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      const uazH: Record<string, string> = { "Content-Type": "application/json", "token": uazTok };
 
       if (action === "status") {
         try {
-          const res = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${instanceName}`, { method: "GET", headers: evoH });
-          const data = await res.json();
-          const inst = Array.isArray(data) ? data[0] : data;
-          const state = inst?.instance?.state || inst?.connectionStatus || inst?.state || "";
-          const connected = state === "open";
-          const ownerJid = inst?.instance?.ownerJid || inst?.ownerJid || "";
-          const phone = ownerJid ? ownerJid.split("@")[0] : undefined;
-          return new Response(JSON.stringify({ connected, status: state, user: phone ? { phone } : undefined }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          const res = await fetch(`${uazUrl}/instance/status`, { method: "GET", headers: uazH });
+          const data = await res.json().catch(() => null);
+          const inst = data?.instance || data;
+          const state = inst?.status || "";
+          const connected = state === "connected";
+          const ownerJid = inst?.owner || inst?.wid || "";
+          const phoneStr = ownerJid ? String(ownerJid).split("@")[0] : undefined;
+          return new Response(JSON.stringify({ connected, status: state, user: phoneStr ? { phone: phoneStr } : undefined }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (e: any) {
           return new Response(JSON.stringify({ connected: false, status: "error", error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
@@ -134,38 +136,25 @@ serve(async (req) => {
 
       if (action === "list-groups") {
         try {
-          const baseUrl = EVOLUTION_API_URL.replace(/\/+$/, "");
-          const url = `${baseUrl}/group/fetchAllGroups/${instanceName}?getParticipants=false`;
-          console.log(`[zapi-proxy] Evolution list-groups GET ${url}`);
-          const res = await fetch(url, { method: "GET", headers: evoH });
-          const text = await res.text();
-          console.log(`[zapi-proxy] Evolution list-groups status=${res.status} bodyLen=${text.length} preview=${text.substring(0, 200)}`);
-          let data: any = null;
-          try { data = JSON.parse(text); } catch { data = null; }
-          // Evolution may return array, or { groups: [...] }, or wrapped under data
-          let groups: any[] = [];
-          if (Array.isArray(data)) groups = data;
-          else if (Array.isArray(data?.groups)) groups = data.groups;
-          else if (Array.isArray(data?.data)) groups = data.data;
-          console.log(`[zapi-proxy] Evolution list-groups parsed groups=${groups.length}`);
+          const res = await fetch(`${uazUrl}/group/list`, { method: "GET", headers: uazH });
+          const data = await res.json().catch(() => []);
+          const groups: any[] = Array.isArray(data) ? data : (data?.groups || []);
           const normalized = groups.map((g: any) => ({
-            id: g.id || g.remoteJid || g.groupJid || "",
+            id: g.id || g.jid || g.remoteJid || "",
             name: g.subject || g.name || g.id || "",
             isGroup: true,
-            participantCount: g.size || g.participantsCount || g.participants?.length || 0,
+            participantCount: g.size || g.participantsCount || (g.participants?.length || 0),
             lastMessageTime: String(g.creation || g.subjectTime || "0"),
-          })).filter((g: any) => g.id)
-            .sort((a: any, b: any) => parseInt(b.lastMessageTime) - parseInt(a.lastMessageTime));
+          })).filter((g: any) => g.id).sort((a: any, b: any) => parseInt(b.lastMessageTime) - parseInt(a.lastMessageTime));
           return new Response(JSON.stringify(normalized), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (e: any) {
-          console.error(`[zapi-proxy] Evolution list-groups error: ${e.message}`);
           return new Response(JSON.stringify([]), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
       }
 
       if (action === "disconnect" || action === "stop") {
         try {
-          await fetch(`${EVOLUTION_API_URL}/instance/logout/${instanceName}`, { method: "DELETE", headers: evoH });
+          await fetch(`${uazUrl}/instance/disconnect`, { method: "POST", headers: uazH });
           return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (e: any) {
           return new Response(JSON.stringify({ success: false, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -174,12 +163,9 @@ serve(async (req) => {
 
       if (action === "send-text" || action === "send-group") {
         try {
-          const resp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
-            method: "POST", headers: evoH,
-            body: JSON.stringify({ number: phone, text: message }),
-          });
+          const resp = await fetch(`${uazUrl}/send/text`, { method: "POST", headers: uazH, body: JSON.stringify({ number: phone, text: message }) });
           const data = await readJsonOrText(resp);
-          return new Response(JSON.stringify({ sent: resp.ok, messageId: data?.key?.id, error: resp.ok ? undefined : data?.raw || data }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          return new Response(JSON.stringify({ sent: resp.ok, messageId: data?.id || data?.messageid, error: resp.ok ? undefined : data?.raw || data }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (e: any) {
           return new Response(JSON.stringify({ sent: false, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
@@ -187,27 +173,19 @@ serve(async (req) => {
 
       if (action === "send-image" || action === "send-group-image") {
         try {
-          const mediaPayload = await loadMediaPayload(mediaUrl, "imagem.jpg");
-          const resp = await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${instanceName}`, {
-            method: "POST", headers: evoH,
-            body: JSON.stringify({ number: phone, mediatype: "image", ...mediaPayload, caption: caption || "" }),
-          });
+          const resp = await fetch(`${uazUrl}/send/media`, { method: "POST", headers: uazH, body: JSON.stringify({ number: phone, type: "image", file: mediaUrl, text: caption || "" }) });
           const data = await readJsonOrText(resp);
-          return new Response(JSON.stringify({ sent: resp.ok, messageId: data?.key?.id, error: resp.ok ? undefined : data?.raw || data }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          return new Response(JSON.stringify({ sent: resp.ok, messageId: data?.id || data?.messageid, error: resp.ok ? undefined : data?.raw || data }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (e: any) {
           return new Response(JSON.stringify({ sent: false, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
       }
 
       if (action === "send-button-actions") {
-        // Evolution doesn't support Z-API button format — send as plain text with link appended
         try {
           const linkUrl = Array.isArray(buttonActions) && buttonActions[0]?.url ? buttonActions[0].url : "";
           const fullMsg = linkUrl ? `${message}\n\n🔗 ${linkUrl}` : message;
-          const resp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
-            method: "POST", headers: evoH,
-            body: JSON.stringify({ number: phone, text: fullMsg }),
-          });
+          const resp = await fetch(`${uazUrl}/send/text`, { method: "POST", headers: uazH, body: JSON.stringify({ number: phone, text: fullMsg }) });
           return new Response(JSON.stringify({ sent: resp.ok }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (e: any) {
           return new Response(JSON.stringify({ sent: false, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -216,9 +194,9 @@ serve(async (req) => {
 
       if (action === "group-metadata") {
         try {
-          const resp = await fetch(`${EVOLUTION_API_URL}/group/findGroupInfos/${instanceName}?groupJid=${encodeURIComponent(phone)}`, { method: "GET", headers: evoH });
-          const data = await resp.json();
-          return new Response(JSON.stringify(data), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          const resp = await fetch(`${uazUrl}/group/info`, { method: "POST", headers: uazH, body: JSON.stringify({ groupjid: phone }) });
+          const data = await resp.json().catch(() => null);
+          return new Response(JSON.stringify(data || {}), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (e: any) {
           return new Response(JSON.stringify({ error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
@@ -226,12 +204,9 @@ serve(async (req) => {
 
       if (action === "profile-picture") {
         try {
-          const resp = await fetch(`${EVOLUTION_API_URL}/chat/fetchProfilePictureUrl/${instanceName}`, {
-            method: "POST", headers: evoH,
-            body: JSON.stringify({ number: phone }),
-          });
-          const data = await resp.json();
-          return new Response(JSON.stringify({ profilePictureUrl: data?.profilePictureUrl || data?.url || null }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          const resp = await fetch(`${uazUrl}/contact/picture`, { method: "POST", headers: uazH, body: JSON.stringify({ number: phone }) });
+          const data = await resp.json().catch(() => null);
+          return new Response(JSON.stringify({ profilePictureUrl: data?.profilePictureUrl || data?.url || data?.picture || null }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (e: any) {
           return new Response(JSON.stringify({ profilePictureUrl: null }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
@@ -239,10 +214,11 @@ serve(async (req) => {
 
       if (action === "qr-code" || action === "get_qr") {
         try {
-          const resp = await fetch(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, { method: "GET", headers: evoH });
-          const data = await resp.json();
-          const qr = data?.base64 || data?.qrcode?.base64 || data?.code || null;
-          return new Response(JSON.stringify({ value: qr, qrcode: qr, base64: qr }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          const resp = await fetch(`${uazUrl}/instance/connect`, { method: "POST", headers: uazH, body: JSON.stringify({}) });
+          const data = await resp.json().catch(() => null);
+          const inst = data?.instance || data;
+          const qr = inst?.qrcode || null;
+          return new Response(JSON.stringify({ value: qr, qrcode: qr, base64: qr, pairCode: inst?.paircode }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (e: any) {
           return new Response(JSON.stringify({ value: null, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
@@ -250,8 +226,8 @@ serve(async (req) => {
 
       if (action === "restart") {
         try {
-          await fetch(`${EVOLUTION_API_URL}/instance/logout/${instanceName}`, { method: "DELETE", headers: evoH });
-          const resp = await fetch(`${EVOLUTION_API_URL}/instance/connect/${instanceName}`, { method: "GET", headers: evoH });
+          await fetch(`${uazUrl}/instance/disconnect`, { method: "POST", headers: uazH });
+          const resp = await fetch(`${uazUrl}/instance/connect`, { method: "POST", headers: uazH, body: JSON.stringify({}) });
           return new Response(JSON.stringify({ success: resp.ok }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (e: any) {
           return new Response(JSON.stringify({ success: false, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -260,29 +236,22 @@ serve(async (req) => {
 
       if (action === "send-document") {
         try {
-          const mediaPayload = await loadMediaPayload(mediaUrl, "documento.pdf");
-          const resp = await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${instanceName}`, {
-            method: "POST", headers: evoH,
-            body: JSON.stringify({ number: phone, mediatype: "document", ...mediaPayload, fileName: mediaPayload.fileName }),
-          });
+          const resp = await fetch(`${uazUrl}/send/media`, { method: "POST", headers: uazH, body: JSON.stringify({ number: phone, type: "document", file: mediaUrl, docName: "documento.pdf" }) });
           const data = await readJsonOrText(resp);
-          return new Response(JSON.stringify({ sent: resp.ok, messageId: data?.key?.id, error: resp.ok ? undefined : data?.raw || data }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          return new Response(JSON.stringify({ sent: resp.ok, messageId: data?.id || data?.messageid, error: resp.ok ? undefined : data?.raw || data }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (e: any) {
           return new Response(JSON.stringify({ sent: false, error: e.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
       }
 
-      // Tags/labels: Evolution (Baileys) não tem equivalente nativo ao sistema de tags da Z-API.
-      // Retornamos respostas seguras para não quebrar a UI.
       if (action === "list-tags") {
         return new Response(JSON.stringify([]), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       if (action === "add-tag") {
-        return new Response(JSON.stringify({ success: false, error: "Tags não suportadas na Evolution API" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ success: false, error: "Tags não suportadas na uazapi via proxy" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      // For other actions not yet supported for Evolution, return safe empty response
-      const payload = notConfiguredPayload("Ação não suportada para Evolution API via zapi-proxy");
+      const payload = notConfiguredPayload("Ação não suportada para uazapi via zapi-proxy");
       return new Response(JSON.stringify(payload), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 

@@ -28,7 +28,7 @@ interface ConfirmationLinkRequest {
 async function getCredentials(supabase: any, tenantId: string) {
   const { data, error } = await supabase
     .from("integration_whatsapp")
-    .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, provider, is_active, item_added_confirmation_template")
+    .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, uazapi_url, uazapi_token, provider, is_active, item_added_confirmation_template")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .maybeSingle();
@@ -38,9 +38,9 @@ async function getCredentials(supabase: any, tenantId: string) {
   const provider = data.provider || "zapi";
   const confirmationTemplate = data.item_added_confirmation_template || getDefaultConfirmationTemplate();
 
-  if (provider === "evolution") {
-    if (!data.evolution_instance_name) return null;
-    return { provider: "evolution" as const, instanceName: data.evolution_instance_name, confirmationTemplate };
+  if (provider === "uazapi") {
+    if (!((data.uazapi_url && data.uazapi_token) ? (data.uazapi_url + "|" + data.uazapi_token) : null)) return null;
+    return { provider: "uazapi" as const, instanceName: ((data.uazapi_url && data.uazapi_token) ? (data.uazapi_url + "|" + data.uazapi_token) : null), confirmationTemplate };
   }
   if (!data.zapi_instance_id || !data.zapi_token) return null;
   return {
@@ -155,7 +155,7 @@ serve(async (req) => {
     let sendOk = false;
     let zapiMessageId: string | null = null;
 
-    if (credentials.provider === "evolution") {
+    if (credentials.provider === "uazapi") {
       await sendPresenceAvailable(credentials.instanceName, formattedPhone);
       await sendPresenceComposing(credentials.instanceName, formattedPhone, calcTypingDuration(message.length));
       const result = await evoSendText(credentials.instanceName, formattedPhone, message);

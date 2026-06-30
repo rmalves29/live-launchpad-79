@@ -2,13 +2,14 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { simulateTyping } from "../_shared/anti-block-delay.ts";
 import {
-  sendText as evoSendText,
-  sendImage as evoSendImage,
-  sendDocument as evoSendDocument,
+  sendText as uazSendText,
+  sendImage as uazSendImage,
+  sendDocument as uazSendDocument,
   sendPresenceAvailable,
   sendPresenceComposing,
   calcTypingDuration,
-} from "../_shared/evolution-api.ts";
+  type UazapiConfig,
+} from "../_shared/uazapi-api.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -26,28 +27,30 @@ interface SendMessageRequest {
   messageType?: "text" | "image" | "document";
 }
 
-async function getCredentials(supabase: any, tenantId: string) {
+type Credentials =
+  | { provider: "uazapi"; cfg: UazapiConfig }
+  | { provider: "zapi"; instanceId: string; token: string; clientToken: string }
+  | { error: string };
+
+async function getCredentials(supabase: any, tenantId: string): Promise<Credentials> {
   const { data, error } = await supabase
     .from("integration_whatsapp")
-    .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, provider, is_active")
+    .select("zapi_instance_id, zapi_token, zapi_client_token, uazapi_url, uazapi_token, provider, is_active")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .maybeSingle();
 
-  if (error) {
-    console.error("[zapi-send-message] Error fetching credentials:", error);
-    return { error: "Erro ao buscar credenciais" };
-  }
-  if (!data) return { error: "Integracao WhatsApp nao configurada" };
+  if (error) return { error: "Erro ao buscar credenciais" };
+  if (!data) return { error: "Integração WhatsApp não configurada" };
 
   const provider = data.provider || "zapi";
-  if (provider === "evolution") {
-    if (!data.evolution_instance_name) return { error: "evolution_instance_name nao configurado" };
-    return { provider: "evolution" as const, instanceName: data.evolution_instance_name };
+  if (provider === "uazapi") {
+    if (!data.uazapi_url || !data.uazapi_token) return { error: "Credenciais uazapi incompletas" };
+    return { provider: "uazapi", cfg: { url: data.uazapi_url, token: data.uazapi_token } };
   }
   if (!data.zapi_instance_id || !data.zapi_token) return { error: "Credenciais Z-API incompletas" };
   return {
-    provider: "zapi" as const,
+    provider: "zapi",
     instanceId: data.zapi_instance_id,
     token: data.zapi_token,
     clientToken: data.zapi_client_token || "",
@@ -60,29 +63,25 @@ function formatPhoneNumber(phone: string): string {
   return cleaned;
 }
 
-// Detect group identifiers (Z-API: "<id>-group", Evolution/WA: "<id>@g.us")
 function isGroupJid(phone: string): boolean {
   return phone.includes("@g.us") || /-group$/i.test(phone);
 }
 
-// Normalize group JID for each provider
-function normalizeGroupJid(phone: string, provider: "zapi" | "evolution"): string {
+function normalizeGroupJid(phone: string, provider: "zapi" | "uazapi"): string {
   const id = phone.replace("@g.us", "").replace(/-group$/i, "");
-  if (provider === "evolution") return id + "@g.us";
+  if (provider === "uazapi") return id + "@g.us";
   return id + "-group"; // Z-API native format
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const timestamp = new Date().toISOString();
-
   try {
     const body: SendMessageRequest = await req.json();
     const { tenant_id, phone, message, mediaUrl, caption, messageType = "text" } = body;
 
     if (!tenant_id || !phone || !message) {
-      return new Response(JSON.stringify({ error: "tenant_id, phone e message sao obrigatorios" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ error: "tenant_id, phone e message são obrigatórios" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -113,22 +112,23 @@ serve(async (req) => {
     let zapiMessageId: string | null = null;
     let zapiZaapId: string | null = null;
 
-    if (credentials.provider === "evolution") {
+    if (credentials.provider === "uazapi") {
       if (!isGroup) {
-        await sendPresenceAvailable(credentials.instanceName, formattedPhone);
-        await sendPresenceComposing(credentials.instanceName, formattedPhone, calcTypingDuration(message.length));
+        await sendPresenceAvailable(credentials.cfg, formattedPhone);
+        await sendPresenceComposing(credentials.cfg, formattedPhone, calcTypingDuration(message.length));
       }
-      let result: { success: boolean; error?: string };
+      let result: { success: boolean; messageId?: string; error?: string };
       if (messageType === "image" && mediaUrl) {
-        result = await evoSendImage(credentials.instanceName, formattedPhone, mediaUrl, caption);
+        result = await uazSendImage(credentials.cfg, formattedPhone, mediaUrl, caption);
       } else if (messageType === "document" && mediaUrl) {
-        result = await evoSendDocument(credentials.instanceName, formattedPhone, mediaUrl);
+        result = await uazSendDocument(credentials.cfg, formattedPhone, mediaUrl);
       } else {
-        result = await evoSendText(credentials.instanceName, formattedPhone, message);
+        result = await uazSendText(credentials.cfg, formattedPhone, message);
       }
       sendOk = result.success;
-      if (!sendOk) console.error("[zapi-send-message] Evolution error:", result.error, "| phone:", formattedPhone, "| type:", messageType);
-      else console.log("[zapi-send-message] Evolution OK | phone:", formattedPhone);
+      zapiMessageId = result.messageId || null;
+      if (!sendOk) console.error("[zapi-send-message] uazapi error:", result.error, "| phone:", formattedPhone);
+      else console.log("[zapi-send-message] uazapi OK | phone:", formattedPhone);
     } else {
       await simulateTyping(credentials.instanceId, credentials.token, credentials.clientToken, formattedPhone);
       const baseUrl = ZAPI_BASE_URL + "/instances/" + credentials.instanceId + "/token/" + credentials.token;
@@ -137,10 +137,10 @@ serve(async (req) => {
 
       let response: Response;
       if (messageType === "image") {
-        if (!mediaUrl) return new Response(JSON.stringify({ error: "mediaUrl obrigatorio" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (!mediaUrl) return new Response(JSON.stringify({ error: "mediaUrl obrigatório" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         response = await fetch(baseUrl + "/send-image", { method: "POST", headers, body: JSON.stringify({ phone: formattedPhone, image: mediaUrl, caption: caption || "" }) });
       } else if (messageType === "document") {
-        if (!mediaUrl) return new Response(JSON.stringify({ error: "mediaUrl obrigatorio" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (!mediaUrl) return new Response(JSON.stringify({ error: "mediaUrl obrigatório" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         response = await fetch(baseUrl + "/send-document", { method: "POST", headers, body: JSON.stringify({ phone: formattedPhone, document: mediaUrl }) });
       } else {
         response = await fetch(baseUrl + "/send-text", { method: "POST", headers, body: JSON.stringify({ phone: formattedPhone, message }) });
@@ -152,7 +152,7 @@ serve(async (req) => {
         const rd = JSON.parse(responseText);
         zapiMessageId = rd.messageId || rd.zapiMessageId || null;
         zapiZaapId = rd.zaapId || rd.id || null;
-      } catch {}
+      } catch { /* ignore */ }
     }
 
     try {

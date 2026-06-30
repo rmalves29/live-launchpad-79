@@ -30,7 +30,7 @@ interface SendRequest {
 async function getCredentials(supabase: any, tenantId: string) {
   const { data, error } = await supabase
     .from("integration_whatsapp")
-    .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, provider")
+    .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, uazapi_url, uazapi_token, provider")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .maybeSingle();
@@ -39,9 +39,9 @@ async function getCredentials(supabase: any, tenantId: string) {
 
   const provider = data.provider || "zapi";
 
-  if (provider === "evolution") {
-    if (!data.evolution_instance_name) return null;
-    return { provider: "evolution", instanceName: data.evolution_instance_name };
+  if (provider === "uazapi") {
+    if (!((data.uazapi_url && data.uazapi_token) ? (data.uazapi_url + "|" + data.uazapi_token) : null)) return null;
+    return { provider: "uazapi", instanceName: ((data.uazapi_url && data.uazapi_token) ? (data.uazapi_url + "|" + data.uazapi_token) : null) };
   }
 
   if (!data.zapi_instance_id || !data.zapi_token) return null;
@@ -241,7 +241,7 @@ serve(async (req) => {
           let sent = false;
           let errMsg: string | undefined;
 
-          if (creds.provider === "evolution") {
+          if (creds.provider === "uazapi") {
             const result = await sendToGroupEvolution(creds.instanceName!, group.group_jid, content_type, content_text, media_url);
             sent = result.success;
             errMsg = result.error;

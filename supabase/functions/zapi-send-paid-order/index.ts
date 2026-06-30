@@ -40,7 +40,7 @@ function validateInternalRequest(req: Request): boolean {
 async function getCredentials(supabase: any, tenantId: string) {
   const { data, error } = await supabase
     .from("integration_whatsapp")
-    .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, provider, is_active, send_paid_order_msg")
+    .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, uazapi_url, uazapi_token, provider, is_active, send_paid_order_msg")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .maybeSingle();
@@ -49,9 +49,9 @@ async function getCredentials(supabase: any, tenantId: string) {
   if (data.send_paid_order_msg === false) return { disabled: true };
 
   const provider = data.provider || "zapi";
-  if (provider === "evolution") {
-    if (!data.evolution_instance_name) return null;
-    return { provider: "evolution" as const, instanceName: data.evolution_instance_name, disabled: false };
+  if (provider === "uazapi") {
+    if (!((data.uazapi_url && data.uazapi_token) ? (data.uazapi_url + "|" + data.uazapi_token) : null)) return null;
+    return { provider: "uazapi" as const, instanceName: ((data.uazapi_url && data.uazapi_token) ? (data.uazapi_url + "|" + data.uazapi_token) : null), disabled: false };
   }
   if (!data.zapi_instance_id || !data.zapi_token) return null;
   return {
@@ -152,7 +152,7 @@ serve(async (req) => {
     let zapiMessageId: string | null = null;
     let zapiZaapId: string | null = null;
 
-    if (credentials.provider === "evolution") {
+    if (credentials.provider === "uazapi") {
       await sendPresenceAvailable(credentials.instanceName, formattedPhone);
       await sendPresenceComposing(credentials.instanceName, formattedPhone, calcTypingDuration(message.length));
       const result = await evoSendText(credentials.instanceName, formattedPhone, message);
