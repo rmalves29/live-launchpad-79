@@ -153,17 +153,50 @@ Deno.serve(async (req) => {
 
     // ─── 3) Mensagens (incoming/outgoing) ───────────────────────────────────
     if (event === "messages" || event === "messages.upsert" || event === "message" || data?.text || data?.message || data?.messageText) {
-      const remoteJid: string = data?.chatid || data?.chatId || data?.key?.remoteJid || data?.from || data?.sender || data?.remoteJid || "";
+      const remoteJid: string = data?.chatid || data?.chatId || data?.key?.remoteJid || data?.from || data?.remoteJid || "";
       const fromMe: boolean = !!(data?.fromMe ?? data?.fromme ?? data?.key?.fromMe);
       const text = extractText(data);
       const messageId: string = data?.id || data?.messageid || data?.key?.id || data?.messageId || crypto.randomUUID();
       const isGroup = isGroupJid(remoteJid) || !!data?.isGroup;
-      const senderJid = data?.participant || data?.senderId || data?.author || data?.key?.participant || "";
-      const participantPhone = phoneFromJid(senderJid);
+      // Em grupos, o JID/telefone do remetente aparece em diferentes campos
+      // dependendo da versão da uazapi: sender, senderJid, senderLid, participant, author, key.participant, sender_phone, etc.
+      const senderJid =
+        data?.sender ||
+        data?.senderId ||
+        data?.senderJid ||
+        data?.sender_jid ||
+        data?.senderLid ||
+        data?.sender_lid ||
+        data?.participant ||
+        data?.author ||
+        data?.key?.participant ||
+        data?.participantJid ||
+        data?.participant_jid ||
+        "";
+      let participantPhone = phoneFromJid(senderJid);
+      // Fallbacks adicionais quando o JID veio sem dígitos (ex: LID puro)
+      if (!participantPhone) {
+        participantPhone = String(
+          data?.senderPhone ||
+          data?.sender_phone ||
+          data?.participantPhone ||
+          data?.participant_phone ||
+          ""
+        ).replace(/\D/g, "");
+      }
       const chatPhone = phoneFromJid(remoteJid);
-      const senderPhone = participantPhone || chatPhone;
+      // Para grupos: NUNCA usar o ID do grupo como telefone do cliente.
+      const senderPhone = participantPhone || (isGroup ? "" : chatPhone);
       const chatName = data?.chatname || data?.chatName || data?.groupName || data?.pushName || "";
       const connectedPhone = data?.owner || data?.wid || data?.phoneconnected || "";
+
+      if (isGroup && !participantPhone) {
+        console.warn(
+          `[uazapi-webhook] ⚠️ Mensagem de grupo sem participantPhone identificável. ` +
+          `Campos disponíveis em data: ${Object.keys(data || {}).join(", ")}`
+        );
+        console.warn(`[uazapi-webhook] payload bruto: ${JSON.stringify(data).slice(0, 800)}`);
+      }
 
       // NÃO inserir em whatsapp_messages aqui — o zapi-webhook faz o próprio
       // controle de deduplicação/inserção. Se inserirmos antes, ele pula o
