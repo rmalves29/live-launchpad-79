@@ -2461,17 +2461,18 @@ async function updateOrderTotal(supabase: any, orderId: number) {
 
                   let sendOk = false;
 
-                  if (provider === 'evolution') {
-                    const instanceName = integ.evolution_instance_name;
-                    if (instanceName) {
-                      const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL') || '';
-                      const EVOLUTION_API_KEY = Deno.env.get('EVOLUTION_API_KEY') || '';
-                      const evoHeaders = { 'Content-Type': 'application/json', 'apikey': EVOLUTION_API_KEY };
-                      await fetch(`${EVOLUTION_API_URL}/chat/sendPresence/${instanceName}`, { method: 'POST', headers: evoHeaders, body: JSON.stringify({ number: normalizedPhone, options: { presence: 'composing', delay: 2000 } }) });
-                      await new Promise((r) => setTimeout(r, 2000));
-                      const resp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, { method: 'POST', headers: evoHeaders, body: JSON.stringify({ number: normalizedPhone, text: finalMsg }) });
+                  if (provider === 'uazapi') {
+                    const uazUrl = (integ.uazapi_url || '').replace(/\/+$/, '');
+                    const uazTok = integ.uazapi_token || '';
+                    if (uazUrl && uazTok) {
+                      const uazH = { 'Content-Type': 'application/json', 'token': uazTok };
+                      try {
+                        await fetch(`${uazUrl}/send/presence`, { method: 'POST', headers: uazH, body: JSON.stringify({ number: normalizedPhone, presence: 'composing', delay: 2000 }) });
+                        await new Promise((r) => setTimeout(r, 2000));
+                      } catch (_) {}
+                      const resp = await fetch(`${uazUrl}/send/text`, { method: 'POST', headers: uazH, body: JSON.stringify({ number: normalizedPhone, text: finalMsg }) });
                       sendOk = resp.ok;
-                      console.log(`[zapi-webhook] 📤 Template B pós-SIM (Evolution, ${resp.status})`);
+                      console.log(`[zapi-webhook] 📤 Template B pós-SIM (uazapi, ${resp.status})`);
                     }
                   } else {
                     const zInstance = integ.zapi_instance_id;
