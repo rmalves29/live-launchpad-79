@@ -2515,9 +2515,22 @@ async function updateOrderTotal(supabase: any, orderId: number) {
                         await fetch(`${uazUrl}/send/presence`, { method: 'POST', headers: uazH, body: JSON.stringify({ number: normalizedPhone, presence: 'composing', delay: 2000 }) });
                         await new Promise((r) => setTimeout(r, 2000));
                       } catch (_) {}
-                      const resp = await fetch(`${uazUrl}/send/text`, { method: 'POST', headers: uazH, body: JSON.stringify({ number: normalizedPhone, text: finalMsg }) });
+                      const useButton = buttonEnabled && buttonUrl;
+                      let resp = await fetch(`${uazUrl}${useButton ? '/send/menu' : '/send/text'}`, {
+                        method: 'POST',
+                        headers: uazH,
+                        body: JSON.stringify(useButton
+                          ? { number: normalizedPhone, type: 'button', text: finalMsg, choices: [`${buttonLabel}|${buttonUrl}`] }
+                          : { number: normalizedPhone, text: finalMsg }
+                        ),
+                      });
+                      if (useButton && !resp.ok) {
+                        const fallbackMsg = finalMsg.includes(buttonUrl) ? finalMsg : `${finalMsg}\n\n🔗 ${buttonUrl}`;
+                        console.warn(`[zapi-webhook] uazapi botão pós-SIM falhou (${resp.status}); tentando fallback texto+link`);
+                        resp = await fetch(`${uazUrl}/send/text`, { method: 'POST', headers: uazH, body: JSON.stringify({ number: normalizedPhone, text: fallbackMsg }) });
+                      }
                       sendOk = resp.ok;
-                      console.log(`[zapi-webhook] 📤 Template B pós-SIM (uazapi, ${resp.status})`);
+                      console.log(`[zapi-webhook] 📤 Template B pós-SIM (uazapi${useButton ? ' + botão' : ''}, ${resp.status})`);
                     }
                   } else {
                     const zInstance = integ.zapi_instance_id;

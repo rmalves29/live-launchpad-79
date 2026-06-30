@@ -116,7 +116,39 @@ export async function sendVideo(cfg: UazapiConfig, phone: string, videoUrl: stri
   return sendMedia(cfg, phone, "video", videoUrl, caption);
 }
 
-// uazapi não tem nativamente botão URL como Evolution; envia como texto + link
+export async function sendButton(
+  cfg: UazapiConfig,
+  phone: string,
+  message: string,
+  buttonLabel: string,
+  buttonUrl: string,
+  footerText?: string,
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const label = (buttonLabel || "Pagar Agora").toString().trim().slice(0, 20) || "Pagar Agora";
+    const url = (buttonUrl || "").toString().trim();
+    if (!url) return sendText(cfg, phone, message);
+
+    const body: Record<string, unknown> = {
+      number: phone,
+      type: "button",
+      text: message,
+      choices: [`${label}|${url}`],
+    };
+    if (footerText) body.footerText = footerText;
+
+    const res = await fetchWithTimeout(`${trimUrl(cfg.url)}/send/menu`, {
+      method: "POST",
+      headers: instanceHeaders(cfg.token),
+      body: JSON.stringify(body),
+    }, 60_000);
+    return await readResult(res);
+  } catch (e: any) {
+    return { success: false, error: e.name === "AbortError" ? "uazapi timeout sendButton" : e.message };
+  }
+}
+
+// Fallback textual para fluxos onde o botão nativo não deve ser usado.
 export async function sendLinkMessage(
   cfg: UazapiConfig,
   phone: string,
