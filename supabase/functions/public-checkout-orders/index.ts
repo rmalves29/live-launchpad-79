@@ -15,6 +15,8 @@ function jsonResp(body: unknown) {
 
 function normalizePhone(phone: string) {
   let clean = String(phone || "").replace(/\D/g, "");
+  // remove zeros à esquerda (ex.: "031..." -> "31...")
+  clean = clean.replace(/^0+/, "");
   if (clean.startsWith("55") && clean.length > 11) clean = clean.slice(2);
   return clean;
 }
@@ -49,7 +51,7 @@ Deno.serve(async (req) => {
       .from("orders")
       .select("id, tenant_id, customer_phone, customer_name, event_type, event_date, total_amount, is_paid, is_cancelled, order_status, payment_link, cart_id, coupon_code, coupon_discount, gift_name, created_at, melhor_envio_tracking_code")
       .eq("tenant_id", tenant.id)
-      .or(`customer_phone.eq.${normalizedPhone},customer_phone.eq.55${normalizedPhone}`);
+      .or(`customer_phone.eq.${normalizedPhone},customer_phone.eq.55${normalizedPhone},customer_phone.eq.0${normalizedPhone},customer_phone.eq.55${normalizedPhone},customer_phone.like.%${normalizedPhone}`);
 
     if (ordersError) throw ordersError;
 
