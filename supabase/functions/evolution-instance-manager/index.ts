@@ -186,6 +186,25 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ success: r.ok, set_result: r, current_webhook: current, webhook_url: webhookUrl, instance: instName }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
+      case "debug_send": {
+        const { data: integration } = await supabase.from("integration_whatsapp").select("evolution_instance_name").eq("tenant_id", tenant_id).maybeSingle();
+        const instName = integration?.evolution_instance_name;
+        if (!instName) {
+          return new Response(JSON.stringify({ error: "Instancia nao configurada" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        const { phone, message } = body;
+        const evolutionApiUrl = Deno.env.get("EVOLUTION_API_URL") || "";
+        const evolutionApiKey = Deno.env.get("EVOLUTION_API_KEY") || "";
+        const url = `${evolutionApiUrl.replace(/\/+$/, "")}/message/sendText/${instName}`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: evolutionApiKey },
+          body: JSON.stringify({ number: phone, text: message }),
+        });
+        const text = await res.text();
+        return new Response(JSON.stringify({ url, status: res.status, body: text.substring(0, 1500) }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
       default:
         return new Response(JSON.stringify({ error: "Action invalida: " + action }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
