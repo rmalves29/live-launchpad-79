@@ -39,8 +39,8 @@ async function getCredentials(supabase: any, tenantId: string) {
   const confirmationTemplate = data.item_added_confirmation_template || getDefaultConfirmationTemplate();
 
   if (provider === "uazapi") {
-    if (!data.evolution_instance_name) return null;
-    return { provider: "uazapi" as const, instanceName: data.evolution_instance_name, confirmationTemplate };
+    if (!((data.uazapi_url && data.uazapi_token) ? (data.uazapi_url + "|" + data.uazapi_token) : null)) return null;
+    return { provider: "uazapi" as const, instanceName: ((data.uazapi_url && data.uazapi_token) ? (data.uazapi_url + "|" + data.uazapi_token) : null), confirmationTemplate };
   }
   if (!data.zapi_instance_id || !data.zapi_token) return null;
   return {

@@ -40,8 +40,8 @@ async function getCredentials(supabase: any, tenantId: string) {
   const provider = data.provider || "zapi";
 
   if (provider === "uazapi") {
-    if (!data.evolution_instance_name) return null;
-    return { provider: "evolution", instanceName: data.evolution_instance_name };
+    if (!((data.uazapi_url && data.uazapi_token) ? (data.uazapi_url + "|" + data.uazapi_token) : null)) return null;
+    return { provider: "evolution", instanceName: ((data.uazapi_url && data.uazapi_token) ? (data.uazapi_url + "|" + data.uazapi_token) : null) };
   }
 
   if (!data.zapi_instance_id || !data.zapi_token) return null;
