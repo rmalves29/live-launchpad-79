@@ -82,7 +82,8 @@ function extractText(data: any): string {
 function pickEventKind(payload: any): string {
   // uazapi emite eventos como `messages`, `messages_update`, `connection`, `presence`, `groups`
   // mas também pode mandar payload com `event`, `type`, ou só `data` puro.
-  const raw = String(payload?.event || payload?.type || payload?.EventType || "").toLowerCase();
+  const eventValue = payload?.event || payload?.type || payload?.EventType || "";
+  const raw = typeof eventValue === "string" ? eventValue.toLowerCase() : "";
   if (raw) return raw;
   if (payload?.status && payload?.ids) return "messages_update";
   if (payload?.data?.message || payload?.message || payload?.text) return "messages";
