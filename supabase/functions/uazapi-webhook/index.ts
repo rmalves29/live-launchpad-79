@@ -218,11 +218,13 @@ Deno.serve(async (req) => {
           data?.senderPn,
           data?.senderPN,
           data?.sender_pn,
+          data?.senderpn,
           data?.participantPhone,
           data?.participant_phone,
           data?.participantPn,
           data?.participantPN,
           data?.participant_pn,
+          data?.participantpn,
           data?.authorPhone,
           data?.author_phone,
         );
