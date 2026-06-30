@@ -80,7 +80,7 @@ function phoneMatches(a?: string | null, b?: string | null): boolean {
 async function getCredentials(supabase: any, tenantId: string, sourceInstanceId?: string, sourceConnectedPhone?: string) {
   const { data: integration, error } = await supabase
     .from("integration_whatsapp")
-    .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, connected_phone, is_active, provider, send_item_added_msg, confirmation_timeout_minutes, template_solicitacao, template_com_link, template_item_added, item_added_button_enabled, item_added_button_label, item_added_button_url")
+    .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, uazapi_url, uazapi_token, connected_phone, is_active, provider, send_item_added_msg, confirmation_timeout_minutes, template_solicitacao, template_com_link, template_item_added, item_added_button_enabled, item_added_button_label, item_added_button_url")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .maybeSingle();
@@ -100,9 +100,9 @@ async function getCredentials(supabase: any, tenantId: string, sourceInstanceId?
     buttonUrl: integration.item_added_button_url || null,
   };
 
-  if (provider === "evolution") {
+  if (provider === "uazapi") {
     if (!integration.evolution_instance_name) return null;
-    return { provider: "evolution" as const, instanceName: integration.evolution_instance_name, ...commonFields };
+    return { provider: "uazapi" as const, instanceName: integration.evolution_instance_name, ...commonFields };
   }
 
   if (!integration.zapi_instance_id || !integration.zapi_token) return null;
@@ -499,7 +499,7 @@ serve(async (req) => {
       let sendOk = false;
       let zapiMessageId: string | null = null;
 
-      if (provider === "evolution") {
+      if (provider === "uazapi") {
         const instanceName = (credentials as any).instanceName;
         await sendPresenceAvailable(instanceName, formattedPhone);
         await sendPresenceComposing(instanceName, formattedPhone, calcTypingDuration(message.length));

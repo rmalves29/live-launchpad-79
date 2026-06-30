@@ -31,9 +31,9 @@ async function getCredentials(supabase: any, tenantId: string) {
   if (error || !integration) return null;
 
   const provider = integration.provider || "zapi";
-  if (provider === "evolution") {
+  if (provider === "uazapi") {
     if (!integration.evolution_instance_name) return null;
-    return { provider: "evolution" as const, instanceName: integration.evolution_instance_name };
+    return { provider: "uazapi" as const, instanceName: integration.evolution_instance_name };
   }
 
   if (!integration.zapi_instance_id || !integration.zapi_token) return null;
@@ -231,7 +231,7 @@ serve(async (req) => {
         const variedMessage = addMessageVariation(message);
         let response: Response;
 
-        if (credentials.provider === "evolution") {
+        if (credentials.provider === "uazapi") {
           const { instanceName } = credentials as any;
           const evoH = { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY };
           // Simulate composing presence
