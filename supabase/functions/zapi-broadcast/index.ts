@@ -23,7 +23,7 @@ interface BroadcastRequest {
 async function getCredentials(supabase: any, tenantId: string) {
   const { data: integration, error } = await supabase
     .from("integration_whatsapp")
-    .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, is_active, provider")
+    .select("zapi_instance_id, zapi_token, zapi_client_token, uazapi_url, uazapi_token, is_active, provider")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .maybeSingle();
@@ -32,8 +32,12 @@ async function getCredentials(supabase: any, tenantId: string) {
 
   const provider = integration.provider || "zapi";
   if (provider === "uazapi") {
-    if (!((integration.uazapi_url && integration.uazapi_token) ? (integration.uazapi_url + "|" + integration.uazapi_token) : null)) return null;
-    return { provider: "uazapi" as const, instanceName: ((integration.uazapi_url && integration.uazapi_token) ? (integration.uazapi_url + "|" + integration.uazapi_token) : null) };
+    if (!integration.uazapi_url || !integration.uazapi_token) return null;
+    return {
+      provider: "uazapi" as const,
+      uazUrl: String(integration.uazapi_url).replace(/\/+$/, ""),
+      uazToken: integration.uazapi_token,
+    };
   }
 
   if (!integration.zapi_instance_id || !integration.zapi_token) return null;
