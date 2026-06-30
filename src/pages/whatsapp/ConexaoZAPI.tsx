@@ -18,8 +18,6 @@ import {
   EyeOff,
   Zap,
   Shield,
-  Trash2,
-  Plus,
 } from "lucide-react";
 import { ZAPIAdvancedSettings } from "@/components/ZAPIAdvancedSettings";
 
@@ -27,6 +25,7 @@ interface WhatsAppStatus {
   connected: boolean;
   status: string;
   qrCode?: string;
+  pairCode?: string;
   hasQR?: boolean;
   message?: string;
   error?: string;
@@ -38,7 +37,7 @@ const QR_CODE_EXPIRATION_SECONDS = 60;
 const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4';
 
-type Provider = 'zapi' | 'evolution';
+type Provider = 'zapi' | 'uazapi';
 
 function maskMiddle(value: string, visible = 4): string {
   if (!value) return '';
@@ -71,8 +70,8 @@ export default function ConexaoZAPI() {
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
-  const [provider, setProvider] = useState<Provider>('zapi'); // tab currently viewed
-  const [activeProvider, setActiveProvider] = useState<Provider>('zapi'); // what's saved in DB
+  const [provider, setProvider] = useState<Provider>('zapi');
+  const [activeProvider, setActiveProvider] = useState<Provider>('zapi');
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [loadingQR, setLoadingQR] = useState(false);
@@ -88,14 +87,16 @@ export default function ConexaoZAPI() {
   const [showClientToken, setShowClientToken] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
 
-  // Evolution API fields
-  const [evolutionInstanceName, setEvolutionInstanceName] = useState('');
-  const [evolutionDraftName, setEvolutionDraftName] = useState('');
-  const [creatingInstance, setCreatingInstance] = useState(false);
-  const [deletingInstance, setDeletingInstance] = useState(false);
+  // uazapi fields
+  const [uazapiUrl, setUazapiUrl] = useState('');
+  const [uazapiToken, setUazapiToken] = useState('');
+  const [uazapiAdminToken, setUazapiAdminToken] = useState('');
+  const [showUazToken, setShowUazToken] = useState(false);
+  const [showUazAdminToken, setShowUazAdminToken] = useState(false);
+  const [savingUazapi, setSavingUazapi] = useState(false);
 
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  const qrTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const qrTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -115,15 +116,12 @@ export default function ConexaoZAPI() {
     stopPolling();
     setWhatsappStatus(null);
     setLastSyncAt(null);
-    // Only poll when viewing the provider that is actually active in DB
     if (provider !== activeProvider) return () => stopPolling();
-    if (provider === 'zapi' && instanceId && token) {
-      startPollingZapi();
-    } else if (provider === 'evolution' && evolutionInstanceName) {
-      startPollingEvolution();
-    }
+    if (provider === 'zapi' && instanceId && token) startPollingZapi();
+    else if (provider === 'uazapi' && uazapiUrl && uazapiToken) startPollingUazapi();
     return () => stopPolling();
-  }, [provider, activeProvider, instanceId, token, evolutionInstanceName]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, activeProvider, instanceId, token, uazapiUrl, uazapiToken]);
 
   const loadIntegration = async () => {
     if (!tenant?.id) return;
@@ -131,7 +129,7 @@ export default function ConexaoZAPI() {
       setLoading(true);
       const { data } = await supabase
         .from('integration_whatsapp')
-        .select('id, zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, provider, is_active')
+        .select('id, zapi_instance_id, zapi_token, zapi_client_token, uazapi_url, uazapi_token, uazapi_admin_token, provider, is_active')
         .eq('tenant_id', tenant.id)
         .maybeSingle();
 
@@ -140,8 +138,10 @@ export default function ConexaoZAPI() {
         setInstanceId((data as any).zapi_instance_id || '');
         setToken((data as any).zapi_token || '');
         setClientToken((data as any).zapi_client_token || '');
-        setEvolutionInstanceName((data as any).evolution_instance_name || '');
-        const savedProvider: Provider = (data as any).provider === 'evolution' ? 'evolution' : 'zapi';
+        setUazapiUrl((data as any).uazapi_url || '');
+        setUazapiToken((data as any).uazapi_token || '');
+        setUazapiAdminToken((data as any).uazapi_admin_token || '');
+        const savedProvider: Provider = (data as any).provider === 'uazapi' ? 'uazapi' : 'zapi';
         setProvider(savedProvider);
         setActiveProvider(savedProvider);
       }
@@ -167,8 +167,9 @@ export default function ConexaoZAPI() {
         zapi_token: token,
         zapi_client_token: clientToken || null,
         provider: 'zapi',
-        // Clear Evolution credentials — only one provider active at a time
-        evolution_instance_name: null,
+        uazapi_url: null,
+        uazapi_token: null,
+        uazapi_admin_token: null,
         updated_at: new Date().toISOString(),
       };
       if (integrationId) {
@@ -245,52 +246,68 @@ export default function ConexaoZAPI() {
     }
   };
 
-  // ─── Evolution API ────────────────────────────────────────────────────────
+  // ─── uazapi ───────────────────────────────────────────────────────────────
 
-  const createEvolutionInstance = async () => {
-    if (!tenant?.id || !evolutionDraftName.trim()) {
-      toast({ title: 'Erro', description: 'Informe um nome para a instância', variant: 'destructive' });
+  const saveUazapiCredentials = async () => {
+    if (!tenant?.id) return;
+    if (!uazapiUrl.trim() || !uazapiToken.trim()) {
+      toast({ title: 'Erro', description: 'URL e Token da instância são obrigatórios', variant: 'destructive' });
       return;
     }
-    setCreatingInstance(true);
+    try { new URL(uazapiUrl); } catch {
+      toast({ title: 'URL inválida', description: 'Ex: https://seu-servidor.uazapi.com', variant: 'destructive' });
+      return;
+    }
+    setSavingUazapi(true);
     try {
-      const data = await callFunction('evolution-instance-manager', { action: 'create', tenant_id: tenant.id, instance_name: evolutionDraftName.trim() });
-      if (data.success) {
-        // Clear Z-API credentials — only one provider active at a time
-        if (integrationId) {
-          await supabase.from('integration_whatsapp').update({
-            zapi_instance_id: null,
-            zapi_token: null,
-            zapi_client_token: null,
-            updated_at: new Date().toISOString(),
-          }).eq('id', integrationId);
-        }
-        setInstanceId('');
-        setToken('');
-        setClientToken('');
-        toast({ title: 'Instância criada', description: 'Agora gere o QR Code para conectar' });
+      const data = await callFunction('uazapi-instance-manager', {
+        action: 'save_credentials',
+        tenant_id: tenant.id,
+        uazapi_url: uazapiUrl.trim().replace(/\/+$/, ''),
+        uazapi_token: uazapiToken.trim(),
+        uazapi_admin_token: uazapiAdminToken.trim() || null,
+      });
+      if (data?.success) {
+        toast({ title: 'Sucesso', description: 'Credenciais uazapi salvas e webhook configurado' });
         await loadIntegration();
       } else {
-        toast({ title: 'Erro', description: data.error || 'Falha ao criar instância', variant: 'destructive' });
+        toast({ title: 'Erro', description: data?.error || 'Falha ao salvar', variant: 'destructive' });
       }
     } catch (e: any) {
       toast({ title: 'Erro', description: e.message, variant: 'destructive' });
     } finally {
-      setCreatingInstance(false);
+      setSavingUazapi(false);
     }
   };
 
-  const getQRCodeEvolution = async () => {
+  const checkStatusUazapi = async () => {
+    if (!tenant?.id || !mountedRef.current) return;
+    try {
+      const data = await callFunction('uazapi-instance-manager', { action: 'status', tenant_id: tenant.id });
+      if (!mountedRef.current) return;
+      setLastSyncAt(new Date());
+      if (data.connected) {
+        stopQRCountdown();
+        setWhatsappStatus({ connected: true, status: data.status, user: data.user });
+      } else if (data.status !== 'not_configured') {
+        setWhatsappStatus(prev => prev?.status === 'qr_ready' && prev?.qrCode ? prev : { connected: false, status: data.status || 'disconnected' });
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const getQRCodeUazapi = async () => {
     if (!tenant?.id) return;
     setLoadingQR(true);
     try {
-      const data = await callFunction('evolution-instance-manager', { action: 'qrcode', tenant_id: tenant.id });
-      if (data.qrCode) {
-        setWhatsappStatus(prev => ({ ...prev, connected: false, status: 'qr_ready', qrCode: data.qrCode, hasQR: true }));
+      const data = await callFunction('uazapi-instance-manager', { action: 'connect', tenant_id: tenant.id });
+      if (data?.qrCode) {
+        // uazapi retorna QR em base64 puro — adicionar prefixo de data URI se necessário
+        const qrSrc = data.qrCode.startsWith('data:') ? data.qrCode : `data:image/png;base64,${data.qrCode}`;
+        setWhatsappStatus(prev => ({ ...prev, connected: false, status: 'qr_ready', qrCode: qrSrc, pairCode: data.pairCode, hasQR: true }));
         startQRCountdown();
-        toast({ title: 'QR Code gerado', description: 'Você tem 60 segundos para escanear' });
+        toast({ title: 'QR Code gerado', description: data.pairCode ? `Código alternativo: ${data.pairCode}` : 'Você tem 60 segundos para escanear' });
       } else {
-        toast({ title: 'Erro', description: data.error || 'Falha ao gerar QR Code', variant: 'destructive' });
+        toast({ title: 'Erro', description: data?.error || 'Falha ao gerar QR Code', variant: 'destructive' });
       }
     } catch (e: any) {
       toast({ title: 'Erro', description: e.message, variant: 'destructive' });
@@ -299,40 +316,22 @@ export default function ConexaoZAPI() {
     }
   };
 
-  const checkStatusEvolution = async () => {
-    if (!tenant?.id || !mountedRef.current) return;
-    try {
-      const data = await callFunction('evolution-instance-manager', { action: 'status', tenant_id: tenant.id });
-      if (!mountedRef.current) return;
-      setLastSyncAt(new Date());
-      if (data.connected) {
-        stopQRCountdown();
-        setWhatsappStatus({ connected: true, status: 'open', user: data.user });
-      } else if (data.status !== 'not_configured') {
-        setWhatsappStatus(prev => prev?.status === 'qr_ready' && prev?.qrCode ? prev : { connected: false, status: data.status || 'disconnected' });
-      }
-    } catch (e) { console.error(e); }
-  };
-
-  const deleteEvolutionInstance = async () => {
+  const disconnectUazapi = async () => {
     if (!tenant?.id) return;
-    if (!confirm('Tem certeza? Isso vai desconectar e remover a instância da Evolution API.')) return;
-    setDeletingInstance(true);
+    if (!confirm('Desconectar a sessão uazapi?')) return;
+    setIsReconnecting(true);
     try {
-      const data = await callFunction('evolution-instance-manager', { action: 'delete', tenant_id: tenant.id });
-      if (data.success) {
-        toast({ title: 'Instância removida' });
-        setEvolutionInstanceName('');
-        setEvolutionDraftName('');
-        setWhatsappStatus(null);
-        await loadIntegration();
+      const data = await callFunction('uazapi-instance-manager', { action: 'disconnect', tenant_id: tenant.id });
+      if (data?.success) {
+        setWhatsappStatus({ connected: false, status: 'disconnected' });
+        toast({ title: 'Desconectado' });
       } else {
-        toast({ title: 'Erro', description: data.error, variant: 'destructive' });
+        toast({ title: 'Erro', description: data?.error, variant: 'destructive' });
       }
     } catch (e: any) {
       toast({ title: 'Erro', description: e.message, variant: 'destructive' });
     } finally {
-      setDeletingInstance(false);
+      setIsReconnecting(false);
     }
   };
 
@@ -346,12 +345,14 @@ export default function ConexaoZAPI() {
     stopPolling();
     checkStatusZapi();
     pollingRef.current = setInterval(() => { if (mountedRef.current) checkStatusZapi(); }, POLLING_INTERVAL_MS);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const startPollingEvolution = useCallback(() => {
+  const startPollingUazapi = useCallback(() => {
     stopPolling();
-    checkStatusEvolution();
-    pollingRef.current = setInterval(() => { if (mountedRef.current) checkStatusEvolution(); }, POLLING_INTERVAL_MS);
+    checkStatusUazapi();
+    pollingRef.current = setInterval(() => { if (mountedRef.current) checkStatusUazapi(); }, POLLING_INTERVAL_MS);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const startQRCountdown = useCallback(() => {
@@ -398,7 +399,6 @@ export default function ConexaoZAPI() {
 
   return (
     <div className="max-w-[1600px] mx-auto p-6 space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">WhatsApp — Conexão</h1>
         <p className="text-sm text-muted-foreground mt-1">Gerencie a conexão do seu WhatsApp</p>
@@ -409,9 +409,7 @@ export default function ConexaoZAPI() {
         <button
           onClick={() => setProvider('zapi')}
           className={`flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
-            provider === 'zapi'
-              ? 'border-primary bg-primary/5'
-              : 'border-border hover:border-primary/40 bg-card'
+            provider === 'zapi' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40 bg-card'
           }`}
         >
           <div className={`p-2 rounded-lg ${provider === 'zapi' ? 'bg-primary/10' : 'bg-muted'}`}>
@@ -427,34 +425,31 @@ export default function ConexaoZAPI() {
         </button>
 
         <button
-          onClick={() => setProvider('evolution')}
+          onClick={() => setProvider('uazapi')}
           className={`flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
-            provider === 'evolution'
-              ? 'border-violet-500 bg-violet-500/5'
-              : 'border-border hover:border-violet-400/40 bg-card'
+            provider === 'uazapi' ? 'border-violet-500 bg-violet-500/5' : 'border-border hover:border-violet-400/40 bg-card'
           }`}
         >
-          <div className={`p-2 rounded-lg ${provider === 'evolution' ? 'bg-violet-500/10' : 'bg-muted'}`}>
-            <Shield className={`h-5 w-5 ${provider === 'evolution' ? 'text-violet-500' : 'text-muted-foreground'}`} />
+          <div className={`p-2 rounded-lg ${provider === 'uazapi' ? 'bg-violet-500/10' : 'bg-muted'}`}>
+            <Shield className={`h-5 w-5 ${provider === 'uazapi' ? 'text-violet-500' : 'text-muted-foreground'}`} />
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-2">
-              <p className={`text-sm font-semibold ${provider === 'evolution' ? 'text-violet-600 dark:text-violet-400' : 'text-foreground'}`}>Evolution API</p>
-              {activeProvider === 'evolution' && <Badge className="text-[10px] px-1 py-0 h-4 bg-violet-500/10 text-violet-600 border-violet-300 dark:text-violet-400">Ativo</Badge>}
+              <p className={`text-sm font-semibold ${provider === 'uazapi' ? 'text-violet-600 dark:text-violet-400' : 'text-foreground'}`}>uazapi</p>
+              {activeProvider === 'uazapi' && <Badge className="text-[10px] px-1 py-0 h-4 bg-violet-500/10 text-violet-600 border-violet-300 dark:text-violet-400">Ativo</Badge>}
             </div>
-            <p className="text-xs text-muted-foreground">Anti-bloqueio avançado</p>
+            <p className="text-xs text-muted-foreground">Servidor uazapi próprio</p>
           </div>
         </button>
       </div>
 
       {/* Status + QR */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Status */}
         <Card>
           <CardContent className="p-6">
             {provider !== activeProvider && (
               <div className="mb-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
-                Este provedor não está ativo. Seu sistema usa <strong>{activeProvider === 'evolution' ? 'Evolution API' : 'Z-API'}</strong> como provedor atual.
+                Este provedor não está ativo. Seu sistema usa <strong>{activeProvider === 'uazapi' ? 'uazapi' : 'Z-API'}</strong> como provedor atual.
               </div>
             )}
             <div className="flex items-start gap-4 mb-6">
@@ -483,8 +478,8 @@ export default function ConexaoZAPI() {
               </div>
               <div className="flex items-center justify-between py-2 border-b border-border/50">
                 <span className="text-muted-foreground">API</span>
-                <Badge variant="outline" className={provider === 'evolution' ? 'text-violet-600 border-violet-300' : ''}>
-                  {provider === 'evolution' ? 'Evolution API' : 'Z-API'}
+                <Badge variant="outline" className={provider === 'uazapi' ? 'text-violet-600 border-violet-300' : ''}>
+                  {provider === 'uazapi' ? 'uazapi' : 'Z-API'}
                 </Badge>
               </div>
               {provider === 'zapi' && (
@@ -493,10 +488,10 @@ export default function ConexaoZAPI() {
                   <span className="font-mono">{instanceId ? maskMiddle(instanceId, 4) : '—'}</span>
                 </div>
               )}
-              {provider === 'evolution' && (
+              {provider === 'uazapi' && (
                 <div className="flex items-center justify-between py-2 border-b border-border/50">
-                  <span className="text-muted-foreground">Instância</span>
-                  <span className="font-mono text-xs">{evolutionInstanceName || '—'}</span>
+                  <span className="text-muted-foreground">Servidor</span>
+                  <span className="font-mono text-xs truncate max-w-[60%]">{uazapiUrl || '—'}</span>
                 </div>
               )}
               <div className="flex items-center justify-between py-2">
@@ -521,16 +516,11 @@ export default function ConexaoZAPI() {
                 </>
               ) : (
                 <>
-                  <Button
-                    variant="outline"
-                    onClick={deleteEvolutionInstance}
-                    disabled={deletingInstance || !evolutionInstanceName}
-                    className="text-destructive hover:text-destructive"
-                  >
-                    {deletingInstance ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
-                    Remover
+                  <Button variant="outline" onClick={disconnectUazapi} disabled={isReconnecting || !uazapiUrl || !uazapiToken}>
+                    {isReconnecting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <WifiOff className="h-4 w-4 mr-2" />}
+                    Desconectar
                   </Button>
-                  <Button onClick={getQRCodeEvolution} disabled={loadingQR || !evolutionInstanceName || isConnected}>
+                  <Button onClick={getQRCodeUazapi} disabled={loadingQR || !uazapiUrl || !uazapiToken || isConnected}>
                     {loadingQR ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
                     Reconectar
                   </Button>
@@ -568,6 +558,10 @@ export default function ConexaoZAPI() {
               </div>
             </div>
 
+            {whatsappStatus?.pairCode && (
+              <p className="text-sm font-mono mb-2">Código de pareamento: <strong>{whatsappStatus.pairCode}</strong></p>
+            )}
+
             {qrCountdown > 0 && (
               <p className="text-xs text-muted-foreground mb-2">Expira em {qrCountdown}s</p>
             )}
@@ -575,8 +569,8 @@ export default function ConexaoZAPI() {
             <Button
               variant="outline"
               className="w-full"
-              onClick={provider === 'evolution' ? getQRCodeEvolution : getQRCodeZapi}
-              disabled={loadingQR || isConnected || (provider === 'evolution' && !evolutionInstanceName)}
+              onClick={provider === 'uazapi' ? getQRCodeUazapi : getQRCodeZapi}
+              disabled={loadingQR || isConnected || (provider === 'uazapi' && (!uazapiUrl || !uazapiToken))}
             >
               {loadingQR ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <QrCodeIcon className="h-4 w-4 mr-2" />}
               Gerar novo QR Code
@@ -585,7 +579,7 @@ export default function ConexaoZAPI() {
         </Card>
       </div>
 
-      {/* Config section — changes based on provider */}
+      {/* Config */}
       {provider === 'zapi' ? (
         <Card>
           <CardContent className="p-6">
@@ -593,48 +587,30 @@ export default function ConexaoZAPI() {
               <Zap className="h-5 w-5 text-primary" />
               <h2 className="text-lg font-semibold">Configurações Z-API</h2>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               <div className="space-y-2">
                 <Label htmlFor="client-token">Client Token</Label>
                 <div className="relative">
-                  <Input
-                    id="client-token"
-                    type={showClientToken ? 'text' : 'password'}
-                    value={clientToken}
-                    onChange={(e) => setClientToken(e.target.value)}
-                    placeholder="••••••••••"
-                    className="pr-10"
-                  />
+                  <Input id="client-token" type={showClientToken ? 'text' : 'password'} value={clientToken} onChange={(e) => setClientToken(e.target.value)} placeholder="••••••••••" className="pr-10" />
                   <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full px-3" onClick={() => setShowClientToken(v => !v)}>
                     {showClientToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
                 </div>
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="instance-id">Instance ID</Label>
                 <Input id="instance-id" value={instanceId} onChange={(e) => setInstanceId(e.target.value)} placeholder="3DF82A-XXXX" />
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="security-token">Security Token</Label>
                 <div className="relative">
-                  <Input
-                    id="security-token"
-                    type={showToken ? 'text' : 'password'}
-                    value={token}
-                    onChange={(e) => setToken(e.target.value)}
-                    placeholder="••••••••••"
-                    className="pr-10"
-                  />
+                  <Input id="security-token" type={showToken ? 'text' : 'password'} value={token} onChange={(e) => setToken(e.target.value)} placeholder="••••••••••" className="pr-10" />
                   <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full px-3" onClick={() => setShowToken(v => !v)}>
                     {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
                 </div>
               </div>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
               <div className="space-y-2">
                 <Label>Webhook URL</Label>
@@ -656,64 +632,55 @@ export default function ConexaoZAPI() {
           <CardContent className="p-6">
             <div className="flex items-center gap-2 mb-2">
               <Shield className="h-5 w-5 text-violet-500" />
-              <h2 className="text-lg font-semibold">Configurações Evolution API</h2>
+              <h2 className="text-lg font-semibold">Configurações uazapi</h2>
             </div>
             <p className="text-sm text-muted-foreground mb-6">
-              A Evolution API roda no servidor da OrderZaps e simula comportamento humano real — digitando, lendo mensagens e reagindo antes de enviar.
+              Configure a URL do seu servidor uazapi e o token da instância. O webhook é configurado automaticamente ao salvar.
             </p>
 
-            {evolutionInstanceName ? (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 p-4 rounded-lg bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800">
-                  <div className="p-2 bg-violet-100 dark:bg-violet-900/40 rounded-lg">
-                    <Shield className="h-4 w-4 text-violet-600 dark:text-violet-400" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-violet-800 dark:text-violet-300">Instância configurada</p>
-                    <p className="text-xs font-mono text-violet-600 dark:text-violet-400 mt-0.5">{evolutionInstanceName}</p>
-                  </div>
-                  <Badge variant="outline" className={isConnected ? 'text-emerald-600 border-emerald-300' : 'text-muted-foreground'}>
-                    {isConnected ? 'Conectado' : 'Desconectado'}
-                  </Badge>
-                </div>
-
-                {!isConnected && (
-                  <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-4 text-sm text-amber-700 dark:text-amber-400">
-                    Gere o QR Code acima e escaneie com o WhatsApp para conectar este chip.
-                  </div>
-                )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="uaz-url">URL do servidor uazapi</Label>
+                <Input id="uaz-url" value={uazapiUrl} onChange={(e) => setUazapiUrl(e.target.value)} placeholder="https://seu-subdominio.uazapi.com" className="font-mono text-xs" />
+                <p className="text-xs text-muted-foreground">Exemplo: https://minhaempresa.uazapi.com</p>
               </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20 p-4 text-sm text-blue-700 dark:text-blue-400">
-                  Crie uma instância para começar. Use um nome simples como <span className="font-mono font-medium">minha-loja</span> ou <span className="font-mono font-medium">chip-vendas</span>.
-                </div>
 
-                <div className="flex gap-3">
-                  <div className="flex-1 space-y-2">
-                    <Label htmlFor="evo-instance-name">Nome da instância</Label>
-                    <Input
-                      id="evo-instance-name"
-                      value={evolutionDraftName}
-                      onChange={(e) => setEvolutionDraftName(e.target.value)}
-                      placeholder="minha-loja"
-                      onKeyDown={(e) => e.key === 'Enter' && createEvolutionInstance()}
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <Button onClick={createEvolutionInstance} disabled={creatingInstance || !evolutionDraftName.trim()} className="bg-violet-600 hover:bg-violet-700 text-white">
-                      {creatingInstance ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
-                      Criar instância
-                    </Button>
-                  </div>
+              <div className="space-y-2">
+                <Label htmlFor="uaz-token">Token da Instância</Label>
+                <div className="relative">
+                  <Input id="uaz-token" type={showUazToken ? 'text' : 'password'} value={uazapiToken} onChange={(e) => setUazapiToken(e.target.value)} placeholder="••••••••••" className="pr-10 font-mono text-xs" />
+                  <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full px-3" onClick={() => setShowUazToken(v => !v)}>
+                    {showUazToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
                 </div>
               </div>
-            )}
+
+              <div className="space-y-2">
+                <Label htmlFor="uaz-admin-token">Admin Token (opcional)</Label>
+                <div className="relative">
+                  <Input id="uaz-admin-token" type={showUazAdminToken ? 'text' : 'password'} value={uazapiAdminToken} onChange={(e) => setUazapiAdminToken(e.target.value)} placeholder="••••••••••" className="pr-10 font-mono text-xs" />
+                  <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-full px-3" onClick={() => setShowUazAdminToken(v => !v)}>
+                    {showUazAdminToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">Necessário apenas para criar novas instâncias</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+              <div className="space-y-2">
+                <Label>Webhook URL (configurado automaticamente)</Label>
+                <Input value={`${SUPABASE_URL}/functions/v1/uazapi-webhook`} readOnly className="font-mono text-xs" />
+              </div>
+              <Button onClick={saveUazapiCredentials} disabled={savingUazapi} className="h-10 bg-violet-600 hover:bg-violet-700 text-white">
+                {savingUazapi ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                Salvar e configurar webhook
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Mensagens automáticas + Proteção por consentimento */}
       <ZAPIAdvancedSettings />
     </div>
   );
