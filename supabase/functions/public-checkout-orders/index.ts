@@ -15,6 +15,8 @@ function jsonResp(body: unknown) {
 
 function normalizePhone(phone: string) {
   let clean = String(phone || "").replace(/\D/g, "");
+  // remove zeros à esquerda (ex.: "031..." -> "31...")
+  clean = clean.replace(/^0+/, "");
   if (clean.startsWith("55") && clean.length > 11) clean = clean.slice(2);
   return clean;
 }
