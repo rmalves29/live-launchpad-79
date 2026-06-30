@@ -14,6 +14,7 @@ import {
   sendDocument as uazSendDocument,
   sendAudio as uazSendAudio,
   sendVideo as uazSendVideo,
+  sendButton as uazSendButton,
   sendLinkMessage as uazSendLinkMessage,
   sendPresenceAvailable as uazSendPresenceAvailable,
   sendPresenceComposing as uazSendPresenceComposing,
@@ -54,8 +55,7 @@ export async function sendButton(
 ) {
   const cfg = parseCfg(instanceName);
   if (!cfg) return noCfgError("sendButton");
-  // uazapi não tem botão nativo — envia link no corpo
-  return uazSendLinkMessage(cfg, phone, message, buttonLabel, buttonUrl);
+  return uazSendButton(cfg, phone, message, buttonLabel, buttonUrl, _footer);
 }
 
 export async function sendImage(instanceName: string, phone: string, imageUrl: string, caption?: string) {

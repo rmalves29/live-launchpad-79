@@ -521,24 +521,16 @@ serve(async (req) => {
         await sendPresenceAvailable(instanceName, formattedPhone);
         await sendPresenceComposing(instanceName, formattedPhone, calcTypingDuration(message.length));
 
-        // IMPORTANTE: sendButton via Evolution/Baileys é aceito pela API mas o WhatsApp
-        // NÃO entrega mensagens com botões interativos enviadas por clientes não-oficiais.
-        // Por isso forçamos sempre o envio como texto com o link inline.
-        const buttonDelivered = false;
-
-        if (!buttonDelivered) {
-          let finalMessage = message;
-          if (useButton && resolvedButtonUrl && !finalMessage.includes(resolvedButtonUrl)) {
-            finalMessage = message + "\n\n🔗 " + resolvedButtonUrl;
-          }
-          const result = await evoSendText(instanceName, formattedPhone, finalMessage);
-          sendOk = result.success;
-          zapiMessageId = result.messageId || null;
-          if (!sendOk) {
-            console.error("[zapi-send-item-added] Evolution sendText falhou:", result.error);
-          } else {
-            console.log("[zapi-send-item-added] Evolution sendText OK | phone:", formattedPhone, "| msgId:", zapiMessageId);
-          }
+        const shouldUseButton = useButton && resolvedButtonUrl;
+        const result = shouldUseButton
+          ? await evoSendButton(instanceName, formattedPhone, message, (credentials as any).buttonLabel || "Pagar Agora", resolvedButtonUrl!)
+          : await evoSendText(instanceName, formattedPhone, message);
+        sendOk = result.success;
+        zapiMessageId = result.messageId || null;
+        if (!sendOk) {
+          console.error(`[zapi-send-item-added] uazapi ${shouldUseButton ? "sendButton" : "sendText"} falhou:`, result.error);
+        } else {
+          console.log(`[zapi-send-item-added] uazapi ${shouldUseButton ? "sendButton" : "sendText"} OK | phone:`, formattedPhone, "| msgId:", zapiMessageId);
         }
       } else {
 
