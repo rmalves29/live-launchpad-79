@@ -522,9 +522,14 @@ serve(async (req) => {
         await sendPresenceComposing(instanceName, formattedPhone, calcTypingDuration(message.length));
 
         const shouldUseButton = useButton && resolvedButtonUrl;
-        const result = shouldUseButton
+        let result = shouldUseButton
           ? await evoSendButton(instanceName, formattedPhone, message, (credentials as any).buttonLabel || "Pagar Agora", resolvedButtonUrl!)
           : await evoSendText(instanceName, formattedPhone, message);
+        if (shouldUseButton && !result.success) {
+          console.warn("[zapi-send-item-added] uazapi sendButton falhou; tentando fallback texto+link:", result.error);
+          const fallbackMessage = message.includes(resolvedButtonUrl!) ? message : `${message}\n\n🔗 ${resolvedButtonUrl}`;
+          result = await evoSendText(instanceName, formattedPhone, fallbackMessage);
+        }
         sendOk = result.success;
         zapiMessageId = result.messageId || null;
         if (!sendOk) {
