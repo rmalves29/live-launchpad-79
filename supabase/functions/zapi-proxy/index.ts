@@ -63,7 +63,7 @@ serve(async (req) => {
     // Get Z-API integration config for this tenant
     const { data: integration, error: integrationError } = await supabase
       .from("integration_whatsapp")
-      .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, is_active, provider")
+      .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, uazapi_url, uazapi_token, is_active, provider")
       .eq("tenant_id", tenant_id)
       .eq("is_active", true)
       .maybeSingle();

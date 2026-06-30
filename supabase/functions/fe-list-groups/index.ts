@@ -83,7 +83,7 @@ serve(async (req) => {
 
     const { data: waConfig } = await supabase
       .from("integration_whatsapp")
-      .select("zapi_instance_id, zapi_token, zapi_client_token, connected_phone, provider, evolution_instance_name")
+      .select("zapi_instance_id, zapi_token, zapi_client_token, connected_phone, provider, evolution_instance_name, uazapi_url, uazapi_token")
       .eq("tenant_id", tenant_id)
       .eq("is_active", true)
       .maybeSingle();
