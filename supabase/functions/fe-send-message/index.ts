@@ -41,7 +41,7 @@ async function getCredentials(supabase: any, tenantId: string) {
 
   if (provider === "uazapi") {
     if (!((data.uazapi_url && data.uazapi_token) ? (data.uazapi_url + "|" + data.uazapi_token) : null)) return null;
-    return { provider: "evolution", instanceName: ((data.uazapi_url && data.uazapi_token) ? (data.uazapi_url + "|" + data.uazapi_token) : null) };
+    return { provider: "uazapi", instanceName: ((data.uazapi_url && data.uazapi_token) ? (data.uazapi_url + "|" + data.uazapi_token) : null) };
   }
 
   if (!data.zapi_instance_id || !data.zapi_token) return null;
