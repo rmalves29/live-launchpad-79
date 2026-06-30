@@ -217,9 +217,6 @@ serve(async (req) => {
       );
     }
 
-    const EVOLUTION_API_URL = Deno.env.get("EVOLUTION_API_URL") || "";
-    const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "";
-
     let sent = 0;
     let failed = 0;
     const results: Array<{ phone: string; success: boolean; error?: string }> = [];
@@ -230,18 +227,23 @@ serve(async (req) => {
       try {
         const variedMessage = addMessageVariation(message);
         let response: Response;
+        let uazResult: { success: boolean; messageId?: string; error?: string } | null = null;
 
         if (credentials.provider === "uazapi") {
           const { instanceName } = credentials as any;
-          const evoH = { "Content-Type": "application/json", "apikey": EVOLUTION_API_KEY };
+          const [uazUrl, uazTok] = String(instanceName || "").split("|");
           // Simulate composing presence
-          await fetch(`${EVOLUTION_API_URL}/chat/sendPresence/${instanceName}`, {
-            method: "POST", headers: evoH,
-            body: JSON.stringify({ number: phone, options: { presence: "composing", delay: 1500 } }),
-          });
-          await new Promise((r) => setTimeout(r, 1500));
-          response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
-            method: "POST", headers: evoH,
+          try {
+            await fetch(`${uazUrl}/send/presence`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "token": uazTok },
+              body: JSON.stringify({ number: phone, presence: "composing", delay: 1500 }),
+            });
+            await new Promise((r) => setTimeout(r, 1500));
+          } catch (_) { /* ignore */ }
+          response = await fetch(`${uazUrl}/send/text`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "token": uazTok },
             body: JSON.stringify({ number: phone, text: variedMessage }),
           });
         } else {
