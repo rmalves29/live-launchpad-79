@@ -21,8 +21,44 @@ function json(body: unknown, status = 200) {
   });
 }
 
+function digitsOnly(value: unknown): string {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function normalizeBrazilianPhoneCandidate(value: unknown): string {
+  let digits = digitsOnly(String(value || "").split("@")[0]);
+  if (!digits) return "";
+
+  // Telefones BR reais têm 10/11 dígitos sem DDI ou 12/13 com DDI 55.
+  // IDs de grupo e LIDs do WhatsApp costumam ter 15+ dígitos e não são telefone.
+  if (digits.startsWith("55") && digits.length >= 12 && digits.length <= 13) {
+    digits = digits.slice(2);
+  } else if (digits.length > 11) {
+    return "";
+  }
+
+  if (digits.length < 10 || digits.length > 11) return "";
+
+  const ddd = Number(digits.slice(0, 2));
+  if (Number.isNaN(ddd) || ddd < 11 || ddd > 99) return "";
+
+  return digits;
+}
+
 function phoneFromJid(jid: string): string {
-  return String(jid || "").split("@")[0].replace(/\D/g, "");
+  return normalizeBrazilianPhoneCandidate(jid);
+}
+
+function pickFirstPhone(...values: unknown[]): string {
+  for (const value of values) {
+    const phone = normalizeBrazilianPhoneCandidate(value);
+    if (phone) return phone;
+  }
+  return "";
+}
+
+function isLikelyNonPhoneIdentifier(value: unknown): boolean {
+  return digitsOnly(value).length > 13;
 }
 
 function isGroupJid(jid: string): boolean {
@@ -46,7 +82,8 @@ function extractText(data: any): string {
 function pickEventKind(payload: any): string {
   // uazapi emite eventos como `messages`, `messages_update`, `connection`, `presence`, `groups`
   // mas também pode mandar payload com `event`, `type`, ou só `data` puro.
-  const raw = String(payload?.event || payload?.type || payload?.EventType || "").toLowerCase();
+  const eventValue = payload?.event || payload?.type || payload?.EventType || "";
+  const raw = typeof eventValue === "string" ? eventValue.toLowerCase() : "";
   if (raw) return raw;
   if (payload?.status && payload?.ids) return "messages_update";
   if (payload?.data?.message || payload?.message || payload?.text) return "messages";
@@ -174,21 +211,33 @@ Deno.serve(async (req) => {
         data?.participant_jid ||
         "";
       let participantPhone = phoneFromJid(senderJid);
-      // Fallbacks adicionais quando o JID veio sem dígitos (ex: LID puro)
+      // Fallbacks adicionais quando o JID veio sem telefone real (ex: LID puro)
       if (!participantPhone) {
-        participantPhone = String(
-          data?.senderPhone ||
-          data?.sender_phone ||
-          data?.participantPhone ||
-          data?.participant_phone ||
-          ""
-        ).replace(/\D/g, "");
+        participantPhone = pickFirstPhone(
+          data?.senderPhone,
+          data?.sender_phone,
+          data?.senderPn,
+          data?.senderPN,
+          data?.sender_pn,
+          data?.senderpn,
+          data?.participantPhone,
+          data?.participant_phone,
+          data?.participantPn,
+          data?.participantPN,
+          data?.participant_pn,
+          data?.participantpn,
+          data?.authorPhone,
+          data?.author_phone,
+        );
       }
       const chatPhone = phoneFromJid(remoteJid);
-      // Para grupos: NUNCA usar o ID do grupo como telefone do cliente.
-      const senderPhone = participantPhone || (isGroup ? "" : chatPhone);
       const chatName = data?.chatname || data?.chatName || data?.groupName || data?.pushName || "";
-      const connectedPhone = data?.owner || data?.wid || data?.phoneconnected || "";
+      const connectedPhone = pickFirstPhone(data?.owner, data?.wid, data?.phoneconnected, payload?.instance?.owner, payload?.instance?.wid);
+      // Para grupos: NUNCA usar o ID do grupo como telefone do cliente.
+      // Em mensagens fromMe no grupo, o sender/participant pode vir como LID; usa o número conectado.
+      const senderPhone = (isGroup && fromMe)
+        ? (connectedPhone || participantPhone)
+        : (participantPhone || (isGroup ? "" : chatPhone));
 
       if (isGroup && !participantPhone) {
         console.warn(
@@ -196,6 +245,13 @@ Deno.serve(async (req) => {
           `Campos disponíveis em data: ${Object.keys(data || {}).join(", ")}`
         );
         console.warn(`[uazapi-webhook] payload bruto: ${JSON.stringify(data).slice(0, 800)}`);
+      }
+
+      if (isGroup && isLikelyNonPhoneIdentifier(senderJid)) {
+        console.warn(
+          `[uazapi-webhook] ⚠️ Sender/participant parece LID ou ID interno, não telefone. ` +
+          `senderJid=${String(senderJid).slice(0, 80)} connectedPhone=${connectedPhone || "N/A"}`
+        );
       }
 
       // NÃO inserir em whatsapp_messages aqui — o zapi-webhook faz o próprio
