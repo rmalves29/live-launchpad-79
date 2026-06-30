@@ -94,6 +94,26 @@ function normalizeDigits(value?: string | null): string {
   return (value || '').replace(/\D/g, '');
 }
 
+function looksLikeBrazilianPhone(value?: string | null): boolean {
+  let digits = normalizeDigits(value);
+  if (!digits) return false;
+  if (digits.startsWith('55') && digits.length >= 12 && digits.length <= 13) {
+    digits = digits.slice(2);
+  } else if (digits.length > 11) {
+    return false;
+  }
+  if (digits.length < 10 || digits.length > 11) return false;
+  const ddd = Number(digits.slice(0, 2));
+  return !Number.isNaN(ddd) && ddd >= 11 && ddd <= 99;
+}
+
+function firstValidPhone(...values: Array<string | undefined | null>): string {
+  for (const value of values) {
+    if (looksLikeBrazilianPhone(value)) return value || '';
+  }
+  return '';
+}
+
 function normalizeParticipantPhone(value?: string | null): string {
   const digits = normalizeDigits(value);
 
@@ -796,11 +816,16 @@ serve(async (req) => {
     // Em mensagens fromMe de grupo, participantPhone costuma vir vazio ou ser o
     // próprio número conectado. Nesses casos usamos o connectedPhone como autor
     // (o pedido será lançado em nome do número da loja).
-    let senderPhone = payload.participantPhone || payload.senderPhone || payload.phone || '';
-    if (fromMe && isGroup) {
-      const candidate = payload.participantPhone || payload.senderPhone || payload.connectedPhone || '';
-      senderPhone = candidate || senderPhone;
-      console.log(`[zapi-webhook] 📌 fromMe group: usando senderPhone=${senderPhone} (participant=${payload.participantPhone || 'N/A'}, connected=${payload.connectedPhone || 'N/A'})`);
+    let senderPhone = '';
+    if (isGroup) {
+      senderPhone = fromMe
+        ? firstValidPhone(payload.connectedPhone, payload.participantPhone, payload.senderPhone)
+        : firstValidPhone(payload.participantPhone, payload.senderPhone);
+      if (fromMe) {
+        console.log(`[zapi-webhook] 📌 fromMe group: usando senderPhone=${senderPhone || 'INVALID'} (participant=${payload.participantPhone || 'N/A'}, connected=${payload.connectedPhone || 'N/A'})`);
+      }
+    } else {
+      senderPhone = firstValidPhone(payload.senderPhone, payload.participantPhone, payload.phone);
     }
     const groupName = payload.chatName || '';
     const groupId = payload.chatId || payload.phone || '';
@@ -1931,13 +1956,21 @@ function normalizePhone(phone: string): string {
   // Remove all non-digit characters
   let clean = phone.replace(/\D/g, '');
 
+  // IDs de grupo e LIDs do WhatsApp não são telefones reais.
+  if (clean.length > 13) return '';
+
   // Remove country code 55 if present
   if (clean.startsWith('55') && clean.length > 11) {
     clean = clean.substring(2);
   }
 
+  if (clean.length > 11) return '';
+
   // Expect DDD + number
   if (clean.length < 10) return '';
+
+  const ddd = Number(clean.substring(0, 2));
+  if (Number.isNaN(ddd) || ddd < 11 || ddd > 99) return '';
 
   // If WhatsApp sends DDD + 8 digits (10 total), assume mobile and add the 9th digit
   // (landlines typically don't use WhatsApp).

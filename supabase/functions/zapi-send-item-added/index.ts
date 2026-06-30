@@ -59,6 +59,20 @@ function normalizeDigits(value?: string | null): string {
   return (value || "").replace(/\D/g, "");
 }
 
+function normalizeBrazilianPhoneForSending(value?: string | null): string {
+  let digits = normalizeDigits(value).replace(/^0+/, "");
+  if (!digits) return "";
+  if (digits.startsWith("55") && digits.length >= 12 && digits.length <= 13) {
+    digits = digits.slice(2);
+  } else if (digits.length > 11) {
+    return "";
+  }
+  if (digits.length < 10 || digits.length > 11) return "";
+  const ddd = Number(digits.slice(0, 2));
+  if (Number.isNaN(ddd) || ddd < 11 || ddd > 99) return "";
+  return "55" + digits;
+}
+
 function phoneMatches(a?: string | null, b?: string | null): boolean {
   const buildVariants = (value?: string | null) => {
     const digits = normalizeDigits(value);
@@ -380,8 +394,7 @@ function validateRequest(body: any): body is ItemAddedRequest {
   if (!body.customer_phone || typeof body.customer_phone !== "string") return false;
   if (!body.product_name || typeof body.product_name !== "string") return false;
   if (body.product_name.length > 2000) return false;
-  if (body.customer_phone.replace(/\D/g, "").length < 10) return false;
-  if (body.customer_phone.replace(/\D/g, "").length > 15) return false;
+  if (!normalizeBrazilianPhoneForSending(body.customer_phone)) return false;
   return true;
 }
 
@@ -425,8 +438,12 @@ serve(async (req) => {
         const baseUrl = ZAPI_BASE_URL + "/instances/" + (credentials as any).instanceId + "/token/" + (credentials as any).token;
         formattedPhone = await resolveWhatsAppPhone(baseUrl, (credentials as any).clientToken, customer_phone);
       } else {
-        const cleaned = customer_phone.replace(/\D/g, "").replace(/^0+/, "");
-        formattedPhone = cleaned.startsWith("55") ? cleaned : "55" + cleaned;
+        formattedPhone = normalizeBrazilianPhoneForSending(customer_phone);
+        if (!formattedPhone) {
+          console.error("[zapi-send-item-added] Telefone inválido para uazapi:", customer_phone);
+          await supabase.from("whatsapp_messages").insert({ tenant_id, phone: normalizeDigits(customer_phone), message: "[FALHA - telefone inválido] " + product_name + " (" + product_code + ")", type: "item_added", product_name: product_name.substring(0, 100), sent_at: new Date().toISOString(), order_id: order_id || null, delivery_status: "FAILED" });
+          return;
+        }
       }
 
       const orderCtx = await loadOrderContext(supabase, tenant_id, order_id, cart_id, { product_name, product_code, quantity, unit_price });
