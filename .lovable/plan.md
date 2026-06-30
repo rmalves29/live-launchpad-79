@@ -1,73 +1,86 @@
-
-# Reduzir contagem do Z-API no SendFlow (imagem + texto = 1 mensagem)
-
 ## Diagnóstico
 
-O envio do SendFlow já faz **uma única chamada** para o Z-API (`POST /send-image` com `caption`). Não existe envio duplicado no código.
+### Estado atual das integrações (consulta no banco)
 
-O "2 mensagens" que você vê é **regra de cobrança/contagem do próprio Z-API**: toda chamada para `/send-image` é faturada/contada como 2 (1 do tipo *mídia* + 1 da *caption*), independente de chegar como bolha única no WhatsApp do cliente. Isso é definido pela Z-API, não tem como pedir pra eles "cobrarem 1" — precisamos mudar o tipo de envio.
+| Tenant | Provider | Credenciais | Status |
+|---|---|---|---|
+| Mania de Mulher (`app`) | uazapi | url + token OK | Único em uazapi |
+| OrderZap | baileys | – | API oficial |
+| Opalas Joias | zapi | sem credenciais | `is_active=false` |
+| 2 órfãos sem slug | baileys | sem credenciais | Sem tenant ligado |
+| **Todos os outros 13** (Clara, Luvian, Thay, FL, OF Beauty, Roanne, Nica, Cabello, La Grandame, Elos, Revele, Amar, Carine) | **zapi** | instance + token + client_token | `is_active=true` |
 
-## Solução proposta
+**Conclusão**: a zAPI não está "desativada" no banco — todos os tenants zAPI continuam ativos. O que aparece como "desativado/desconectado" na UI é o **status da sessão WhatsApp** (sessão caída na Z-API ou erro de envio nos fluxos), não a integração.
 
-Trocar `/send-image` por **`/send-link`** no `sendflow-process`. Esse endpoint do Z-API manda 1 mensagem de texto contendo a URL da imagem, e o WhatsApp automaticamente renderiza um **preview com miniatura da foto, título e descrição**. Visualmente fica parecido com a foto + legenda, mas o Z-API conta como **1 única mensagem**.
+### Causas reais que estão quebrando o envio nos tenants zAPI
 
-### Comparação
+1. **`zapi-broadcast`** — o `select` da função NÃO inclui `uazapi_url` / `uazapi_token`, mas o código checa `integration.uazapi_url`. Para provider `uazapi` o broadcast falha sempre; para provider `zapi` segue funcionando, mas o caminho de uazapi virou armadilha.
+2. **Shim `evolution-api.ts`** — hoje só roteia para uazapi. Qualquer função que ainda chama `evoSendText`/`evoSendButton` passando algo que não seja `"<url>|<token>"` (ex.: nome de instância antigo) devolve `success:false`. Precisa virar shim "dual" (zapi OU uazapi) ou cada sender precisa ter os dois caminhos.
+3. **Senders `zapi-send-item-added`, `zapi-send-paid-order`, `zapi-send-confirmation-link`, `zapi-send-product-canceled`, `fe-send-message`, `sendflow-process`** — usam o shim para o envio final. Para tenants zAPI eles montam credenciais zAPI, mas chamam o shim assumindo uazapi → falha silenciosa.
+4. **Polling de status na tela "Conexão"** — para Mania de Mulher (uazapi) o status retorna "disconnected" quando a sessão cai, e isso é interpretado visualmente como "desativada".
 
-```text
-HOJE (/send-image)             PROPOSTA (/send-link)
-┌──────────────────┐           ┌──────────────────┐
-│   [foto grande]  │           │ ┌──────────────┐ │
-│                  │           │ │[mini][título]│ │
-│ Texto da legenda │           │ │   [descr]    │ │
-│ com variáveis... │           │ └──────────────┘ │
-└──────────────────┘           │ Texto completo   │
-2 msgs no Z-API                │ com variáveis... │
-                               └──────────────────┘
-                               1 msg no Z-API
-```
+## Plano
 
-### Trade-offs (você decide)
+### 1. Tornar o shim `_shared/evolution-api.ts` realmente dual
+Aceitar dois formatos no parâmetro `instanceName`:
+- `"uazapi|<url>|<token>"` → roteia para uazapi (lib `uazapi-api.ts`)
+- `"zapi|<instanceId>|<token>|<clientToken>"` → roteia para Z-API (`https://api.z-api.io/instances/.../token/...`)
 
-- ✅ **Reduz pela metade** a contagem do Z-API → economia direta no plano e menor risco de bloqueio.
-- ✅ Texto e preview chegam como bolha única no WhatsApp.
-- ⚠️ A foto aparece como **miniatura** (cerca de 1/3 do tamanho de uma foto enviada normalmente), não em tela cheia. Cliente precisa tocar para abrir grande.
-- ⚠️ Depende do WhatsApp do destinatário ter renderização de link preview ativada (padrão em ~99% dos casos).
-- ⚠️ A primeira linha do `caption` vira o "título" do preview; precisamos garantir que o template fique legível nesse formato.
+Funções a re-implementar no caminho zAPI dentro do shim:
+`sendText`, `sendButton` (send-button-actions), `sendImage`/`sendImageByUrl` (send-image), `sendAudio`, `sendVideo`, `sendDocument`, `sendLinkMessage`, `sendPresenceAvailable`, `sendPresenceComposing`, `getInstanceStatus`, `getGroupParticipants`, `calcTypingDuration`, `getRandomReactionEmoji`.
 
-## Mudanças técnicas
+### 2. Corrigir `getCredentials` em todos os senders
+Padronizar a montagem do `instanceName` para o shim:
+- provider `uazapi` → `"uazapi|" + url + "|" + token`
+- provider `zapi`  → `"zapi|" + instanceId + "|" + token + "|" + clientToken`
 
-**Arquivo:** `supabase/functions/sendflow-process/index.ts`
+Aplicar em:
+- `zapi-send-item-added`
+- `zapi-send-paid-order`
+- `zapi-send-confirmation-link`
+- `zapi-send-product-canceled`
+- `zapi-send-tracking`
+- `zapi-send-message`
+- `zapi-broadcast` (incluir `uazapi_url, uazapi_token` no `select` e usar o shim no envio)
+- `fe-send-message`
+- `fe-list-groups`
+- `sendflow-process`
 
-Na função `sendGroupMessage` (linhas ~190-232), quando `imageUrl` existir, trocar:
+### 3. Webhook de confirmação SIM/NÃO no uazapi
+Hoje a lógica de "responder SIM gera link de pagamento" só está em `zapi-webhook`. Replicar no `uazapi-webhook`:
+- Identificar mensagem privada recebida
+- Buscar `pending_message_confirmations` por telefone + tenant
+- Se resposta = SIM → chamar `zapi-send-confirmation-link`
+- Se NÃO → marcar como recusado
+- Registrar variantes de telefone (mesma lógica de `buildPhoneVariantsForConfirmation`)
+- Atualizar `whatsapp_messages` com status de leitura quando vier `MessageStatusCallback` equivalente
 
-```typescript
-// ANTES
-url = `${ZAPI_BASE_URL}/.../send-image`;
-body = { phone: groupId, image: imageUrl, caption: variedMessage };
+### 4. Status de mensagem (entregue/lido) no uazapi
+Replicar `zapi-check-message-status` para uazapi: mapear `messageId` retornado pelo `/send/text` e `/send/media` e atualizar `whatsapp_messages.delivery_status` quando o webhook trouxer eventos `messages_update` ou `messages_ack`.
 
-// DEPOIS
-url = `${ZAPI_BASE_URL}/.../send-link`;
-body = {
-  phone: groupId,
-  message: variedMessage,           // texto completo
-  image: imageUrl,                  // thumb do preview
-  linkUrl: imageUrl,                // URL clicável
-  title: product.name,              // título do card
-  linkDescription: `Código ${product.code}`,
-};
-```
+### 5. Página "Conexão WhatsApp" — diagnóstico visível
+Na tela `ConexaoZAPI.tsx`:
+- Mostrar badge `is_active` da integração separado do status da sessão
+- Quando provider for zapi e `status=error`, exibir o erro retornado pela Z-API (token expirado, instância pausada, etc.) em vez de só "Desconectado"
+- Adicionar botão "Testar envio" que dispara `zapi-send-message` para o próprio número conectado e mostra a resposta
 
-Para passar `product.name` e `product.code`, ajustar a assinatura de `sendGroupMessage` pra receber o `product` (ou só os 2 campos).
+### 6. Limpeza
+- Remover do `config.toml` a entrada `[functions.evolution-webhook]` (função já deletada)
+- Marcar `is_active=false` nos 2 registros órfãos sem tenant (`3438be1b…` e `217ec5a3…`)
 
-Quando **não houver imagem**, mantém `/send-text` exatamente como hoje.
+### 7. Validação
+Após o deploy, testar para um tenant zAPI (sugestão: FL Semi Joias ou Clara Modas) e para Mania de Mulher (uazapi):
+- adicionar item em pedido → mensagem de "item adicionado" + botão
+- responder SIM → recebe link de checkout
+- marcar pedido como pago → recebe confirmação
+- atualizar rastreio → recebe código
+- disparo em grupo via SendFlow → mensagem entra no grupo
 
-## Validação
+### Detalhes técnicos
 
-1. Após deploy, abrir o SendFlow, selecionar 1 produto com foto + 1 grupo de teste e disparar.
-2. Conferir no WhatsApp se chegou como bolha única com preview da foto.
-3. Conferir no painel do Z-API se o contador subiu **+1** (e não +2) para esse envio.
-
-## Alternativas (caso não goste do preview reduzido)
-
-- **Manter como está** (foto grande, conta 2) — sem mudança no código.
-- **Enviar só texto sem foto** (conta 1, mas perde a imagem completamente).
+- O shim dual mantém as assinaturas atuais; nenhum sender precisa alterar a forma de chamar, só a string passada.
+- A Z-API usa URLs `${ZAPI_BASE_URL}/instances/{id}/token/{token}/send-*` com header opcional `Client-Token`.
+- O uazapi usa `${url}/send/text|media|presence` com header `token`.
+- Manter `_shared/uazapi-api.ts` como hoje; o shim só adiciona o ramo zAPI ao lado.
+- Não mexer em `zapi-proxy` (ele já é zAPI-only e é usado na tela de conexão).
+- Migrações: nenhuma alteração de schema; apenas um `UPDATE` para desativar os 2 registros órfãos.

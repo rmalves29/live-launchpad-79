@@ -112,7 +112,19 @@ function normalizeParticipantPhone(value?: string | null): string {
   return digits;
 }
 
-async function resolveZapiIntegration(supabase: any, instanceId?: string, connectedPhone?: string | null) {
+async function resolveZapiIntegration(supabase: any, instanceId?: string, connectedPhone?: string | null, uazapiTenantId?: string | null) {
+  // 🌉 BRIDGE uazapi → zapi-webhook: quando o uazapi-webhook reencaminha o evento,
+  // ele passa o tenant_id já resolvido. Aqui só pegamos a integração ativa do tenant.
+  if (uazapiTenantId) {
+    const { data: uazInteg } = await supabase
+      .from('integration_whatsapp')
+      .select('tenant_id, zapi_instance_id, zapi_token, zapi_client_token, connected_phone, uazapi_url, uazapi_token, provider')
+      .eq('tenant_id', uazapiTenantId)
+      .eq('is_active', true)
+      .maybeSingle();
+    if (uazInteg?.tenant_id) return uazInteg;
+  }
+
   const connectedDigits = normalizeDigits(connectedPhone);
 
   // ⚡ PRIORIDADE 1: instanceId é a fonte da verdade (imutável e único por tenant).
@@ -341,7 +353,7 @@ serve(async (req) => {
       evtType === 'NotificationDisconnectedCallback';
     if (isConnectionEvent) {
       try {
-        const integ = await resolveZapiIntegration(supabase, payload.instanceId, payload.connectedPhone);
+        const integ = await resolveZapiIntegration(supabase, payload.instanceId, payload.connectedPhone, (payload as any).uazapi_tenant_id);
         if (integ?.tenant_id) {
           const reason = (payload as any).reason || (payload as any).cause || (payload as any).error || '';
           const connectedPhoneStr = payload.connectedPhone || '';
@@ -489,7 +501,7 @@ serve(async (req) => {
       let eventTenantId: string | null = null;
       let zapiCreds: { zapi_instance_id: string | null; zapi_token: string | null; zapi_client_token: string | null } | null = null;
 
-      const integ = await resolveZapiIntegration(supabase, instanceId, payload.connectedPhone);
+      const integ = await resolveZapiIntegration(supabase, instanceId, payload.connectedPhone, (payload as any).uazapi_tenant_id);
       if (integ) {
         eventTenantId = integ.tenant_id;
         zapiCreds = { zapi_instance_id: integ.zapi_instance_id, zapi_token: integ.zapi_token, zapi_client_token: integ.zapi_client_token };
@@ -970,7 +982,7 @@ serve(async (req) => {
 
     if (payload.instanceId || payload.connectedPhone) {
       try {
-        const integration = await resolveZapiIntegration(supabase, payload.instanceId, payload.connectedPhone);
+        const integration = await resolveZapiIntegration(supabase, payload.instanceId, payload.connectedPhone, (payload as any).uazapi_tenant_id);
         if (integration) {
           tenantId = integration.tenant_id;
           console.log(`[zapi-webhook] Found tenant by Z-API identity (instance=${payload.instanceId || 'N/A'}, connected=${payload.connectedPhone || 'N/A'}): ${tenantId}`);

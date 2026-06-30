@@ -23,7 +23,7 @@ interface BroadcastRequest {
 async function getCredentials(supabase: any, tenantId: string) {
   const { data: integration, error } = await supabase
     .from("integration_whatsapp")
-    .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, is_active, provider")
+    .select("zapi_instance_id, zapi_token, zapi_client_token, uazapi_url, uazapi_token, is_active, provider")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .maybeSingle();
@@ -32,8 +32,12 @@ async function getCredentials(supabase: any, tenantId: string) {
 
   const provider = integration.provider || "zapi";
   if (provider === "uazapi") {
-    if (!((integration.uazapi_url && integration.uazapi_token) ? (integration.uazapi_url + "|" + integration.uazapi_token) : null)) return null;
-    return { provider: "uazapi" as const, instanceName: ((integration.uazapi_url && integration.uazapi_token) ? (integration.uazapi_url + "|" + integration.uazapi_token) : null) };
+    if (!integration.uazapi_url || !integration.uazapi_token) return null;
+    return {
+      provider: "uazapi" as const,
+      uazUrl: String(integration.uazapi_url).replace(/\/+$/, ""),
+      uazToken: integration.uazapi_token,
+    };
   }
 
   if (!integration.zapi_instance_id || !integration.zapi_token) return null;
@@ -230,20 +234,19 @@ serve(async (req) => {
         let uazResult: { success: boolean; messageId?: string; error?: string } | null = null;
 
         if (credentials.provider === "uazapi") {
-          const { instanceName } = credentials as any;
-          const [uazUrl, uazTok] = String(instanceName || "").split("|");
+          const { uazUrl, uazToken } = credentials as any;
           // Simulate composing presence
           try {
             await fetch(`${uazUrl}/send/presence`, {
               method: "POST",
-              headers: { "Content-Type": "application/json", "token": uazTok },
+              headers: { "Content-Type": "application/json", "token": uazToken },
               body: JSON.stringify({ number: phone, presence: "composing", delay: 1500 }),
             });
             await new Promise((r) => setTimeout(r, 1500));
           } catch (_) { /* ignore */ }
           response = await fetch(`${uazUrl}/send/text`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", "token": uazTok },
+            headers: { "Content-Type": "application/json", "token": uazToken },
             body: JSON.stringify({ number: phone, text: variedMessage }),
           });
         } else {
