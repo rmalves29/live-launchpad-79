@@ -504,19 +504,10 @@ serve(async (req) => {
         await sendPresenceAvailable(instanceName, formattedPhone);
         await sendPresenceComposing(instanceName, formattedPhone, calcTypingDuration(message.length));
 
-        let buttonDelivered = false;
-        if (useButton && resolvedButtonUrl) {
-          const btnLabel = (credentials as any).buttonLabel || "Pagar Agora";
-          const btnRes = await evoSendButton(instanceName, formattedPhone, message, btnLabel, resolvedButtonUrl);
-          if (btnRes.success) {
-            buttonDelivered = true;
-            sendOk = true;
-            zapiMessageId = btnRes.messageId || null;
-            console.log("[zapi-send-item-added] Evolution sendButton OK | msgId:", zapiMessageId);
-          } else {
-            console.warn("[zapi-send-item-added] Evolution sendButton falhou, fallback texto:", btnRes.error);
-          }
-        }
+        // IMPORTANTE: sendButton via Evolution/Baileys é aceito pela API mas o WhatsApp
+        // NÃO entrega mensagens com botões interativos enviadas por clientes não-oficiais.
+        // Por isso forçamos sempre o envio como texto com o link inline.
+        const buttonDelivered = false;
 
         if (!buttonDelivered) {
           let finalMessage = message;
