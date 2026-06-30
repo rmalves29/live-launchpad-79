@@ -90,66 +90,33 @@ serve(async (req) => {
 
     const provider = (waConfig as any)?.provider || "zapi";
 
-    // ─────────── EVOLUTION BRANCH ───────────
-    if (provider === "evolution") {
-      const instanceName = (waConfig as any)?.evolution_instance_name;
-      if (!instanceName) {
-        return new Response(JSON.stringify({ error: "Evolution API não configurada (instance_name ausente)" }), {
+    // ─────────── UAZAPI BRANCH ───────────
+    if (provider === "uazapi") {
+      const uazUrl = ((waConfig as any)?.uazapi_url || "").replace(/\/+$/, "");
+      const uazTok = (waConfig as any)?.uazapi_token || "";
+      if (!uazUrl || !uazTok) {
+        return new Response(JSON.stringify({ error: "uazapi não configurada (url/token ausentes)" }), {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const EVOLUTION_API_URL = (Deno.env.get("EVOLUTION_API_URL") || "").replace(/\/+$/, "");
-      const EVOLUTION_API_KEY = Deno.env.get("EVOLUTION_API_KEY") || "";
-      if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY) {
-        return new Response(JSON.stringify({ error: "EVOLUTION_API_URL/API_KEY não configurados" }), {
-          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const evoHeaders: Record<string, string> = { "Content-Type": "application/json", apikey: EVOLUTION_API_KEY };
+      const uazH: Record<string, string> = { "Content-Type": "application/json", token: uazTok };
 
       try {
-        const url = `${EVOLUTION_API_URL}/group/fetchAllGroups/${instanceName}?getParticipants=false`;
-        console.log(`[fe-list-groups] Evolution GET ${url}`);
-        const res = await fetch(url, { method: "GET", headers: evoHeaders });
+        const res = await fetch(`${uazUrl}/group/list`, { method: "GET", headers: uazH });
         const text = await res.text();
-        console.log(`[fe-list-groups] Evolution status=${res.status} bodyLen=${text.length}`);
         if (!res.ok) {
-          return new Response(JSON.stringify({ error: `Evolution retornou ${res.status}` }), {
+          return new Response(JSON.stringify({ error: `uazapi retornou ${res.status}: ${text.slice(0,200)}` }), {
             status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
         let data: any = null;
         try { data = JSON.parse(text); } catch { data = null; }
-        let evoGroups: any[] = [];
-        if (Array.isArray(data)) evoGroups = data;
-        else if (Array.isArray(data?.groups)) evoGroups = data.groups;
-        else if (Array.isArray(data?.data)) evoGroups = data.data;
+        const uazGroups: any[] = Array.isArray(data) ? data : (data?.groups || data?.data || []);
+        console.log(`[fe-list-groups] uazapi parsed ${uazGroups.length} groups`);
 
-        console.log(`[fe-list-groups] Evolution parsed ${evoGroups.length} groups`);
-
-        // Optional admin filter: needs participants → fetch only if admin_only requested
-        let filtered = evoGroups;
-        if (admin_only) {
-          const withParticipantsUrl = `${EVOLUTION_API_URL}/group/fetchAllGroups/${instanceName}?getParticipants=true`;
-          try {
-            const r2 = await fetch(withParticipantsUrl, { method: "GET", headers: evoHeaders });
-            if (r2.ok) {
-              const t2 = await r2.text();
-              const d2 = JSON.parse(t2);
-              const list = Array.isArray(d2) ? d2 : (d2?.groups || d2?.data || []);
-              // Evolution owner is usually marked via participants[*].admin === 'admin' | 'superadmin'
-              // We treat groups where the instance is admin/superadmin as filter target.
-              // Without resolving connected phone, accept groups where ANY admin exists (safer = all).
-              filtered = list.length > 0 ? list : evoGroups;
-            }
-          } catch (err: any) {
-            console.warn(`[fe-list-groups] Evolution participants fetch failed: ${err.message}`);
-          }
-        }
-
-        const upsertPayload = filtered.map((g: any) => ({
+        const upsertPayload = uazGroups.map((g: any) => ({
           tenant_id,
-          group_jid: g.id || g.remoteJid || g.groupJid,
+          group_jid: g.id || g.jid || g.remoteJid || g.groupJid,
           group_name: g.subject || g.name || g.id,
           participant_count: g.size || g.participantsCount || (Array.isArray(g.participants) ? g.participants.length : 0) || 0,
           max_participants: 1024,
@@ -160,14 +127,9 @@ serve(async (req) => {
         if (upsertPayload.length > 0) {
           for (let i = 0; i < upsertPayload.length; i += 50) {
             const chunk = upsertPayload.slice(i, i + 50);
-            const { error } = await supabase
-              .from("fe_groups")
-              .upsert(chunk, { onConflict: "tenant_id,group_jid" });
-            if (error) {
-              console.error(`[fe-list-groups] Evolution upsert error: ${error.message}`);
-            } else {
-              added += chunk.length;
-            }
+            const { error } = await supabase.from("fe_groups").upsert(chunk, { onConflict: "tenant_id,group_jid" });
+            if (error) console.error(`[fe-list-groups] uazapi upsert error: ${error.message}`);
+            else added += chunk.length;
           }
         }
 
@@ -179,20 +141,21 @@ serve(async (req) => {
 
         return new Response(JSON.stringify({
           added,
-          total_found: evoGroups.length,
+          total_found: uazGroups.length,
           synced: upsertPayload.length,
           admin_only: false,
-          provider: "evolution",
+          provider: "uazapi",
           groups,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (err: any) {
-        console.error(`[fe-list-groups] Evolution error: ${err.message}`);
-        return new Response(JSON.stringify({ error: `Evolution: ${err.message}` }), {
+        console.error(`[fe-list-groups] uazapi error: ${err.message}`);
+        return new Response(JSON.stringify({ error: `uazapi: ${err.message}` }), {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
     }
-    // ─────────── /EVOLUTION BRANCH ───────────
+    // ─────────── /UAZAPI BRANCH ───────────
+
 
     if (!waConfig?.zapi_instance_id || !waConfig?.zapi_token) {
       return new Response(JSON.stringify({ error: "Z-API não configurada para este tenant" }), {
