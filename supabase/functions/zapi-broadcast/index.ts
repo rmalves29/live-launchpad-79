@@ -234,20 +234,19 @@ serve(async (req) => {
         let uazResult: { success: boolean; messageId?: string; error?: string } | null = null;
 
         if (credentials.provider === "uazapi") {
-          const { instanceName } = credentials as any;
-          const [uazUrl, uazTok] = String(instanceName || "").split("|");
+          const { uazUrl, uazToken } = credentials as any;
           // Simulate composing presence
           try {
             await fetch(`${uazUrl}/send/presence`, {
               method: "POST",
-              headers: { "Content-Type": "application/json", "token": uazTok },
+              headers: { "Content-Type": "application/json", "token": uazToken },
               body: JSON.stringify({ number: phone, presence: "composing", delay: 1500 }),
             });
             await new Promise((r) => setTimeout(r, 1500));
           } catch (_) { /* ignore */ }
           response = await fetch(`${uazUrl}/send/text`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", "token": uazTok },
+            headers: { "Content-Type": "application/json", "token": uazToken },
             body: JSON.stringify({ number: phone, text: variedMessage }),
           });
         } else {
