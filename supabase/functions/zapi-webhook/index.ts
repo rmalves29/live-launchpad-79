@@ -112,7 +112,19 @@ function normalizeParticipantPhone(value?: string | null): string {
   return digits;
 }
 
-async function resolveZapiIntegration(supabase: any, instanceId?: string, connectedPhone?: string | null) {
+async function resolveZapiIntegration(supabase: any, instanceId?: string, connectedPhone?: string | null, uazapiTenantId?: string | null) {
+  // 🌉 BRIDGE uazapi → zapi-webhook: quando o uazapi-webhook reencaminha o evento,
+  // ele passa o tenant_id já resolvido. Aqui só pegamos a integração ativa do tenant.
+  if (uazapiTenantId) {
+    const { data: uazInteg } = await supabase
+      .from('integration_whatsapp')
+      .select('tenant_id, zapi_instance_id, zapi_token, zapi_client_token, connected_phone, uazapi_url, uazapi_token, provider')
+      .eq('tenant_id', uazapiTenantId)
+      .eq('is_active', true)
+      .maybeSingle();
+    if (uazInteg?.tenant_id) return uazInteg;
+  }
+
   const connectedDigits = normalizeDigits(connectedPhone);
 
   // ⚡ PRIORIDADE 1: instanceId é a fonte da verdade (imutável e único por tenant).
