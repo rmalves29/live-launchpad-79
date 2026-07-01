@@ -24,6 +24,7 @@ import {
   disconnectInstance as uazDisconnectInstance,
   calcTypingDuration as uazCalcTypingDuration,
   getRandomReactionEmoji as uazGetRandomReactionEmoji,
+  sendReaction as uazSendReaction,
   type UazapiConfig,
 } from "./uazapi-api.ts";
 
@@ -106,8 +107,11 @@ export async function markMessageAsRead(_instanceName: string, _phone: string, _
   // Não implementado na shim. Sem-op.
 }
 
-export async function sendReaction(_instanceName: string, _phone: string, _messageId: string, _emoji: string): Promise<void> {
-  // Não implementado na shim. Sem-op.
+export async function sendReaction(instanceName: string, phone: string, messageId: string, emoji: string): Promise<void> {
+  const cfg = parseCfg(instanceName);
+  if (!cfg || !messageId) return;
+  const result = await uazSendReaction(cfg, phone, messageId, emoji);
+  if (!result.success) console.warn(`[evolution-shim] sendReaction uazapi falhou: ${result.error}`);
 }
 
 export function getRandomReactionEmoji(): string {

@@ -148,6 +148,35 @@ export async function sendButton(
   }
 }
 
+export async function sendReaction(
+  cfg: UazapiConfig,
+  phone: string,
+  messageId: string,
+  emoji: string,
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const id = (messageId || "").toString().trim();
+    const reaction = (emoji || "❤️").toString().trim() || "❤️";
+    if (!id) return { success: false, error: "messageId ausente para reação" };
+
+    const res = await fetchWithTimeout(`${trimUrl(cfg.url)}/send/reaction`, {
+      method: "POST",
+      headers: instanceHeaders(cfg.token),
+      body: JSON.stringify({
+        number: phone,
+        messageid: id,
+        messageId: id,
+        id,
+        reaction,
+        emoji: reaction,
+      }),
+    }, 20_000);
+    return await readResult(res);
+  } catch (e: any) {
+    return { success: false, error: e.name === "AbortError" ? "uazapi timeout sendReaction" : e.message };
+  }
+}
+
 // Fallback textual para fluxos onde o botão nativo não deve ser usado.
 export async function sendLinkMessage(
   cfg: UazapiConfig,
