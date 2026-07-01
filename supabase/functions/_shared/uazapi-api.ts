@@ -200,11 +200,17 @@ export async function sendPresence(
   try {
     const body: Record<string, unknown> = { number: phone, presence };
     if (delayMs) body.delay = delayMs;
-    await fetchWithTimeout(`${trimUrl(cfg.url)}/send/presence`, {
+    const res = await fetchWithTimeout(`${trimUrl(cfg.url)}/send/presence`, {
       method: "POST",
       headers: instanceHeaders(cfg.token),
       body: JSON.stringify(body),
     }, 10_000);
+    if (res.ok) {
+      console.log(`[uazapi] presence ${presence} OK → ${phone}${delayMs ? ` (delay=${delayMs}ms)` : ""}`);
+    } else {
+      const txt = (await res.text()).substring(0, 200);
+      console.warn(`[uazapi] presence ${presence} FAIL ${res.status}: ${txt}`);
+    }
     if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
   } catch (e: any) {
     console.warn(`[uazapi] sendPresence error: ${e.message}`);
