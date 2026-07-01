@@ -486,7 +486,7 @@ serve(async (req) => {
         const templateFromTable = await getTemplate(supabase, tenant_id);
         const template = templateFromTable || (credentials as any).templateItemAdded || (credentials as any).templateComLink || getDefaultTemplateComLink();
         const baseMessage = formatMessage(template, body, orderCtx).replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrl).replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrl);
-        message = addMessageVariation(baseMessage, false);
+        message = prependGreeting(addMessageVariation(baseMessage, false));
         if ((credentials as any).buttonEnabled) {
           useButton = true;
           resolvedButtonUrl = ((credentials as any).buttonUrl && (credentials as any).buttonUrl.trim()) ? (credentials as any).buttonUrl.trim() : checkoutUrl;
@@ -508,7 +508,7 @@ serve(async (req) => {
           const baseMessageA = formatMessage(template, body, orderCtx)
             .replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrlA)
             .replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrlA);
-          message = addMessageVariation(baseMessageA, false);
+          message = prependGreeting(addMessageVariation(baseMessageA, false));
           consentDecisionAfterSend = "request_sent";
           if ((credentials as any).buttonEnabled) {
             useButton = true;
@@ -522,7 +522,7 @@ serve(async (req) => {
           const templateFromTable = await getTemplate(supabase, tenant_id);
           const template = templateFromTable || (credentials as any).templateComLink || getDefaultTemplateComLink();
           const baseMessage = formatMessage(template, body, orderCtx).replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrl).replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrl);
-          message = addMessageVariation(baseMessage, false);
+          message = prependGreeting(addMessageVariation(baseMessage, false));
           consentDecisionAfterSend = "active_sent";
           if ((credentials as any).buttonEnabled) {
             useButton = true;
