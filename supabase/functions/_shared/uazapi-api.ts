@@ -200,7 +200,7 @@ export async function sendPresence(
   try {
     const body: Record<string, unknown> = { number: phone, presence };
     if (delayMs) body.delay = delayMs;
-    const res = await fetchWithTimeout(`${trimUrl(cfg.url)}/send/presence`, {
+    const res = await fetchWithTimeout(`${trimUrl(cfg.url)}/message/presence`, {
       method: "POST",
       headers: instanceHeaders(cfg.token),
       body: JSON.stringify(body),
