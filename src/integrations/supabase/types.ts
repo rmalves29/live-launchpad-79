@@ -2578,45 +2578,51 @@ export type Database = {
       }
       product_promotions: {
         Row: {
-          buy_qty: number
+          buy_qty: number | null
           category_id: string
           created_at: string
-          discount_percent: number
+          discount_percent: number | null
           ends_at: string | null
-          get_qty: number
+          get_qty: number | null
           id: string
           is_active: boolean
           name: string
+          promotion_type: string
           starts_at: string | null
           tenant_id: string
+          tiers: Json | null
           updated_at: string
         }
         Insert: {
-          buy_qty?: number
+          buy_qty?: number | null
           category_id: string
           created_at?: string
-          discount_percent?: number
+          discount_percent?: number | null
           ends_at?: string | null
-          get_qty?: number
+          get_qty?: number | null
           id?: string
           is_active?: boolean
           name: string
+          promotion_type?: string
           starts_at?: string | null
           tenant_id: string
+          tiers?: Json | null
           updated_at?: string
         }
         Update: {
-          buy_qty?: number
+          buy_qty?: number | null
           category_id?: string
           created_at?: string
-          discount_percent?: number
+          discount_percent?: number | null
           ends_at?: string | null
-          get_qty?: number
+          get_qty?: number | null
           id?: string
           is_active?: boolean
           name?: string
+          promotion_type?: string
           starts_at?: string | null
           tenant_id?: string
+          tiers?: Json | null
           updated_at?: string
         }
         Relationships: [
