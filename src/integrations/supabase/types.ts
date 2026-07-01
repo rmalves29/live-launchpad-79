@@ -1099,6 +1099,27 @@ export type Database = {
           },
         ]
       }
+      group_last_message: {
+        Row: {
+          group_jid: string
+          message_id: string
+          received_at: string
+          tenant_id: string
+        }
+        Insert: {
+          group_jid: string
+          message_id: string
+          received_at?: string
+          tenant_id: string
+        }
+        Update: {
+          group_jid?: string
+          message_id?: string
+          received_at?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       instagram_live_comments: {
         Row: {
           comment_id: string | null
