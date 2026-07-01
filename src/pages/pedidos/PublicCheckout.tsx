@@ -1315,6 +1315,23 @@ const PublicCheckout = () => {
     for (const promo of promos) {
       const units = byCategory[promo.category_id];
       if (!units || units.length === 0) continue;
+
+      if (promo.promotion_type === 'progressive_qty') {
+        const tiers = Array.isArray(promo.tiers) ? [...promo.tiers].sort((a: any, b: any) => Number(b.qty) - Number(a.qty)) : [];
+        if (tiers.length === 0) continue;
+        const totalQty = units.length;
+        const subtotal = units.reduce((s, v) => s + v, 0);
+        const matched = tiers.find((t: any) => totalQty >= Number(t.qty));
+        if (!matched) continue;
+        const pct = Math.min(100, Math.max(0, Number(matched.percent) || 0)) / 100;
+        const promoDiscount = Math.round(subtotal * pct * 100) / 100;
+        if (promoDiscount > 0) {
+          total += promoDiscount;
+          lines.push({ name: `${promo.name} (${totalQty} peças - ${matched.percent}%)`, discount: promoDiscount, freeCount: 0 });
+        }
+        continue;
+      }
+
       const sorted = [...units].sort((a, b) => a - b); // mais baratos primeiro
       const groupSize = (promo.buy_qty || 1) + (promo.get_qty || 1);
       const groups = Math.floor(sorted.length / groupSize);
