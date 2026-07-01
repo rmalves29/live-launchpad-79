@@ -287,6 +287,7 @@ export default function ConexaoZAPI() {
         uazapi_admin_token: uazapiAdminToken.trim() || null,
       });
       if (data?.success) {
+        wasConnectedRef.current = false; // force group sync on next connect
         toast({ title: 'Sucesso', description: 'Credenciais uazapi salvas e webhook configurado' });
         await loadIntegration();
       } else {
@@ -308,7 +309,12 @@ export default function ConexaoZAPI() {
       if (data.connected) {
         stopQRCountdown();
         setWhatsappStatus({ connected: true, status: data.status, user: data.user });
+        if (!wasConnectedRef.current) {
+          wasConnectedRef.current = true;
+          syncGroupsAfterConnect();
+        }
       } else if (data.status !== 'not_configured') {
+        wasConnectedRef.current = false;
         setWhatsappStatus(prev => prev?.status === 'qr_ready' && prev?.qrCode ? prev : { connected: false, status: data.status || 'disconnected' });
       }
     } catch (e) { console.error(e); }
