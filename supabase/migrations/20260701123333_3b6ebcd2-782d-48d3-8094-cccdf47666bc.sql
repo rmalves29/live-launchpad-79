@@ -1,0 +1,1 @@
+ALTER TABLE public.coupons DROP CONSTRAINT coupons_discount_value_check; ALTER TABLE public.coupons ADD CONSTRAINT coupons_discount_value_check CHECK (discount_value >= 0);
