@@ -5,6 +5,11 @@ import {
   sendText as evoSendText,
   sendImage as evoSendImage,
   sendImageByUrl as evoSendImageByUrl,
+  sendPresenceAvailable as evoSendPresenceAvailable,
+  sendPresenceComposing as evoSendPresenceComposing,
+  calcTypingDuration as evoCalcTypingDuration,
+  sendReaction as evoSendReaction,
+  getRandomReactionEmoji as evoGetRandomReactionEmoji,
 } from "../_shared/evolution-api.ts";
 
 const corsHeaders = {
@@ -228,11 +233,26 @@ async function sendGroupMessageEvolution(
   groupId: string,
   message: string,
   imageUrl?: string,
+  lastMessageId?: string | null,
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const evoGroupId = groupId.includes("@g.us")
       ? groupId
       : groupId.replace(/-group$/i, "") + "@g.us";
+
+    await evoSendPresenceAvailable(instanceName, evoGroupId);
+    await sleep(1500 + Math.random() * 1500);
+
+    if (lastMessageId) {
+      try {
+        await evoSendReaction(instanceName, evoGroupId, lastMessageId, evoGetRandomReactionEmoji());
+        await sleep(600 + Math.random() * 600);
+      } catch (reactionError: any) {
+        console.warn(`[sendflow-process] uazapi reaction skipped for ${evoGroupId}: ${reactionError?.message || reactionError}`);
+      }
+    }
+
+    await evoSendPresenceComposing(instanceName, evoGroupId, evoCalcTypingDuration(message.length));
 
     if (imageUrl) {
       const optimizedImageUrl = imageUrl
@@ -422,6 +442,26 @@ async function processTaskQueue({
   let sentMessages = jobData.sentMessages || 0;
   let errorMessages = jobData.errorMessages || 0;
 
+  const getLatestGroupMessageId = async (groupName: string, groupId: string): Promise<string | null> => {
+    const filters: string[] = [];
+    if (groupName) filters.push(`whatsapp_group_name.eq.${groupName.replace(/[,()]/g, "")}`);
+    if (groupId) filters.push(`message.ilike.%${groupId.replace(/[%_,()]/g, "")}%`);
+
+    let query = supabase
+      .from("whatsapp_messages")
+      .select("zapi_message_id")
+      .eq("tenant_id", tenantId)
+      .eq("type", "incoming")
+      .not("zapi_message_id", "is", null)
+      .order("received_at", { ascending: false })
+      .limit(1);
+
+    if (filters.length > 0) query = query.or(filters.join(","));
+
+    const { data } = await query.maybeSingle();
+    return data?.zapi_message_id || null;
+  };
+
   let lastProductId: number | null = null;
   {
     const { data: lastCompleted } = await supabase
@@ -539,7 +579,8 @@ async function processTaskQueue({
 
     let result: { success: boolean; error?: string };
     if (credentials.provider === "uazapi") {
-      result = await sendGroupMessageEvolution(credentials.instanceName, task.group_id, message, product.image_url || undefined);
+      const lastMessageId = await getLatestGroupMessageId(task.group_name, task.group_id);
+      result = await sendGroupMessageEvolution(credentials.instanceName, task.group_id, message, product.image_url || undefined, lastMessageId);
     } else {
       result = await sendGroupMessageZapi(credentials, task.group_id, message, product.image_url || undefined);
     }

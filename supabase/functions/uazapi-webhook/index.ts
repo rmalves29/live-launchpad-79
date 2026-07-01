@@ -149,7 +149,7 @@ Deno.serve(async (req) => {
     const data = payload?.data || payload?.message || payload;
 
     // ─── 1) Eventos de conexão ──────────────────────────────────────────────
-    if (event === "connection" || event === "connection_update" || data?.status) {
+    if (event === "connection" || event === "connection_update" || (!["messages", "messages.upsert", "message"].includes(event) && (payload?.instance?.status || payload?.connection))) {
       const status = data?.status || payload?.status;
       const phone = data?.owner || data?.wid || data?.phoneconnected;
       const updates: Record<string, unknown> = { last_status_check: new Date().toISOString() };
@@ -280,7 +280,7 @@ Deno.serve(async (req) => {
         message: text,
         isGroup,
         fromMe,
-        fromApi: !!(data?.fromApi || data?.fromapi),
+        fromApi: !!(data?.fromApi || data?.fromapi || data?.wasSentByApi || data?.wasSentByapi),
         messageId,
         zapiMessageId: messageId,
         momment: data?.messageTimestamp || data?.timestamp || Date.now(),
