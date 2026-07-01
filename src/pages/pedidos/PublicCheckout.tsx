@@ -268,7 +268,7 @@ const PublicCheckout = () => {
         const nowIso = new Date().toISOString();
         const { data, error } = await (supabase as any)
           .from('product_promotions')
-          .select('id, name, category_id, buy_qty, get_qty, discount_percent, starts_at, ends_at, is_active')
+          .select('id, name, category_id, promotion_type, buy_qty, get_qty, discount_percent, tiers, starts_at, ends_at, is_active')
           .eq('tenant_id', tenant.id)
           .eq('is_active', true);
         if (error) throw error;
