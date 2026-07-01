@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Loader2, Plus, Trash2, Gift, Pencil } from 'lucide-react';
+import { Loader2, Plus, Trash2, Gift, Pencil, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
 import { supabaseTenant } from '@/lib/supabase-tenant';
@@ -19,19 +19,25 @@ interface Categoria {
   is_active: boolean;
 }
 
+interface Tier {
+  qty: number;
+  percent: number;
+}
+
 interface Promocao {
   id: string;
   name: string;
   category_id: string;
-  buy_qty: number;
-  get_qty: number;
-  discount_percent: number;
+  promotion_type: 'buy_x_get_y' | 'progressive_qty';
+  buy_qty: number | null;
+  get_qty: number | null;
+  discount_percent: number | null;
+  tiers: Tier[] | null;
   starts_at: string | null;
   ends_at: string | null;
   is_active: boolean;
 }
 
-// Converte ISO -> "YYYY-MM-DDTHH:mm" para input datetime-local (mantém horário local)
 const toLocalInput = (iso: string | null) => {
   if (!iso) return '';
   const d = new Date(iso);
@@ -47,21 +53,25 @@ export default function PromocoesManager() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [saving, setSaving] = useState(false);
 
-  // Form (criação + edição)
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [name, setName] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [promotionType, setPromotionType] = useState<'buy_x_get_y' | 'progressive_qty'>('buy_x_get_y');
   const [buyQty, setBuyQty] = useState(1);
   const [getQty, setGetQty] = useState(1);
   const [discountPercent, setDiscountPercent] = useState(100);
+  const [tiers, setTiers] = useState<Tier[]>([{ qty: 1, percent: 5 }, { qty: 2, percent: 7 }, { qty: 3, percent: 10 }]);
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
 
   const resetForm = () => {
     setEditingId(null);
-    setName(''); setCategoryId(''); setBuyQty(1); setGetQty(1);
-    setDiscountPercent(100); setStartsAt(''); setEndsAt('');
+    setName(''); setCategoryId('');
+    setPromotionType('buy_x_get_y');
+    setBuyQty(1); setGetQty(1); setDiscountPercent(100);
+    setTiers([{ qty: 1, percent: 5 }, { qty: 2, percent: 7 }, { qty: 3, percent: 10 }]);
+    setStartsAt(''); setEndsAt('');
   };
 
   const load = async () => {
@@ -102,17 +112,43 @@ export default function PromocoesManager() {
       return;
     }
     if (!validatePeriod()) return;
+
+    if (promotionType === 'progressive_qty') {
+      const cleaned = tiers
+        .filter(t => Number(t.qty) > 0 && Number(t.percent) > 0)
+        .map(t => ({ qty: Number(t.qty), percent: Number(t.percent) }))
+        .sort((a, b) => a.qty - b.qty);
+      if (cleaned.length === 0) {
+        toast({ title: 'Adicione ao menos uma faixa', description: 'Informe quantidade e percentual.', variant: 'destructive' });
+        return;
+      }
+    }
+
     setSaving(true);
     try {
-      const payload = {
+      const payload: any = {
         name: name.trim(),
         category_id: categoryId,
-        buy_qty: buyQty,
-        get_qty: getQty,
-        discount_percent: discountPercent,
+        promotion_type: promotionType,
         starts_at: startsAt ? new Date(startsAt).toISOString() : null,
         ends_at: endsAt ? new Date(endsAt).toISOString() : null,
       };
+
+      if (promotionType === 'buy_x_get_y') {
+        payload.buy_qty = buyQty;
+        payload.get_qty = getQty;
+        payload.discount_percent = discountPercent;
+        payload.tiers = null;
+      } else {
+        payload.buy_qty = 0;
+        payload.get_qty = 0;
+        payload.discount_percent = 0;
+        payload.tiers = tiers
+          .filter(t => Number(t.qty) > 0 && Number(t.percent) > 0)
+          .map(t => ({ qty: Number(t.qty), percent: Number(t.percent) }))
+          .sort((a, b) => a.qty - b.qty);
+      }
+
       if (editingId) {
         const { error } = await (supabaseTenant as any)
           .from('product_promotions').update(payload).eq('id', editingId);
@@ -142,9 +178,11 @@ export default function PromocoesManager() {
     setEditingId(p.id);
     setName(p.name);
     setCategoryId(p.category_id);
-    setBuyQty(p.buy_qty);
-    setGetQty(p.get_qty);
-    setDiscountPercent(p.discount_percent);
+    setPromotionType((p.promotion_type as any) || 'buy_x_get_y');
+    setBuyQty(p.buy_qty ?? 1);
+    setGetQty(p.get_qty ?? 1);
+    setDiscountPercent(p.discount_percent ?? 100);
+    setTiers(Array.isArray(p.tiers) && p.tiers.length ? p.tiers : [{ qty: 1, percent: 5 }]);
     setStartsAt(toLocalInput(p.starts_at));
     setEndsAt(toLocalInput(p.ends_at));
     setEditOpen(true);
@@ -176,42 +214,110 @@ export default function PromocoesManager() {
 
   const categoryName = (id: string) => categorias.find((c) => c.id === id)?.name || '—';
 
+  const describeRule = (p: Promocao) => {
+    if (p.promotion_type === 'progressive_qty') {
+      const list = (p.tiers || []).map(t => `${t.qty}+: ${t.percent}%`).join(' · ');
+      return `Desconto progressivo (${list || 'sem faixas'})`;
+    }
+    return `Compra ${p.buy_qty}, ganha ${p.get_qty} ${p.discount_percent === 100 ? 'grátis' : `com ${p.discount_percent}% off`}`;
+  };
+
+  const updateTier = (i: number, field: 'qty' | 'percent', value: number) => {
+    setTiers(prev => prev.map((t, idx) => idx === i ? { ...t, [field]: value } : t));
+  };
+  const addTier = () => {
+    const lastQty = tiers.length ? Math.max(...tiers.map(t => t.qty)) : 0;
+    setTiers(prev => [...prev, { qty: lastQty + 1, percent: 5 }]);
+  };
+  const removeTier = (i: number) => setTiers(prev => prev.filter((_, idx) => idx !== i));
+
   const FormFields = (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-      <div className="space-y-1 lg:col-span-2">
-        <Label>Nome</Label>
-        <Input placeholder="Ex: Compre 1 Ganhe 1 - Anéis" value={name} onChange={(e) => setName(e.target.value)} />
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="space-y-1 lg:col-span-2">
+          <Label>Nome</Label>
+          <Input placeholder="Ex: Progressivo Anéis" value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div className="space-y-1 lg:col-span-2">
+          <Label>Categoria</Label>
+          <Select value={categoryId} onValueChange={setCategoryId}>
+            <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+            <SelectContent>
+              {categorias.filter((c) => c.is_active).map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1 lg:col-span-4">
+          <Label>Tipo de promoção</Label>
+          <Select value={promotionType} onValueChange={(v) => setPromotionType(v as any)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="buy_x_get_y">Compre X, Ganhe Y</SelectItem>
+              <SelectItem value="progressive_qty">Desconto Progressivo por Quantidade</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
-      <div className="space-y-1 lg:col-span-2">
-        <Label>Categoria</Label>
-        <Select value={categoryId} onValueChange={setCategoryId}>
-          <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-          <SelectContent>
-            {categorias.filter((c) => c.is_active).map((c) => (
-              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+
+      {promotionType === 'buy_x_get_y' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="space-y-1">
+            <Label>Compra (qtd)</Label>
+            <Input type="number" min={1} value={buyQty} onChange={(e) => setBuyQty(Math.max(1, +e.target.value || 1))} />
+          </div>
+          <div className="space-y-1">
+            <Label>Ganha (qtd)</Label>
+            <Input type="number" min={1} value={getQty} onChange={(e) => setGetQty(Math.max(1, +e.target.value || 1))} />
+          </div>
+          <div className="space-y-1">
+            <Label>Desconto % nos "ganhos"</Label>
+            <Input type="number" min={1} max={100} value={discountPercent} onChange={(e) => setDiscountPercent(Math.max(1, Math.min(100, +e.target.value || 100)))} />
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2 rounded-lg border p-3 bg-muted/30">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm">Faixas de desconto</Label>
+            <Button type="button" size="sm" variant="outline" onClick={addTier}>
+              <Plus className="h-4 w-4 mr-1" /> Adicionar faixa
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Ex: 1 peça = 5%, 2 peças = 7%, 3 peças = 10%. O desconto vale sobre todos os itens da categoria e usa sempre a maior faixa alcançada.
+          </p>
+          <div className="space-y-2">
+            {tiers.map((t, i) => (
+              <div key={i} className="flex items-end gap-2">
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs">A partir de (qtd)</Label>
+                  <Input type="number" min={1} value={t.qty}
+                    onChange={(e) => updateTier(i, 'qty', Math.max(1, +e.target.value || 1))} />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs">Desconto (%)</Label>
+                  <Input type="number" min={1} max={100} value={t.percent}
+                    onChange={(e) => updateTier(i, 'percent', Math.max(1, Math.min(100, +e.target.value || 1)))} />
+                </div>
+                <Button type="button" variant="ghost" size="icon" onClick={() => removeTier(i)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-1">
-        <Label>Compra (qtd)</Label>
-        <Input type="number" min={1} value={buyQty} onChange={(e) => setBuyQty(Math.max(1, +e.target.value || 1))} />
-      </div>
-      <div className="space-y-1">
-        <Label>Ganha (qtd)</Label>
-        <Input type="number" min={1} value={getQty} onChange={(e) => setGetQty(Math.max(1, +e.target.value || 1))} />
-      </div>
-      <div className="space-y-1">
-        <Label>Desconto % nos "ganhos"</Label>
-        <Input type="number" min={1} max={100} value={discountPercent} onChange={(e) => setDiscountPercent(Math.max(1, Math.min(100, +e.target.value || 100)))} />
-      </div>
-      <div className="space-y-1">
-        <Label>Início (opcional)</Label>
-        <Input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
-      </div>
-      <div className="space-y-1">
-        <Label>Fim (opcional)</Label>
-        <Input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label>Início (opcional)</Label>
+          <Input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <Label>Fim (opcional)</Label>
+          <Input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
+        </div>
       </div>
     </div>
   );
@@ -222,10 +328,10 @@ export default function PromocoesManager() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Gift className="h-5 w-5 text-primary" />
-            Promoções (Compre X, Ganhe Y)
+            Promoções (Compre X, Ganhe Y / Progressivo)
           </CardTitle>
           <CardDescription>
-            Defina uma categoria e quantos itens o cliente ganha ao comprar uma quantidade mínima. Os itens mais baratos do grupo recebem o desconto. Deixe as datas vazias para a promoção valer sempre.
+            Escolha uma categoria e o tipo de promoção. No modo "Compre X, Ganhe Y" os itens mais baratos recebem o desconto. No modo "Progressivo", quanto mais peças o cliente levar da categoria, maior o percentual de desconto.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -251,6 +357,7 @@ export default function PromocoesManager() {
                 <TableRow>
                   <TableHead>Nome</TableHead>
                   <TableHead>Categoria</TableHead>
+                  <TableHead>Tipo</TableHead>
                   <TableHead>Regra</TableHead>
                   <TableHead>Período</TableHead>
                   <TableHead className="w-[80px]">Ativa</TableHead>
@@ -262,9 +369,10 @@ export default function PromocoesManager() {
                   <TableRow key={p.id}>
                     <TableCell className="font-medium">{p.name}</TableCell>
                     <TableCell><Badge variant="secondary">{categoryName(p.category_id)}</Badge></TableCell>
-                    <TableCell className="text-sm">
-                      Compra {p.buy_qty}, ganha {p.get_qty} {p.discount_percent === 100 ? 'grátis' : `com ${p.discount_percent}% off`}
+                    <TableCell className="text-xs">
+                      {p.promotion_type === 'progressive_qty' ? 'Progressivo' : 'Compre X, Ganhe Y'}
                     </TableCell>
+                    <TableCell className="text-sm">{describeRule(p)}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {p.starts_at ? new Date(p.starts_at).toLocaleString('pt-BR') : 'sempre'}
                       {' → '}
