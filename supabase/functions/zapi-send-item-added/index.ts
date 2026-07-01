@@ -150,6 +150,28 @@ function formatBRL(value: number): string {
   return "R$ " + value.toFixed(2).replace(".", ",");
 }
 
+const RANDOM_GREETINGS = [
+  "Olá, tudo bem?",
+  "Oi, tudo bem?",
+  "Oi! Como você está?",
+  "Olá! Como você está?",
+  "Oi! Tudo certo por aí?",
+  "Olá! Tudo certo?",
+  "Oi! Espero que esteja bem.",
+  "Olá! Espero que esteja tudo bem.",
+  "Oi! Passando rapidinho...",
+  "Olá! Passando para te avisar uma novidade.",
+  "Oi! Tenho uma informação que pode te interessar.",
+];
+
+function pickRandomGreeting(): string {
+  return RANDOM_GREETINGS[Math.floor(Math.random() * RANDOM_GREETINGS.length)];
+}
+
+function prependGreeting(message: string): string {
+  return pickRandomGreeting() + "\n\n" + message;
+}
+
 async function loadOrderContext(
   supabase: any,
   tenantId: string,
