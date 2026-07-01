@@ -98,6 +98,7 @@ export default function ConexaoZAPI() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const qrTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
+  const wasConnectedRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -185,6 +186,7 @@ export default function ConexaoZAPI() {
         });
         if (error) throw error;
       }
+      wasConnectedRef.current = false; // force group sync on next connect
       toast({ title: 'Sucesso', description: 'Configurações Z-API salvas' });
       await loadIntegration();
     } catch (e: any) {
@@ -194,6 +196,17 @@ export default function ConexaoZAPI() {
     }
   };
 
+  const syncGroupsAfterConnect = useCallback(async () => {
+    if (!tenant?.id) return;
+    toast({ title: 'Sincronizando grupos...', description: 'Carregando grupos que você é administrador' });
+    try {
+      await callFunction('fe-list-groups-v2', { tenant_id: tenant.id, admin_only: true });
+      toast({ title: 'Grupos sincronizados', description: 'Grupos atualizados com sucesso' });
+    } catch (e) {
+      console.error('[syncGroups] error:', e);
+    }
+  }, [tenant?.id]);
+
   const checkStatusZapi = async () => {
     if (!tenant?.id || !mountedRef.current) return;
     try {
@@ -202,12 +215,18 @@ export default function ConexaoZAPI() {
       setLastSyncAt(new Date());
       if (data.error) {
         setWhatsappStatus(prev => prev?.status === 'qr_ready' && prev?.qrCode ? prev : { connected: false, status: 'error', error: data.error });
+        wasConnectedRef.current = false;
         return;
       }
       if (data.connected) {
         stopQRCountdown();
         setWhatsappStatus({ connected: true, status: data.status, message: data.message, user: data.user });
+        if (!wasConnectedRef.current) {
+          wasConnectedRef.current = true;
+          syncGroupsAfterConnect();
+        }
       } else {
+        wasConnectedRef.current = false;
         setWhatsappStatus(prev => prev?.status === 'qr_ready' && prev?.qrCode ? prev : { connected: false, status: data.status || 'disconnected', user: data.user });
       }
     } catch (e) { console.error(e); }
