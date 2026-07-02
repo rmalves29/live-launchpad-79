@@ -2475,7 +2475,7 @@ async function updateOrderTotal(supabase: any, orderId: number) {
             try {
               const { data: integ } = await supabase
                 .from('integration_whatsapp')
-                .select('zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, uazapi_url, uazapi_token, provider, template_com_link, item_added_button_enabled, item_added_button_label, item_added_button_url, is_active')
+                .select('zapi_instance_id, zapi_token, zapi_client_token, uazapi_url, uazapi_token, provider, template_com_link, item_added_button_enabled, item_added_button_label, item_added_button_url, is_active')
                 .eq('tenant_id', resolvedTenantId)
                 .eq('is_active', true)
                 .maybeSingle();
