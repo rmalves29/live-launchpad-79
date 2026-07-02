@@ -897,9 +897,9 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
         for (const orderId of selectedOrders) {
           const order = orders.find(o => o.id === orderId);
           if (order?.cart_id) {
-            // SEMPRE restaurar estoque se o pedido não foi PAGO
-            // (pedidos cancelados também precisam ter o estoque restaurado se ainda não foi feito)
-            if (!order.is_paid) {
+            // Restaurar estoque apenas se o pedido não foi PAGO e não foi CANCELADO
+            // (pedidos cancelados já tiveram o estoque devolvido no momento do cancelamento)
+            if (!order.is_paid && !order.is_cancelled) {
               const { data: cartItems } = await supabaseTenant
                 .from('cart_items')
                 .select('product_id, qty')
