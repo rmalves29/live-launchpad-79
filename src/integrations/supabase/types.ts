@@ -1917,7 +1917,6 @@ export type Database = {
           connected_phone: string | null
           consent_protection_enabled: boolean | null
           created_at: string | null
-          evolution_instance_name: string | null
           id: string
           instance_name: string
           is_active: boolean
@@ -1951,7 +1950,6 @@ export type Database = {
           connected_phone?: string | null
           consent_protection_enabled?: boolean | null
           created_at?: string | null
-          evolution_instance_name?: string | null
           id?: string
           instance_name: string
           is_active?: boolean
@@ -1985,7 +1983,6 @@ export type Database = {
           connected_phone?: string | null
           consent_protection_enabled?: boolean | null
           created_at?: string | null
-          evolution_instance_name?: string | null
           id?: string
           instance_name?: string
           is_active?: boolean
