@@ -153,7 +153,7 @@ function personalizeMessage(template: string, product: Product): string {
 async function getCredentials(supabase: any, tenantId: string) {
   const { data, error } = await supabase
     .from("integration_whatsapp")
-    .select("zapi_instance_id, zapi_token, zapi_client_token, evolution_instance_name, uazapi_url, uazapi_token, provider")
+    .select("zapi_instance_id, zapi_token, zapi_client_token, uazapi_url, uazapi_token, provider")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .maybeSingle();
@@ -228,7 +228,7 @@ async function sendGroupMessageZapi(
   }
 }
 
-async function sendGroupMessageEvolution(
+async function sendGroupMessageUazapi(
   instanceName: string,
   groupId: string,
   message: string,
@@ -580,7 +580,7 @@ async function processTaskQueue({
     let result: { success: boolean; error?: string };
     if (credentials.provider === "uazapi") {
       const lastMessageId = await getLatestGroupMessageId(task.group_name, task.group_id);
-      result = await sendGroupMessageEvolution(credentials.instanceName, task.group_id, message, product.image_url || undefined, lastMessageId);
+      result = await sendGroupMessageUazapi(credentials.instanceName, task.group_id, message, product.image_url || undefined, lastMessageId);
     } else {
       result = await sendGroupMessageZapi(credentials, task.group_id, message, product.image_url || undefined);
     }
