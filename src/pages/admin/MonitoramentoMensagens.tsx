@@ -105,13 +105,19 @@ export default function MonitoramentoMensagens() {
   const totals = useMemo(() => {
     const totalSent = filtered.reduce((s, r) => s + Number(r.total_sent || 0), 0);
     const totalReceived = filtered.reduce((s, r) => s + Number(r.received_private || 0), 0);
+    const itemAdded = filtered.reduce((s, r) => s + Number(r.item_added_count || 0), 0);
+    const orderCancelled = filtered.reduce((s, r) => s + Number(r.order_cancelled_count || 0), 0);
+    const payment = filtered.reduce((s, r) => s + Number(r.payment_count || 0), 0);
+    const outOfStock = filtered.reduce((s, r) => s + Number(r.out_of_stock_count || 0), 0);
+    const groupMsg = filtered.reduce((s, r) => s + Number(r.group_msg_count || 0), 0);
     const disc = filtered.reduce((s, r) => s + Number(r.disconnect_count || 0), 0);
     const gaps = filtered.map(r => Number(r.avg_gap_seconds)).filter(v => !Number.isNaN(v) && v > 0);
     const avgGap = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : null;
     const durationMin = Math.max((new Date(range.to).getTime() - new Date(range.from).getTime()) / 60000, 1);
     const perMin = totalSent / durationMin;
     const perHour = totalSent / (durationMin / 60);
-    return { totalSent, totalReceived, disc, avgGap, perMin, perHour };
+    const itemAddedPerMin = itemAdded / durationMin;
+    return { totalSent, totalReceived, itemAdded, orderCancelled, payment, outOfStock, groupMsg, disc, avgGap, perMin, perHour, itemAddedPerMin };
   }, [filtered, range.from, range.to]);
 
   return (
