@@ -448,14 +448,15 @@ serve(async (req) => {
       .order("group_name");
 
     const warningMsg = (admin_only && !connectedPhone)
-      ? "Número conectado não encontrado. Todos os grupos foram sincronizados sem filtro de admin."
+      ? "Número conectado não encontrado. Grupos sincronizados sem marcação de admin."
       : undefined;
 
     return new Response(JSON.stringify({
       added,
       total_found: allGroups.length,
       synced: filteredGroups.length,
-      admin_only: effectiveAdminOnly,
+      admin_count: adminCount,
+      admin_only: !!admin_only,
       warning: warningMsg,
       groups,
     }), {
