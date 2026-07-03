@@ -351,53 +351,81 @@ export default function TenantIntegrationsPage() {
           )}
         </TabsList>
 
+        {en('instagram') && (
         <TabsContent value="instagram" className="mt-6">
           <InstagramIntegration tenantId={tenantId} tenantSlug={tenant?.slug} />
         </TabsContent>
-        {showAdvancedIntegrations && (
+        )}
+        {showAdvancedIntegrations && en('bagy') && (
           <TabsContent value="bagy" className="mt-6">
             <BagyIntegration tenantId={tenantId} />
           </TabsContent>
         )}
+        {en('bling') && (
         <TabsContent value="bling" className="mt-6">
           <BlingIntegration tenantId={tenantId} />
         </TabsContent>
+        )}
+        {en('olist') && (
         <TabsContent value="olist" className="mt-6">
           <OlistIntegration tenantId={tenantId} />
         </TabsContent>
+        )}
+        {en('omie') && (
         <TabsContent value="omie" className="mt-6">
           <OmieIntegration tenantId={tenantId} />
         </TabsContent>
+        )}
+        {en('mercadopago') && (
         <TabsContent value="mercadopago" className="mt-6">
           <PaymentIntegrations tenantId={tenantId} />
         </TabsContent>
+        )}
+        {en('pagarme') && (
         <TabsContent value="pagarme" className="mt-6">
           <PagarMeIntegration tenantId={tenantId} />
         </TabsContent>
+        )}
+        {en('sipag') && (
         <TabsContent value="sipag" className="mt-6">
           <SipagIntegration tenantId={tenantId} />
         </TabsContent>
+        )}
+        {en('appmax') && (
         <TabsContent value="appmax" className="mt-6">
           <AppmaxIntegration tenantId={tenantId} />
         </TabsContent>
+        )}
+        {en('infinitepay') && (
         <TabsContent value="infinitepay" className="mt-6">
           <InfinitePayIntegration tenantId={tenantId} />
         </TabsContent>
+        )}
+        {en('melhorenvio') && (
         <TabsContent value="melhorenvio" className="mt-6">
           <ShippingIntegrations tenantId={tenantId} />
         </TabsContent>
+        )}
+        {en('mandae') && (
         <TabsContent value="mandae" className="mt-6">
           <MandaeIntegration tenantId={tenantId} />
         </TabsContent>
+        )}
+        {en('superfrete') && (
         <TabsContent value="superfrete" className="mt-6">
           <SuperFreteIntegration tenantId={tenantId} />
         </TabsContent>
+        )}
+        {en('correios') && (
         <TabsContent value="correios" className="mt-6">
           <CorreiosIntegration tenantId={tenantId} />
         </TabsContent>
+        )}
+        {en('meuscorreios') && (
         <TabsContent value="meuscorreios" className="mt-6">
           <MeusCorreiosIntegration tenantId={tenantId} />
         </TabsContent>
+        )}
         </Tabs>
       </div>
     </div>
