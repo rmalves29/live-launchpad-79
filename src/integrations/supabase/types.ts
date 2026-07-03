@@ -1933,9 +1933,7 @@ export type Database = {
           send_out_of_stock_msg: boolean
           send_paid_order_msg: boolean
           send_product_canceled_msg: boolean
-          template_com_link: string | null
           template_item_added: string | null
-          template_solicitacao: string | null
           tenant_id: string
           uazapi_admin_token: string | null
           uazapi_token: string | null
@@ -1966,9 +1964,7 @@ export type Database = {
           send_out_of_stock_msg?: boolean
           send_paid_order_msg?: boolean
           send_product_canceled_msg?: boolean
-          template_com_link?: string | null
           template_item_added?: string | null
-          template_solicitacao?: string | null
           tenant_id: string
           uazapi_admin_token?: string | null
           uazapi_token?: string | null
@@ -1999,9 +1995,7 @@ export type Database = {
           send_out_of_stock_msg?: boolean
           send_paid_order_msg?: boolean
           send_product_canceled_msg?: boolean
-          template_com_link?: string | null
           template_item_added?: string | null
-          template_solicitacao?: string | null
           tenant_id?: string
           uazapi_admin_token?: string | null
           uazapi_token?: string | null
