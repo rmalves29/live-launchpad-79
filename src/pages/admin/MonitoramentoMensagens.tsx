@@ -200,7 +200,10 @@ export default function MonitoramentoMensagens() {
             <TableHeader>
               <TableRow>
                 <TableHead>Empresa</TableHead>
-                <TableHead className="text-right">Mensagens enviadas</TableHead>
+                <TableHead className="text-right">Enviadas</TableHead>
+                <TableHead className="text-right">Msg/min</TableHead>
+                <TableHead className="text-right">Msg/h</TableHead>
+                <TableHead className="text-right">Recebidas privado</TableHead>
                 <TableHead className="text-right">Tempo médio entre envios</TableHead>
                 <TableHead className="text-right">Desconexões</TableHead>
                 <TableHead className="text-right">Média msgs até desconectar</TableHead>
@@ -209,15 +212,18 @@ export default function MonitoramentoMensagens() {
             </TableHeader>
             <TableBody>
               {loading && (
-                <TableRow><TableCell colSpan={6} className="text-center py-8"><Loader2 className="w-5 h-5 animate-spin inline" /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center py-8"><Loader2 className="w-5 h-5 animate-spin inline" /></TableCell></TableRow>
               )}
               {!loading && filtered.length === 0 && (
-                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Nenhum dado</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Nenhum dado</TableCell></TableRow>
               )}
               {!loading && filtered.map((r) => (
                 <TableRow key={r.tenant_id}>
                   <TableCell className="font-medium">{r.tenant_name}</TableCell>
                   <TableCell className="text-right">{Number(r.total_sent).toLocaleString("pt-BR")}</TableCell>
+                  <TableCell className="text-right">{r.msgs_per_minute != null ? Number(r.msgs_per_minute).toFixed(2) : "—"}</TableCell>
+                  <TableCell className="text-right">{r.msgs_per_hour != null ? Number(r.msgs_per_hour).toFixed(1) : "—"}</TableCell>
+                  <TableCell className="text-right">{Number(r.received_private || 0).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right">{formatDuration(r.avg_gap_seconds != null ? Number(r.avg_gap_seconds) : null)}</TableCell>
                   <TableCell className="text-right">{Number(r.disconnect_count).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right">{r.avg_msgs_before_disconnect != null ? Number(r.avg_msgs_before_disconnect).toFixed(1) : "—"}</TableCell>
