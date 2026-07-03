@@ -636,7 +636,8 @@ export default function TenantsManager() {
                         <Edit className="h-4 w-4" />
                       </Button>
                     </DialogTrigger>
-                    <DialogContent>
+                    <DialogContent className="max-h-[85vh] overflow-y-auto">
+
                       <DialogHeader>
                         <DialogTitle>Editar Empresa</DialogTitle>
                       </DialogHeader>
