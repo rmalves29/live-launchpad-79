@@ -419,7 +419,8 @@ export default function TenantsManager() {
       adminPassword: "",
       enable_live: true,
       enable_sendflow: true,
-      max_whatsapp_groups: null
+      max_whatsapp_groups: null,
+      enabled_integrations: defaultEnabledIntegrations(),
     });
     setEditingTenant(null);
   };
