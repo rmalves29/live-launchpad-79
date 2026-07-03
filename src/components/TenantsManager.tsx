@@ -540,6 +540,12 @@ export default function TenantsManager() {
                 </div>
               </div>
 
+              <IntegrationsToggleSection
+                value={formData.enabled_integrations}
+                onChange={(v) => setFormData({ ...formData, enabled_integrations: v })}
+              />
+
+
               <div className="flex gap-2">
                 <Button onClick={handleCreateTenant} disabled={loading}>
                   {loading ? "Criando..." : "Criar Empresa"}
