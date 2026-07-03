@@ -11,6 +11,9 @@ type Row = {
   tenant_id: string;
   tenant_name: string;
   total_sent: number;
+  msgs_per_minute: number | null;
+  msgs_per_hour: number | null;
+  received_private: number;
   avg_gap_seconds: number | null;
   disconnect_count: number;
   avg_msgs_before_disconnect: number | null;
