@@ -24,6 +24,7 @@ import {
   Shield,
   Bug,
   ListOrdered,
+  Activity,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
