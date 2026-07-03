@@ -216,6 +216,8 @@ export default function TenantIntegrationsPage() {
 
   const ALLOWED_ADVANCED_SLUGS = ['orderzap', 'app', 'franciscajoias'];
   const showAdvancedIntegrations = ALLOWED_ADVANCED_SLUGS.includes(tenant.slug || '');
+  const enabledMap = (tenant as any)?.enabled_integrations as Record<string, boolean> | null | undefined;
+  const en = (k: string) => isIntegrationEnabled(enabledMap, k);
 
   return (
     <div className="bg-white -mx-4 sm:-mx-6 lg:-mx-8 -my-4 sm:-my-6 lg:-my-8 min-h-screen">
