@@ -60,8 +60,16 @@ export default function TenantsManager() {
     adminPassword: "",
     enable_live: true,
     enable_sendflow: true,
-    max_whatsapp_groups: null as number | null
+    max_whatsapp_groups: null as number | null,
+    enabled_integrations: {} as Record<string, boolean>,
   });
+
+  const defaultEnabledIntegrations = () =>
+    INTEGRATION_KEYS.reduce((acc, i) => {
+      acc[i.key] = true;
+      return acc;
+    }, {} as Record<string, boolean>);
+
 
   useEffect(() => {
     if (user && profile?.role === 'super_admin') {
