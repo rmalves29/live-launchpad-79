@@ -4315,9 +4315,15 @@ export type Database = {
           avg_gap_seconds: number
           avg_msgs_before_disconnect: number
           disconnect_count: number
+          group_msg_count: number
+          item_added_count: number
+          item_added_per_minute: number
           last_msgs_before_disconnect: number
           msgs_per_hour: number
           msgs_per_minute: number
+          order_cancelled_count: number
+          out_of_stock_count: number
+          payment_count: number
           received_private: number
           tenant_id: string
           tenant_name: string
