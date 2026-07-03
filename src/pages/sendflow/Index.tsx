@@ -344,16 +344,29 @@ export default function SendFlow() {
     }
   };
 
-  const loadGroups = async () => {
+  const loadGroups = async (forceSync = false) => {
     if (!tenant?.id) return;
 
     setLoadingGroups(true);
     try {
-      // Load from cached fe_groups table (fast) instead of live WhatsApp API call
+      // Optionally trigger a live sync that repopulates is_admin from the provider
+      if (forceSync) {
+        const { data: syncResult, error: syncError } = await supabaseTenant.raw.functions.invoke('fe-list-groups', {
+          body: { tenant_id: tenant.id, admin_only: true }
+        });
+        if (syncError) {
+          console.warn('[sendflow] fe-list-groups error:', syncError.message);
+        } else if (syncResult?.warning) {
+          toast({ title: 'Atenção', description: syncResult.warning });
+        }
+      }
+
+      // Load ONLY groups where the connected number is admin
       const { data, error } = await supabaseTenant.raw
         .from('fe_groups')
-        .select('group_jid, group_name, participant_count')
+        .select('group_jid, group_name, participant_count, is_admin')
         .eq('tenant_id', tenant.id)
+        .eq('is_admin', true)
         .order('group_name');
 
       if (error) throw error;
@@ -368,8 +381,10 @@ export default function SendFlow() {
 
       if (groupsList.length === 0) {
         toast({
-          title: 'Aviso',
-          description: 'Nenhum grupo encontrado. Sincronize os grupos em Fluxo de Envio > Grupos.',
+          title: 'Nenhum grupo de admin encontrado',
+          description: forceSync
+            ? 'O número conectado não é administrador de nenhum grupo sincronizado.'
+            : 'Clique em "Atualizar" para sincronizar os grupos do WhatsApp.',
         });
       }
     } catch (error: any) {
@@ -675,7 +690,7 @@ export default function SendFlow() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={loadGroups}
+                onClick={() => loadGroups(true)}
                 disabled={loadingGroups}
               >
                 {loadingGroups ? (
@@ -696,7 +711,7 @@ export default function SendFlow() {
             </div>
           </div>
           <CardDescription>
-            Selecione os grupos que receberão as mensagens ({selectedGroups.size} selecionado(s))
+            Apenas grupos onde o número conectado é <strong>administrador</strong> ({selectedGroups.size} selecionado(s))
           </CardDescription>
         </CardHeader>
         <CardContent>
