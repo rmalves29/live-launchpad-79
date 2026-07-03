@@ -400,8 +400,10 @@ serve(async (req) => {
       };
     });
 
-    const filteredGroups = enrichedGroups.filter((g) => g._include);
-    console.log(`[fe-list-groups] ${filteredGroups.length}/${allGroups.length} groups after filter (admin_only=${effectiveAdminOnly})`);
+    // Always sync ALL groups; store is_admin per row so the frontend can filter
+    const filteredGroups = enrichedGroups;
+    const adminCount = enrichedGroups.filter((g) => g._isAdmin).length;
+    console.log(`[fe-list-groups] ${adminCount}/${allGroups.length} groups where connected phone is admin (connectedPhone=${connectedPhone || "n/a"})`);
 
     // --- Preserve existing invite links ---
     const { data: existingGroups } = await supabase
@@ -419,6 +421,7 @@ serve(async (req) => {
       participant_count: g.participant_count || 0,
       max_participants: 1024,
       invite_link: g.invite_link || existingLinks.get(g.group_jid) || null,
+      is_admin: !!g._isAdmin,
     }));
 
     let added = 0;
