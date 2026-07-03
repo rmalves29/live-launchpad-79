@@ -21,6 +21,7 @@ type Row = {
   group_msg_count: number;
   received_private: number;
   avg_gap_seconds: number | null;
+  last_gap_seconds: number | null;
   disconnect_count: number;
   avg_msgs_before_disconnect: number | null;
   last_msgs_before_disconnect: number | null;
@@ -250,6 +251,7 @@ export default function MonitoramentoMensagens() {
                 <TableHead className="text-right">Grupo</TableHead>
                 <TableHead className="text-right">Recebidas privado</TableHead>
                 <TableHead className="text-right">Tempo médio</TableHead>
+                <TableHead className="text-right">Última pausa</TableHead>
                 <TableHead className="text-right">Desconexões</TableHead>
                 <TableHead className="text-right">Média até desconectar</TableHead>
                 <TableHead className="text-right">Últ. antes de desconectar</TableHead>
@@ -257,10 +259,10 @@ export default function MonitoramentoMensagens() {
             </TableHeader>
             <TableBody>
               {loading && (
-                <TableRow><TableCell colSpan={16} className="text-center py-8"><Loader2 className="w-5 h-5 animate-spin inline" /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={17} className="text-center py-8"><Loader2 className="w-5 h-5 animate-spin inline" /></TableCell></TableRow>
               )}
               {!loading && filtered.length === 0 && (
-                <TableRow><TableCell colSpan={16} className="text-center py-8 text-muted-foreground">Nenhum dado</TableCell></TableRow>
+                <TableRow><TableCell colSpan={17} className="text-center py-8 text-muted-foreground">Nenhum dado</TableCell></TableRow>
               )}
               {!loading && filtered.map((r) => (
                 <TableRow key={r.tenant_id}>
@@ -276,6 +278,7 @@ export default function MonitoramentoMensagens() {
                   <TableCell className="text-right">{Number(r.group_msg_count || 0).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right">{Number(r.received_private || 0).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right">{formatDuration(r.avg_gap_seconds != null ? Number(r.avg_gap_seconds) : null)}</TableCell>
+                  <TableCell className="text-right">{formatDuration(r.last_gap_seconds != null ? Number(r.last_gap_seconds) : null)}</TableCell>
                   <TableCell className="text-right">{Number(r.disconnect_count).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right">{r.avg_msgs_before_disconnect != null ? Number(r.avg_msgs_before_disconnect).toFixed(1) : "—"}</TableCell>
                   <TableCell className="text-right">{r.last_msgs_before_disconnect ?? "—"}</TableCell>
