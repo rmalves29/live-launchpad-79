@@ -139,20 +139,24 @@ serve(async (req) => {
 
         // Enrich each group with admin detection (parallel, concurrency 10)
         const enriched = await parallelLimit(uazGroups, 10, async (g: any) => {
-          const groupJid = g.id || g.jid || g.remoteJid || g.groupJid;
+          const groupJid = g.JID || g.id || g.jid || g.remoteJid || g.groupJid;
           if (!groupJid) return null;
 
-          let isAdmin = false;
-          // 1) Direct hints from list payload
-          const hintFields = [g.wa_isAdmin, g.iAmAdmin, g.isAdmin, g.imAdmin, g.owner_is_me];
-          if (hintFields.some((v) => v === true)) isAdmin = true;
-          if (!isAdmin && connectedPhone && g.owner) {
-            if (phonesMatch(normalizePhone(g.owner), connectedPhone)) isAdmin = true;
-          }
+          const groupName = g.Name || g.subject || g.name || groupJid;
+          const ownerRaw = g.OwnerPN || g.owner || g.OwnerJID || "";
+          const ownerPhone = normalizePhone(String(ownerRaw).split("@")[0]);
 
-          // 2) Fetch /group/info to inspect participants
-          let participantCount = g.size || g.participantsCount || (Array.isArray(g.participants) ? g.participants.length : 0) || 0;
-          if (!isAdmin && connectedPhone) {
+          let isAdmin = false;
+          if (connectedPhone && ownerPhone && phonesMatch(ownerPhone, connectedPhone)) {
+            isAdmin = true;
+          }
+          const hintFields = [g.wa_isAdmin, g.iAmAdmin, g.isAdmin, g.imAdmin, g.owner_is_me];
+          if (!isAdmin && hintFields.some((v) => v === true)) isAdmin = true;
+
+          let participants: any[] = Array.isArray(g.Participants) ? g.Participants : (Array.isArray(g.participants) ? g.participants : []);
+          let participantCount = g.ParticipantCount || g.size || g.participantsCount || participants.length || 0;
+
+          if (!isAdmin && connectedPhone && participants.length === 0) {
             try {
               const infoRes = await fetch(`${uazUrl}/group/info`, {
                 method: "POST",
@@ -162,31 +166,34 @@ serve(async (req) => {
               if (infoRes.ok) {
                 const info = await infoRes.json().catch(() => null);
                 const grp = info?.group || info;
-                const participants: any[] = grp?.participants || info?.participants || [];
+                participants = grp?.Participants || grp?.participants || info?.participants || [];
                 if (participants.length > 0) participantCount = participants.length;
-                if (grp?.owner && phonesMatch(normalizePhone(grp.owner), connectedPhone)) isAdmin = true;
-                if (!isAdmin) {
-                  isAdmin = participants.some((p: any) => {
-                    const idRaw = typeof p === "string" ? p : (p.id || p.jid || p.phone || "");
-                    const pPhone = normalizePhone(String(idRaw).split("@")[0]);
-                    const adminFlag = typeof p === "object" && (
-                      p.admin === "admin" || p.admin === "superadmin" ||
-                      p.isAdmin === true || p.isSuperAdmin === true ||
-                      p.role === "admin" || p.role === "superadmin"
-                    );
-                    return adminFlag && phonesMatch(pPhone, connectedPhone);
-                  });
-                }
+                const grpOwner = grp?.OwnerPN || grp?.owner;
+                if (grpOwner && phonesMatch(normalizePhone(String(grpOwner).split("@")[0]), connectedPhone)) isAdmin = true;
               }
             } catch (err: any) {
               console.warn(`[fe-list-groups] uazapi /group/info ${groupJid} error: ${err.message}`);
             }
           }
 
+          if (!isAdmin && connectedPhone && participants.length > 0) {
+            isAdmin = participants.some((p: any) => {
+              const phoneRaw = p.PhoneNumber || p.phone || (typeof p === "string" ? p : (p.id || p.jid || ""));
+              const pPhone = normalizePhone(String(phoneRaw).split("@")[0]);
+              const adminFlag = typeof p === "object" && (
+                p.IsAdmin === true || p.IsSuperAdmin === true ||
+                p.admin === "admin" || p.admin === "superadmin" ||
+                p.isAdmin === true || p.isSuperAdmin === true ||
+                p.role === "admin" || p.role === "superadmin"
+              );
+              return adminFlag && phonesMatch(pPhone, connectedPhone);
+            });
+          }
+
           return {
             tenant_id,
             group_jid: groupJid,
-            group_name: g.subject || g.name || groupJid,
+            group_name: groupName,
             participant_count: participantCount,
             max_participants: 1024,
             invite_link: null,
