@@ -14,6 +14,7 @@ import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { Plus, Edit, Users, Mail, Trash2, UserCheck, Eye, EyeOff } from "lucide-react";
 import { formatBrasiliaDate } from '@/lib/date-utils';
+import { INTEGRATION_KEYS } from '@/lib/integration-keys';
 
 interface Tenant {
   id: string;
@@ -23,6 +24,7 @@ interface Tenant {
   created_at: string;
   admin_email?: string;
   admin_user_id?: string;
+  enabled_integrations?: Record<string, boolean> | null;
 }
 
 interface TenantCredential {
