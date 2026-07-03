@@ -1,0 +1,2 @@
+ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS enabled_integrations jsonb DEFAULT NULL;
+COMMENT ON COLUMN public.tenants.enabled_integrations IS 'Mapa {chave: boolean} controlando visibilidade das integrações. NULL = todas visíveis.';
