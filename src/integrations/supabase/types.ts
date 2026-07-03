@@ -4318,6 +4318,7 @@ export type Database = {
           group_msg_count: number
           item_added_count: number
           item_added_per_minute: number
+          last_gap_seconds: number
           last_msgs_before_disconnect: number
           msgs_per_hour: number
           msgs_per_minute: number
