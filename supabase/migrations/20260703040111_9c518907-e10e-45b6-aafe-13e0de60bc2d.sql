@@ -1,0 +1,1 @@
+ALTER TABLE public.integration_whatsapp DROP COLUMN IF EXISTS template_solicitacao, DROP COLUMN IF EXISTS template_com_link;
