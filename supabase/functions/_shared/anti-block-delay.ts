@@ -226,14 +226,21 @@ export async function simulateTyping(
   _token: string,
   _clientToken: string | null | undefined,
   phone: string,
-  durationSeconds?: number
+  durationSecondsOrMessageLength?: number,
+  treatAsMessageLength: boolean = false,
 ): Promise<void> {
-  // Default duration: random 3-5 seconds
-  const duration = durationSeconds ?? (3 + Math.floor(Math.random() * 3));
-  
-  // Z-API does not support sending typing indicators
-  // We just add a human-like delay to make messages feel more natural
-  const waitMs = duration * 1000 + Math.random() * 1000;
+  // Nova regra: se `messageLength` for informado (via treatAsMessageLength=true),
+  // usar 0,06s por caractere + 1s por múltiplo de 300 caracteres.
+  let waitMs: number;
+  if (treatAsMessageLength && typeof durationSecondsOrMessageLength === "number") {
+    const len = Math.max(0, durationSecondsOrMessageLength | 0);
+    waitMs = len * 60 + Math.floor(len / 300) * 1000;
+    // Piso mínimo para não parecer instantâneo em mensagens muito curtas
+    waitMs = Math.max(waitMs, 1500);
+  } else {
+    const duration = durationSecondsOrMessageLength ?? (3 + Math.floor(Math.random() * 3));
+    waitMs = duration * 1000 + Math.random() * 1000;
+  }
   console.log(`[simulateTyping] ⏱️ Human-like delay for ${phone}: ${(waitMs/1000).toFixed(1)}s (Note: Z-API does not support typing indicators)`);
   await new Promise(resolve => setTimeout(resolve, waitMs));
 }
