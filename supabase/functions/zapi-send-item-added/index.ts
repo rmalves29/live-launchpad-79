@@ -429,7 +429,7 @@ serve(async (req) => {
       if (provider === "uazapi") {
         const instanceName = (credentials as any).instanceName;
         await sendPresenceAvailable(instanceName, formattedPhone);
-        await sendPresenceComposing(instanceName, formattedPhone, calcTypingDuration(message.length));
+        await (await import("../_shared/evolution-api.ts")).runTypingSegments(instanceName, formattedPhone, message.length);
 
         const shouldUseButton = useButton && resolvedButtonUrl;
         let result = shouldUseButton
@@ -453,7 +453,7 @@ serve(async (req) => {
         const { instanceId, token, clientToken } = credentials as any;
         const baseUrl = ZAPI_BASE_URL + "/instances/" + instanceId + "/token/" + token;
 
-        await simulateTyping(instanceId, token, clientToken, formattedPhone);
+        await simulateTyping(instanceId, token, clientToken, formattedPhone, message.length, true);
         const delayMs = await antiBlockDelayLive();
         logAntiBlockDelay("zapi-send-item-added", delayMs);
 

@@ -252,7 +252,7 @@ async function sendGroupMessageUazapi(
       }
     }
 
-    await evoSendPresenceComposing(instanceName, evoGroupId, evoCalcTypingDuration(message.length));
+    await (await import("../_shared/evolution-api.ts")).runTypingSegments(instanceName, evoGroupId, message.length);
 
     if (imageUrl) {
       const optimizedImageUrl = imageUrl

@@ -115,7 +115,7 @@ serve(async (req) => {
     if (credentials.provider === "uazapi") {
       if (!isGroup) {
         await sendPresenceAvailable(credentials.cfg, formattedPhone);
-        await sendPresenceComposing(credentials.cfg, formattedPhone, calcTypingDuration(message.length));
+        await (await import("../_shared/uazapi-api.ts")).runTypingSegments(credentials.cfg, formattedPhone, message.length);
       }
       let result: { success: boolean; messageId?: string; error?: string };
       if (messageType === "image" && mediaUrl) {
@@ -130,7 +130,7 @@ serve(async (req) => {
       if (!sendOk) console.error("[zapi-send-message] uazapi error:", result.error, "| phone:", formattedPhone);
       else console.log("[zapi-send-message] uazapi OK | phone:", formattedPhone);
     } else {
-      await simulateTyping(credentials.instanceId, credentials.token, credentials.clientToken, formattedPhone);
+      await simulateTyping(credentials.instanceId, credentials.token, credentials.clientToken, formattedPhone, message.length, true);
       const baseUrl = ZAPI_BASE_URL + "/instances/" + credentials.instanceId + "/token/" + credentials.token;
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (credentials.clientToken) headers["Client-Token"] = credentials.clientToken;

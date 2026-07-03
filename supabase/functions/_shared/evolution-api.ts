@@ -23,6 +23,7 @@ import {
   connectInstance as uazConnectInstance,
   disconnectInstance as uazDisconnectInstance,
   calcTypingDuration as uazCalcTypingDuration,
+  runTypingSegments as uazRunTypingSegments,
   getRandomReactionEmoji as uazGetRandomReactionEmoji,
   sendReaction as uazSendReaction,
   type UazapiConfig,
@@ -101,6 +102,12 @@ export async function sendPresenceAvailable(instanceName: string, phone: string)
 
 export function calcTypingDuration(messageLength: number): number {
   return uazCalcTypingDuration(messageLength);
+}
+
+export async function runTypingSegments(instanceName: string, phone: string, messageLength: number): Promise<void> {
+  const cfg = parseCfg(instanceName);
+  if (!cfg) return;
+  await uazRunTypingSegments(cfg, phone, messageLength);
 }
 
 export async function markMessageAsRead(_instanceName: string, _phone: string, _messageId: string): Promise<void> {
