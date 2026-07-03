@@ -242,19 +242,25 @@ export default function MonitoramentoMensagens() {
                 <TableHead className="text-right">Enviadas</TableHead>
                 <TableHead className="text-right">Msg/min</TableHead>
                 <TableHead className="text-right">Msg/h</TableHead>
+                <TableHead className="text-right">Item add.</TableHead>
+                <TableHead className="text-right">Item add./min</TableHead>
+                <TableHead className="text-right">Cancelados</TableHead>
+                <TableHead className="text-right">Pagamento</TableHead>
+                <TableHead className="text-right">Sem estoque</TableHead>
+                <TableHead className="text-right">Grupo</TableHead>
                 <TableHead className="text-right">Recebidas privado</TableHead>
-                <TableHead className="text-right">Tempo médio entre envios</TableHead>
+                <TableHead className="text-right">Tempo médio</TableHead>
                 <TableHead className="text-right">Desconexões</TableHead>
-                <TableHead className="text-right">Média msgs até desconectar</TableHead>
+                <TableHead className="text-right">Média até desconectar</TableHead>
                 <TableHead className="text-right">Últ. antes de desconectar</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading && (
-                <TableRow><TableCell colSpan={9} className="text-center py-8"><Loader2 className="w-5 h-5 animate-spin inline" /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={16} className="text-center py-8"><Loader2 className="w-5 h-5 animate-spin inline" /></TableCell></TableRow>
               )}
               {!loading && filtered.length === 0 && (
-                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Nenhum dado</TableCell></TableRow>
+                <TableRow><TableCell colSpan={16} className="text-center py-8 text-muted-foreground">Nenhum dado</TableCell></TableRow>
               )}
               {!loading && filtered.map((r) => (
                 <TableRow key={r.tenant_id}>
@@ -262,6 +268,12 @@ export default function MonitoramentoMensagens() {
                   <TableCell className="text-right">{Number(r.total_sent).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right">{r.msgs_per_minute != null ? Number(r.msgs_per_minute).toFixed(2) : "—"}</TableCell>
                   <TableCell className="text-right">{r.msgs_per_hour != null ? Number(r.msgs_per_hour).toFixed(1) : "—"}</TableCell>
+                  <TableCell className="text-right">{Number(r.item_added_count || 0).toLocaleString("pt-BR")}</TableCell>
+                  <TableCell className="text-right">{r.item_added_per_minute != null ? Number(r.item_added_per_minute).toFixed(3) : "—"}</TableCell>
+                  <TableCell className="text-right">{Number(r.order_cancelled_count || 0).toLocaleString("pt-BR")}</TableCell>
+                  <TableCell className="text-right">{Number(r.payment_count || 0).toLocaleString("pt-BR")}</TableCell>
+                  <TableCell className="text-right">{Number(r.out_of_stock_count || 0).toLocaleString("pt-BR")}</TableCell>
+                  <TableCell className="text-right">{Number(r.group_msg_count || 0).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right">{Number(r.received_private || 0).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right">{formatDuration(r.avg_gap_seconds != null ? Number(r.avg_gap_seconds) : null)}</TableCell>
                   <TableCell className="text-right">{Number(r.disconnect_count).toLocaleString("pt-BR")}</TableCell>
