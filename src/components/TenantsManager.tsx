@@ -14,6 +14,7 @@ import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { Plus, Edit, Users, Mail, Trash2, UserCheck, Eye, EyeOff } from "lucide-react";
 import { formatBrasiliaDate } from '@/lib/date-utils';
+import { INTEGRATION_KEYS } from '@/lib/integration-keys';
 
 interface Tenant {
   id: string;
@@ -23,6 +24,7 @@ interface Tenant {
   created_at: string;
   admin_email?: string;
   admin_user_id?: string;
+  enabled_integrations?: Record<string, boolean> | null;
 }
 
 interface TenantCredential {
@@ -58,8 +60,16 @@ export default function TenantsManager() {
     adminPassword: "",
     enable_live: true,
     enable_sendflow: true,
-    max_whatsapp_groups: null as number | null
+    max_whatsapp_groups: null as number | null,
+    enabled_integrations: {} as Record<string, boolean>,
   });
+
+  const defaultEnabledIntegrations = () =>
+    INTEGRATION_KEYS.reduce((acc, i) => {
+      acc[i.key] = true;
+      return acc;
+    }, {} as Record<string, boolean>);
+
 
   useEffect(() => {
     if (user && profile?.role === 'super_admin') {
@@ -173,7 +183,8 @@ export default function TenantsManager() {
           is_active: true,
           enable_live: formData.enable_live,
           enable_sendflow: formData.enable_sendflow,
-          max_whatsapp_groups: formData.max_whatsapp_groups
+          max_whatsapp_groups: formData.max_whatsapp_groups,
+          enabled_integrations: formData.enabled_integrations as any
         })
         .select()
         .single();
@@ -225,7 +236,8 @@ export default function TenantsManager() {
         adminPassword: "",
         enable_live: true,
         enable_sendflow: true,
-        max_whatsapp_groups: null
+        max_whatsapp_groups: null,
+        enabled_integrations: defaultEnabledIntegrations(),
       });
       setShowCreateDialog(false);
       
@@ -255,6 +267,7 @@ export default function TenantsManager() {
         .from("tenants")
         .update({
           name: formData.name,
+          enabled_integrations: formData.enabled_integrations as any,
         })
         .eq("id", editingTenant.id);
 
@@ -313,7 +326,8 @@ export default function TenantsManager() {
         adminPassword: "",
         enable_live: true,
         enable_sendflow: true,
-        max_whatsapp_groups: null
+        max_whatsapp_groups: null,
+        enabled_integrations: defaultEnabledIntegrations(),
       });
       loadData();
 
@@ -405,7 +419,8 @@ export default function TenantsManager() {
       adminPassword: "",
       enable_live: true,
       enable_sendflow: true,
-      max_whatsapp_groups: null
+      max_whatsapp_groups: null,
+      enabled_integrations: defaultEnabledIntegrations(),
     });
     setEditingTenant(null);
   };
@@ -525,6 +540,12 @@ export default function TenantsManager() {
                 </div>
               </div>
 
+              <IntegrationsToggleSection
+                value={formData.enabled_integrations}
+                onChange={(v) => setFormData({ ...formData, enabled_integrations: v })}
+              />
+
+
               <div className="flex gap-2">
                 <Button onClick={handleCreateTenant} disabled={loading}>
                   {loading ? "Criando..." : "Criar Empresa"}
@@ -604,14 +625,19 @@ export default function TenantsManager() {
                             adminPassword: "",
                             enable_live: true,
                             enable_sendflow: true,
-                            max_whatsapp_groups: null
+                            max_whatsapp_groups: null,
+                            enabled_integrations: {
+                              ...defaultEnabledIntegrations(),
+                              ...(tenant.enabled_integrations || {}),
+                            },
                           });
                         }}
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
                     </DialogTrigger>
-                    <DialogContent>
+                    <DialogContent className="max-h-[85vh] overflow-y-auto">
+
                       <DialogHeader>
                         <DialogTitle>Editar Empresa</DialogTitle>
                       </DialogHeader>
@@ -655,7 +681,13 @@ export default function TenantsManager() {
                           />
                         </div>
 
+                        <IntegrationsToggleSection
+                          value={formData.enabled_integrations}
+                          onChange={(v) => setFormData({ ...formData, enabled_integrations: v })}
+                        />
+
                         <div className="flex gap-2">
+
                           <Button onClick={handleUpdateTenant} disabled={loading}>
                             {loading ? "Salvando..." : "Salvar"}
                           </Button>
@@ -716,5 +748,59 @@ export default function TenantsManager() {
     </div>
       {confirmDialogElement}
     </>
+  );
+}
+
+const INTEGRATION_GROUPS: { title: string; keys: string[] }[] = [
+  { title: 'WhatsApp', keys: ['zapi', 'uazapi', 'whatsapp_oficial'] },
+  { title: 'Meios de Pagamento', keys: ['mercadopago', 'pagarme', 'sipag', 'appmax', 'infinitepay'] },
+  { title: 'Fretes', keys: ['melhorenvio', 'mandae', 'superfrete', 'correios', 'meuscorreios'] },
+  { title: 'ERP', keys: ['bling', 'olist', 'omie'] },
+  { title: 'Outros', keys: ['instagram', 'bagy'] },
+];
+
+function IntegrationsToggleSection({
+  value,
+  onChange,
+}: {
+  value: Record<string, boolean>;
+  onChange: (v: Record<string, boolean>) => void;
+}) {
+  const labelOf = (k: string) =>
+    INTEGRATION_KEYS.find((i) => i.key === k)?.label || k;
+  const isOn = (k: string) => value[k] !== false;
+  const toggle = (k: string, checked: boolean) =>
+    onChange({ ...value, [k]: checked });
+
+  return (
+    <div className="space-y-3 border rounded-md p-4">
+      <div>
+        <Label className="text-base">Integrações Visíveis</Label>
+        <p className="text-sm text-muted-foreground">
+          Marque quais integrações a empresa poderá ver e configurar.
+        </p>
+      </div>
+      {INTEGRATION_GROUPS.map((group) => (
+        <div key={group.title} className="space-y-2">
+          <div className="text-sm font-medium text-muted-foreground">{group.title}</div>
+          <div className="grid grid-cols-2 gap-2">
+            {group.keys.map((k) => (
+              <label
+                key={k}
+                className="flex items-center gap-2 text-sm cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={isOn(k)}
+                  onChange={(e) => toggle(k, e.target.checked)}
+                />
+                <span>{labelOf(k)}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

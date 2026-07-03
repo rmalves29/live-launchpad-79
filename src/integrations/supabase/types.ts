@@ -3591,6 +3591,7 @@ export type Database = {
           email: string | null
           enable_live: boolean
           enable_sendflow: boolean
+          enabled_integrations: Json | null
           id: string
           is_active: boolean
           is_blocked: boolean | null
@@ -3633,6 +3634,7 @@ export type Database = {
           email?: string | null
           enable_live?: boolean
           enable_sendflow?: boolean
+          enabled_integrations?: Json | null
           id?: string
           is_active?: boolean
           is_blocked?: boolean | null
@@ -3675,6 +3677,7 @@ export type Database = {
           email?: string | null
           enable_live?: boolean
           enable_sendflow?: boolean
+          enabled_integrations?: Json | null
           id?: string
           is_active?: boolean
           is_blocked?: boolean | null
