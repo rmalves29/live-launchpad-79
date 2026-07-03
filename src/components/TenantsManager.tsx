@@ -183,7 +183,8 @@ export default function TenantsManager() {
           is_active: true,
           enable_live: formData.enable_live,
           enable_sendflow: formData.enable_sendflow,
-          max_whatsapp_groups: formData.max_whatsapp_groups
+          max_whatsapp_groups: formData.max_whatsapp_groups,
+          enabled_integrations: formData.enabled_integrations as any
         })
         .select()
         .single();
