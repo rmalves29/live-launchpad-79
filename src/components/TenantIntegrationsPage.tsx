@@ -28,6 +28,7 @@ import InstagramIntegration from '@/components/integrations/InstagramIntegration
 import BagyIntegration from '@/components/integrations/BagyIntegration';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { isIntegrationEnabled } from '@/lib/integration-keys';
 
 export default function TenantIntegrationsPage() {
   const { tenant, loading: tenantLoading, error: tenantError } = useTenantContext();
