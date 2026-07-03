@@ -120,20 +120,38 @@ Deno.serve(async (req) => {
 
     console.log(`[uazapi-webhook] event=${event} instance=${instanceName} token=${instanceToken?.slice(0, 8)}...`);
 
-    // Resolver tenant pelo token da instância
+    // Resolver tenant pelo token da instância (desempata por instance_name / connected_phone se houver duplicidade)
     let tenantId: string | null = null;
     let uazapiUrl: string | null = null;
     if (instanceToken) {
-      const { data: integ } = await supabase
+      const { data: rows } = await supabase
         .from("integration_whatsapp")
-        .select("tenant_id, uazapi_url")
-        .eq("uazapi_token", instanceToken)
-        .maybeSingle();
+        .select("tenant_id, uazapi_url, instance_name, connected_phone, is_active")
+        .eq("uazapi_token", instanceToken);
+      const candidates = (rows || []).filter((r: any) => r.is_active !== false);
+      let integ: any = null;
+      if (candidates.length === 1) {
+        integ = candidates[0];
+      } else if (candidates.length > 1) {
+        const ownerPhone = String(
+          payload?.owner || payload?.instance?.owner || payload?.instance?.phoneconnected || payload?.phoneconnected || ""
+        ).replace(/@.*/, "").replace(/\D/g, "");
+        if (instanceName) {
+          integ = candidates.find((r: any) => (r.instance_name || "").trim().toLowerCase() === instanceName.trim().toLowerCase()) || null;
+        }
+        if (!integ && ownerPhone) {
+          integ = candidates.find((r: any) => (r.connected_phone || "").replace(/\D/g, "") === ownerPhone) || null;
+        }
+        if (!integ) {
+          console.warn(`[uazapi-webhook] token duplicado em ${candidates.length} integrações e sem instance_name/owner para desempatar`);
+        }
+      }
       if (integ?.tenant_id) {
         tenantId = integ.tenant_id;
         uazapiUrl = (integ as any).uazapi_url || null;
       }
     }
+
 
     if (!tenantId) {
       console.warn("[uazapi-webhook] tenant não identificado pelo token. Salvando como órfão.");
