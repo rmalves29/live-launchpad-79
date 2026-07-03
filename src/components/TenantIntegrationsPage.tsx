@@ -229,13 +229,15 @@ export default function TenantIntegrationsPage() {
 
         <Tabs defaultValue={new URLSearchParams(window.location.search).get('instagram_success') || new URLSearchParams(window.location.search).get('instagram_error') ? 'instagram' : 'bling'} className="w-full">
           <TabsList className="flex flex-wrap h-auto gap-1 w-full bg-white border border-border">
+          {en('instagram') && (
           <TabsTrigger value="instagram" className="flex items-center gap-2">
             <Instagram className="h-4 w-4" />
             <span className="hidden sm:inline">Instagram</span>
             <span className="sm:hidden">IG</span>
             {instagramIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
-          {showAdvancedIntegrations && (
+          )}
+          {showAdvancedIntegrations && en('bagy') && (
             <TabsTrigger value="bagy" className="flex items-center gap-2">
               <ShoppingBag className="h-4 w-4" />
               <span className="hidden sm:inline">Bagy</span>
@@ -243,84 +245,110 @@ export default function TenantIntegrationsPage() {
               {bagyIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
             </TabsTrigger>
           )}
+          {en('bling') && (
           <TabsTrigger value="bling" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
             <span className="hidden sm:inline">Bling ERP</span>
             <span className="sm:hidden">Bling</span>
             {blingIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          )}
+          {en('olist') && (
           <TabsTrigger value="olist" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
             <span className="hidden sm:inline">Tiny ERP</span>
             <span className="sm:hidden">Tiny</span>
             {olistIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          )}
+          {en('omie') && (
           <TabsTrigger value="omie" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
             <span className="hidden sm:inline">Omie ERP</span>
             <span className="sm:hidden">Omie</span>
             {omieIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          )}
+          {en('mercadopago') && (
           <TabsTrigger value="mercadopago" className="flex items-center gap-2">
             <CreditCard className="h-4 w-4" />
             <span className="hidden sm:inline">Mercado Pago</span>
             <span className="sm:hidden">MP</span>
             {mpIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          )}
+          {en('pagarme') && (
           <TabsTrigger value="pagarme" className="flex items-center gap-2">
             <Wallet className="h-4 w-4" />
             <span className="hidden sm:inline">Pagar.me</span>
             <span className="sm:hidden">PG</span>
             {pagarmeIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          )}
+          {en('sipag') && (
           <TabsTrigger value="sipag" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
             <span className="hidden sm:inline">Sipag (Sicoob)</span>
             <span className="sm:hidden">SP</span>
             {sipagIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          )}
+          {en('appmax') && (
           <TabsTrigger value="appmax" className="flex items-center gap-2">
             <Zap className="h-4 w-4" />
             <span className="hidden sm:inline">App Max</span>
             <span className="sm:hidden">AM</span>
             {appmaxIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          )}
+          {en('infinitepay') && (
           <TabsTrigger value="infinitepay" className="flex items-center gap-2">
             <Sparkles className="h-4 w-4" />
             <span className="hidden sm:inline">InfinitePay</span>
             <span className="sm:hidden">IP</span>
             {infinitepayIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          )}
+          {en('melhorenvio') && (
           <TabsTrigger value="melhorenvio" className="flex items-center gap-2">
             <Truck className="h-4 w-4" />
             <span className="hidden sm:inline">Melhor Envio</span>
             <span className="sm:hidden">ME</span>
             {melhorEnvioIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          )}
+          {en('mandae') && (
           <TabsTrigger value="mandae" className="flex items-center gap-2">
             <Package className="h-4 w-4" />
             <span className="hidden sm:inline">Mandae</span>
             <span className="sm:hidden">MD</span>
             {mandaeIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          )}
+          {en('superfrete') && (
           <TabsTrigger value="superfrete" className="flex items-center gap-2">
             <Truck className="h-4 w-4" />
             <span className="hidden sm:inline">SuperFrete</span>
             <span className="sm:hidden">SF</span>
             {superfreteIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          )}
+          {en('correios') && (
           <TabsTrigger value="correios" className="flex items-center gap-2">
             <Mail className="h-4 w-4" />
             <span className="hidden sm:inline">Correios</span>
             <span className="sm:hidden">CR</span>
             {correiosIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          )}
+          {en('meuscorreios') && (
           <TabsTrigger value="meuscorreios" className="flex items-center gap-2">
             <Printer className="h-4 w-4" />
             <span className="hidden sm:inline">Meus Correios</span>
             <span className="sm:hidden">MC</span>
             {meusCorreiosIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="instagram" className="mt-6">
