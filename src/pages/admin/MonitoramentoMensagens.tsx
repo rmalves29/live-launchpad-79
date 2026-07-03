@@ -13,6 +13,12 @@ type Row = {
   total_sent: number;
   msgs_per_minute: number | null;
   msgs_per_hour: number | null;
+  item_added_count: number;
+  item_added_per_minute: number | null;
+  order_cancelled_count: number;
+  payment_count: number;
+  out_of_stock_count: number;
+  group_msg_count: number;
   received_private: number;
   avg_gap_seconds: number | null;
   disconnect_count: number;
