@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkConsent, logSkipped } from "../_shared/consent-v2.ts";
 import {
   antiBlockDelayLive,
   logAntiBlockDelay,
@@ -145,6 +146,14 @@ serve(async (req) => {
     const baseMessage = formatMessage(template, body);
     const message = addMessageVariation(baseMessage);
     const formattedPhone = formatPhoneNumber(customer_phone);
+
+    // CONSENT V2: respeita bloqueio (waiting_reply/blocked)
+    const consent = await checkConsent(supabase, tenant_id, formattedPhone);
+    if (!consent.allow) {
+      await logSkipped(supabase, tenant_id, formattedPhone, "product_canceled", consent.reason, product_name + " (" + product_code + ")");
+      console.log("[zapi-send-product-canceled] SKIPPED por consentimento (" + consent.reason + "):", formattedPhone);
+      return new Response(JSON.stringify({ sent: false, skipped: "consent_" + consent.reason }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     const throttleDelay = await getThrottleDelay(formattedPhone);
     if (throttleDelay > 0) console.log("[zapi-send-product-canceled] Throttle delay: " + (throttleDelay / 1000).toFixed(1) + "s");

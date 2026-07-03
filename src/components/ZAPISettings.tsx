@@ -65,10 +65,8 @@ interface ZAPIIntegration {
   template_item_added: string | null;
   item_added_confirmation_template: string | null;
   confirmation_timeout_minutes: number;
-  // Novos campos de proteção por consentimento
+  // Proteção por consentimento (consent v2 — regras fixas no backend)
   consent_protection_enabled: boolean;
-  template_solicitacao: string | null;
-  template_com_link: string | null;
 }
 
 interface MessageFlags {
@@ -107,8 +105,6 @@ export function ZAPISettings() {
    
    // Proteção por consentimento
    const [consentProtectionEnabled, setConsentProtectionEnabled] = useState(false);
-   const [templateSolicitacao, setTemplateSolicitacao] = useState('');
-   const [templateComLink, setTemplateComLink] = useState('');
 
    // Botão "Pagar Agora" na mensagem de Item Adicionado
    const [itemAddedButtonEnabled, setItemAddedButtonEnabled] = useState(true);
@@ -126,7 +122,7 @@ export function ZAPISettings() {
     try {
       const { data, error } = await supabase
         .from('integration_whatsapp')
-        .select('id, zapi_instance_id, zapi_token, zapi_client_token, provider, is_active, connected_phone, send_item_added_msg, send_paid_order_msg, send_product_canceled_msg, send_out_of_stock_msg, template_item_added, item_added_confirmation_template, confirmation_timeout_minutes, consent_protection_enabled, template_solicitacao, template_com_link, item_added_button_enabled, item_added_button_label, item_added_button_url')
+        .select('id, zapi_instance_id, zapi_token, zapi_client_token, provider, is_active, connected_phone, send_item_added_msg, send_paid_order_msg, send_product_canceled_msg, send_out_of_stock_msg, template_item_added, item_added_confirmation_template, confirmation_timeout_minutes, consent_protection_enabled, item_added_button_enabled, item_added_button_label, item_added_button_url')
         .eq('tenant_id', tenant.id)
         .maybeSingle();
 
@@ -152,8 +148,6 @@ export function ZAPISettings() {
          setConfirmationTimeout(typedData.confirmation_timeout_minutes || 30);
          // Proteção por consentimento - respeitar valor salvo (incluindo vazio/null)
          setConsentProtectionEnabled(typedData.consent_protection_enabled ?? false);
-         setTemplateSolicitacao(typedData.template_solicitacao ?? '');
-         setTemplateComLink(typedData.template_com_link ?? '');
          // Botão "Pagar Agora"
          setItemAddedButtonEnabled((typedData as any).item_added_button_enabled ?? true);
          setItemAddedButtonLabel((typedData as any).item_added_button_label ?? 'Pagar Agora');
@@ -197,8 +191,6 @@ export function ZAPISettings() {
          confirmation_timeout_minutes: confirmationTimeout,
          // Proteção por consentimento
          consent_protection_enabled: consentProtectionEnabled,
-         template_solicitacao: templateSolicitacao || null,
-         template_com_link: templateComLink || null,
          // Botão "Pagar Agora"
          item_added_button_enabled: itemAddedButtonEnabled,
          item_added_button_label: (itemAddedButtonLabel || 'Pagar Agora').slice(0, 20),
@@ -641,7 +633,7 @@ export function ZAPISettings() {
                  <span className="text-sm font-medium">🛡️ Modo de Proteção por Consentimento</span>
                </div>
                <p className="text-xs text-muted-foreground">
-                 Quando ativado, verifica se o cliente deu permissão nos últimos 3 dias antes de enviar link
+                 Controla o envio de mensagens com base na resposta do cliente
                </p>
              </div>
              <Switch
@@ -651,66 +643,14 @@ export function ZAPISettings() {
              />
            </div>
 
-           {true && (
-             <div className="space-y-4 pl-4 border-l-2 border-primary/20">
-               <div className="space-y-2">
-                 <Label className="text-sm font-medium">
-                   Template A - Solicitação de Permissão
-                 </Label>
-                 <p className="text-xs text-muted-foreground">
-                   Enviado quando o cliente NÃO tem consentimento ativo. Variáveis: {'{{'}<code>produto</code>{'}}'},
-                   {'{{'}<code>quantidade</code>{'}}'},
-                   {'{{'}<code>valor</code>{'}}'}
-                 </p>
-                 <Textarea
-                   value={templateSolicitacao}
-                   onChange={(e) => setTemplateSolicitacao(e.target.value)}
-                   placeholder={`🛒 *Item adicionado ao pedido*
-
-✅ {{produto}}
-Qtd: *{{quantidade}}*
-Valor: *R$ {{valor}}*
-
-Posso te enviar o link para finalizar o pedido por aqui?
-
-Responda *SIM* para receber o link. ✨`}
-                   rows={8}
-                   className="font-mono text-sm"
-                 />
-               </div>
-
-               <div className="space-y-2">
-                 <Label className="text-sm font-medium">
-                   Template B - Com Link (Consentimento Válido)
-                 </Label>
-                 <p className="text-xs text-muted-foreground">
-                   Enviado quando o cliente TEM consentimento válido (&lt;3 dias). Use {'{{'}<code>link_checkout</code>{'}}'}
-                 </p>
-                 <Textarea
-                   value={templateComLink}
-                   onChange={(e) => setTemplateComLink(e.target.value)}
-                   placeholder={`🛒 *Item adicionado ao pedido*
-
-✅ {{produto}}
-Qtd: *{{quantidade}}*
-Valor: *R$ {{valor}}*
-
-👉 Finalize seu pedido: {{link_checkout}}
-
-Qualquer dúvida, estou à disposição! ✨`}
-                   rows={8}
-                   className="font-mono text-sm"
-                 />
-               </div>
-
-               <div className="p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-800">
-                 <p className="text-xs text-amber-800 dark:text-amber-200">
-                   <strong>Importante:</strong> Quando o cliente responder "SIM", o sistema apenas registrará 
-                   o consentimento no banco de dados. O link será enviado automaticamente no <strong>próximo</strong> evento de "Item Adicionado".
-                 </p>
-               </div>
-             </div>
-           )}
+           <div className="p-3 bg-muted/30 rounded-lg border">
+             <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-1">
+               <li>Ao enviar a mensagem de <strong>Item Adicionado</strong>, o sistema aguarda a resposta do cliente por <strong>20 minutos</strong>.</li>
+               <li>Se o cliente responder (qualquer mensagem), fica liberado por <strong>3 dias</strong>.</li>
+               <li>Se não responder, entra em bloqueio de <strong>1 hora</strong> — só recebe <strong>Pagamento Confirmado</strong> e <strong>Mensagem em Massa</strong>.</li>
+               <li>Após os 3 dias, o consentimento expira automaticamente e o ciclo recomeça.</li>
+             </ul>
+           </div>
          </div>
 
          {/* Confirmation Message Template Section - LEGACY (quando proteção está OFF) */}

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkConsent, logSkipped } from "../_shared/consent-v2.ts";
 import {
   antiBlockDelayLive,
   logAntiBlockDelay,
@@ -113,6 +114,15 @@ serve(async (req) => {
     }
 
     const formattedPhone = formatPhoneNumber(customer_phone);
+
+    // CONSENT V2: respeita bloqueio (waiting_reply/blocked). Paid_Order e MSG em massa não passam por aqui.
+    const consent = await checkConsent(supabase, tenant_id, formattedPhone);
+    if (!consent.allow) {
+      await logSkipped(supabase, tenant_id, formattedPhone, "confirmation_link", consent.reason, "link de confirmacao " + confirmation_id);
+      console.log("[zapi-send-confirmation-link] SKIPPED por consentimento (" + consent.reason + "):", formattedPhone);
+      return new Response(JSON.stringify({ sent: false, skipped: "consent_" + consent.reason }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const { confirmationTemplate } = credentials;
 
     const meta = (confirmation.metadata || {}) as Record<string, any>;

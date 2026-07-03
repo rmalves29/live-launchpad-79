@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  import { antiBlockDelay, logAntiBlockDelay, antiBlockDelayLive, addMessageVariation, getTypingDelay, simulateTyping } from "../_shared/anti-block-delay.ts";
+ import { activateConsentOnReply } from "../_shared/consent-v2.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -897,7 +898,7 @@ serve(async (req) => {
      // IMPORTANT: Check for confirmation responses (SIM/OK) from PRIVATE messages FIRST
      // This handles the two-step message flow where customer replies to confirm checkout link
     if (!isGroup) {
-       const confirmationResult = await handleConfirmationResponse(supabase, senderPhone, messageText, payload.instanceId);
+       const confirmationResult = await handleConfirmationResponse(supabase, senderPhone, messageText, payload.instanceId, (payload as any).uazapi_tenant_id);
        if (confirmationResult.handled) {
          console.log(`[zapi-webhook] ✅ Confirmation response handled for ${senderPhone}`);
          return new Response(JSON.stringify({ 
@@ -2321,10 +2322,11 @@ async function updateOrderTotal(supabase: any, orderId: number) {
  
  // Handle confirmation responses (SIM, OK, sim, ok) for the two-step message flow
  async function handleConfirmationResponse(
-   supabase: any, 
-   senderPhone: string, 
+   supabase: any,
+   senderPhone: string,
    messageText: string,
-   instanceId?: string
+   instanceId?: string,
+   uazapiTenantId?: string | null
  ): Promise<{ handled: boolean; action?: string; error?: string }> {
    
     // Normalize phone
@@ -2393,7 +2395,32 @@ async function updateOrderTotal(supabase: any, orderId: number) {
 
     const phoneVariants = buildPhoneVariantsForConfirmation(normalizedPhone);
     const phoneVariants55 = phoneVariants.filter((v) => v.startsWith('55'));
-   
+
+   // ============================================================
+   // CONSENT V2: QUALQUER mensagem privada do cliente ativa o
+   // consentimento (3 dias) se ele estiver em waiting_reply ou blocked.
+   // Roda como efeito colateral — NÃO retorna handled, pois a mensagem
+   // pode também ser um SIM de outro fluxo (pending_message_confirmations).
+   // ============================================================
+   try {
+     const consentInteg = await resolveZapiIntegration(supabase, instanceId, null, uazapiTenantId);
+     if (consentInteg?.tenant_id) {
+       const activated = await activateConsentOnReply(supabase, consentInteg.tenant_id, normalizedPhone);
+       if (activated) {
+         console.log(`[zapi-webhook] ✅ Consent v2: cliente ${normalizedPhone} respondeu — consentimento ATIVO por 3 dias`);
+         await supabase.from('whatsapp_messages').insert({
+           tenant_id: consentInteg.tenant_id,
+           phone: normalizedPhone,
+           message: '[SISTEMA] Cliente respondeu. Consentimento ativo por 3 dias.',
+           type: 'system_log',
+           sent_at: new Date().toISOString(),
+         });
+       }
+     }
+   } catch (e) {
+     console.error('[zapi-webhook] ⚠️ Consent v2 activation error:', e);
+   }
+
    // Check if message is a confirmation response (SIM) or decline (NÃO)
    const cleanMessage = messageText.trim().toLowerCase();
    const isConfirmation = ['sim', 'ok', 'yes', 's', 'simmm', 'simm', 'si', 'okay', 'pode'].includes(cleanMessage);
@@ -2404,207 +2431,6 @@ async function updateOrderTotal(supabase: any, orderId: number) {
      return { handled: false };
    }
 
-   // ============================================================
-   // NOVA REGRA: Atualizar diretamente whatsapp_consent_state
-   // (não depende mais de pending_message_confirmations para item_added)
-   // ============================================================
-   {
-     // Resolver tenant via instanceId quando possível
-     let resolvedTenantId: string | null = null;
-     if (instanceId) {
-       const { data: integration } = await supabase
-         .from('integration_whatsapp')
-         .select('tenant_id')
-         .eq('zapi_instance_id', instanceId)
-         .eq('is_active', true)
-         .maybeSingle();
-       if (integration) resolvedTenantId = integration.tenant_id;
-     }
-
-     if (resolvedTenantId) {
-       // Variantes de telefone (com/sem 55, com/sem 9)
-       const variants = new Set<string>();
-       const p = (normalizedPhone || '').replace(/\D/g, '');
-       const baseWithoutCountry = (p.startsWith('55') && p.length >= 12) ? p.slice(2) : p;
-       const baseWithCountry = baseWithoutCountry.startsWith('55') ? baseWithoutCountry : '55' + baseWithoutCountry;
-       variants.add(baseWithoutCountry);
-       variants.add(baseWithCountry);
-       if (baseWithoutCountry.length === 11 && baseWithoutCountry[2] === '9') {
-         const without9 = baseWithoutCountry.slice(0, 2) + baseWithoutCountry.slice(3);
-         variants.add(without9);
-         variants.add('55' + without9);
-       } else if (baseWithoutCountry.length === 10) {
-         const with9 = baseWithoutCountry.slice(0, 2) + '9' + baseWithoutCountry.slice(2);
-         variants.add(with9);
-         variants.add('55' + with9);
-       }
-
-       const { data: stateRows } = await supabase
-         .from('whatsapp_consent_state')
-         .select('id')
-         .eq('tenant_id', resolvedTenantId)
-         .in('customer_phone', Array.from(variants))
-         .order('updated_at', { ascending: false })
-         .limit(1);
-
-       const stateRow = stateRows && stateRows[0];
-
-       if (stateRow) {
-         const now = new Date();
-         if (isConfirmation) {
-           const expires = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // +3 dias
-           await supabase
-             .from('whatsapp_consent_state')
-             .update({
-               status: 'active',
-               consent_granted_at: now.toISOString(),
-               consent_expires_at: expires.toISOString(),
-             })
-             .eq('id', stateRow.id);
-            console.log(`[zapi-webhook] ✅ Consentimento ATIVO por 3 dias (state ${stateRow.id})`);
-
-            await supabase.from('whatsapp_messages').insert({
-              tenant_id: resolvedTenantId,
-              phone: normalizedPhone,
-              message: '[SISTEMA] Cliente respondeu SIM. Consentimento ativo por 3 dias.',
-              type: 'system_log',
-              sent_at: now.toISOString(),
-            });
-
-            // Se a loja tiver Template B (Com Link) configurado, envia agora com botão se habilitado.
-            try {
-              const { data: integ } = await supabase
-                .from('integration_whatsapp')
-                .select('zapi_instance_id, zapi_token, zapi_client_token, uazapi_url, uazapi_token, provider, template_com_link, item_added_button_enabled, item_added_button_label, item_added_button_url, is_active')
-                .eq('tenant_id', resolvedTenantId)
-                .eq('is_active', true)
-                .maybeSingle();
-
-              const tplB = (integ?.template_com_link || '').trim();
-              if (integ && tplB) {
-                const { data: tenantRow } = await supabase.from('tenants').select('slug').eq('id', resolvedTenantId).maybeSingle();
-                const { data: settings } = await supabase.from('app_settings').select('public_base_url').limit(1).maybeSingle();
-                const baseUrlPublic = settings?.public_base_url || 'https://live-launchpad-79.lovable.app';
-                const slug = tenantRow?.slug || resolvedTenantId;
-                const checkoutUrl = `${baseUrlPublic}/t/${slug}/checkout`;
-
-                let msgBody = tplB
-                  .replace(/\{\{link_checkout\}\}/g, checkoutUrl)
-                  .replace(/\{\{checkout_url\}\}/g, checkoutUrl);
-                msgBody = msgBody
-                  .split('\n')
-                  .filter((line: string) => !/\{\{(produto|quantidade|qtd_aleatoria|valor|preco|total|subtotal|codigo|valor_original|valor_promo)\}\}/.test(line))
-                  .join('\n')
-                  .trim();
-
-                if (msgBody) {
-                  const finalMsg = addMessageVariation(msgBody);
-                  const provider = integ.provider || 'zapi';
-                  const buttonEnabled = integ.item_added_button_enabled !== false;
-                  const buttonLabel = (integ.item_added_button_label || 'Pagar Agora').toString().slice(0, 20);
-                  const buttonUrl = (integ.item_added_button_url || '').trim() || checkoutUrl;
-
-                  let sendOk = false;
-
-                  if (provider === 'uazapi') {
-                    const uazUrl = (integ.uazapi_url || '').replace(/\/+$/, '');
-                    const uazTok = integ.uazapi_token || '';
-                    if (uazUrl && uazTok) {
-                      const uazH = { 'Content-Type': 'application/json', 'token': uazTok };
-                      try {
-                        await fetch(`${uazUrl}/send/presence`, { method: 'POST', headers: uazH, body: JSON.stringify({ number: normalizedPhone, presence: 'composing', delay: 2000 }) });
-                        await new Promise((r) => setTimeout(r, 2000));
-                      } catch (_) {}
-                      const useButton = buttonEnabled && buttonUrl;
-                      let resp = await fetch(`${uazUrl}${useButton ? '/send/menu' : '/send/text'}`, {
-                        method: 'POST',
-                        headers: uazH,
-                        body: JSON.stringify(useButton
-                          ? { number: normalizedPhone, type: 'button', text: finalMsg, choices: [`${buttonLabel}|${buttonUrl}`] }
-                          : { number: normalizedPhone, text: finalMsg }
-                        ),
-                      });
-                      if (useButton && !resp.ok) {
-                        const fallbackMsg = finalMsg.includes(buttonUrl) ? finalMsg : `${finalMsg}\n\n🔗 ${buttonUrl}`;
-                        console.warn(`[zapi-webhook] uazapi botão pós-SIM falhou (${resp.status}); tentando fallback texto+link`);
-                        resp = await fetch(`${uazUrl}/send/text`, { method: 'POST', headers: uazH, body: JSON.stringify({ number: normalizedPhone, text: fallbackMsg }) });
-                      }
-                      sendOk = resp.ok;
-                      console.log(`[zapi-webhook] 📤 Template B pós-SIM (uazapi${useButton ? ' + botão' : ''}, ${resp.status})`);
-                    }
-                  } else {
-                    const zInstance = integ.zapi_instance_id;
-                    const zToken = integ.zapi_token;
-                    const zClient = integ.zapi_client_token;
-                    if (zInstance && zToken) {
-                      const zapiHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
-                      if (zClient) zapiHeaders['Client-Token'] = zClient;
-                      const baseZapiUrl = `https://api.z-api.io/instances/${zInstance}/token/${zToken}`;
-                      const useButton = buttonEnabled && buttonUrl;
-                      const sendUrl = useButton ? `${baseZapiUrl}/send-button-actions` : `${baseZapiUrl}/send-text`;
-                      const reqBody = useButton
-                        ? { phone: normalizedPhone, message: finalMsg, buttonActions: [{ id: '1', type: 'URL', url: buttonUrl, label: buttonLabel }] }
-                        : { phone: normalizedPhone, message: finalMsg };
-                      const resp = await fetch(sendUrl, { method: 'POST', headers: zapiHeaders, body: JSON.stringify(reqBody) });
-                      sendOk = resp.ok;
-                      console.log(`[zapi-webhook] 📤 Template B pós-SIM (Z-API${useButton ? ' + botão' : ''}, ${resp.status})`);
-                    }
-                  }
-
-                  await supabase.from('whatsapp_messages').insert({
-                    tenant_id: resolvedTenantId,
-                    phone: normalizedPhone,
-                    message: finalMsg.substring(0, 500),
-                    type: 'consent_link',
-                    sent_at: new Date().toISOString(),
-                    delivery_status: sendOk ? 'SENT' : 'FAILED',
-                  });
-                } else {
-                  console.log('[zapi-webhook] ℹ️ Template B ficou vazio após filtrar variáveis de produto. Não enviando.');
-                }
-              } else {
-                console.log('[zapi-webhook] ℹ️ Template B (Com Link) em branco ou integração inativa. Não envia mensagem pós-SIM.');
-              }
-            } catch (e) {
-              console.error('[zapi-webhook] ⚠️ Erro ao tentar enviar Template B pós-SIM:', e);
-            }
-
-            return { handled: true, action: 'consent_granted_silent' };
-         } else {
-           // isDecline → silencia por 1h, próxima adição depois disso pede de novo
-           const expires = new Date(now.getTime() + 60 * 60 * 1000); // +1h
-           await supabase
-             .from('whatsapp_consent_state')
-             .update({
-               status: 'declined',
-               request_sent_at: now.toISOString(),
-               request_expires_at: expires.toISOString(),
-             })
-             .eq('id', stateRow.id);
-           console.log(`[zapi-webhook] 🚫 Cliente recusou. Silenciado por 1h (state ${stateRow.id})`);
-
-           await supabase.from('whatsapp_messages').insert({
-             tenant_id: resolvedTenantId,
-             phone: normalizedPhone,
-             message: '[SISTEMA] Cliente respondeu NÃO. Silenciado por 1h.',
-             type: 'system_log',
-             sent_at: now.toISOString(),
-           });
-           return { handled: true, action: 'consent_declined' };
-         }
-       } else {
-         console.log(`[zapi-webhook] ℹ️ Nenhum estado de consentimento encontrado para ${normalizedPhone} (tenant ${resolvedTenantId}). Continuando fluxo legado.`);
-       }
-     }
-
-     // Se não conseguimos resolver/atualizar o estado novo, NÃO seguimos
-     // o fluxo legado para resposta SIM/NÃO de item_added: apenas marcamos
-     // como tratado para evitar respostas inesperadas.
-     if (isDecline) {
-       return { handled: true, action: 'decline_no_state' };
-     }
-     // Para SIM, deixamos o fluxo legado abaixo continuar (compatibilidade).
-   }
 
    
    console.log(`[zapi-webhook] 🔔 Detected confirmation response "${cleanMessage}" from ${normalizedPhone}`);

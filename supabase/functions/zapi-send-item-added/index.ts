@@ -15,6 +15,12 @@ import {
   sendPresenceComposing,
   calcTypingDuration,
 } from "../_shared/evolution-api.ts";
+import {
+  checkConsent,
+  isConsentProtectionEnabled,
+  markWaitingReply,
+  logSkipped,
+} from "../_shared/consent-v2.ts";
 
 
 const corsHeaders = {
@@ -94,7 +100,7 @@ function phoneMatches(a?: string | null, b?: string | null): boolean {
 async function getCredentials(supabase: any, tenantId: string, sourceInstanceId?: string, sourceConnectedPhone?: string) {
   const { data: integration, error } = await supabase
     .from("integration_whatsapp")
-    .select("zapi_instance_id, zapi_token, zapi_client_token, uazapi_url, uazapi_token, connected_phone, is_active, provider, send_item_added_msg, confirmation_timeout_minutes, template_solicitacao, template_com_link, template_item_added, item_added_button_enabled, item_added_button_label, item_added_button_url")
+    .select("zapi_instance_id, zapi_token, zapi_client_token, uazapi_url, uazapi_token, connected_phone, is_active, provider, send_item_added_msg, confirmation_timeout_minutes, template_item_added, item_added_button_enabled, item_added_button_label, item_added_button_url")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .maybeSingle();
@@ -106,8 +112,6 @@ async function getCredentials(supabase: any, tenantId: string, sourceInstanceId?
   const commonFields = {
     disabled: false,
     confirmationTimeoutMinutes: integration.confirmation_timeout_minutes || 30,
-    templateSolicitacao: integration.template_solicitacao || null,
-    templateComLink: integration.template_com_link || null,
     templateItemAdded: integration.template_item_added || null,
     buttonEnabled: integration.item_added_button_enabled !== false,
     buttonLabel: (integration.item_added_button_label || "Pagar Agora").toString().slice(0, 20),
@@ -233,95 +237,14 @@ async function loadOrderContext(
   return { itensPedido, totalPedido, numeroPedido: String(order?.id || orderId || "") };
 }
 
-function getDefaultTemplateSolicitacao(): string {
-  return "Item adicionado ao pedido\n\n{{produto}}\nQtd: *{{quantidade}}*\nValor: *R$ {{valor}}*\n\nPosso te enviar o link para finalizar o pedido por aqui?\n\nResponda *SIM* para receber o link.";
-}
-
-function getDefaultTemplateComLink(): string {
+function getDefaultTemplateItemAdded(): string {
   return "Item adicionado ao pedido\n\n{{produto}}\nQtd: *{{quantidade}}*\nValor: *R$ {{valor}}*\n\nFinalize seu pedido: {{link_checkout}}\n\nQualquer duvida, estou a disposicao!";
 }
 
 async function getTemplate(supabase: any, tenantId: string) {
   const { data: template } = await supabase.from("whatsapp_templates").select("content").eq("tenant_id", tenantId).eq("type", "ITEM_ADDED").maybeSingle();
   if (template?.content) return template.content;
-  return getDefaultTemplateSolicitacao();
-}
-
-type ConsentDecision =
-  | { action: "send_request"; reason: string; previousId?: string }
-  | { action: "send_with_link"; stateId: string }
-  | { action: "silence"; reason: string; stateId: string };
-
-function buildConsentPhoneVariants(phone: string): string[] {
-  const variants = new Set<string>();
-  let p = (phone || "").replace(/\D/g, "");
-  if (!p) return [];
-  let baseWithoutCountry = p;
-  if (p.startsWith("55") && p.length >= 12) baseWithoutCountry = p.slice(2);
-  const baseWithCountry = baseWithoutCountry.startsWith("55") ? baseWithoutCountry : "55" + baseWithoutCountry;
-  variants.add(baseWithoutCountry);
-  variants.add(baseWithCountry);
-  if (baseWithoutCountry.length === 11 && baseWithoutCountry[2] === "9") {
-    const without9 = baseWithoutCountry.slice(0, 2) + baseWithoutCountry.slice(3);
-    variants.add(without9);
-    variants.add("55" + without9);
-  } else if (baseWithoutCountry.length === 10) {
-    const with9 = baseWithoutCountry.slice(0, 2) + "9" + baseWithoutCountry.slice(2);
-    variants.add(with9);
-    variants.add("55" + with9);
-  }
-  return Array.from(variants);
-}
-
-function canonicalConsentPhone(phone: string): string {
-  const variants = buildConsentPhoneVariants(phone);
-  const with55_11 = variants.find((v) => v.startsWith("55") && v.length === 13);
-  if (with55_11) return with55_11;
-  const with55_10 = variants.find((v) => v.startsWith("55") && v.length === 12);
-  if (with55_10) return with55_10;
-  return variants.find((v) => v.startsWith("55")) || variants[0];
-}
-
-async function evaluateConsent(supabase: any, tenantId: string, phone: string): Promise<ConsentDecision> {
-  const variants = buildConsentPhoneVariants(phone);
-  const { data: rows } = await supabase.from("whatsapp_consent_state").select("id, status, request_expires_at, consent_expires_at, consent_granted_at").eq("tenant_id", tenantId).in("customer_phone", variants).order("updated_at", { ascending: false }).limit(1);
-  const state = rows && rows[0];
-  const now = new Date();
-  if (!state) return { action: "send_request", reason: "no_state" };
-  const reqExp = state.request_expires_at ? new Date(state.request_expires_at) : null;
-  const consExp = state.consent_expires_at ? new Date(state.consent_expires_at) : null;
-  if (state.status === "active") {
-    if (consExp && consExp > now) return { action: "send_with_link", stateId: state.id };
-    return { action: "send_request", reason: "consent_expired", previousId: state.id };
-  }
-  if (state.status === "awaiting") {
-    if (reqExp && reqExp > now) return { action: "silence", reason: "awaiting_response", stateId: state.id };
-    return { action: "send_request", reason: "awaiting_window_passed", previousId: state.id };
-  }
-  if (state.status === "silenced") {
-    if (reqExp && reqExp > now) return { action: "silence", reason: "silenced_window", stateId: state.id };
-    return { action: "send_request", reason: "silenced_window_passed", previousId: state.id };
-  }
-  if (state.status === "declined") {
-    if (reqExp && reqExp > now) return { action: "silence", reason: "declined_window", stateId: state.id };
-    return { action: "send_request", reason: "declined_window_passed", previousId: state.id };
-  }
-  return { action: "send_request", reason: "unknown_status", previousId: state.id };
-}
-
-async function markRequestSent(supabase: any, tenantId: string, phone: string) {
-  const canonical = canonicalConsentPhone(phone);
-  const now = new Date();
-  const expires = new Date(now.getTime() + 60 * 60 * 1000);
-  await supabase.from("whatsapp_consent_state").upsert({ tenant_id: tenantId, customer_phone: canonical, status: "awaiting", request_sent_at: now.toISOString(), request_expires_at: expires.toISOString(), last_message_at: now.toISOString() }, { onConflict: "tenant_id,customer_phone" });
-}
-
-async function markActiveMessageSent(supabase: any, tenantId: string, stateId: string) {
-  await supabase.from("whatsapp_consent_state").update({ last_message_at: new Date().toISOString() }).eq("id", stateId);
-}
-
-async function markSilenced(supabase: any, stateId: string) {
-  await supabase.from("whatsapp_consent_state").update({ status: "silenced", last_message_at: new Date().toISOString() }).eq("id", stateId);
+  return null;
 }
 
 function buildPhoneCandidates(phone: string): string[] {
@@ -470,66 +393,32 @@ serve(async (req) => {
 
       const orderCtx = await loadOrderContext(supabase, tenant_id, order_id, cart_id, { product_name, product_code, quantity, unit_price });
 
-      let message: string;
-      let templateType: "A" | "B" = "A";
-      let consentDecisionAfterSend: "request_sent" | "active_sent" | null = null;
-      let activeStateId: string | null = null;
-      let useButton = false;
-      let resolvedButtonUrl: string | null = null;
+      // CONSENT V2: template único; se protegido, bloqueia em waiting_reply/blocked
+      // e marca waiting_reply (20min) após enviar quando o cliente não está ativo.
+      const consentEnabled = await isConsentProtectionEnabled(supabase, tenant_id);
+      let markWaitingAfterSend = false;
 
-      const { data: consentCfg } = await supabase.from("integration_whatsapp").select("consent_protection_enabled").eq("tenant_id", tenant_id).maybeSingle();
-      const consentEnabled = consentCfg?.consent_protection_enabled === true;
-
-      // Template único: sempre usa o template salvo em "Item Adicionado"
-      // (mesma mensagem, mesmo link/botão de pagamento) — tanto no modo padrão
-      // quanto no Modo de Proteção por Consentimento (solicitação ou ativo).
-      const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
-      const templateFromTable = await getTemplate(supabase, tenant_id);
-      const template = templateFromTable
-        || (credentials as any).templateItemAdded
-        || (credentials as any).templateComLink
-        || getDefaultTemplateComLink();
-      const baseMessage = formatMessage(template, body, orderCtx)
-        .replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrl)
-        .replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrl);
-      message = prependGreeting(addMessageVariation(baseMessage, false));
-      if ((credentials as any).buttonEnabled) {
-        useButton = true;
-        resolvedButtonUrl = ((credentials as any).buttonUrl && (credentials as any).buttonUrl.trim())
-          ? (credentials as any).buttonUrl.trim()
-          : checkoutUrl;
-      }
-
-      if (!consentEnabled) {
-        templateType = "B";
-      } else {
-        const decision = await evaluateConsent(supabase, tenant_id, formattedPhone);
-
-        if (decision.action === "silence") {
-          await markSilenced(supabase, decision.stateId);
-          await supabase.from("whatsapp_messages").insert({
-            tenant_id,
-            phone: formattedPhone,
-            message: "[SILENCIADO - " + decision.reason + "] " + product_name + " (" + product_code + ")",
-            type: "item_added",
-            product_name: product_name.substring(0, 100),
-            sent_at: new Date().toISOString(),
-            order_id: order_id || null,
-            delivery_status: "SKIPPED",
-          });
+      if (consentEnabled) {
+        const consent = await checkConsent(supabase, tenant_id, formattedPhone);
+        if (!consent.allow) {
+          await logSkipped(supabase, tenant_id, formattedPhone, "item_added", consent.reason, product_name + " (" + product_code + ")");
+          console.log("[zapi-send-item-added] SKIPPED por consentimento (" + consent.reason + "):", formattedPhone);
           return;
         }
-
-        if (decision.action === "send_request") {
-          templateType = "A";
-          consentDecisionAfterSend = "request_sent";
-        } else {
-          templateType = "B";
-          activeStateId = decision.stateId;
-          consentDecisionAfterSend = "active_sent";
-        }
+        markWaitingAfterSend = consent.state !== "active";
       }
 
+      const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
+      const templateFromTable = await getTemplate(supabase, tenant_id);
+      const template = templateFromTable || (credentials as any).templateItemAdded || getDefaultTemplateItemAdded();
+      const baseMessage = formatMessage(template, body, orderCtx).replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrl).replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrl);
+      const message = prependGreeting(addMessageVariation(baseMessage, false));
+      let useButton = false;
+      let resolvedButtonUrl: string | null = null;
+      if ((credentials as any).buttonEnabled) {
+        useButton = true;
+        resolvedButtonUrl = ((credentials as any).buttonUrl && (credentials as any).buttonUrl.trim()) ? (credentials as any).buttonUrl.trim() : checkoutUrl;
+      }
 
       const throttleDelay = await getThrottleDelay(formattedPhone);
       if (throttleDelay > 0) console.log("[zapi-send-item-added] Throttle delay: " + (throttleDelay / 1000).toFixed(1) + "s");
@@ -586,10 +475,9 @@ serve(async (req) => {
         } catch (e) {}
       }
 
-      if (sendOk && consentDecisionAfterSend === "request_sent") {
-        await markRequestSent(supabase, tenant_id, formattedPhone);
-      } else if (sendOk && consentDecisionAfterSend === "active_sent" && activeStateId) {
-        await markActiveMessageSent(supabase, tenant_id, activeStateId);
+      if (sendOk && markWaitingAfterSend) {
+        await markWaitingReply(supabase, tenant_id, formattedPhone);
+        console.log("[zapi-send-item-added] Consent: waiting_reply (20min) marcado para", formattedPhone);
       }
 
       await supabase.from("whatsapp_messages").insert({ tenant_id, phone: formattedPhone, message: message.substring(0, 500), type: "item_added", product_name: product_name.substring(0, 100), sent_at: new Date().toISOString(), order_id: order_id || null, zapi_message_id: zapiMessageId, delivery_status: sendOk ? "SENT" : "FAILED" });

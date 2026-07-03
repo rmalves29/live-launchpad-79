@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
 import { Bell, MessageSquare, Save, Loader2, Shield } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -32,8 +31,6 @@ export function ZAPIAdvancedSettings() {
   });
 
   const [consentProtectionEnabled, setConsentProtectionEnabled] = useState(false);
-  const [templateSolicitacao, setTemplateSolicitacao] = useState('');
-  const [templateComLink, setTemplateComLink] = useState('');
   const [itemAddedButtonEnabled, setItemAddedButtonEnabled] = useState(true);
   const [itemAddedButtonLabel, setItemAddedButtonLabel] = useState('Pagar Agora');
   const [itemAddedButtonUrl, setItemAddedButtonUrl] = useState('');
@@ -48,7 +45,7 @@ export function ZAPIAdvancedSettings() {
     try {
       const { data, error } = await supabase
         .from('integration_whatsapp')
-        .select('id, send_item_added_msg, send_paid_order_msg, send_product_canceled_msg, send_out_of_stock_msg, consent_protection_enabled, template_solicitacao, template_com_link, item_added_button_enabled, item_added_button_label, item_added_button_url')
+        .select('id, send_item_added_msg, send_paid_order_msg, send_product_canceled_msg, send_out_of_stock_msg, consent_protection_enabled, item_added_button_enabled, item_added_button_label, item_added_button_url')
         .eq('tenant_id', tenant.id)
         .maybeSingle();
       if (error && error.code !== 'PGRST116') throw error;
@@ -61,8 +58,6 @@ export function ZAPIAdvancedSettings() {
           send_out_of_stock_msg: (data as any).send_out_of_stock_msg ?? true,
         });
         setConsentProtectionEnabled((data as any).consent_protection_enabled ?? false);
-        setTemplateSolicitacao((data as any).template_solicitacao ?? '');
-        setTemplateComLink((data as any).template_com_link ?? '');
         setItemAddedButtonEnabled((data as any).item_added_button_enabled ?? true);
         setItemAddedButtonLabel((data as any).item_added_button_label ?? 'Pagar Agora');
         setItemAddedButtonUrl((data as any).item_added_button_url ?? '');
@@ -105,8 +100,6 @@ export function ZAPIAdvancedSettings() {
         .from('integration_whatsapp')
         .update({
           consent_protection_enabled: consentProtectionEnabled,
-          template_solicitacao: templateSolicitacao || null,
-          template_com_link: templateComLink || null,
           item_added_button_enabled: itemAddedButtonEnabled,
           item_added_button_label: (itemAddedButtonLabel || 'Pagar Agora').slice(0, 20),
           item_added_button_url: (() => {
@@ -219,7 +212,7 @@ export function ZAPIAdvancedSettings() {
             🛡️ Modo de Proteção por Consentimento
           </CardTitle>
           <CardDescription>
-            Quando ativado, verifica se o cliente deu permissão nos últimos 3 dias antes de enviar link
+            Controla o envio de mensagens com base na resposta do cliente, reduzindo risco de bloqueio do número
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -228,38 +221,16 @@ export function ZAPIAdvancedSettings() {
             <Switch checked={consentProtectionEnabled} onCheckedChange={setConsentProtectionEnabled} />
           </div>
 
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Template A — Solicitação de Permissão</Label>
+          <div className="p-3 bg-muted/30 rounded-lg border space-y-2">
             <p className="text-xs text-muted-foreground">
-              Variáveis: {'{{produto}}'}, {'{{quantidade}}'}, {'{{valor}}'}
+              <strong>Como funciona quando ativado:</strong>
             </p>
-            <Textarea
-              value={templateSolicitacao}
-              onChange={(e) => setTemplateSolicitacao(e.target.value)}
-              rows={6}
-              className="font-mono text-sm"
-              placeholder={`🛒 *Item adicionado*\n\n✅ {{produto}}\nQtd: *{{quantidade}}*\nValor: *R$ {{valor}}*\n\nPosso te enviar o link? Responda *SIM*. ✨`}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Template B — Com Link (Consentimento Válido)</Label>
-            <p className="text-xs text-muted-foreground">
-              Variáveis: {'{{produto}}'}, {'{{quantidade}}'}, {'{{valor}}'}, {'{{link_checkout}}'}, {'{{itens_pedido}}'}, {'{{total_pedido}}'}, {'{{numero_pedido}}'}
-            </p>
-            <Textarea
-              value={templateComLink}
-              onChange={(e) => setTemplateComLink(e.target.value)}
-              rows={6}
-              className="font-mono text-sm"
-              placeholder={`🛒 *Item adicionado*\n\n{{itens_pedido}}\n\nTotal: *R$ {{total_pedido}}*\nPedido: #{{numero_pedido}}\n\n👉 Finalize: {{link_checkout}}`}
-            />
-          </div>
-
-          <div className="p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200 dark:border-amber-800">
-            <p className="text-xs text-amber-800 dark:text-amber-200">
-              <strong>Importante:</strong> Quando o cliente responder "SIM", o sistema apenas registrará o consentimento. O link será enviado automaticamente no <strong>próximo</strong> evento de "Item Adicionado".
-            </p>
+            <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-1">
+              <li>Ao enviar a mensagem de <strong>Item Adicionado</strong>, o sistema aguarda a resposta do cliente por <strong>20 minutos</strong>.</li>
+              <li>Se o cliente responder (qualquer mensagem), fica liberado para receber todas as mensagens por <strong>3 dias</strong>.</li>
+              <li>Se não responder, entra em bloqueio de <strong>1 hora</strong> — nesse período só recebe <strong>Pagamento Confirmado</strong> e <strong>Mensagem em Massa</strong>.</li>
+              <li>Após os 3 dias, o consentimento é removido automaticamente e o ciclo recomeça.</li>
+            </ul>
           </div>
 
           <div className="flex justify-end">
