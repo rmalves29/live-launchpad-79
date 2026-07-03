@@ -267,6 +267,7 @@ export default function TenantsManager() {
         .from("tenants")
         .update({
           name: formData.name,
+          enabled_integrations: formData.enabled_integrations as any,
         })
         .eq("id", editingTenant.id);
 
