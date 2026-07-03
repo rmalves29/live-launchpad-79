@@ -13,25 +13,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
 
 // Templates padrão
-const DEFAULT_TEMPLATE_SOLICITACAO = `🛒 *Item adicionado ao pedido*
-
-✅ {{produto}}
-Qtd: *{{quantidade}}*
-Valor: *R$ {{valor}}*
-
-Posso te enviar o link para finalizar o pedido por aqui?
-
-Responda *SIM* para receber o link. ✨`;
-
-const DEFAULT_TEMPLATE_COM_LINK = `🛒 *Item adicionado ao pedido*
-
-✅ {{produto}}
-Qtd: *{{quantidade}}*
-Valor: *R$ {{valor}}*
-
-👉 Finalize seu pedido: {{link_checkout}}
-
-Qualquer dúvida, estou à disposição! ✨`;
 
 const DEFAULT_TEMPLATE_ITEM_ADDED = `🛒 *Item adicionado ao pedido*
 
@@ -653,85 +634,7 @@ export function ZAPISettings() {
            </div>
          </div>
 
-         {/* Confirmation Message Template Section - LEGACY (quando proteção está OFF) */}
-         {false && !consentProtectionEnabled && (
-           <div className="pt-4 border-t space-y-4">
-             <div className="flex items-center gap-2">
-               <MessageSquare className="h-4 w-4 text-muted-foreground" />
-               <span className="text-sm font-medium">Templates de Mensagem (Modo Padrão)</span>
-             </div>
-             <p className="text-xs text-muted-foreground">
-               Configure os templates para o fluxo de confirmação em duas etapas
-             </p>
-             
-             <div className="space-y-4 pl-4 border-l-2 border-muted">
-               {/* Template Mensagem 1 - Item Adicionado */}
-               <div className="space-y-2">
-                 <Label className="text-sm font-medium">
-                   📩 Mensagem 1 - Notificação de Item Adicionado
-                 </Label>
-                 <p className="text-xs text-muted-foreground">
-                   Enviada quando um item é adicionado. Variáveis: {'{{'}<code>produto</code>{'}}'},
-                   {'{{'}<code>quantidade</code>{'}}'},
-                   {'{{'}<code>valor</code>{'}}'}
-                 </p>
-                 <Textarea
-                   value={templateItemAdded}
-                   onChange={(e) => setTemplateItemAdded(e.target.value)}
-                   placeholder={`🛒 *Item adicionado ao pedido*
-
-✅ {{produto}}
-Qtd: *{{quantidade}}*
-Valor: *R$ {{valor}}*
-
-Deseja receber o link para finalizar a compra?
-Responda *SIM* para receber! ✨`}
-                   rows={8}
-                   className="font-mono text-sm"
-                 />
-               </div>
-               
-               {/* Template Mensagem 2 - Confirmação com Link */}
-               <div className="space-y-2">
-                 <Label className="text-sm font-medium">
-                   🔗 Mensagem 2 - Confirmação com Link
-                 </Label>
-                 <p className="text-xs text-muted-foreground">
-                   Enviada após o cliente responder "SIM". Use {'{{'}<code>checkout_url</code>{'}}'}
-                 </p>
-                 <Textarea
-                   value={confirmationTemplate}
-                   onChange={(e) => setConfirmationTemplate(e.target.value)}
-                   placeholder={`Perfeito! 🎉
-
-Aqui está o seu link exclusivo para finalizar a compra:
-
-👉 {{checkout_url}}
-
-Qualquer dúvida estou à disposição! ✨`}
-                   rows={6}
-                   className="font-mono text-sm"
-                 />
-               </div>
-             </div>
-             
-             <div className="space-y-2">
-               <Label htmlFor="timeout">Tempo limite para resposta (minutos)</Label>
-               <Input
-                 id="timeout"
-                 type="number"
-                 min={5}
-                 max={1440}
-                 value={confirmationTimeout}
-                 onChange={(e) => setConfirmationTimeout(parseInt(e.target.value) || 30)}
-                 className="w-32"
-               />
-               <p className="text-xs text-muted-foreground">
-                 Após esse tempo, o sistema não aguarda mais a resposta (padrão: 30 min)
-               </p>
-             </div>
-           </div>
-         )}
+ 
  
         <div className="flex items-center justify-between pt-4">
           <a 
