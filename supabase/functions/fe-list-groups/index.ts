@@ -101,6 +101,29 @@ serve(async (req) => {
       }
       const uazH: Record<string, string> = { "Content-Type": "application/json", token: uazTok };
 
+      // Resolve connected phone (needed for admin detection)
+      let connectedPhone = normalizePhone((waConfig as any)?.connected_phone);
+      if (!connectedPhone) {
+        try {
+          const r = await fetch(`${uazUrl}/instance/status`, { headers: uazH });
+          if (r.ok) {
+            const d = await r.json().catch(() => null);
+            const inst = d?.instance || d;
+            const p = normalizePhone(inst?.owner || inst?.wid || inst?.phoneconnected);
+            if (p && p.length >= 10) {
+              connectedPhone = p;
+              await supabase
+                .from("integration_whatsapp")
+                .update({ connected_phone: connectedPhone, last_status_check: new Date().toISOString() })
+                .eq("tenant_id", tenant_id)
+                .eq("provider", "uazapi");
+            }
+          }
+        } catch (err: any) {
+          console.warn(`[fe-list-groups] uazapi status error: ${err.message}`);
+        }
+      }
+
       try {
         const res = await fetch(`${uazUrl}/group/list`, { method: "GET", headers: uazH });
         const text = await res.text();
@@ -112,16 +135,66 @@ serve(async (req) => {
         let data: any = null;
         try { data = JSON.parse(text); } catch { data = null; }
         const uazGroups: any[] = Array.isArray(data) ? data : (data?.groups || data?.data || []);
-        console.log(`[fe-list-groups] uazapi parsed ${uazGroups.length} groups`);
+        console.log(`[fe-list-groups] uazapi parsed ${uazGroups.length} groups; connectedPhone=${connectedPhone || "n/a"}`);
 
-        const upsertPayload = uazGroups.map((g: any) => ({
-          tenant_id,
-          group_jid: g.id || g.jid || g.remoteJid || g.groupJid,
-          group_name: g.subject || g.name || g.id,
-          participant_count: g.size || g.participantsCount || (Array.isArray(g.participants) ? g.participants.length : 0) || 0,
-          max_participants: 1024,
-          invite_link: null,
-        })).filter((g: any) => g.group_jid);
+        // Enrich each group with admin detection (parallel, concurrency 10)
+        const enriched = await parallelLimit(uazGroups, 10, async (g: any) => {
+          const groupJid = g.id || g.jid || g.remoteJid || g.groupJid;
+          if (!groupJid) return null;
+
+          let isAdmin = false;
+          // 1) Direct hints from list payload
+          const hintFields = [g.wa_isAdmin, g.iAmAdmin, g.isAdmin, g.imAdmin, g.owner_is_me];
+          if (hintFields.some((v) => v === true)) isAdmin = true;
+          if (!isAdmin && connectedPhone && g.owner) {
+            if (phonesMatch(normalizePhone(g.owner), connectedPhone)) isAdmin = true;
+          }
+
+          // 2) Fetch /group/info to inspect participants
+          let participantCount = g.size || g.participantsCount || (Array.isArray(g.participants) ? g.participants.length : 0) || 0;
+          if (!isAdmin && connectedPhone) {
+            try {
+              const infoRes = await fetch(`${uazUrl}/group/info`, {
+                method: "POST",
+                headers: uazH,
+                body: JSON.stringify({ groupjid: groupJid }),
+              });
+              if (infoRes.ok) {
+                const info = await infoRes.json().catch(() => null);
+                const grp = info?.group || info;
+                const participants: any[] = grp?.participants || info?.participants || [];
+                if (participants.length > 0) participantCount = participants.length;
+                if (grp?.owner && phonesMatch(normalizePhone(grp.owner), connectedPhone)) isAdmin = true;
+                if (!isAdmin) {
+                  isAdmin = participants.some((p: any) => {
+                    const idRaw = typeof p === "string" ? p : (p.id || p.jid || p.phone || "");
+                    const pPhone = normalizePhone(String(idRaw).split("@")[0]);
+                    const adminFlag = typeof p === "object" && (
+                      p.admin === "admin" || p.admin === "superadmin" ||
+                      p.isAdmin === true || p.isSuperAdmin === true ||
+                      p.role === "admin" || p.role === "superadmin"
+                    );
+                    return adminFlag && phonesMatch(pPhone, connectedPhone);
+                  });
+                }
+              }
+            } catch (err: any) {
+              console.warn(`[fe-list-groups] uazapi /group/info ${groupJid} error: ${err.message}`);
+            }
+          }
+
+          return {
+            tenant_id,
+            group_jid: groupJid,
+            group_name: g.subject || g.name || groupJid,
+            participant_count: participantCount,
+            max_participants: 1024,
+            invite_link: null,
+            is_admin: isAdmin,
+          };
+        });
+
+        const upsertPayload = enriched.filter((g): g is any => !!g);
 
         let added = 0;
         if (upsertPayload.length > 0) {
@@ -139,12 +212,15 @@ serve(async (req) => {
           .eq("tenant_id", tenant_id)
           .order("group_name");
 
+        const adminCount = upsertPayload.filter((g: any) => g.is_admin).length;
         return new Response(JSON.stringify({
           added,
           total_found: uazGroups.length,
           synced: upsertPayload.length,
-          admin_only: false,
+          admin_count: adminCount,
+          admin_only: !!admin_only,
           provider: "uazapi",
+          warning: (!connectedPhone) ? "Número conectado não identificado — nenhum grupo marcado como admin." : undefined,
           groups,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } catch (err: any) {

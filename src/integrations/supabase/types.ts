@@ -886,6 +886,7 @@ export type Database = {
           id: string
           invite_link: string | null
           is_active: boolean | null
+          is_admin: boolean
           is_entry_open: boolean | null
           max_participants: number | null
           participant_count: number | null
@@ -899,6 +900,7 @@ export type Database = {
           id?: string
           invite_link?: string | null
           is_active?: boolean | null
+          is_admin?: boolean
           is_entry_open?: boolean | null
           max_participants?: number | null
           participant_count?: number | null
@@ -912,6 +914,7 @@ export type Database = {
           id?: string
           invite_link?: string | null
           is_active?: boolean | null
+          is_admin?: boolean
           is_entry_open?: boolean | null
           max_participants?: number | null
           participant_count?: number | null
