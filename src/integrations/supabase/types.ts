@@ -3928,6 +3928,7 @@ export type Database = {
           consent_granted_at: string | null
           created_at: string | null
           customer_phone: string
+          expires_at: string | null
           id: string
           last_message_at: string | null
           request_expires_at: string | null
@@ -3941,6 +3942,7 @@ export type Database = {
           consent_granted_at?: string | null
           created_at?: string | null
           customer_phone: string
+          expires_at?: string | null
           id?: string
           last_message_at?: string | null
           request_expires_at?: string | null
@@ -3954,6 +3956,7 @@ export type Database = {
           consent_granted_at?: string | null
           created_at?: string | null
           customer_phone?: string
+          expires_at?: string | null
           id?: string
           last_message_at?: string | null
           request_expires_at?: string | null
