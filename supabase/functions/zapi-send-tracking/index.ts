@@ -102,13 +102,13 @@ serve(async (req: Request) => {
       const cfg = { url: integration.uazapi_url!, token: integration.uazapi_token! };
       if (!isDbTriggerCall) messageContent = addMessageVariation(messageContent);
       await sendPresenceAvailable(cfg, phone);
-      await sendPresenceComposing(cfg, phone, calcTypingDuration(messageContent.length));
+      await (await import("../_shared/uazapi-api.ts")).runTypingSegments(cfg, phone, messageContent.length);
       const result = await uazSendText(cfg, phone, messageContent);
       sendSuccess = result.success;
       msgId = result.messageId || null;
     } else {
       if (!isDbTriggerCall) {
-        await simulateTyping(integration.zapi_instance_id, integration.zapi_token, integration.zapi_client_token, phone);
+        await simulateTyping(integration.zapi_instance_id, integration.zapi_token, integration.zapi_client_token, phone, messageContent.length, true);
         const delayMs = await antiBlockDelayLive();
         logAntiBlockDelay("zapi-send-tracking", delayMs);
         messageContent = addMessageVariation(messageContent);

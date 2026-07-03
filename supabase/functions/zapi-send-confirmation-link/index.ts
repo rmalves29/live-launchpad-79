@@ -167,7 +167,7 @@ serve(async (req) => {
 
     if (credentials.provider === "uazapi") {
       await sendPresenceAvailable(credentials.instanceName, formattedPhone);
-      await sendPresenceComposing(credentials.instanceName, formattedPhone, calcTypingDuration(message.length));
+      await (await import("../_shared/evolution-api.ts")).runTypingSegments(credentials.instanceName, formattedPhone, message.length);
       const result = await evoSendText(credentials.instanceName, formattedPhone, message);
       sendOk = result.success;
     } else {
