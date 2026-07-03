@@ -690,7 +690,7 @@ export default function SendFlow() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={loadGroups}
+                onClick={() => loadGroups(true)}
                 disabled={loadingGroups}
               >
                 {loadingGroups ? (
@@ -711,7 +711,7 @@ export default function SendFlow() {
             </div>
           </div>
           <CardDescription>
-            Selecione os grupos que receberão as mensagens ({selectedGroups.size} selecionado(s))
+            Apenas grupos onde o número conectado é <strong>administrador</strong> ({selectedGroups.size} selecionado(s))
           </CardDescription>
         </CardHeader>
         <CardContent>
