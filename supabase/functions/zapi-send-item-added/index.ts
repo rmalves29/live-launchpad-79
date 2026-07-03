@@ -480,57 +480,56 @@ serve(async (req) => {
       const { data: consentCfg } = await supabase.from("integration_whatsapp").select("consent_protection_enabled").eq("tenant_id", tenant_id).maybeSingle();
       const consentEnabled = consentCfg?.consent_protection_enabled === true;
 
+      // Template único: sempre usa o template salvo em "Item Adicionado"
+      // (mesma mensagem, mesmo link/botão de pagamento) — tanto no modo padrão
+      // quanto no Modo de Proteção por Consentimento (solicitação ou ativo).
+      const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
+      const templateFromTable = await getTemplate(supabase, tenant_id);
+      const template = templateFromTable
+        || (credentials as any).templateItemAdded
+        || (credentials as any).templateComLink
+        || getDefaultTemplateComLink();
+      const baseMessage = formatMessage(template, body, orderCtx)
+        .replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrl)
+        .replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrl);
+      message = prependGreeting(addMessageVariation(baseMessage, false));
+      if ((credentials as any).buttonEnabled) {
+        useButton = true;
+        resolvedButtonUrl = ((credentials as any).buttonUrl && (credentials as any).buttonUrl.trim())
+          ? (credentials as any).buttonUrl.trim()
+          : checkoutUrl;
+      }
+
       if (!consentEnabled) {
         templateType = "B";
-        const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
-        const templateFromTable = await getTemplate(supabase, tenant_id);
-        const template = templateFromTable || (credentials as any).templateItemAdded || (credentials as any).templateComLink || getDefaultTemplateComLink();
-        const baseMessage = formatMessage(template, body, orderCtx).replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrl).replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrl);
-        message = prependGreeting(addMessageVariation(baseMessage, false));
-        if ((credentials as any).buttonEnabled) {
-          useButton = true;
-          resolvedButtonUrl = ((credentials as any).buttonUrl && (credentials as any).buttonUrl.trim()) ? (credentials as any).buttonUrl.trim() : checkoutUrl;
-        }
-
       } else {
         const decision = await evaluateConsent(supabase, tenant_id, formattedPhone);
 
         if (decision.action === "silence") {
           await markSilenced(supabase, decision.stateId);
-          await supabase.from("whatsapp_messages").insert({ tenant_id, phone: formattedPhone, message: "[SILENCIADO - " + decision.reason + "] " + product_name + " (" + product_code + ")", type: "item_added", product_name: product_name.substring(0, 100), sent_at: new Date().toISOString(), order_id: order_id || null, delivery_status: "SKIPPED" });
+          await supabase.from("whatsapp_messages").insert({
+            tenant_id,
+            phone: formattedPhone,
+            message: "[SILENCIADO - " + decision.reason + "] " + product_name + " (" + product_code + ")",
+            type: "item_added",
+            product_name: product_name.substring(0, 100),
+            sent_at: new Date().toISOString(),
+            order_id: order_id || null,
+            delivery_status: "SKIPPED",
+          });
           return;
         }
 
         if (decision.action === "send_request") {
           templateType = "A";
-          const checkoutUrlA = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
-          const template = (credentials as any).templateSolicitacao || getDefaultTemplateSolicitacao();
-          const baseMessageA = formatMessage(template, body, orderCtx)
-            .replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrlA)
-            .replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrlA);
-          message = prependGreeting(addMessageVariation(baseMessageA, false));
           consentDecisionAfterSend = "request_sent";
-          if ((credentials as any).buttonEnabled) {
-            useButton = true;
-            resolvedButtonUrl = ((credentials as any).buttonUrl && (credentials as any).buttonUrl.trim()) ? (credentials as any).buttonUrl.trim() : checkoutUrlA;
-          }
-
         } else {
           templateType = "B";
           activeStateId = decision.stateId;
-          const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
-          const templateFromTable = await getTemplate(supabase, tenant_id);
-          const template = templateFromTable || (credentials as any).templateComLink || getDefaultTemplateComLink();
-          const baseMessage = formatMessage(template, body, orderCtx).replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrl).replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrl);
-          message = prependGreeting(addMessageVariation(baseMessage, false));
           consentDecisionAfterSend = "active_sent";
-          if ((credentials as any).buttonEnabled) {
-            useButton = true;
-            resolvedButtonUrl = ((credentials as any).buttonUrl && (credentials as any).buttonUrl.trim()) ? (credentials as any).buttonUrl.trim() : checkoutUrl;
-          }
-
         }
       }
+
 
       const throttleDelay = await getThrottleDelay(formattedPhone);
       if (throttleDelay > 0) console.log("[zapi-send-item-added] Throttle delay: " + (throttleDelay / 1000).toFixed(1) + "s");
