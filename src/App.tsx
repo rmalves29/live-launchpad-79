@@ -42,6 +42,7 @@ import CadastroInstagram from "./pages/tenant/CadastroInstagram";
 import EmpresasIndex from "./pages/empresas/Index";
 import Debug from "./pages/Debug";
 import AdminErros from "./pages/admin/Erros";
+import MonitoramentoMensagens from "./pages/admin/MonitoramentoMensagens";
 import LandingPage from "./pages/LandingPage";
 import RenovarAssinatura from "./pages/RenovarAssinatura";
 
@@ -285,6 +286,13 @@ const AppContent = () => {
             <RafaelOnly>
               <AdminErros />
             </RafaelOnly>
+          </RequireAuth>
+        } />
+        <Route path="/admin/monitoramento-mensagens" element={
+          <RequireAuth>
+            <SuperAdminOnly>
+              <MonitoramentoMensagens />
+            </SuperAdminOnly>
           </RequireAuth>
         } />
         <Route path="/design-preview" element={

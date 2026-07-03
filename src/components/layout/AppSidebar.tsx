@@ -234,6 +234,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                   <span className="truncate flex-1 text-left">Cloud Lovable</span>
                 </button>
                 {renderItem({ path: '/debug', label: 'Debug', icon: Settings }, true)}
+                {renderItem({ path: '/admin/monitoramento-mensagens', label: 'Monitoramento WhatsApp', icon: Activity }, true)}
                 {isRafael && renderItem({ path: '/admin/erros', label: 'Monitor de Erros', icon: Bug }, true)}
               </>,
             )}
