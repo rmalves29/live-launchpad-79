@@ -1362,10 +1362,22 @@ async function sendOrderToBling(
   console.log('[bling-sync-orders] Bling API response status:', response.status);
   console.log('[bling-sync-orders] Bling API response:', responseText);
 
-  if (!response.ok) {
+  // Bling às vezes responde 200 OK com texto puro (ex.: "excedeu o espaço" quando o plano estourou o limite).
+  // Detectamos isso antes de tentar parsear como JSON.
+  const trimmedText = (responseText || '').trim();
+  const looksLikeJson = trimmedText.startsWith('{') || trimmedText.startsWith('[');
+
+  if (!response.ok || !looksLikeJson) {
     if (responseText.includes('insufficient_scope')) {
       throw new Error(
         'Token do Bling sem permissão para VENDAS/PEDIDOS. No Bling, adicione os escopos de Vendas/Pedidos (leitura/escrita) ao seu aplicativo e autorize novamente.'
+      );
+    }
+
+    // Limite de plano do Bling estourado — mensagem explícita para o usuário.
+    if (/excedeu o espa[cç]o/i.test(responseText)) {
+      throw new Error(
+        'Bling recusou o envio: sua conta excedeu o limite do plano ("excedeu o espaço"). Faça upgrade do plano no Bling ou libere espaço (remova pedidos/produtos antigos) e tente novamente.'
       );
     }
 
@@ -1378,8 +1390,6 @@ async function sendOrderToBling(
     }
 
     // Alguns casos o Bling devolve erro de validação "A venda possui a mesma situação".
-    // Isso costuma ocorrer quando o número já existe e a API não aceita reprocessar.
-    // Tratamos como "já existe" para não bloquear o batch.
     if (
       response.status === 400 &&
       (responseText.includes('A venda possui a mesma situa') || responseText.includes('"code":50'))
@@ -1393,7 +1403,12 @@ async function sendOrderToBling(
     throw new Error(`Bling API error: ${response.status} - ${responseText}`);
   }
 
-  const parsed = JSON.parse(responseText);
+  let parsed: any;
+  try {
+    parsed = JSON.parse(responseText);
+  } catch (_e) {
+    throw new Error(`Bling retornou resposta inválida (não-JSON): ${responseText.slice(0, 200)}`);
+  }
   const createdId = parsed?.data?.id ?? parsed?.id;
   const numericId = typeof createdId === 'number' ? createdId : (typeof createdId === 'string' && /^\d+$/.test(createdId) ? Number(createdId) : null);
 
