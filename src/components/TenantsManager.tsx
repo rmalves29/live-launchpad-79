@@ -750,3 +750,57 @@ export default function TenantsManager() {
     </>
   );
 }
+
+const INTEGRATION_GROUPS: { title: string; keys: string[] }[] = [
+  { title: 'WhatsApp', keys: ['zapi', 'uazapi', 'whatsapp_oficial'] },
+  { title: 'Meios de Pagamento', keys: ['mercadopago', 'pagarme', 'sipag', 'appmax', 'infinitepay'] },
+  { title: 'Fretes', keys: ['melhorenvio', 'mandae', 'superfrete', 'correios', 'meuscorreios'] },
+  { title: 'ERP', keys: ['bling', 'olist', 'omie'] },
+  { title: 'Outros', keys: ['instagram', 'bagy'] },
+];
+
+function IntegrationsToggleSection({
+  value,
+  onChange,
+}: {
+  value: Record<string, boolean>;
+  onChange: (v: Record<string, boolean>) => void;
+}) {
+  const labelOf = (k: string) =>
+    INTEGRATION_KEYS.find((i) => i.key === k)?.label || k;
+  const isOn = (k: string) => value[k] !== false;
+  const toggle = (k: string, checked: boolean) =>
+    onChange({ ...value, [k]: checked });
+
+  return (
+    <div className="space-y-3 border rounded-md p-4">
+      <div>
+        <Label className="text-base">Integrações Visíveis</Label>
+        <p className="text-sm text-muted-foreground">
+          Marque quais integrações a empresa poderá ver e configurar.
+        </p>
+      </div>
+      {INTEGRATION_GROUPS.map((group) => (
+        <div key={group.title} className="space-y-2">
+          <div className="text-sm font-medium text-muted-foreground">{group.title}</div>
+          <div className="grid grid-cols-2 gap-2">
+            {group.keys.map((k) => (
+              <label
+                key={k}
+                className="flex items-center gap-2 text-sm cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={isOn(k)}
+                  onChange={(e) => toggle(k, e.target.checked)}
+                />
+                <span>{labelOf(k)}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
