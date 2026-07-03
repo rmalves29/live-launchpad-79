@@ -160,10 +160,22 @@ export default function MonitoramentoMensagens() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Total de envios ({range.label})</CardTitle></CardHeader>
           <CardContent><div className="text-3xl font-bold">{totals.totalSent.toLocaleString("pt-BR")}</div></CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Envios / minuto</CardTitle></CardHeader>
+          <CardContent><div className="text-3xl font-bold">{totals.perMin.toFixed(2)}</div></CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Envios / hora</CardTitle></CardHeader>
+          <CardContent><div className="text-3xl font-bold">{totals.perHour.toFixed(1)}</div></CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Recebidas no privado</CardTitle></CardHeader>
+          <CardContent><div className="text-3xl font-bold">{totals.totalReceived.toLocaleString("pt-BR")}</div></CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Tempo médio entre envios</CardTitle></CardHeader>
