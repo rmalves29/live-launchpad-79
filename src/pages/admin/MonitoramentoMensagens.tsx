@@ -11,6 +11,9 @@ type Row = {
   tenant_id: string;
   tenant_name: string;
   total_sent: number;
+  msgs_per_minute: number | null;
+  msgs_per_hour: number | null;
+  received_private: number;
   avg_gap_seconds: number | null;
   disconnect_count: number;
   avg_msgs_before_disconnect: number | null;
@@ -95,11 +98,15 @@ export default function MonitoramentoMensagens() {
 
   const totals = useMemo(() => {
     const totalSent = filtered.reduce((s, r) => s + Number(r.total_sent || 0), 0);
+    const totalReceived = filtered.reduce((s, r) => s + Number(r.received_private || 0), 0);
     const disc = filtered.reduce((s, r) => s + Number(r.disconnect_count || 0), 0);
     const gaps = filtered.map(r => Number(r.avg_gap_seconds)).filter(v => !Number.isNaN(v) && v > 0);
     const avgGap = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : null;
-    return { totalSent, disc, avgGap };
-  }, [filtered]);
+    const durationMin = Math.max((new Date(range.to).getTime() - new Date(range.from).getTime()) / 60000, 1);
+    const perMin = totalSent / durationMin;
+    const perHour = totalSent / (durationMin / 60);
+    return { totalSent, totalReceived, disc, avgGap, perMin, perHour };
+  }, [filtered, range.from, range.to]);
 
   return (
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
@@ -153,10 +160,22 @@ export default function MonitoramentoMensagens() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Total de envios ({range.label})</CardTitle></CardHeader>
           <CardContent><div className="text-3xl font-bold">{totals.totalSent.toLocaleString("pt-BR")}</div></CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Envios / minuto</CardTitle></CardHeader>
+          <CardContent><div className="text-3xl font-bold">{totals.perMin.toFixed(2)}</div></CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Envios / hora</CardTitle></CardHeader>
+          <CardContent><div className="text-3xl font-bold">{totals.perHour.toFixed(1)}</div></CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Recebidas no privado</CardTitle></CardHeader>
+          <CardContent><div className="text-3xl font-bold">{totals.totalReceived.toLocaleString("pt-BR")}</div></CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Tempo médio entre envios</CardTitle></CardHeader>
@@ -181,7 +200,10 @@ export default function MonitoramentoMensagens() {
             <TableHeader>
               <TableRow>
                 <TableHead>Empresa</TableHead>
-                <TableHead className="text-right">Mensagens enviadas</TableHead>
+                <TableHead className="text-right">Enviadas</TableHead>
+                <TableHead className="text-right">Msg/min</TableHead>
+                <TableHead className="text-right">Msg/h</TableHead>
+                <TableHead className="text-right">Recebidas privado</TableHead>
                 <TableHead className="text-right">Tempo médio entre envios</TableHead>
                 <TableHead className="text-right">Desconexões</TableHead>
                 <TableHead className="text-right">Média msgs até desconectar</TableHead>
@@ -190,15 +212,18 @@ export default function MonitoramentoMensagens() {
             </TableHeader>
             <TableBody>
               {loading && (
-                <TableRow><TableCell colSpan={6} className="text-center py-8"><Loader2 className="w-5 h-5 animate-spin inline" /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center py-8"><Loader2 className="w-5 h-5 animate-spin inline" /></TableCell></TableRow>
               )}
               {!loading && filtered.length === 0 && (
-                <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Nenhum dado</TableCell></TableRow>
+                <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Nenhum dado</TableCell></TableRow>
               )}
               {!loading && filtered.map((r) => (
                 <TableRow key={r.tenant_id}>
                   <TableCell className="font-medium">{r.tenant_name}</TableCell>
                   <TableCell className="text-right">{Number(r.total_sent).toLocaleString("pt-BR")}</TableCell>
+                  <TableCell className="text-right">{r.msgs_per_minute != null ? Number(r.msgs_per_minute).toFixed(2) : "—"}</TableCell>
+                  <TableCell className="text-right">{r.msgs_per_hour != null ? Number(r.msgs_per_hour).toFixed(1) : "—"}</TableCell>
+                  <TableCell className="text-right">{Number(r.received_private || 0).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right">{formatDuration(r.avg_gap_seconds != null ? Number(r.avg_gap_seconds) : null)}</TableCell>
                   <TableCell className="text-right">{Number(r.disconnect_count).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right">{r.avg_msgs_before_disconnect != null ? Number(r.avg_msgs_before_disconnect).toFixed(1) : "—"}</TableCell>

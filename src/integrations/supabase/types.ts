@@ -4316,6 +4316,9 @@ export type Database = {
           avg_msgs_before_disconnect: number
           disconnect_count: number
           last_msgs_before_disconnect: number
+          msgs_per_hour: number
+          msgs_per_minute: number
+          received_private: number
           tenant_id: string
           tenant_name: string
           total_sent: number
