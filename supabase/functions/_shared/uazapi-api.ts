@@ -226,10 +226,44 @@ export async function sendPresenceAvailable(cfg: UazapiConfig, phone: string) {
   await new Promise((r) => setTimeout(r, 400 + Math.random() * 500));
 }
 
+// Nova regra de digitação:
+//  - 0,06s (60ms) por caractere
+//  - a cada bloco completo de 300 caracteres, uma pausa de 1s no meio do bloco
 export function calcTypingDuration(messageLength: number): number {
-  const base = (messageLength / 40) * 1000;
-  const multiplier = 0.5 + Math.random();
-  return Math.min(Math.max(base * multiplier, 2000), 8000);
+  const len = Math.max(0, messageLength | 0);
+  const typingMs = len * 60;
+  const pauses = Math.floor(len / 300);
+  return typingMs + pauses * 1000;
+}
+
+export function calcTypingSegments(messageLength: number): { typingMs: number; pauseAfterMs: number }[] {
+  const len = Math.max(0, messageLength | 0);
+  const totalTyping = len * 60;
+  const pauses = Math.floor(len / 300);
+  const segCount = pauses + 1;
+  if (totalTyping <= 0) return [{ typingMs: 500, pauseAfterMs: 0 }];
+  const perSeg = Math.max(300, Math.floor(totalTyping / segCount));
+  const segs: { typingMs: number; pauseAfterMs: number }[] = [];
+  for (let i = 0; i < segCount; i++) {
+    segs.push({ typingMs: perSeg, pauseAfterMs: i < segCount - 1 ? 1000 : 0 });
+  }
+  return segs;
+}
+
+// Executa a sequência de "digitando" respeitando pausas a cada 300 caracteres.
+// Não envia "available" (deixa isso a cargo do chamador, para permitir a v11 sequence).
+export async function runTypingSegments(cfg: UazapiConfig, phone: string, messageLength: number): Promise<void> {
+  const segs = calcTypingSegments(messageLength);
+  for (let i = 0; i < segs.length; i++) {
+    const { typingMs, pauseAfterMs } = segs[i];
+    // sendPresenceComposing já aguarda `typingMs` localmente após enviar o status
+    await sendPresenceComposing(cfg, phone, typingMs);
+    if (pauseAfterMs > 0) {
+      // Sai do estado "digitando" durante a pausa
+      try { await sendPresence(cfg, phone, "paused"); } catch { /* ignore */ }
+      await new Promise((r) => setTimeout(r, pauseAfterMs));
+    }
+  }
 }
 
 // ============ Instância ============
