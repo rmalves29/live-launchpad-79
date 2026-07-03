@@ -4309,6 +4309,18 @@ export type Database = {
         Args: { p_message_id: string }
         Returns: boolean
       }
+      admin_whatsapp_activity_metrics: {
+        Args: { p_from: string; p_to: string }
+        Returns: {
+          avg_gap_seconds: number
+          avg_msgs_before_disconnect: number
+          disconnect_count: number
+          last_msgs_before_disconnect: number
+          tenant_id: string
+          tenant_name: string
+          total_sent: number
+        }[]
+      }
       bytea_to_text: { Args: { data: string }; Returns: string }
       cleanup_net_http_responses: {
         Args: { older_than: string }
