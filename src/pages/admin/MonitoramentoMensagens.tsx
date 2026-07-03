@@ -98,11 +98,15 @@ export default function MonitoramentoMensagens() {
 
   const totals = useMemo(() => {
     const totalSent = filtered.reduce((s, r) => s + Number(r.total_sent || 0), 0);
+    const totalReceived = filtered.reduce((s, r) => s + Number(r.received_private || 0), 0);
     const disc = filtered.reduce((s, r) => s + Number(r.disconnect_count || 0), 0);
     const gaps = filtered.map(r => Number(r.avg_gap_seconds)).filter(v => !Number.isNaN(v) && v > 0);
     const avgGap = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : null;
-    return { totalSent, disc, avgGap };
-  }, [filtered]);
+    const durationMin = Math.max((new Date(range.to).getTime() - new Date(range.from).getTime()) / 60000, 1);
+    const perMin = totalSent / durationMin;
+    const perHour = totalSent / (durationMin / 60);
+    return { totalSent, totalReceived, disc, avgGap, perMin, perHour };
+  }, [filtered, range.from, range.to]);
 
   return (
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
