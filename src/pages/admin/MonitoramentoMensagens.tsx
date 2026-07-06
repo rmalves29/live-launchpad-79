@@ -114,11 +114,10 @@ export default function MonitoramentoMensagens() {
     const disc = filtered.reduce((s, r) => s + Number(r.disconnect_count || 0), 0);
     const gaps = filtered.map(r => Number(r.avg_gap_seconds)).filter(v => !Number.isNaN(v) && v > 0);
     const avgGap = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : null;
-    const itemGaps = filtered.map(r => Number(r.item_added_per_minute)).filter(v => !Number.isNaN(v) && v > 0);
-    const avgItemGap = itemGaps.length ? itemGaps.reduce((a, b) => a + b, 0) / itemGaps.length : null;
+    const itemPeak = filtered.reduce((m, r) => Math.max(m, Number(r.item_added_per_minute || 0)), 0);
     const perMin = filtered.reduce((m, r) => Math.max(m, Number(r.msgs_per_minute || 0)), 0);
     const perHour = filtered.reduce((m, r) => Math.max(m, Number(r.msgs_per_hour || 0)), 0);
-    return { totalSent, totalReceived, itemAdded, orderCancelled, payment, outOfStock, groupMsg, disc, avgGap, perMin, perHour, itemAddedPerMin: avgItemGap };
+    return { totalSent, totalReceived, itemAdded, orderCancelled, payment, outOfStock, groupMsg, disc, avgGap, perMin, perHour, itemAddedPerMin: itemPeak };
   }, [filtered, range.from, range.to]);
 
   return (
@@ -209,8 +208,8 @@ export default function MonitoramentoMensagens() {
           <CardContent><div className="text-3xl font-bold">{totals.itemAdded.toLocaleString("pt-BR")}</div></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Tempo médio item add.</CardTitle></CardHeader>
-          <CardContent><div className="text-3xl font-bold">{formatDuration(totals.itemAddedPerMin || null)}</div></CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Pico item add./min</CardTitle></CardHeader>
+          <CardContent><div className="text-3xl font-bold">{Math.round(totals.itemAddedPerMin || 0).toLocaleString("pt-BR")}</div></CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Pedidos cancelados</CardTitle></CardHeader>
@@ -244,7 +243,7 @@ export default function MonitoramentoMensagens() {
                 <TableHead className="text-right">Msg/min</TableHead>
                 <TableHead className="text-right">Msg/h</TableHead>
                 <TableHead className="text-right">Item add.</TableHead>
-                <TableHead className="text-right">Tempo item add.</TableHead>
+                <TableHead className="text-right">Item add./min</TableHead>
                 <TableHead className="text-right">Cancelados</TableHead>
                 <TableHead className="text-right">Pagamento</TableHead>
                 <TableHead className="text-right">Sem estoque</TableHead>
@@ -271,7 +270,7 @@ export default function MonitoramentoMensagens() {
                   <TableCell className="text-right">{r.msgs_per_minute != null ? Math.round(Number(r.msgs_per_minute)).toLocaleString("pt-BR") : "—"}</TableCell>
                   <TableCell className="text-right">{r.msgs_per_hour != null ? Math.round(Number(r.msgs_per_hour)).toLocaleString("pt-BR") : "—"}</TableCell>
                   <TableCell className="text-right">{Number(r.item_added_count || 0).toLocaleString("pt-BR")}</TableCell>
-                  <TableCell className="text-right">{formatDuration(r.item_added_per_minute != null ? Number(r.item_added_per_minute) : null)}</TableCell>
+                  <TableCell className="text-right">{Math.round(Number(r.item_added_per_minute || 0)).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right">{Number(r.order_cancelled_count || 0).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right">{Number(r.payment_count || 0).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right">{Number(r.out_of_stock_count || 0).toLocaleString("pt-BR")}</TableCell>
