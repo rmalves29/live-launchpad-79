@@ -1,0 +1,1 @@
+UPDATE public.orders SET bling_sync_status = NULL WHERE tenant_id = '02b2b77d-fe61-4d2c-bb32-f5f7f2aaf0e3' AND bling_sync_status LIKE 'processing:%' AND bling_order_id IS NULL;
