@@ -75,6 +75,53 @@ Deno.serve(async (req) => {
     }
     const depositoId = padrao.id;
 
+    // MODO: rebalance_codes → busca produto no Bling por código e faz balanço
+    if (body.rebalance_codes?.length) {
+      const results: any[] = [];
+      let ok = 0, fail = 0;
+      for (const item of body.rebalance_codes) {
+        try {
+          const findRes = await fetch(`${BLING_API}/produtos?codigo=${encodeURIComponent(item.code)}`, {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+          });
+          const findJson = await findRes.json();
+          const prod = findJson?.data?.[0];
+          if (!prod?.id) {
+            fail++;
+            results.push({ code: item.code, success: false, error: 'produto não encontrado no Bling' });
+            await new Promise((r) => setTimeout(r, 400));
+            continue;
+          }
+          let attempt = 0, done = false;
+          while (!done && attempt < 4) {
+            attempt++;
+            const r = await fetch(`${BLING_API}/estoques`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+              body: JSON.stringify({
+                deposito: { id: depositoId },
+                operacao: 'B',
+                produto: { id: prod.id },
+                quantidade: Math.max(1, Number(item.qty) || 1),
+                custo: 0,
+              }),
+            });
+            const txt = await r.text();
+            if (r.ok) { ok++; results.push({ code: item.code, bling_id: prod.id, qty: item.qty, success: true }); done = true; }
+            else if (r.status === 429 && attempt < 4) { await new Promise((res) => setTimeout(res, 1200 * attempt)); }
+            else { fail++; results.push({ code: item.code, bling_id: prod.id, success: false, error: `${r.status} ${txt.slice(0, 200)}` }); done = true; }
+          }
+        } catch (e: any) {
+          fail++;
+          results.push({ code: item.code, success: false, error: e?.message });
+        }
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      return json({ success: true, mode: 'rebalance_codes', deposito_id: depositoId, ok, fail, details: results }, 200);
+    }
+
+
+
 
     // 3. Produtos ativos do tenant com bling_product_id (com paginação)
     const limit = Math.max(1, Math.min(Number(body.limit) || 40, 200));
