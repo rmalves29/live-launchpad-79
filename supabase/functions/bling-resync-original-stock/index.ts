@@ -10,6 +10,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const BLING_API = 'https://api.bling.com.br/Api/v3';
 
+interface CodeItem { code: string; qty: number }
 interface ReqBody {
   tenant_id: string;
   product_ids?: number[]; // opcional: subset
@@ -18,7 +19,9 @@ interface ReqBody {
   offset?: number;  // paginação (default 0)
   deposito_id?: number; // opcional: força depósito específico (senão usa o padrão)
   list_deposits?: boolean; // se true, só lista depósitos e retorna
+  rebalance_codes?: CodeItem[]; // se preenchido, rebalanceia via código no Bling (produtos "órfãos")
 }
+
 
 
 Deno.serve(async (req) => {
