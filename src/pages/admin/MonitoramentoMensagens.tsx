@@ -270,7 +270,7 @@ export default function MonitoramentoMensagens() {
                   <TableCell className="text-right">{r.msgs_per_minute != null ? Math.round(Number(r.msgs_per_minute)).toLocaleString("pt-BR") : "—"}</TableCell>
                   <TableCell className="text-right">{r.msgs_per_hour != null ? Math.round(Number(r.msgs_per_hour)).toLocaleString("pt-BR") : "—"}</TableCell>
                   <TableCell className="text-right">{Number(r.item_added_count || 0).toLocaleString("pt-BR")}</TableCell>
-                  <TableCell className="text-right">{formatDuration(r.item_added_per_minute != null ? Number(r.item_added_per_minute) : null)}</TableCell>
+                  <TableCell className="text-right">{Math.round(Number(r.item_added_per_minute || 0)).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right">{Number(r.order_cancelled_count || 0).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right">{Number(r.payment_count || 0).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right">{Number(r.out_of_stock_count || 0).toLocaleString("pt-BR")}</TableCell>
