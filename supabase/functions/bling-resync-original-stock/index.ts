@@ -136,38 +136,50 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      try {
-        const r = await fetch(`${BLING_API}/estoques`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          body: JSON.stringify({
-            deposito: { id: depositoId },
-            operacao: 'B', // Balanço = define saldo absoluto
-            produto: { id: Number(p.bling_product_id) },
-            quantidade: original,
-            custo: 0,
-          }),
-        });
-        const txt = await r.text();
-        if (r.ok) {
-          ok++;
-          details.push({ product_id: p.id, name: p.name, code: p.code, original_stock: original, source, success: true });
-        } else {
+      let attempt = 0;
+      let done = false;
+      while (!done && attempt < 4) {
+        attempt++;
+        try {
+          const r = await fetch(`${BLING_API}/estoques`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            body: JSON.stringify({
+              deposito: { id: depositoId },
+              operacao: 'B',
+              produto: { id: Number(p.bling_product_id) },
+              quantidade: original,
+              custo: 0,
+            }),
+          });
+          const txt = await r.text();
+          if (r.ok) {
+            ok++;
+            details.push({ product_id: p.id, name: p.name, code: p.code, original_stock: original, source, success: true });
+            done = true;
+          } else if (r.status === 429 && attempt < 4) {
+            await new Promise((res) => setTimeout(res, 1200 * attempt));
+            continue;
+          } else {
+            fail++;
+            details.push({ product_id: p.id, name: p.name, code: p.code, original_stock: original, source, success: false, error: `${r.status} ${txt.slice(0, 300)}` });
+            done = true;
+          }
+        } catch (e: any) {
           fail++;
-          details.push({ product_id: p.id, name: p.name, code: p.code, original_stock: original, source, success: false, error: `${r.status} ${txt.slice(0, 300)}` });
+          details.push({ product_id: p.id, name: p.name, code: p.code, original_stock: original, source, success: false, error: e?.message });
+          done = true;
         }
-      } catch (e: any) {
-        fail++;
-        details.push({ product_id: p.id, name: p.name, code: p.code, original_stock: original, source, success: false, error: e?.message });
       }
 
-      // Rate limit Bling: ~4 req/s
-      await new Promise((res) => setTimeout(res, 260));
+      // Rate limit Bling: 3 req/s
+      await new Promise((res) => setTimeout(res, 400));
     }
+
 
     const nextOffset = offset + products.length;
     const hasMore = (totalCount ?? 0) > nextOffset;
