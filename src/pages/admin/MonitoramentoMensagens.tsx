@@ -208,8 +208,8 @@ export default function MonitoramentoMensagens() {
           <CardContent><div className="text-3xl font-bold">{totals.itemAdded.toLocaleString("pt-BR")}</div></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Tempo médio item add.</CardTitle></CardHeader>
-          <CardContent><div className="text-3xl font-bold">{formatDuration(totals.itemAddedPerMin || null)}</div></CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Pico item add./min</CardTitle></CardHeader>
+          <CardContent><div className="text-3xl font-bold">{Math.round(totals.itemAddedPerMin || 0).toLocaleString("pt-BR")}</div></CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Pedidos cancelados</CardTitle></CardHeader>
