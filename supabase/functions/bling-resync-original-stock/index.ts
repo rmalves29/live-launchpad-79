@@ -14,6 +14,8 @@ interface ReqBody {
   tenant_id: string;
   product_ids?: number[]; // opcional: subset
   dry_run?: boolean;
+  limit?: number;   // paginação (default 40)
+  offset?: number;  // paginação (default 0)
 }
 
 Deno.serve(async (req) => {
