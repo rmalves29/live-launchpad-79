@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
       let ok = 0, fail = 0;
       for (const item of body.rebalance_codes) {
         try {
-          const findRes = await fetch(`${BLING_API}/produtos?codigo=${encodeURIComponent(item.code)}`, {
+          const findRes = await fetch(`${BLING_API}/produtos?pagina=1&limite=5&codigo=${encodeURIComponent(item.code)}`, {
             headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
           });
           const findJson = await findRes.json();
