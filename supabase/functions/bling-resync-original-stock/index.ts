@@ -10,13 +10,19 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const BLING_API = 'https://api.bling.com.br/Api/v3';
 
+interface CodeItem { code: string; qty: number }
 interface ReqBody {
   tenant_id: string;
   product_ids?: number[]; // opcional: subset
   dry_run?: boolean;
   limit?: number;   // paginação (default 40)
   offset?: number;  // paginação (default 0)
+  deposito_id?: number; // opcional: força depósito específico (senão usa o padrão)
+  list_deposits?: boolean; // se true, só lista depósitos e retorna
+  rebalance_codes?: CodeItem[]; // se preenchido, rebalanceia via código no Bling (produtos "órfãos")
 }
+
+
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -53,13 +59,72 @@ Deno.serve(async (req) => {
     }
     const depJson = await depRes.json();
     const depositos: any[] = depJson?.data || [];
-    const padrao =
-      depositos.find((d) => d.padrao === true || d.situacao === 1) ||
-      depositos[0];
+
+    if (body.list_deposits) {
+      return json({ success: true, depositos: depositos.map((d) => ({ id: d.id, nome: d.nome, descricao: d.descricao, padrao: d.padrao, situacao: d.situacao })) }, 200);
+    }
+
+    let padrao: any = null;
+    if (body.deposito_id) {
+      padrao = depositos.find((d) => Number(d.id) === Number(body.deposito_id)) || { id: body.deposito_id };
+    } else {
+      padrao = depositos.find((d) => d.padrao === true || d.situacao === 1) || depositos[0];
+    }
     if (!padrao?.id) {
       return json({ success: false, error: 'Nenhum depósito encontrado no Bling' }, 200);
     }
     const depositoId = padrao.id;
+
+    // MODO: rebalance_codes → busca produto no Bling por código e faz balanço
+    if (body.rebalance_codes?.length) {
+      const results: any[] = [];
+      let ok = 0, fail = 0;
+      for (const item of body.rebalance_codes) {
+        try {
+          const findRes = await fetch(`${BLING_API}/produtos?pagina=1&limite=5&codigo=${encodeURIComponent(item.code)}`, {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+          });
+          const findText = await findRes.text();
+          let findJson: any = {};
+          try { findJson = JSON.parse(findText); } catch {}
+          const prod = findJson?.data?.[0] || findJson?.data?.produtos?.[0];
+          if (!prod?.id) {
+            fail++;
+            results.push({ code: item.code, success: false, http: findRes.status, raw: findText.slice(0, 300), error: 'produto não encontrado no Bling' });
+            await new Promise((r) => setTimeout(r, 400));
+            continue;
+          }
+
+          let attempt = 0, done = false;
+          while (!done && attempt < 4) {
+            attempt++;
+            const r = await fetch(`${BLING_API}/estoques`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+              body: JSON.stringify({
+                deposito: { id: depositoId },
+                operacao: 'B',
+                produto: { id: prod.id },
+                quantidade: Math.max(1, Number(item.qty) || 1),
+                custo: 0,
+              }),
+            });
+            const txt = await r.text();
+            if (r.ok) { ok++; results.push({ code: item.code, bling_id: prod.id, qty: item.qty, success: true }); done = true; }
+            else if (r.status === 429 && attempt < 4) { await new Promise((res) => setTimeout(res, 1200 * attempt)); }
+            else { fail++; results.push({ code: item.code, bling_id: prod.id, success: false, error: `${r.status} ${txt.slice(0, 200)}` }); done = true; }
+          }
+        } catch (e: any) {
+          fail++;
+          results.push({ code: item.code, success: false, error: e?.message });
+        }
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      return json({ success: true, mode: 'rebalance_codes', deposito_id: depositoId, ok, fail, details: results }, 200);
+    }
+
+
+
 
     // 3. Produtos ativos do tenant com bling_product_id (com paginação)
     const limit = Math.max(1, Math.min(Number(body.limit) || 40, 200));
@@ -124,38 +189,50 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      try {
-        const r = await fetch(`${BLING_API}/estoques`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          body: JSON.stringify({
-            deposito: { id: depositoId },
-            operacao: 'B', // Balanço = define saldo absoluto
-            produto: { id: Number(p.bling_product_id) },
-            quantidade: original,
-            custo: 0,
-          }),
-        });
-        const txt = await r.text();
-        if (r.ok) {
-          ok++;
-          details.push({ product_id: p.id, name: p.name, code: p.code, original_stock: original, source, success: true });
-        } else {
+      let attempt = 0;
+      let done = false;
+      while (!done && attempt < 4) {
+        attempt++;
+        try {
+          const r = await fetch(`${BLING_API}/estoques`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+            body: JSON.stringify({
+              deposito: { id: depositoId },
+              operacao: 'B',
+              produto: { id: Number(p.bling_product_id) },
+              quantidade: original,
+              custo: 0,
+            }),
+          });
+          const txt = await r.text();
+          if (r.ok) {
+            ok++;
+            details.push({ product_id: p.id, name: p.name, code: p.code, original_stock: original, source, success: true });
+            done = true;
+          } else if (r.status === 429 && attempt < 4) {
+            await new Promise((res) => setTimeout(res, 1200 * attempt));
+            continue;
+          } else {
+            fail++;
+            details.push({ product_id: p.id, name: p.name, code: p.code, original_stock: original, source, success: false, error: `${r.status} ${txt.slice(0, 300)}` });
+            done = true;
+          }
+        } catch (e: any) {
           fail++;
-          details.push({ product_id: p.id, name: p.name, code: p.code, original_stock: original, source, success: false, error: `${r.status} ${txt.slice(0, 300)}` });
+          details.push({ product_id: p.id, name: p.name, code: p.code, original_stock: original, source, success: false, error: e?.message });
+          done = true;
         }
-      } catch (e: any) {
-        fail++;
-        details.push({ product_id: p.id, name: p.name, code: p.code, original_stock: original, source, success: false, error: e?.message });
       }
 
-      // Rate limit Bling: ~4 req/s
-      await new Promise((res) => setTimeout(res, 260));
+      // Rate limit Bling: 3 req/s
+      await new Promise((res) => setTimeout(res, 400));
     }
+
 
     const nextOffset = offset + products.length;
     const hasMore = (totalCount ?? 0) > nextOffset;
