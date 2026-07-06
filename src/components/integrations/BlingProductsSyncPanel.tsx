@@ -83,6 +83,36 @@ export default function BlingProductsSyncPanel({ tenantId }: BlingProductsSyncPa
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
+  // Reenviar estoque original (quando o produto foi cadastrado) para o Bling
+  const resyncStockMutation = useMutation({
+    mutationFn: async (dryRun: boolean) => {
+      const session = await supabase.auth.getSession();
+      const response = await fetch(
+        `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/bling-resync-original-stock`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.data.session?.access_token}`,
+          },
+          body: JSON.stringify({ tenant_id: tenantId, dry_run: dryRun }),
+        }
+      );
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Erro ao reenviar estoque');
+      return data;
+    },
+    onSuccess: (data: any) => {
+      if (data.dry_run) {
+        toast.info(`Prévia: ${data.total} produto(s) — ok: ${data.ok}, falhas: ${data.fail}. Confira o console para detalhes.`);
+      } else {
+        toast.success(`Estoque original reenviado ao Bling — ok: ${data.ok}, falhas: ${data.fail}`);
+      }
+      console.log('[resync-original-stock]', data);
+    },
+    onError: (e: any) => toast.error(e.message || 'Erro ao reenviar estoque'),
+  });
+
   // Sync all products mutation
   const syncMutation = useMutation({
     mutationFn: async () => {
@@ -281,6 +311,40 @@ export default function BlingProductsSyncPanel({ tenantId }: BlingProductsSyncPa
           Apenas produtos ativos sem ID do Bling serão exportados.
           Produtos já sincronizados serão ignorados.
         </p>
+
+        {/* Reenviar estoque original */}
+        <div className="border-t pt-4 space-y-2">
+          <div className="text-sm font-medium">Reenviar estoque original ao Bling</div>
+          <p className="text-xs text-muted-foreground">
+            Envia ao depósito padrão do Bling o estoque que cada produto tinha no cadastro
+            (usa histórico de auditoria; se nunca mudou, usa o estoque atual).
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => resyncStockMutation.mutate(true)}
+              disabled={resyncStockMutation.isPending}
+            >
+              {resyncStockMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : null}
+              Prévia (dry-run)
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={() => resyncStockMutation.mutate(false)}
+              disabled={resyncStockMutation.isPending}
+            >
+              {resyncStockMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4 mr-2" />
+              )}
+              Reenviar estoque
+            </Button>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );
