@@ -153,24 +153,22 @@ Deno.serve(async (req) => {
         details.push({ product_id: p.id, name: p.name, code: p.code, original_stock: original, source, success: false, error: e?.message });
       }
 
-      // Rate limit Bling: ~3 req/s
-      await new Promise((res) => setTimeout(res, 350));
+      // Rate limit Bling: ~4 req/s
+      await new Promise((res) => setTimeout(res, 260));
     }
 
-    // Log agregado
-    await supabase.from('bling_sync_logs').insert({
-      tenant_id: body.tenant_id,
-      action: 'resync_original_stock',
-      entity_type: 'product',
-      status: fail === 0 ? 'success' : 'partial',
-      details: { total: products.length, ok, fail, deposito_id: depositoId, dry_run: !!body.dry_run },
-    }).then(() => {}, () => {});
+    const nextOffset = offset + products.length;
+    const hasMore = (totalCount ?? 0) > nextOffset;
 
     return json({
       success: true,
-      message: `Estoque reenviado - ok: ${ok}, falhas: ${fail}`,
-      total: products.length,
+      message: `Lote processado - ok: ${ok}, falhas: ${fail}`,
+      total: totalCount ?? products.length,
+      processed_in_batch: products.length,
       ok, fail,
+      offset,
+      next_offset: nextOffset,
+      has_more: hasMore,
       deposito_id: depositoId,
       dry_run: !!body.dry_run,
       details,
