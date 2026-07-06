@@ -114,11 +114,10 @@ export default function MonitoramentoMensagens() {
     const disc = filtered.reduce((s, r) => s + Number(r.disconnect_count || 0), 0);
     const gaps = filtered.map(r => Number(r.avg_gap_seconds)).filter(v => !Number.isNaN(v) && v > 0);
     const avgGap = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : null;
-    const itemGaps = filtered.map(r => Number(r.item_added_per_minute)).filter(v => !Number.isNaN(v) && v > 0);
-    const avgItemGap = itemGaps.length ? itemGaps.reduce((a, b) => a + b, 0) / itemGaps.length : null;
+    const itemPeak = filtered.reduce((m, r) => Math.max(m, Number(r.item_added_per_minute || 0)), 0);
     const perMin = filtered.reduce((m, r) => Math.max(m, Number(r.msgs_per_minute || 0)), 0);
     const perHour = filtered.reduce((m, r) => Math.max(m, Number(r.msgs_per_hour || 0)), 0);
-    return { totalSent, totalReceived, itemAdded, orderCancelled, payment, outOfStock, groupMsg, disc, avgGap, perMin, perHour, itemAddedPerMin: avgItemGap };
+    return { totalSent, totalReceived, itemAdded, orderCancelled, payment, outOfStock, groupMsg, disc, avgGap, perMin, perHour, itemAddedPerMin: itemPeak };
   }, [filtered, range.from, range.to]);
 
   return (
