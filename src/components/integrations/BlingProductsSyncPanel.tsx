@@ -83,6 +83,36 @@ export default function BlingProductsSyncPanel({ tenantId }: BlingProductsSyncPa
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
+  // Reenviar estoque original (quando o produto foi cadastrado) para o Bling
+  const resyncStockMutation = useMutation({
+    mutationFn: async (dryRun: boolean) => {
+      const session = await supabase.auth.getSession();
+      const response = await fetch(
+        `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/bling-resync-original-stock`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.data.session?.access_token}`,
+          },
+          body: JSON.stringify({ tenant_id: tenantId, dry_run: dryRun }),
+        }
+      );
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error || 'Erro ao reenviar estoque');
+      return data;
+    },
+    onSuccess: (data: any) => {
+      if (data.dry_run) {
+        toast.info(`Prévia: ${data.total} produto(s) — ok: ${data.ok}, falhas: ${data.fail}. Confira o console para detalhes.`);
+      } else {
+        toast.success(`Estoque original reenviado ao Bling — ok: ${data.ok}, falhas: ${data.fail}`);
+      }
+      console.log('[resync-original-stock]', data);
+    },
+    onError: (e: any) => toast.error(e.message || 'Erro ao reenviar estoque'),
+  });
+
   // Sync all products mutation
   const syncMutation = useMutation({
     mutationFn: async () => {
