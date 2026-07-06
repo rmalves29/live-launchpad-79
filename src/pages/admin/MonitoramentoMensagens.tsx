@@ -243,7 +243,7 @@ export default function MonitoramentoMensagens() {
                 <TableHead className="text-right">Msg/min</TableHead>
                 <TableHead className="text-right">Msg/h</TableHead>
                 <TableHead className="text-right">Item add.</TableHead>
-                <TableHead className="text-right">Tempo item add.</TableHead>
+                <TableHead className="text-right">Item add./min</TableHead>
                 <TableHead className="text-right">Cancelados</TableHead>
                 <TableHead className="text-right">Pagamento</TableHead>
                 <TableHead className="text-right">Sem estoque</TableHead>
