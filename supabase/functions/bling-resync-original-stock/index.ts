@@ -61,18 +61,32 @@ Deno.serve(async (req) => {
     }
     const depositoId = padrao.id;
 
-    // 3. Produtos ativos do tenant com bling_product_id
+    // 3. Produtos ativos do tenant com bling_product_id (com paginação)
+    const limit = Math.max(1, Math.min(Number(body.limit) || 40, 200));
+    const offset = Math.max(0, Number(body.offset) || 0);
+
+    let countQ = supabase
+      .from('products')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', body.tenant_id)
+      .eq('is_active', true)
+      .not('bling_product_id', 'is', null);
+    if (body.product_ids?.length) countQ = countQ.in('id', body.product_ids);
+    const { count: totalCount } = await countQ;
+
     let q = supabase
       .from('products')
       .select('id, name, code, stock, bling_product_id')
       .eq('tenant_id', body.tenant_id)
       .eq('is_active', true)
-      .not('bling_product_id', 'is', null);
+      .not('bling_product_id', 'is', null)
+      .order('id', { ascending: true })
+      .range(offset, offset + limit - 1);
     if (body.product_ids?.length) q = q.in('id', body.product_ids);
     const { data: products, error: prodErr } = await q;
     if (prodErr) return json({ success: false, error: prodErr.message }, 200);
     if (!products?.length) {
-      return json({ success: true, message: 'Nenhum produto elegível', processed: 0, details: [] }, 200);
+      return json({ success: true, message: 'Nenhum produto elegível', total: totalCount || 0, processed: 0, has_more: false, next_offset: offset, details: [] }, 200);
     }
 
     // 4. Puxa audit_logs de stock_changed para todos de uma vez
