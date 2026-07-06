@@ -84,14 +84,17 @@ Deno.serve(async (req) => {
           const findRes = await fetch(`${BLING_API}/produtos?pagina=1&limite=5&codigo=${encodeURIComponent(item.code)}`, {
             headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
           });
-          const findJson = await findRes.json();
-          const prod = findJson?.data?.[0];
+          const findText = await findRes.text();
+          let findJson: any = {};
+          try { findJson = JSON.parse(findText); } catch {}
+          const prod = findJson?.data?.[0] || findJson?.data?.produtos?.[0];
           if (!prod?.id) {
             fail++;
-            results.push({ code: item.code, success: false, error: 'produto não encontrado no Bling' });
+            results.push({ code: item.code, success: false, http: findRes.status, raw: findText.slice(0, 300), error: 'produto não encontrado no Bling' });
             await new Promise((r) => setTimeout(r, 400));
             continue;
           }
+
           let attempt = 0, done = false;
           while (!done && attempt < 4) {
             attempt++;
