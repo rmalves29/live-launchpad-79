@@ -114,11 +114,11 @@ export default function MonitoramentoMensagens() {
     const disc = filtered.reduce((s, r) => s + Number(r.disconnect_count || 0), 0);
     const gaps = filtered.map(r => Number(r.avg_gap_seconds)).filter(v => !Number.isNaN(v) && v > 0);
     const avgGap = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : null;
-    const durationMin = Math.max((new Date(range.to).getTime() - new Date(range.from).getTime()) / 60000, 1);
-    const perMin = totalSent / durationMin;
-    const perHour = totalSent / (durationMin / 60);
-    const itemAddedPerMin = itemAdded / durationMin;
-    return { totalSent, totalReceived, itemAdded, orderCancelled, payment, outOfStock, groupMsg, disc, avgGap, perMin, perHour, itemAddedPerMin };
+    const itemGaps = filtered.map(r => Number(r.item_added_per_minute)).filter(v => !Number.isNaN(v) && v > 0);
+    const avgItemGap = itemGaps.length ? itemGaps.reduce((a, b) => a + b, 0) / itemGaps.length : null;
+    const perMin = filtered.reduce((m, r) => Math.max(m, Number(r.msgs_per_minute || 0)), 0);
+    const perHour = filtered.reduce((m, r) => Math.max(m, Number(r.msgs_per_hour || 0)), 0);
+    return { totalSent, totalReceived, itemAdded, orderCancelled, payment, outOfStock, groupMsg, disc, avgGap, perMin, perHour, itemAddedPerMin: avgItemGap };
   }, [filtered, range.from, range.to]);
 
   return (
@@ -179,15 +179,15 @@ export default function MonitoramentoMensagens() {
           <CardContent><div className="text-3xl font-bold">{totals.totalSent.toLocaleString("pt-BR")}</div></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Envios / minuto</CardTitle></CardHeader>
-          <CardContent><div className="text-3xl font-bold">{totals.perMin.toFixed(2)}</div></CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Pico msgs/min</CardTitle></CardHeader>
+          <CardContent><div className="text-3xl font-bold">{Math.round(totals.perMin).toLocaleString("pt-BR")}</div></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Envios / hora</CardTitle></CardHeader>
-          <CardContent><div className="text-3xl font-bold">{totals.perHour.toFixed(1)}</div></CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Pico msgs/h</CardTitle></CardHeader>
+          <CardContent><div className="text-3xl font-bold">{Math.round(totals.perHour).toLocaleString("pt-BR")}</div></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Recebidas no privado</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Enviadas no privado</CardTitle></CardHeader>
           <CardContent><div className="text-3xl font-bold">{totals.totalReceived.toLocaleString("pt-BR")}</div></CardContent>
         </Card>
         <Card>
@@ -209,8 +209,8 @@ export default function MonitoramentoMensagens() {
           <CardContent><div className="text-3xl font-bold">{totals.itemAdded.toLocaleString("pt-BR")}</div></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Item adicionado / min</CardTitle></CardHeader>
-          <CardContent><div className="text-3xl font-bold">{totals.itemAddedPerMin.toFixed(3)}</div></CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Tempo médio item add.</CardTitle></CardHeader>
+          <CardContent><div className="text-3xl font-bold">{formatDuration(totals.itemAddedPerMin || null)}</div></CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Pedidos cancelados</CardTitle></CardHeader>
@@ -244,12 +244,12 @@ export default function MonitoramentoMensagens() {
                 <TableHead className="text-right">Msg/min</TableHead>
                 <TableHead className="text-right">Msg/h</TableHead>
                 <TableHead className="text-right">Item add.</TableHead>
-                <TableHead className="text-right">Item add./min</TableHead>
+                <TableHead className="text-right">Tempo item add.</TableHead>
                 <TableHead className="text-right">Cancelados</TableHead>
                 <TableHead className="text-right">Pagamento</TableHead>
                 <TableHead className="text-right">Sem estoque</TableHead>
                 <TableHead className="text-right">Grupo</TableHead>
-                <TableHead className="text-right">Recebidas privado</TableHead>
+                <TableHead className="text-right">Enviadas privado</TableHead>
                 <TableHead className="text-right">Tempo médio</TableHead>
                 <TableHead className="text-right">Última pausa</TableHead>
                 <TableHead className="text-right">Desconexões</TableHead>
@@ -268,10 +268,10 @@ export default function MonitoramentoMensagens() {
                 <TableRow key={r.tenant_id}>
                   <TableCell className="font-medium">{r.tenant_name}</TableCell>
                   <TableCell className="text-right">{Number(r.total_sent).toLocaleString("pt-BR")}</TableCell>
-                  <TableCell className="text-right">{r.msgs_per_minute != null ? Number(r.msgs_per_minute).toFixed(2) : "—"}</TableCell>
-                  <TableCell className="text-right">{r.msgs_per_hour != null ? Number(r.msgs_per_hour).toFixed(1) : "—"}</TableCell>
+                  <TableCell className="text-right">{r.msgs_per_minute != null ? Math.round(Number(r.msgs_per_minute)).toLocaleString("pt-BR") : "—"}</TableCell>
+                  <TableCell className="text-right">{r.msgs_per_hour != null ? Math.round(Number(r.msgs_per_hour)).toLocaleString("pt-BR") : "—"}</TableCell>
                   <TableCell className="text-right">{Number(r.item_added_count || 0).toLocaleString("pt-BR")}</TableCell>
-                  <TableCell className="text-right">{r.item_added_per_minute != null ? Number(r.item_added_per_minute).toFixed(3) : "—"}</TableCell>
+                  <TableCell className="text-right">{formatDuration(r.item_added_per_minute != null ? Number(r.item_added_per_minute) : null)}</TableCell>
                   <TableCell className="text-right">{Number(r.order_cancelled_count || 0).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right">{Number(r.payment_count || 0).toLocaleString("pt-BR")}</TableCell>
                   <TableCell className="text-right">{Number(r.out_of_stock_count || 0).toLocaleString("pt-BR")}</TableCell>
