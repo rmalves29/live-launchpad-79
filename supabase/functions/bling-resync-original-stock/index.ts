@@ -56,13 +56,22 @@ Deno.serve(async (req) => {
     }
     const depJson = await depRes.json();
     const depositos: any[] = depJson?.data || [];
-    const padrao =
-      depositos.find((d) => d.padrao === true || d.situacao === 1) ||
-      depositos[0];
+
+    if (body.list_deposits) {
+      return json({ success: true, depositos: depositos.map((d) => ({ id: d.id, nome: d.nome, descricao: d.descricao, padrao: d.padrao, situacao: d.situacao })) }, 200);
+    }
+
+    let padrao: any = null;
+    if (body.deposito_id) {
+      padrao = depositos.find((d) => Number(d.id) === Number(body.deposito_id)) || { id: body.deposito_id };
+    } else {
+      padrao = depositos.find((d) => d.padrao === true || d.situacao === 1) || depositos[0];
+    }
     if (!padrao?.id) {
       return json({ success: false, error: 'Nenhum depósito encontrado no Bling' }, 200);
     }
     const depositoId = padrao.id;
+
 
     // 3. Produtos ativos do tenant com bling_product_id (com paginação)
     const limit = Math.max(1, Math.min(Number(body.limit) || 40, 200));
