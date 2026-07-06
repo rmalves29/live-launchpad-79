@@ -187,7 +187,7 @@ export default function MonitoramentoMensagens() {
           <CardContent><div className="text-3xl font-bold">{totals.perHour.toFixed(1)}</div></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Recebidas no privado</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Enviadas no privado</CardTitle></CardHeader>
           <CardContent><div className="text-3xl font-bold">{totals.totalReceived.toLocaleString("pt-BR")}</div></CardContent>
         </Card>
         <Card>
