@@ -16,7 +16,10 @@ interface ReqBody {
   dry_run?: boolean;
   limit?: number;   // paginação (default 40)
   offset?: number;  // paginação (default 0)
+  deposito_id?: number; // opcional: força depósito específico (senão usa o padrão)
+  list_deposits?: boolean; // se true, só lista depósitos e retorna
 }
+
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
