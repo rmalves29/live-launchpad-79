@@ -179,12 +179,12 @@ export default function MonitoramentoMensagens() {
           <CardContent><div className="text-3xl font-bold">{totals.totalSent.toLocaleString("pt-BR")}</div></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Envios / minuto</CardTitle></CardHeader>
-          <CardContent><div className="text-3xl font-bold">{totals.perMin.toFixed(2)}</div></CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Pico msgs/min</CardTitle></CardHeader>
+          <CardContent><div className="text-3xl font-bold">{Math.round(totals.perMin).toLocaleString("pt-BR")}</div></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Envios / hora</CardTitle></CardHeader>
-          <CardContent><div className="text-3xl font-bold">{totals.perHour.toFixed(1)}</div></CardContent>
+          <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Pico msgs/h</CardTitle></CardHeader>
+          <CardContent><div className="text-3xl font-bold">{Math.round(totals.perHour).toLocaleString("pt-BR")}</div></CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Enviadas no privado</CardTitle></CardHeader>
