@@ -958,9 +958,14 @@ async function sendOrderToBling(
     } else {
       // Fallback: enviar código e descrição apenas se for a PRIMEIRA vez vendo este código
       if (!seenProduct) {
-        itemData.codigo = productCode;
-        itemData.descricao = item.product_name || 'Produto';
-        console.log(`[bling-sync-orders] Item "${item.product_name}" não encontrado no Bling, criando com código: ${productCode}`);
+        // Em skipStock, NÃO enviar código (evita vínculo com produto no Bling e baixa de estoque)
+        if (!skipStock) {
+          itemData.codigo = productCode;
+        }
+        itemData.descricao = skipStock
+          ? `${item.product_name || 'Produto'} [${productCode}]`
+          : (item.product_name || 'Produto');
+        console.log(`[bling-sync-orders] Item "${item.product_name}" ${skipStock ? '(SEM ESTOQUE)' : 'não encontrado no Bling, criando com código'}: ${productCode}`);
         // Registrar no seen para evitar duplicatas
         if (!productCodesSeen.has(productCode)) {
           productCodesSeen.set(productCode, { hasBlindId: false });
@@ -968,7 +973,7 @@ async function sendOrderToBling(
       } else {
         // Item duplicado sem ID no Bling - somar quantidade ao item anterior
         const existingIdx = processedItems.findIndex(
-          (pi: any) => pi.codigo === productCode || (pi.produto?.id && seenProduct?.blingProductId && pi.produto.id === seenProduct.blingProductId)
+          (pi: any) => pi.codigo === productCode || pi.descricao?.includes(`[${productCode}]`) || (pi.produto?.id && seenProduct?.blingProductId && pi.produto.id === seenProduct.blingProductId)
         );
         if (existingIdx >= 0) {
           processedItems[existingIdx].quantidade += (item.qty || 1);
@@ -978,9 +983,13 @@ async function sendOrderToBling(
         } else {
           // Fallback: usar sufixo único
           const uniqueSuffix = `-${processedItems.length + 1}`;
-          itemData.codigo = `${productCode}${uniqueSuffix}`;
-          itemData.descricao = item.product_name || 'Produto';
-          console.log(`[bling-sync-orders] Item duplicado "${item.product_name}" - usando código único: ${itemData.codigo}`);
+          if (!skipStock) {
+            itemData.codigo = `${productCode}${uniqueSuffix}`;
+          }
+          itemData.descricao = skipStock
+            ? `${item.product_name || 'Produto'} [${productCode}${uniqueSuffix}]`
+            : (item.product_name || 'Produto');
+          console.log(`[bling-sync-orders] Item duplicado "${item.product_name}" - usando ${skipStock ? 'descrição única' : 'código único'}: ${productCode}${uniqueSuffix}`);
         }
       }
     }
