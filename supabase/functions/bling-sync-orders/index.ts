@@ -915,7 +915,7 @@ async function sendOrderToBling(
     const seenProduct = productCodesSeen.get(productCode);
 
     // Se não tem bling_product_id, tentar buscar no Bling pelo código
-    if (!blingProductId) {
+    if (!skipStock && !blingProductId) {
       // Se já vimos este código e encontramos um ID, usar o mesmo
       if (seenProduct?.blingProductId) {
         blingProductId = seenProduct.blingProductId;
