@@ -2122,7 +2122,7 @@ serve(async (req) => {
               other: integration.bling_payment_id_other || null,
             };
             
-            const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProviderBulk, customShippingOptionsBulk, blingPaymentIdsBulk);
+            const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProviderBulk, customShippingOptionsBulk, blingPaymentIdsBulk, undefined, skip_stock === true);
 
             await supabase
               .from('orders')
