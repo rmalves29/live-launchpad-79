@@ -18,6 +18,7 @@ export const INTEGRATION_KEYS = [
   { key: 'superfrete', label: 'SuperFrete' },
   { key: 'correios', label: 'Correios' },
   { key: 'meuscorreios', label: 'Meus Correios' },
+  { key: 'frenet', label: 'Frenet' },
   { key: 'zapi', label: 'WhatsApp Z-API' },
   { key: 'uazapi', label: 'WhatsApp uazapi' },
   { key: 'whatsapp_oficial', label: 'WhatsApp Oficial' },
