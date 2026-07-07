@@ -867,7 +867,8 @@ async function sendOrderToBling(
     debit_card?: number | null;
     other?: number | null;
   },
-  resyncSuffix?: string
+  resyncSuffix?: string,
+  skipStock?: boolean
 ): Promise<SendOrderResult> {
   if (!cartItems || cartItems.length === 0) {
     throw new Error('O pedido não possui itens para enviar ao Bling');
