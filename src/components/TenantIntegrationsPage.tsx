@@ -359,6 +359,14 @@ export default function TenantIntegrationsPage() {
             {meusCorreiosIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
           )}
+          {en('frenet') && (
+          <TabsTrigger value="frenet" className="flex items-center gap-2">
+            <Truck className="h-4 w-4" />
+            <span className="hidden sm:inline">Frenet</span>
+            <span className="sm:hidden">FR</span>
+            {frenetIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
+          </TabsTrigger>
+          )}
         </TabsList>
 
         {en('instagram') && (
@@ -434,6 +442,11 @@ export default function TenantIntegrationsPage() {
         {en('meuscorreios') && (
         <TabsContent value="meuscorreios" className="mt-6">
           <MeusCorreiosIntegration tenantId={tenantId} />
+        </TabsContent>
+        )}
+        {en('frenet') && (
+        <TabsContent value="frenet" className="mt-6">
+          <FrenetIntegration tenantId={tenantId} />
         </TabsContent>
         )}
         </Tabs>
