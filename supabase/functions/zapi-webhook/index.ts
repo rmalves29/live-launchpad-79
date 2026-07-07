@@ -1864,12 +1864,55 @@ serve(async (req) => {
       });
     }
 
+    // ==========================================
+    // REAÇÃO HUMANIZADA (somente grupo): reage à mensagem da cliente
+    // quando pelo menos um código de produto foi processado com sucesso.
+    // Emoji sorteado da lista; fire-and-forget; só provider uazapi.
+    // ==========================================
+    const REACTION_EMOJIS = ['👏', '🙏', '🤜', '🥰', '😍', '😘', '😉', '❤️', '💕'];
+    const anyProductSuccess = results.some((r: any) => r && r.success === true);
+    if (isGroup && groupId && messageId && anyProductSuccess) {
+      try {
+        const { data: reactInteg } = await supabase
+          .from('integration_whatsapp')
+          .select('provider, uazapi_url, uazapi_token')
+          .eq('tenant_id', tenantId)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (reactInteg?.provider === 'uazapi' && reactInteg.uazapi_url && reactInteg.uazapi_token) {
+          const groupJid = groupId.endsWith('@g.us')
+            ? groupId
+            : groupId.endsWith('-group')
+              ? groupId.replace(/-group$/, '@g.us')
+              : /^\d+$/.test(groupId) ? groupId + '@g.us' : groupId;
+          const emoji = REACTION_EMOJIS[Math.floor(Math.random() * REACTION_EMOJIS.length)];
+          const id = String(messageId);
+          const controller = new AbortController();
+          const reactTimeout = setTimeout(() => controller.abort(), 10000);
+          try {
+            const resp = await fetch(`${String(reactInteg.uazapi_url).replace(/\/+$/, '')}/send/reaction`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'token': reactInteg.uazapi_token },
+              body: JSON.stringify({ number: groupJid, messageid: id, messageId: id, id, reaction: emoji, emoji }),
+              signal: controller.signal,
+            });
+            console.log(`[zapi-webhook] ${emoji} Reação enviada (${resp.status}) para msg ${id} no grupo ${groupJid}`);
+          } finally {
+            clearTimeout(reactTimeout);
+          }
+        }
+      } catch (e: any) {
+        console.warn('[zapi-webhook] Falha ao reagir à mensagem do grupo (non-fatal):', e?.message || e);
+      }
+    }
+
     console.log(`[zapi-webhook] Processing complete. Results:`, results);
 
-    return new Response(JSON.stringify({ 
-      success: true, 
+    return new Response(JSON.stringify({
+      success: true,
       processed: results.length,
-      results 
+      results
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
