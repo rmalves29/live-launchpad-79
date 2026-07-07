@@ -1053,34 +1053,40 @@ async function sendOrderToBling(
     numeroLoja: orderNumber,
     data: new Date(order.created_at).toISOString().split('T')[0],
     dataPrevista: order.event_date,
-    situacao: { id: 0 }, // 0 = Em aberto (todos os pedidos importados como "Em aberto")
     contato: { id: contactId },
     itens: consolidatedItems,
     observacoes: order.observation || '',
-    observacoesInternas: `Pedido ID: ${order.id} | Evento: ${order.event_type}`,
+    observacoesInternas: `Pedido ID: ${order.id} | Evento: ${order.event_type}${skipStock ? ' | SEM BAIXA DE ESTOQUE' : ''}`,
   };
 
-  // Adicionar tributos do pedido se configurados
-  if (fiscalData && (fiscalData.default_icms_situacao || fiscalData.default_pis_cofins || fiscalData.default_ipi !== null)) {
-    blingOrder.tributos = {};
-    
-    if (fiscalData.default_icms_situacao) {
-      blingOrder.tributos.icms = {
-        situacao: fiscalData.default_icms_situacao,
-        origem: fiscalData.default_icms_origem || '0',
-      };
-    }
-    
-    if (fiscalData.default_pis_cofins) {
-      blingOrder.tributos.pis = { situacao: fiscalData.default_pis_cofins };
-      blingOrder.tributos.cofins = { situacao: fiscalData.default_pis_cofins };
-    }
-    
-    if (fiscalData.default_ipi !== null && fiscalData.default_ipi !== undefined) {
-      blingOrder.tributos.ipi = { aliquota: fiscalData.default_ipi };
-    }
+  // Situação e tributos apenas quando NÃO está em modo skipStock
+  if (!skipStock) {
+    blingOrder.situacao = { id: 0 }; // 0 = Em aberto
 
-    console.log('[bling-sync-orders] Tributos adicionados:', JSON.stringify(blingOrder.tributos, null, 2));
+    // Adicionar tributos do pedido se configurados
+    if (fiscalData && (fiscalData.default_icms_situacao || fiscalData.default_pis_cofins || fiscalData.default_ipi !== null)) {
+      blingOrder.tributos = {};
+
+      if (fiscalData.default_icms_situacao) {
+        blingOrder.tributos.icms = {
+          situacao: fiscalData.default_icms_situacao,
+          origem: fiscalData.default_icms_origem || '0',
+        };
+      }
+
+      if (fiscalData.default_pis_cofins) {
+        blingOrder.tributos.pis = { situacao: fiscalData.default_pis_cofins };
+        blingOrder.tributos.cofins = { situacao: fiscalData.default_pis_cofins };
+      }
+
+      if (fiscalData.default_ipi !== null && fiscalData.default_ipi !== undefined) {
+        blingOrder.tributos.ipi = { aliquota: fiscalData.default_ipi };
+      }
+
+      console.log('[bling-sync-orders] Tributos adicionados:', JSON.stringify(blingOrder.tributos, null, 2));
+    }
+  } else {
+    console.log('[bling-sync-orders] skipStock: OMITINDO situação e tributos para evitar baixa de estoque');
   }
 
   // Extrair valor do frete da observação (formato: "Frete: R$ XX,XX" ou "frete de R$ XX,XX")
