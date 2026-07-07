@@ -1804,7 +1804,7 @@ serve(async (req) => {
           other: integration.bling_payment_id_other || null,
         };
         
-        const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProvider, customShippingOptions, blingPaymentIds);
+        const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProvider, customShippingOptions, blingPaymentIds, undefined, skip_stock === true);
 
         // Persistir o ID do pedido no Bling e marcar como synced
         await supabase
