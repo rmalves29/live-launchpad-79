@@ -963,7 +963,7 @@ async function sendOrderToBling(
           itemData.codigo = productCode;
         }
         itemData.descricao = skipStock
-          ? `${item.product_name || 'Produto'} [${productCode}]`
+          ? `${item.product_name || 'Produto'} [${productCode}-${crypto.randomUUID().slice(0, 8)}]`
           : (item.product_name || 'Produto');
         console.log(`[bling-sync-orders] Item "${item.product_name}" ${skipStock ? '(SEM ESTOQUE)' : 'não encontrado no Bling, criando com código'}: ${productCode}`);
         // Registrar no seen para evitar duplicatas
