@@ -20,6 +20,7 @@ import MandaeIntegration from '@/components/integrations/MandaeIntegration';
 import SuperFreteIntegration from '@/components/integrations/SuperFreteIntegration';
 import CorreiosIntegration from '@/components/integrations/CorreiosIntegration';
 import MeusCorreiosIntegration from '@/components/integrations/MeusCorreiosIntegration';
+import FrenetIntegration from '@/components/integrations/FrenetIntegration';
 import BlingIntegration from '@/components/integrations/BlingIntegration';
 import OlistIntegration from '@/components/integrations/OlistIntegration';
 import OmieIntegration from '@/components/integrations/OmieIntegration';
@@ -122,6 +123,15 @@ export default function TenantIntegrationsPage() {
     queryKey: ['meuscorreios-status', tenantId],
     queryFn: async () => {
       const { data } = await supabase.from('shipping_integrations').select('is_active').eq('tenant_id', tenantId).eq('provider', 'meuscorreios').maybeSingle();
+      return data;
+    },
+    enabled: !!tenantId,
+  });
+
+  const { data: frenetIntegration } = useQuery({
+    queryKey: ['frenet-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase.from('shipping_integrations').select('is_active').eq('tenant_id', tenantId).eq('provider', 'frenet').maybeSingle();
       return data;
     },
     enabled: !!tenantId,
