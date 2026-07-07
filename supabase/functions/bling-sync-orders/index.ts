@@ -994,31 +994,33 @@ async function sendOrderToBling(
       }
     }
 
-    // Adicionar dados fiscais ao item se configurados
-    if (fiscalData?.default_ncm) {
-      itemData.ncm = fiscalData.default_ncm;
-    }
-    if (cfop) {
-      itemData.cfop = cfop;
-    }
-    if (fiscalData?.default_icms_origem) {
-      itemData.origem = fiscalData.default_icms_origem;
-    }
-
-    // Adicionar tributos diretamente no item (necessário para nota fiscal)
-    if (fiscalData && (fiscalData.default_icms_situacao || fiscalData.default_pis_cofins)) {
-      itemData.tributos = {};
-      
-      if (fiscalData.default_icms_situacao) {
-        itemData.tributos.icms = {
-          situacao: fiscalData.default_icms_situacao,
-          origem: fiscalData.default_icms_origem || '0',
-        };
+    // Adicionar dados fiscais ao item se configurados (pular quando skipStock para minimizar validações)
+    if (!skipStock) {
+      if (fiscalData?.default_ncm) {
+        itemData.ncm = fiscalData.default_ncm;
       }
-      
-      if (fiscalData.default_pis_cofins) {
-        itemData.tributos.pis = { situacao: fiscalData.default_pis_cofins };
-        itemData.tributos.cofins = { situacao: fiscalData.default_pis_cofins };
+      if (cfop) {
+        itemData.cfop = cfop;
+      }
+      if (fiscalData?.default_icms_origem) {
+        itemData.origem = fiscalData.default_icms_origem;
+      }
+
+      // Adicionar tributos diretamente no item (necessário para nota fiscal)
+      if (fiscalData && (fiscalData.default_icms_situacao || fiscalData.default_pis_cofins)) {
+        itemData.tributos = {};
+
+        if (fiscalData.default_icms_situacao) {
+          itemData.tributos.icms = {
+            situacao: fiscalData.default_icms_situacao,
+            origem: fiscalData.default_icms_origem || '0',
+          };
+        }
+
+        if (fiscalData.default_pis_cofins) {
+          itemData.tributos.pis = { situacao: fiscalData.default_pis_cofins };
+          itemData.tributos.cofins = { situacao: fiscalData.default_pis_cofins };
+        }
       }
     }
 
