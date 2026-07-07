@@ -1,32 +1,84 @@
-## Objetivo
-Ajustar a simulação de "digitando" para seguir a nova regra de tempo baseada em caracteres.
+## Integração Frenet — Pacote Completo
 
-## Nova regra
-- **Base**: 0,06s (60ms) por caractere da mensagem.
-- **Pausas intermediárias**: a cada múltiplo de 300 caracteres, inserir uma pausa de 1s. Essa pausa ocorre na **metade** do bloco de digitação (ou seja, digita metade → pausa 1s → digita a outra metade → continua).
+Integração completa da transportadora Frenet como novo provider dentro do módulo de frete/logística, disponível para todos os tenants, seguindo o padrão das integrações existentes (SuperFrete, Melhor Envio, Mandaê, Correios).
 
-### Exemplo
-Mensagem com 650 caracteres:
-- Tempo total de digitação: 650 × 0,06 = 39s
-- Múltiplos de 300 completos: 2 (em 300 e em 600) → 2 pausas de 1s
-- Fluxo: available → digita 19,5s → pausa 1s → digita 19,5s → pausa 1s → envia
+### 1. Banco de dados
 
-## Onde aplicar
+Adicionar suporte a Frenet na tabela `shipping_integrations` (já genérica) — nenhum schema novo necessário; apenas garantir que o valor `frenet` seja aceito no enum/coluna `provider`. Se o campo for enum, adicionar via migration:
 
-### 1. `supabase/functions/_shared/uazapi-api.ts`
-- Substituir `calcTypingDuration(length)` por uma função que retorne uma **lista de segmentos** `{ typingMs, pauseAfterMs }[]`, respeitando os múltiplos de 300 com pausa no meio do bloco.
-- Manter uma versão simples `calcTypingDuration` (soma total) para compatibilidade com quem só quer o total.
-- Adicionar helper `runTypingSequence(cfg, phone, length)` que executa: `sendPresenceAvailable` → loop nos segmentos (`sendPresenceComposing(cfg, phone, segMs)` + `sleep(segMs)` + `sleep(pauseAfterMs)`).
+```sql
+ALTER TYPE shipping_provider ADD VALUE IF NOT EXISTS 'frenet';
+```
 
-### 2. Consumidores atualizados para usar `runTypingSequence`
-- `supabase/functions/zapi-send-message/index.ts` (bloco uazapi)
-- `supabase/functions/zapi-send-item-added/index.ts` (item adicionado + fluxo consentimento)
-- `supabase/functions/sendflow-process/index.ts` (envio em grupo — manter a v11 sequence, mas usar o novo cálculo por caractere no `composing`)
-- Demais senders que hoje chamam `sendPresenceComposing(..., calcTypingDuration(len))` para uazapi.
+Credenciais armazenadas nas colunas existentes:
+- `api_token` → token da Frenet (header `token`)
+- `is_active`, `sender_cep`, `sender_*` reutilizados
 
-### 3. Z-API
-- Z-API não suporta indicador "digitando" (já documentado no código). Apenas o **delay total** será ajustado em `simulateTyping` (`supabase/functions/_shared/anti-block-delay.ts`) para respeitar 0,06s por caractere + 1s por múltiplo de 300 — sem enviar presença.
+### 2. Edge Functions (novas)
 
-## Fora de escopo
-- Não altero anti-block delays já existentes entre mensagens diferentes (throttle, jitter humano) — apenas o cálculo do "digitando" de uma mensagem individual.
-- Não altero UI.
+Todas com CORS padrão, validação Zod, retorno HTTP 200 `{success,error}` em falha:
+
+1. **`frenet-calculate-shipping`** — cotação em tempo real
+   - `POST https://api.frenet.com.br/shipping/quote`
+   - Payload: SellerCEP, RecipientCEP, ShipmentInvoiceValue, ShippingItemArray (peso/altura/largura/comprimento/qtd)
+   - Retorna array de serviços com `ServiceCode`, `ServiceDescription`, `ShippingPrice`, `DeliveryTime`
+   - Consumido pelo checkout via `get-shipping-options` (integrar como novo case)
+
+2. **`frenet-create-shipping`** — geração de etiqueta
+   - `POST https://api.frenet.com.br/shipping/dispatch` (cria despacho)
+   - `POST https://api.frenet.com.br/tracking/trackinginfo` (retorna PDF/URL)
+   - Salva `melhor_envio_tracking_code` (campo genérico já usado) e `shipping_label_url` no pedido
+   - Trigger existente `send_tracking_whatsapp_on_update` dispara WhatsApp automaticamente
+
+3. **`frenet-track-shipment`** — polling de rastreio
+   - `POST https://api.frenet.com.br/tracking/trackinginfo` com `ShippingServiceCode` + `TrackingNumber`
+   - Atualiza `order_status` conforme eventos
+   - Agendada via `pg_cron` a cada 2h (mesmo padrão do Bling tracking)
+
+4. **`frenet-list-services`** — auxiliar
+   - Lista serviços contratados na conta (`GET /shipping/info`) para popular tela de configuração
+
+### 3. Integração no checkout
+
+Ajustar `supabase/functions/get-shipping-options/index.ts` (ou equivalente que agrega providers) para:
+- Detectar `provider = 'frenet'` em `shipping_integrations` ativo
+- Chamar `frenet-calculate-shipping` internamente
+- Normalizar resposta ao formato universal usado pelo storefront
+
+### 4. UI de configuração
+
+Nova aba/card em **Configurações → Integrações → Frete**:
+- Componente `FrenetIntegration.tsx` seguindo padrão de `MelhorEnvioIntegration.tsx`
+- Campos: Token API, CEP remetente, dimensões padrão, seleção de serviços
+- Botões: Testar conexão, Salvar, Ativar/Desativar (exclusividade com outros providers de frete)
+- Listagem de serviços via `frenet-list-services`
+
+### 5. Notificação WhatsApp
+
+Nenhuma mudança — trigger `send_tracking_whatsapp_on_update` já dispara `zapi-send-tracking` quando `melhor_envio_tracking_code` é preenchido, funcionando para qualquer provider.
+
+### 6. Cron job (rastreio)
+
+```sql
+SELECT cron.schedule(
+  'frenet-tracking-sync', '0 */2 * * *',
+  $$ SELECT net.http_post(url:='.../functions/v1/frenet-track-shipment', ...) $$
+);
+```
+
+### 7. Segredo necessário
+
+Nenhum segredo global — o token é per-tenant, armazenado em `shipping_integrations.api_token` (padrão já usado). Nada a adicionar via `add_secret`.
+
+### Ordem de execução
+
+1. Migration `ALTER TYPE` (se necessário) + validação da estrutura de `shipping_integrations`
+2. Edge functions (4 novas) em paralelo
+3. Ajuste no `get-shipping-options` para rotear Frenet
+4. UI `FrenetIntegration.tsx` + registrar na página de integrações de frete
+5. Cron de rastreio
+6. Teste ponta-a-ponta: configurar token → cotar CEP no checkout → gerar etiqueta em pedido pago → confirmar WhatsApp de rastreio
+
+### Pergunta pendente (não bloqueia início)
+
+O token da Frenet será cadastrado depois pela tela de integrações — sem token não consigo validar cotação real, mas todo o código fica pronto e testável assim que o token for salvo.

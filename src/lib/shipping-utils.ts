@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 
-export type ShippingProvider = 'melhor_envio' | 'mandae' | 'correios' | 'meuscorreios' | 'superfrete' | null;
+export type ShippingProvider = 'melhor_envio' | 'mandae' | 'correios' | 'meuscorreios' | 'superfrete' | 'frenet' | null;
 
 export interface ActiveShippingIntegration {
   provider: ShippingProvider;
@@ -47,6 +47,19 @@ export async function getActiveShippingIntegration(tenantId: string): Promise<Ac
         testFunctionName: null
       };
     }
+
+    // Verificar se Frenet está ativo
+    const frenetIntegration = integrations.find(i => i.provider === 'frenet');
+    if (frenetIntegration) {
+      console.log("[shipping-utils] Integração Frenet ativa para tenant:", tenantId);
+      return {
+        provider: 'frenet',
+        functionName: 'frenet-shipping',
+        testFunctionName: null
+      };
+    }
+
+
 
     // Verificar se Mandae está ativa (prioridade)
     const mandaeIntegration = integrations.find(i => i.provider === 'mandae');

@@ -20,6 +20,7 @@ import MandaeIntegration from '@/components/integrations/MandaeIntegration';
 import SuperFreteIntegration from '@/components/integrations/SuperFreteIntegration';
 import CorreiosIntegration from '@/components/integrations/CorreiosIntegration';
 import MeusCorreiosIntegration from '@/components/integrations/MeusCorreiosIntegration';
+import FrenetIntegration from '@/components/integrations/FrenetIntegration';
 import BlingIntegration from '@/components/integrations/BlingIntegration';
 import OlistIntegration from '@/components/integrations/OlistIntegration';
 import OmieIntegration from '@/components/integrations/OmieIntegration';
@@ -122,6 +123,15 @@ export default function TenantIntegrationsPage() {
     queryKey: ['meuscorreios-status', tenantId],
     queryFn: async () => {
       const { data } = await supabase.from('shipping_integrations').select('is_active').eq('tenant_id', tenantId).eq('provider', 'meuscorreios').maybeSingle();
+      return data;
+    },
+    enabled: !!tenantId,
+  });
+
+  const { data: frenetIntegration } = useQuery({
+    queryKey: ['frenet-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase.from('shipping_integrations').select('is_active').eq('tenant_id', tenantId).eq('provider', 'frenet').maybeSingle();
       return data;
     },
     enabled: !!tenantId,
@@ -349,6 +359,14 @@ export default function TenantIntegrationsPage() {
             {meusCorreiosIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
           )}
+          {en('frenet') && (
+          <TabsTrigger value="frenet" className="flex items-center gap-2">
+            <Truck className="h-4 w-4" />
+            <span className="hidden sm:inline">Frenet</span>
+            <span className="sm:hidden">FR</span>
+            {frenetIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
+          </TabsTrigger>
+          )}
         </TabsList>
 
         {en('instagram') && (
@@ -424,6 +442,11 @@ export default function TenantIntegrationsPage() {
         {en('meuscorreios') && (
         <TabsContent value="meuscorreios" className="mt-6">
           <MeusCorreiosIntegration tenantId={tenantId} />
+        </TabsContent>
+        )}
+        {en('frenet') && (
+        <TabsContent value="frenet" className="mt-6">
+          <FrenetIntegration tenantId={tenantId} />
         </TabsContent>
         )}
         </Tabs>
