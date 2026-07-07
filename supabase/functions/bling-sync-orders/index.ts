@@ -908,7 +908,7 @@ async function sendOrderToBling(
       unidade: fiscalData?.default_unit || 'UN',
     };
 
-    let blingProductId = item.bling_product_id;
+    let blingProductId = skipStock ? null : item.bling_product_id;
     const productCode = item.product_code || `PROD-${item.id}`;
 
     // Verificar se já processamos este código neste pedido
