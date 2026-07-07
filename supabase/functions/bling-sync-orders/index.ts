@@ -867,7 +867,8 @@ async function sendOrderToBling(
     debit_card?: number | null;
     other?: number | null;
   },
-  resyncSuffix?: string
+  resyncSuffix?: string,
+  skipStock?: boolean
 ): Promise<SendOrderResult> {
   if (!cartItems || cartItems.length === 0) {
     throw new Error('O pedido não possui itens para enviar ao Bling');
@@ -907,14 +908,14 @@ async function sendOrderToBling(
       unidade: fiscalData?.default_unit || 'UN',
     };
 
-    let blingProductId = item.bling_product_id;
+    let blingProductId = skipStock ? null : item.bling_product_id;
     const productCode = item.product_code || `PROD-${item.id}`;
 
     // Verificar se já processamos este código neste pedido
     const seenProduct = productCodesSeen.get(productCode);
 
     // Se não tem bling_product_id, tentar buscar no Bling pelo código
-    if (!blingProductId) {
+    if (!skipStock && !blingProductId) {
       // Se já vimos este código e encontramos um ID, usar o mesmo
       if (seenProduct?.blingProductId) {
         blingProductId = seenProduct.blingProductId;
@@ -957,9 +958,14 @@ async function sendOrderToBling(
     } else {
       // Fallback: enviar código e descrição apenas se for a PRIMEIRA vez vendo este código
       if (!seenProduct) {
-        itemData.codigo = productCode;
-        itemData.descricao = item.product_name || 'Produto';
-        console.log(`[bling-sync-orders] Item "${item.product_name}" não encontrado no Bling, criando com código: ${productCode}`);
+        // Em skipStock, NÃO enviar código (evita vínculo com produto no Bling e baixa de estoque)
+        if (!skipStock) {
+          itemData.codigo = productCode;
+        }
+        itemData.descricao = skipStock
+          ? `${item.product_name || 'Produto'} [${productCode}-${crypto.randomUUID().slice(0, 8)}]`
+          : (item.product_name || 'Produto');
+        console.log(`[bling-sync-orders] Item "${item.product_name}" ${skipStock ? '(SEM ESTOQUE)' : 'não encontrado no Bling, criando com código'}: ${productCode}`);
         // Registrar no seen para evitar duplicatas
         if (!productCodesSeen.has(productCode)) {
           productCodesSeen.set(productCode, { hasBlindId: false });
@@ -967,7 +973,7 @@ async function sendOrderToBling(
       } else {
         // Item duplicado sem ID no Bling - somar quantidade ao item anterior
         const existingIdx = processedItems.findIndex(
-          (pi: any) => pi.codigo === productCode || (pi.produto?.id && seenProduct?.blingProductId && pi.produto.id === seenProduct.blingProductId)
+          (pi: any) => pi.codigo === productCode || pi.descricao?.includes(`[${productCode}]`) || (pi.produto?.id && seenProduct?.blingProductId && pi.produto.id === seenProduct.blingProductId)
         );
         if (existingIdx >= 0) {
           processedItems[existingIdx].quantidade += (item.qty || 1);
@@ -977,38 +983,44 @@ async function sendOrderToBling(
         } else {
           // Fallback: usar sufixo único
           const uniqueSuffix = `-${processedItems.length + 1}`;
-          itemData.codigo = `${productCode}${uniqueSuffix}`;
-          itemData.descricao = item.product_name || 'Produto';
-          console.log(`[bling-sync-orders] Item duplicado "${item.product_name}" - usando código único: ${itemData.codigo}`);
+          if (!skipStock) {
+            itemData.codigo = `${productCode}${uniqueSuffix}`;
+          }
+          itemData.descricao = skipStock
+            ? `${item.product_name || 'Produto'} [${productCode}${uniqueSuffix}]`
+            : (item.product_name || 'Produto');
+          console.log(`[bling-sync-orders] Item duplicado "${item.product_name}" - usando ${skipStock ? 'descrição única' : 'código único'}: ${productCode}${uniqueSuffix}`);
         }
       }
     }
 
-    // Adicionar dados fiscais ao item se configurados
-    if (fiscalData?.default_ncm) {
-      itemData.ncm = fiscalData.default_ncm;
-    }
-    if (cfop) {
-      itemData.cfop = cfop;
-    }
-    if (fiscalData?.default_icms_origem) {
-      itemData.origem = fiscalData.default_icms_origem;
-    }
-
-    // Adicionar tributos diretamente no item (necessário para nota fiscal)
-    if (fiscalData && (fiscalData.default_icms_situacao || fiscalData.default_pis_cofins)) {
-      itemData.tributos = {};
-      
-      if (fiscalData.default_icms_situacao) {
-        itemData.tributos.icms = {
-          situacao: fiscalData.default_icms_situacao,
-          origem: fiscalData.default_icms_origem || '0',
-        };
+    // Adicionar dados fiscais ao item se configurados (pular quando skipStock para minimizar validações)
+    if (!skipStock) {
+      if (fiscalData?.default_ncm) {
+        itemData.ncm = fiscalData.default_ncm;
       }
-      
-      if (fiscalData.default_pis_cofins) {
-        itemData.tributos.pis = { situacao: fiscalData.default_pis_cofins };
-        itemData.tributos.cofins = { situacao: fiscalData.default_pis_cofins };
+      if (cfop) {
+        itemData.cfop = cfop;
+      }
+      if (fiscalData?.default_icms_origem) {
+        itemData.origem = fiscalData.default_icms_origem;
+      }
+
+      // Adicionar tributos diretamente no item (necessário para nota fiscal)
+      if (fiscalData && (fiscalData.default_icms_situacao || fiscalData.default_pis_cofins)) {
+        itemData.tributos = {};
+
+        if (fiscalData.default_icms_situacao) {
+          itemData.tributos.icms = {
+            situacao: fiscalData.default_icms_situacao,
+            origem: fiscalData.default_icms_origem || '0',
+          };
+        }
+
+        if (fiscalData.default_pis_cofins) {
+          itemData.tributos.pis = { situacao: fiscalData.default_pis_cofins };
+          itemData.tributos.cofins = { situacao: fiscalData.default_pis_cofins };
+        }
       }
     }
 
@@ -1041,34 +1053,40 @@ async function sendOrderToBling(
     numeroLoja: orderNumber,
     data: new Date(order.created_at).toISOString().split('T')[0],
     dataPrevista: order.event_date,
-    situacao: { id: 0 }, // 0 = Em aberto (todos os pedidos importados como "Em aberto")
     contato: { id: contactId },
     itens: consolidatedItems,
     observacoes: order.observation || '',
-    observacoesInternas: `Pedido ID: ${order.id} | Evento: ${order.event_type}`,
+    observacoesInternas: `Pedido ID: ${order.id} | Evento: ${order.event_type}${skipStock ? ' | SEM BAIXA DE ESTOQUE' : ''}`,
   };
 
-  // Adicionar tributos do pedido se configurados
-  if (fiscalData && (fiscalData.default_icms_situacao || fiscalData.default_pis_cofins || fiscalData.default_ipi !== null)) {
-    blingOrder.tributos = {};
-    
-    if (fiscalData.default_icms_situacao) {
-      blingOrder.tributos.icms = {
-        situacao: fiscalData.default_icms_situacao,
-        origem: fiscalData.default_icms_origem || '0',
-      };
-    }
-    
-    if (fiscalData.default_pis_cofins) {
-      blingOrder.tributos.pis = { situacao: fiscalData.default_pis_cofins };
-      blingOrder.tributos.cofins = { situacao: fiscalData.default_pis_cofins };
-    }
-    
-    if (fiscalData.default_ipi !== null && fiscalData.default_ipi !== undefined) {
-      blingOrder.tributos.ipi = { aliquota: fiscalData.default_ipi };
-    }
+  // Situação e tributos apenas quando NÃO está em modo skipStock
+  if (!skipStock) {
+    blingOrder.situacao = { id: 0 }; // 0 = Em aberto
 
-    console.log('[bling-sync-orders] Tributos adicionados:', JSON.stringify(blingOrder.tributos, null, 2));
+    // Adicionar tributos do pedido se configurados
+    if (fiscalData && (fiscalData.default_icms_situacao || fiscalData.default_pis_cofins || fiscalData.default_ipi !== null)) {
+      blingOrder.tributos = {};
+
+      if (fiscalData.default_icms_situacao) {
+        blingOrder.tributos.icms = {
+          situacao: fiscalData.default_icms_situacao,
+          origem: fiscalData.default_icms_origem || '0',
+        };
+      }
+
+      if (fiscalData.default_pis_cofins) {
+        blingOrder.tributos.pis = { situacao: fiscalData.default_pis_cofins };
+        blingOrder.tributos.cofins = { situacao: fiscalData.default_pis_cofins };
+      }
+
+      if (fiscalData.default_ipi !== null && fiscalData.default_ipi !== undefined) {
+        blingOrder.tributos.ipi = { aliquota: fiscalData.default_ipi };
+      }
+
+      console.log('[bling-sync-orders] Tributos adicionados:', JSON.stringify(blingOrder.tributos, null, 2));
+    }
+  } else {
+    console.log('[bling-sync-orders] skipStock: OMITINDO situação e tributos para evitar baixa de estoque');
   }
 
   // Extrair valor do frete da observação (formato: "Frete: R$ XX,XX" ou "frete de R$ XX,XX")
@@ -1339,10 +1357,12 @@ async function sendOrderToBling(
     }
   }
 
-  // Vincular à loja OrderZap se configurado
-  if (storeId) {
+  // Vincular à loja OrderZap se configurado (pular quando skipStock, pois a loja pode forçar integração de estoque)
+  if (storeId && !skipStock) {
     blingOrder.loja = { id: storeId };
     console.log(`[bling-sync-orders] Vinculando pedido à loja ID: ${storeId}`);
+  } else if (storeId && skipStock) {
+    console.log(`[bling-sync-orders] skipStock: NÃO vinculando loja ${storeId} para evitar integração de estoque`);
   }
 
   console.log('[bling-sync-orders] Sending order to Bling:', JSON.stringify(blingOrder, null, 2));
@@ -1447,7 +1467,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { action, tenant_id, order_id, start_date, end_date } = await req.json();
+    const { action, tenant_id, order_id, order_ids, start_date, end_date, skip_stock } = await req.json();
 
     console.log(`[bling-sync-orders] ========================================`);
     console.log(`[bling-sync-orders] Action: ${action}, Tenant: ${tenant_id}, Order: ${order_id}`);
@@ -1803,7 +1823,7 @@ serve(async (req) => {
           other: integration.bling_payment_id_other || null,
         };
         
-        const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProvider, customShippingOptions, blingPaymentIds);
+        const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProvider, customShippingOptions, blingPaymentIds, undefined, skip_stock === true);
 
         // Persistir o ID do pedido no Bling e marcar como synced
         await supabase
@@ -2121,7 +2141,7 @@ serve(async (req) => {
               other: integration.bling_payment_id_other || null,
             };
             
-            const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProviderBulk, customShippingOptionsBulk, blingPaymentIdsBulk);
+            const blingResult = await sendOrderToBling(order, cartItems, customer, accessToken, supabase, tenant_id, blingStoreId, fiscalData, activeShippingProviderBulk, customShippingOptionsBulk, blingPaymentIdsBulk, undefined, skip_stock === true);
 
             await supabase
               .from('orders')
