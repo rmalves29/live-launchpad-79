@@ -1448,7 +1448,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { action, tenant_id, order_id, start_date, end_date } = await req.json();
+    const { action, tenant_id, order_id, order_ids, start_date, end_date, skip_stock } = await req.json();
 
     console.log(`[bling-sync-orders] ========================================`);
     console.log(`[bling-sync-orders] Action: ${action}, Tenant: ${tenant_id}, Order: ${order_id}`);
