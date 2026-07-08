@@ -104,3 +104,6 @@ verify_jwt = false
 [functions.pagarme-subscription-webhook]
 verify_jwt = false
 
+
+[functions.frenet-webhook]
+verify_jwt = false
