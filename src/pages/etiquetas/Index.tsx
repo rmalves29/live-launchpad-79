@@ -79,11 +79,13 @@ interface IntegrationLog {
   error_message?: string;
 }
 
-const SHIPPING_PROVIDER_LABELS: Record<'melhor_envio' | 'mandae' | 'correios' | 'meuscorreios', string> = {
+const SHIPPING_PROVIDER_LABELS: Record<'melhor_envio' | 'mandae' | 'correios' | 'meuscorreios' | 'frenet' | 'superfrete', string> = {
   melhor_envio: 'Melhor Envio',
   mandae: 'Mandae',
   correios: 'Correios',
   meuscorreios: 'Meus Correios',
+  frenet: 'Frenet',
+  superfrete: 'SuperFrete',
 };
 
 const Etiquetas = () => {
