@@ -182,7 +182,7 @@ async function createShipping(
     },
   };
 
-  const resp = await fetch("https://api.frenet.com.br/shipping/dispatch", {
+  const resp = await fetch("https://api.frenet.com.br/shipping/efetuaenvio", {
     method: "POST",
     headers: { token, "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(payload),
