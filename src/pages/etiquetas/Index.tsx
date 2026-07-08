@@ -79,13 +79,20 @@ interface IntegrationLog {
   error_message?: string;
 }
 
-const SHIPPING_PROVIDER_LABELS: Record<'melhor_envio' | 'mandae' | 'correios' | 'meuscorreios' | 'frenet' | 'superfrete', string> = {
-  melhor_envio: 'Melhor Envio',
-  mandae: 'Mandae',
+// Config centralizada por provider — para adicionar um novo método basta acrescentar
+// uma entrada aqui com { label, functionName, createAction }. O botão "Criar Remessa"
+// da tela de Etiquetas passa a suportá-lo automaticamente.
+export const SHIPPING_LABEL_PROVIDERS: Record<string, { label: string; functionName: string; createAction: string } | undefined> = {
+  melhor_envio: { label: 'Melhor Envio', functionName: 'melhor-envio-labels', createAction: 'create_shipment' },
+  mandae: { label: 'Mandae', functionName: 'mandae-labels', createAction: 'create_order' },
+  frenet: { label: 'Frenet', functionName: 'frenet-labels', createAction: 'create_shipping' },
+  superfrete: { label: 'SuperFrete', functionName: 'superfrete-labels', createAction: 'create_shipment' },
+};
+
+const SHIPPING_PROVIDER_LABELS: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(SHIPPING_LABEL_PROVIDERS).map(([k, v]) => [k, v!.label])),
   correios: 'Correios',
   meuscorreios: 'Meus Correios',
-  frenet: 'Frenet',
-  superfrete: 'SuperFrete',
 };
 
 const Etiquetas = () => {
