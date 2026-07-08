@@ -670,6 +670,7 @@ const PublicCheckout = () => {
              // SEMPRE exibe o nome da integração ativa do tenant, não da transportadora
              const displayCompany = activeIntegration.provider === 'mandae' ? 'Mandae' 
                 : activeIntegration.provider === 'superfrete' ? 'SuperFrete'
+                : activeIntegration.provider === 'frenet' ? 'Frenet'
                : (activeIntegration.provider === 'meuscorreios' || activeIntegration.provider === 'correios') ? 'Correios' 
                : 'Melhor Envio';
 
