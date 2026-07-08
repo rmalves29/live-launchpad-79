@@ -130,7 +130,7 @@ const Etiquetas = () => {
   // Estado para integração de frete ativa
   const [activeShippingProvider, setActiveShippingProvider] = useState<ShippingProvider>(null);
   const activeProviderLabel = activeShippingProvider ? SHIPPING_PROVIDER_LABELS[activeShippingProvider] : 'integração de frete';
-  const isProviderHandledInLabelsPage = activeShippingProvider === 'melhor_envio' || activeShippingProvider === 'mandae';
+  const isProviderHandledInLabelsPage = activeShippingProvider === 'melhor_envio' || activeShippingProvider === 'mandae' || activeShippingProvider === 'frenet' || activeShippingProvider === 'superfrete';
   const isCorreiosProvider = activeShippingProvider === 'correios' || activeShippingProvider === 'meuscorreios';
 
   const openIntegrationsPage = () => {
