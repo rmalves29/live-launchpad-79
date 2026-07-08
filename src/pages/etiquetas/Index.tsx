@@ -412,19 +412,14 @@ const Etiquetas = () => {
     setProcessingOrders(prev => new Set(prev).add(orderId));
     
     try {
-      // Determinar função e action baseado na integração ativa
-      let functionName = 'melhor-envio-labels';
-      let action: string = 'create_shipment';
-      if (activeShippingProvider === 'mandae') {
-        functionName = 'mandae-labels';
-        action = 'create_order';
-      } else if (activeShippingProvider === 'frenet') {
-        functionName = 'frenet-labels';
-        action = 'create_shipping';
-      } else if (activeShippingProvider === 'superfrete') {
-        functionName = 'superfrete-labels';
-        action = 'create_shipment';
+      // Determinar função e action pela config centralizada
+      const cfg = SHIPPING_LABEL_PROVIDERS[activeShippingProvider!];
+      if (!cfg) {
+        toast.error(getUnsupportedProviderMessage());
+        return;
       }
+      const functionName = cfg.functionName;
+      const action = cfg.createAction;
       
       const requestPayload = {
         action,
