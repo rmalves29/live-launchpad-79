@@ -406,8 +406,18 @@ const Etiquetas = () => {
     
     try {
       // Determinar função e action baseado na integração ativa
-      const functionName = activeShippingProvider === 'mandae' ? 'mandae-labels' : 'melhor-envio-labels';
-      const action = activeShippingProvider === 'mandae' ? 'create_order' : 'create_shipment';
+      let functionName = 'melhor-envio-labels';
+      let action: string = 'create_shipment';
+      if (activeShippingProvider === 'mandae') {
+        functionName = 'mandae-labels';
+        action = 'create_order';
+      } else if (activeShippingProvider === 'frenet') {
+        functionName = 'frenet-labels';
+        action = 'create_shipping';
+      } else if (activeShippingProvider === 'superfrete') {
+        functionName = 'superfrete-labels';
+        action = 'create_shipment';
+      }
       
       const requestPayload = {
         action,
