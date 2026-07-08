@@ -79,11 +79,13 @@ interface IntegrationLog {
   error_message?: string;
 }
 
-const SHIPPING_PROVIDER_LABELS: Record<'melhor_envio' | 'mandae' | 'correios' | 'meuscorreios', string> = {
+const SHIPPING_PROVIDER_LABELS: Record<'melhor_envio' | 'mandae' | 'correios' | 'meuscorreios' | 'frenet' | 'superfrete', string> = {
   melhor_envio: 'Melhor Envio',
   mandae: 'Mandae',
   correios: 'Correios',
   meuscorreios: 'Meus Correios',
+  frenet: 'Frenet',
+  superfrete: 'SuperFrete',
 };
 
 const Etiquetas = () => {
@@ -128,7 +130,7 @@ const Etiquetas = () => {
   // Estado para integração de frete ativa
   const [activeShippingProvider, setActiveShippingProvider] = useState<ShippingProvider>(null);
   const activeProviderLabel = activeShippingProvider ? SHIPPING_PROVIDER_LABELS[activeShippingProvider] : 'integração de frete';
-  const isProviderHandledInLabelsPage = activeShippingProvider === 'melhor_envio' || activeShippingProvider === 'mandae';
+  const isProviderHandledInLabelsPage = activeShippingProvider === 'melhor_envio' || activeShippingProvider === 'mandae' || activeShippingProvider === 'frenet' || activeShippingProvider === 'superfrete';
   const isCorreiosProvider = activeShippingProvider === 'correios' || activeShippingProvider === 'meuscorreios';
 
   const openIntegrationsPage = () => {
@@ -371,7 +373,7 @@ const Etiquetas = () => {
       const { data, error } = await supabaseTenant
         .from('webhook_logs')
         .select('*')
-        .or('webhook_type.like.melhor_envio_%,webhook_type.like.mandae_%')
+        .or('webhook_type.like.melhor_envio_%,webhook_type.like.mandae_%,webhook_type.like.frenet_%,webhook_type.like.superfrete_%')
         .order('created_at', { ascending: false })
         .limit(100);
 
@@ -404,8 +406,18 @@ const Etiquetas = () => {
     
     try {
       // Determinar função e action baseado na integração ativa
-      const functionName = activeShippingProvider === 'mandae' ? 'mandae-labels' : 'melhor-envio-labels';
-      const action = activeShippingProvider === 'mandae' ? 'create_order' : 'create_shipment';
+      let functionName = 'melhor-envio-labels';
+      let action: string = 'create_shipment';
+      if (activeShippingProvider === 'mandae') {
+        functionName = 'mandae-labels';
+        action = 'create_order';
+      } else if (activeShippingProvider === 'frenet') {
+        functionName = 'frenet-labels';
+        action = 'create_shipping';
+      } else if (activeShippingProvider === 'superfrete') {
+        functionName = 'superfrete-labels';
+        action = 'create_shipment';
+      }
       
       const requestPayload = {
         action,
