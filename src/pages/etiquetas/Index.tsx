@@ -79,13 +79,20 @@ interface IntegrationLog {
   error_message?: string;
 }
 
-const SHIPPING_PROVIDER_LABELS: Record<'melhor_envio' | 'mandae' | 'correios' | 'meuscorreios' | 'frenet' | 'superfrete', string> = {
-  melhor_envio: 'Melhor Envio',
-  mandae: 'Mandae',
+// Config centralizada por provider — para adicionar um novo método basta acrescentar
+// uma entrada aqui com { label, functionName, createAction }. O botão "Criar Remessa"
+// da tela de Etiquetas passa a suportá-lo automaticamente.
+export const SHIPPING_LABEL_PROVIDERS: Record<string, { label: string; functionName: string; createAction: string } | undefined> = {
+  melhor_envio: { label: 'Melhor Envio', functionName: 'melhor-envio-labels', createAction: 'create_shipment' },
+  mandae: { label: 'Mandae', functionName: 'mandae-labels', createAction: 'create_order' },
+  frenet: { label: 'Frenet', functionName: 'frenet-labels', createAction: 'create_shipping' },
+  superfrete: { label: 'SuperFrete', functionName: 'superfrete-labels', createAction: 'create_shipment' },
+};
+
+const SHIPPING_PROVIDER_LABELS: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(SHIPPING_LABEL_PROVIDERS).map(([k, v]) => [k, v!.label])),
   correios: 'Correios',
   meuscorreios: 'Meus Correios',
-  frenet: 'Frenet',
-  superfrete: 'SuperFrete',
 };
 
 const Etiquetas = () => {
@@ -130,7 +137,7 @@ const Etiquetas = () => {
   // Estado para integração de frete ativa
   const [activeShippingProvider, setActiveShippingProvider] = useState<ShippingProvider>(null);
   const activeProviderLabel = activeShippingProvider ? SHIPPING_PROVIDER_LABELS[activeShippingProvider] : 'integração de frete';
-  const isProviderHandledInLabelsPage = activeShippingProvider === 'melhor_envio' || activeShippingProvider === 'mandae' || activeShippingProvider === 'frenet' || activeShippingProvider === 'superfrete';
+  const isProviderHandledInLabelsPage = !!activeShippingProvider && !!SHIPPING_LABEL_PROVIDERS[activeShippingProvider];
   const isCorreiosProvider = activeShippingProvider === 'correios' || activeShippingProvider === 'meuscorreios';
 
   const openIntegrationsPage = () => {
@@ -405,19 +412,14 @@ const Etiquetas = () => {
     setProcessingOrders(prev => new Set(prev).add(orderId));
     
     try {
-      // Determinar função e action baseado na integração ativa
-      let functionName = 'melhor-envio-labels';
-      let action: string = 'create_shipment';
-      if (activeShippingProvider === 'mandae') {
-        functionName = 'mandae-labels';
-        action = 'create_order';
-      } else if (activeShippingProvider === 'frenet') {
-        functionName = 'frenet-labels';
-        action = 'create_shipping';
-      } else if (activeShippingProvider === 'superfrete') {
-        functionName = 'superfrete-labels';
-        action = 'create_shipment';
+      // Determinar função e action pela config centralizada
+      const cfg = SHIPPING_LABEL_PROVIDERS[activeShippingProvider!];
+      if (!cfg) {
+        toast.error(getUnsupportedProviderMessage());
+        return;
       }
+      const functionName = cfg.functionName;
+      const action = cfg.createAction;
       
       const requestPayload = {
         action,
@@ -464,7 +466,12 @@ const Etiquetas = () => {
 
       if (data.success === true) {
         console.log('✅ [ETIQUETAS] Remessa criada com sucesso:', data);
-        toast.success(`Remessa criada no ${providerName} com sucesso!`);
+        if (data.manual && data.label_url) {
+          toast.success(data.message || `Abra o painel do ${providerName} para imprimir a etiqueta.`);
+          window.open(data.label_url, '_blank', 'noopener');
+        } else {
+          toast.success(`Remessa criada no ${providerName} com sucesso!`);
+        }
         loadPaidOrders();
       } else {
         if (data.shipment || data.mandae_order_id) {

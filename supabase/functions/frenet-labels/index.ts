@@ -108,6 +108,7 @@ async function createShipping(
 ) {
   const cleanCep = (v: string) => (v || "").replace(/\D/g, "");
   const cleanPhone = (v: string) => (v || "").replace(/\D/g, "");
+  const cleanDoc = (v: string) => (v || "").replace(/\D/g, "");
 
   const { data: items } = await supabase.from("cart_items").select("*").eq("cart_id", order.cart_id);
 
@@ -115,29 +116,26 @@ async function createShipping(
   if (items && items.length) totalWeight = items.reduce((s: number, i: any) => s + 0.3 * (i.qty || 1), 0);
   const totalValue = Math.max(Math.round(order.total_amount) / 100, 1);
 
-  // Detectar service code — do override, ou do prefixo em observation, ou primeiro da cotação
+  // Detectar service code — override, prefixo em observation, ou cotação
   let serviceCode = serviceCodeOverride;
   if (!serviceCode) {
     const m = (order.observation || "").match(/\[FRENET_SERVICE:([^\]]+)\]/);
     if (m) serviceCode = m[1];
   }
-
   if (!serviceCode) {
-    // Fallback: cotar e pegar o mais barato
-    const quoteResp = await fetch("https://api.frenet.com.br/shipping/quote", {
-      method: "POST",
-      headers: { token, "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({
-        SellerCEP: cleanCep(integration.from_cep),
-        RecipientCEP: cleanCep(order.customer_cep),
-        ShipmentInvoiceValue: totalValue,
-        ShippingItemArray: [{ Height: 2, Length: 20, Width: 16, Weight: totalWeight, Quantity: 1 }],
-        RecipientCountry: "BR",
-      }),
-    });
-    const qt = await quoteResp.text();
     try {
-      const qd = JSON.parse(qt);
+      const quoteResp = await fetch("https://api.frenet.com.br/shipping/quote", {
+        method: "POST",
+        headers: { token, "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          SellerCEP: cleanCep(integration.from_cep),
+          RecipientCEP: cleanCep(order.customer_cep),
+          ShipmentInvoiceValue: totalValue,
+          ShippingItemArray: [{ Height: 2, Length: 20, Width: 16, Weight: totalWeight, Quantity: 1 }],
+          RecipientCountry: "BR",
+        }),
+      });
+      const qd = JSON.parse(await quoteResp.text());
       const arr = qd.ShippingSevicesArray || qd.ShippingServicesArray || [];
       const valid = arr.filter((s: any) => s.ShippingPrice && s.Error !== true);
       valid.sort((a: any, b: any) => Number(String(a.ShippingPrice).replace(",", ".")) - Number(String(b.ShippingPrice).replace(",", ".")));
@@ -145,65 +143,118 @@ async function createShipping(
     } catch {}
   }
 
-  if (!serviceCode) {
-    return json({ success: false, error: "Não foi possível determinar o serviço Frenet" }, 200);
-  }
+  const partnerToken = Deno.env.get("FRENET_PARTNER_TOKEN") || "";
 
-  // Dispatch (criação de envio)
-  const payload = {
-    ShippingSeviceCode: serviceCode, // Frenet usa esta grafia
-    ShipmentInvoice: `PED-${order.id}`,
-    ShipmentInvoiceValue: totalValue,
-    ShippingItemArray: [{ Height: 2, Length: 20, Width: 16, Weight: totalWeight, Quantity: 1 }],
-    Sender: {
-      CompanyName: tenant.company_name || tenant.name,
-      Address: tenant.company_address || "",
-      AddressNumber: tenant.company_number || "S/N",
-      AddressComplement: "",
-      District: tenant.company_district || "",
-      City: tenant.company_city || "",
-      State: tenant.company_state || "",
-      PostalCode: cleanCep(integration.from_cep),
-      Country: "BR",
-      Email: tenant.email || "",
-      Phone: cleanPhone(tenant.company_phone || tenant.phone),
+  // Payload no formato Frenet WhiteLabel Orders API (v1)
+  const items_arr = (items || []).map((it: any, idx: number) => ({
+    ItemId: String(it.id ?? idx + 1),
+    ProductId: String(it.product_id ?? it.product_code ?? idx + 1),
+    Weight: 0.3,
+    Length: 16,
+    Height: 2,
+    Width: 12,
+    Quantity: Number(it.qty || 1),
+    Price: Number(it.unit_price || 0) / 100,
+    ProductName: it.product_name || "Produto",
+    SKU: String(it.product_code || ""),
+  }));
+
+  const shipmentPayload = {
+    Order: {
+      Id: `PED-${order.id}`,
+      Value: totalValue,
+      Created: new Date().toISOString(),
+      UseFrenetRegistration: true,
+      Items: items_arr.length ? items_arr : [{
+        ItemId: "1", ProductId: "1", Weight: totalWeight, Length: 20, Height: 2, Width: 16,
+        Quantity: 1, Price: totalValue, ProductName: "Pedido", SKU: `PED-${order.id}`,
+      }],
+      To: {
+        Name: order.customer_name || "Cliente",
+        Email: "",
+        Phone: cleanPhone(order.customer_phone),
+        Cellphone: cleanPhone(order.customer_phone),
+        Document: cleanDoc(order.customer_cpf || ""),
+        Address: {
+          ZipCode: cleanCep(order.customer_cep),
+          City: order.customer_city || "",
+          Street: order.customer_street || "",
+          AddressNumber: order.customer_number || "S/N",
+          AddressComplement: order.customer_complement || "",
+          AddressQuarter: order.customer_neighborhood || "Centro",
+          AddressState: order.customer_state || "",
+          Country: "BR",
+        },
+      },
     },
-    Recipient: {
-      Name: order.customer_name || "Cliente",
-      Address: order.customer_street || "",
-      AddressNumber: order.customer_number || "S/N",
-      AddressComplement: order.customer_complement || "",
-      District: order.customer_neighborhood || "",
-      City: order.customer_city || "",
-      State: order.customer_state || "",
-      PostalCode: cleanCep(order.customer_cep),
-      Country: "BR",
-      Phone: cleanPhone(order.customer_phone),
+    Volumes: {
+      Weight: totalWeight,
+      Length: 20,
+      Height: 2,
+      Width: 16,
+      Price: totalValue,
+      DeclaredValue: totalValue,
     },
+    ...(serviceCode ? { Quotation: { ServiceCode: serviceCode } } : {}),
   };
 
-  const resp = await fetch("https://api.frenet.com.br/shipping/dispatch", {
+  const payload = [shipmentPayload];
+
+  // Sem partner-token, não é possível gerar etiqueta programaticamente na Frenet.
+  // Retornamos sucesso com URL do painel para geração manual.
+  if (!partnerToken) {
+    const panelUrl = "https://painel.frenet.com.br/Order/List";
+    await supabase
+      .from("orders")
+      .update({
+        melhor_envio_shipment_id: `frenet_manual_${order.id}`,
+        observation: `${order.observation || ""}\n[Frenet: gerar etiqueta manualmente em ${panelUrl}]`.trim(),
+      })
+      .eq("id", order.id);
+    await log(supabase, order.tenant_id, order.id, "create_shipping", 200, payload, "Sem FRENET_PARTNER_TOKEN — geração manual pelo painel", undefined);
+    return json({
+      success: true,
+      manual: true,
+      label_url: panelUrl,
+      message: "A Frenet exige geração manual da etiqueta pelo painel. Abra o painel Frenet, localize o pedido e imprima a etiqueta.",
+    }, 200);
+  }
+
+  const endpoint = integration.sandbox
+    ? "https://whitelabel-hml.frenet.dev/v1/orders"
+    : "https://whitelabel.frenet.dev/v1/orders";
+
+  const resp = await fetch(endpoint, {
     method: "POST",
-    headers: { token, "Content-Type": "application/json", Accept: "application/json" },
+    headers: {
+      token,
+      "x-partner-token": partnerToken,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
     body: JSON.stringify(payload),
   });
   const text = await resp.text();
-  console.log("[frenet-labels] Dispatch status:", resp.status, "body:", text.substring(0, 500));
+  console.log("[frenet-labels] Orders status:", resp.status, "body:", text.substring(0, 500));
 
   await log(supabase, order.tenant_id, order.id, "create_shipping", resp.status, payload, text, resp.ok ? undefined : text.substring(0, 500));
 
   if (!resp.ok) {
-    return json({ success: false, error: "Erro ao criar envio Frenet", details: text }, 200);
+    let msg = `Frenet respondeu ${resp.status}`;
+    try {
+      const errBody = JSON.parse(text);
+      msg = errBody.Message || errBody.message || msg;
+      if (errBody.Details?.[0]?.Message) msg += ` — ${errBody.Details[0].Message}`;
+    } catch {}
+    return json({ success: false, error: msg, details: text.substring(0, 500) }, 200);
   }
 
   let result: any = {};
-  try {
-    result = JSON.parse(text);
-  } catch {}
-
-  const shipmentId = result.ShippingId || result.OrderNumber || result.TrackingNumber || `${order.id}`;
-  const trackingCode = result.TrackingNumber || result.Tracking || null;
-  const labelUrl = result.LabelUrl || result.PrintUrl || null;
+  try { result = JSON.parse(text); } catch {}
+  const first = Array.isArray(result?.Results) ? result.Results[0] : (Array.isArray(result) ? result[0] : result);
+  const shipmentId = first?.ShipmentId || first?.OrderId || `${order.id}`;
+  const trackingCode = first?.TrackingNumber || null;
+  const labelUrl = first?.LabelUrl || first?.PrintUrl || null;
 
   await supabase
     .from("orders")
@@ -214,10 +265,13 @@ async function createShipping(
     })
     .eq("id", order.id);
 
-  return json(
-    { success: true, shipment_id: shipmentId, tracking_code: trackingCode, label_url: labelUrl, message: "Envio criado no Frenet" },
-    200,
-  );
+  return json({
+    success: true,
+    shipment_id: shipmentId,
+    tracking_code: trackingCode,
+    label_url: labelUrl,
+    message: "Envio criado no Frenet",
+  }, 200);
 }
 
 async function getTracking(supabase: any, integration: any, order: any, token: string) {
