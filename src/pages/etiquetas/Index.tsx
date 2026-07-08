@@ -466,7 +466,12 @@ const Etiquetas = () => {
 
       if (data.success === true) {
         console.log('✅ [ETIQUETAS] Remessa criada com sucesso:', data);
-        toast.success(`Remessa criada no ${providerName} com sucesso!`);
+        if (data.manual && data.label_url) {
+          toast.success(data.message || `Abra o painel do ${providerName} para imprimir a etiqueta.`);
+          window.open(data.label_url, '_blank', 'noopener');
+        } else {
+          toast.success(`Remessa criada no ${providerName} com sucesso!`);
+        }
         loadPaidOrders();
       } else {
         if (data.shipment || data.mandae_order_id) {
