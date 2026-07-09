@@ -87,6 +87,8 @@ serve(async (req) => {
         return await createShipping(supabase, integration, order, tenant, token, service_code);
       case "get_tracking":
         return await getTracking(supabase, integration, order, token);
+      case "get_label":
+        return await getLabel(order);
       case "cancel_shipping":
         return await cancelShipping(supabase, order);
       default:
