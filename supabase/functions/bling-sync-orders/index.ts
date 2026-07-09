@@ -1668,12 +1668,11 @@ async function sendOrderToBling(
     }
   }
 
-  // Vincular à loja OrderZap se configurado (pular quando skipStock, pois a loja pode forçar integração de estoque)
-  if (storeId && !skipStock) {
+  // Vincular à loja OrderZap sempre que configurado.
+  // Mesmo em skipStock (usa item "serviço" sem estoque), o pedido precisa aparecer na loja correta.
+  if (storeId) {
     blingOrder.loja = { id: storeId };
-    console.log(`[bling-sync-orders] Vinculando pedido à loja ID: ${storeId}`);
-  } else if (storeId && skipStock) {
-    console.log(`[bling-sync-orders] skipStock: NÃO vinculando loja ${storeId} para evitar integração de estoque`);
+    console.log(`[bling-sync-orders] Vinculando pedido à loja ID: ${storeId} (skipStock=${skipStock})`);
   }
 
   console.log('[bling-sync-orders] Sending order to Bling:', JSON.stringify(blingOrder, null, 2));
