@@ -302,6 +302,7 @@ export default function BlingOrdersSyncPanel({ tenantId, queryClient, setScopeEr
             action: 'force_resync_order',
             tenant_id: tenantId,
             order_id: orderId,
+            skip_stock: true,
           }),
         }
       );
