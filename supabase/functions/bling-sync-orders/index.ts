@@ -2254,7 +2254,7 @@ serve(async (req) => {
               bling_order_id: blingResult.blingOrderId,
               status: blingResult.kind,
             });
-          } catch (error) {
+          } catch (error: any) {
             console.error(`[bling-sync-orders] Error syncing order ${order.id}:`, error);
             // Liberar o lock em caso de erro
             await supabase.from('orders').update({ bling_sync_status: 'error' }).eq('id', order.id).eq('tenant_id', tenant_id);
@@ -2642,7 +2642,7 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('[bling-sync-orders] Error:', error);
 
     // Tentar liberar o lock do pedido em caso de erro no send_order
