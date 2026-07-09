@@ -898,6 +898,190 @@ interface CustomShippingOption {
   delivery_days: number;
 }
 
+function normalizeShippingText(value: string | null | undefined): string {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function stripFrenetPrefix(value: string | null | undefined): string {
+  return String(value || '')
+    .replace(/^\s*Frenet\s*[-–]\s*/i, '')
+    .trim();
+}
+
+function normalizeFrenetServiceLabel(value: string | null | undefined): string {
+  const service = stripFrenetPrefix(value)
+    .replace(/^\s*Correios\s*[-–]\s*/i, '')
+    .replace(/\s*\([^)]*\)\s*/g, '')
+    .trim();
+  const normalized = normalizeShippingText(service);
+
+  if (/\bsedex\b/.test(normalized)) return 'SEDEX';
+  if (/\bpac\b/.test(normalized)) return 'PAC';
+  if (/\bmini\s*envios?\b/.test(normalized) || /\bpac\s*mini\b/.test(normalized)) return 'Mini Envios';
+
+  return service || '';
+}
+
+function inferFrenetCarrierName(freteNome: string, servicoFrete: string): string {
+  const normalized = normalizeShippingText(`${freteNome} ${servicoFrete}`);
+  const carrierMap: Array<[RegExp, string]> = [
+    [/\b(sedex|pac|mini envios?|correios)\b/, 'Correios'],
+    [/\bjadlog\b/, 'Jadlog'],
+    [/\bloggi\b/, 'Loggi'],
+    [/\bkangu\b/, 'Kangu'],
+    [/\bjamef\b/, 'Jamef'],
+    [/\btotal express\b/, 'Total Express'],
+    [/\bazul\b/, 'Azul Cargo'],
+    [/\blatam\b/, 'LATAM Cargo'],
+    [/\bbraspress\b/, 'Braspress'],
+    [/\brodonaves\b/, 'RTE Rodonaves'],
+    [/\bsequoia\b/, 'Sequoia'],
+  ];
+
+  for (const [pattern, carrier] of carrierMap) {
+    if (pattern.test(normalized)) return carrier;
+  }
+
+  return 'Transportadora Frenet';
+}
+
+function getFrenetServiceCodeCandidate(shippingServiceId: unknown): string {
+  if (shippingServiceId === null || shippingServiceId === undefined || shippingServiceId === '') return '';
+  const raw = String(shippingServiceId).trim();
+  if (!raw) return '';
+  return /^\d+$/.test(raw) && raw.length < 5 ? raw.padStart(5, '0') : raw;
+}
+
+function getLogisticServiceMatchFields(service: any): string[] {
+  const aliases = Array.isArray(service?.aliases) ? service.aliases : [];
+  return [
+    service?.descricao,
+    service?.codigo,
+    service?.idCodigoServico,
+    ...aliases,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+}
+
+function matchesLogisticService(service: any, candidateKeys: Set<string>): boolean {
+  const fields = getLogisticServiceMatchFields(service).map(normalizeShippingText).filter(Boolean);
+  return fields.some((field) => {
+    if (candidateKeys.has(field)) return true;
+    for (const candidate of candidateKeys) {
+      if (candidate && (field.includes(candidate) || candidate.includes(field))) return true;
+    }
+    return false;
+  });
+}
+
+function chooseLogisticServiceAlias(service: any, candidateKeys: Set<string>): string {
+  const aliases = Array.isArray(service?.aliases)
+    ? service.aliases.map((alias: unknown) => String(alias || '').trim()).filter(Boolean)
+    : [];
+
+  const matchingAlias = aliases.find((alias: string) => candidateKeys.has(normalizeShippingText(alias)));
+  return matchingAlias || aliases[0] || String(service?.codigo || service?.descricao || '').trim();
+}
+
+async function resolveBlingFrenetShippingDetails(
+  accessToken: string,
+  serviceName: string,
+  shippingServiceId: unknown,
+  freteNome: string,
+): Promise<{ servicoAlias: string; transportadorNome: string; logisticaDescricao: string } | null> {
+  const normalizedService = normalizeFrenetServiceLabel(serviceName || freteNome);
+  const serviceCode = getFrenetServiceCodeCandidate(shippingServiceId);
+  const candidates = [
+    serviceName,
+    normalizedService,
+    freteNome,
+    stripFrenetPrefix(freteNome),
+    serviceCode,
+    serviceCode.replace(/^0+/, ''),
+  ]
+    .map((candidate) => String(candidate || '').trim())
+    .filter(Boolean);
+  const candidateKeys = new Set(candidates.map(normalizeShippingText).filter(Boolean));
+
+  if (candidateKeys.size === 0) return null;
+
+  try {
+    const { response, text } = await blingFetchWithRetry(
+      `${BLING_API_URL}/logisticas?tipoIntegracao=Frenet&situacao=H&limite=100`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+      },
+      { maxAttempts: 3, label: 'list-frenet-logistics' }
+    );
+
+    if (!response.ok) {
+      console.log('[bling-sync-orders] Não foi possível consultar logísticas Frenet no Bling:', response.status, text.slice(0, 300));
+      return null;
+    }
+
+    const parsed = JSON.parse(text || '{}');
+    const logistics = Array.isArray(parsed?.data) ? parsed.data : [];
+
+    for (const logistic of logistics) {
+      let logisticDetail = logistic;
+      const hasDetailedServices = Array.isArray(logistic?.servicos) && logistic.servicos.some((service: any) => service?.descricao || service?.aliases || service?.transportador);
+
+      if (logistic?.id && !hasDetailedServices) {
+        await delay(350);
+        const { response: detailResponse, text: detailText } = await blingFetchWithRetry(
+          `${BLING_API_URL}/logisticas/${logistic.id}?listarServicosInativos=true`,
+          {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+            },
+          },
+          { maxAttempts: 3, label: `get-frenet-logistic-${logistic.id}` }
+        );
+
+        if (detailResponse.ok) {
+          logisticDetail = JSON.parse(detailText || '{}')?.data || logistic;
+        }
+      }
+
+      const services = Array.isArray(logisticDetail?.servicos) ? logisticDetail.servicos : [];
+      for (const service of services) {
+        if (service?.ativo === false) continue;
+        if (!matchesLogisticService(service, candidateKeys)) continue;
+
+        const servicoAlias = chooseLogisticServiceAlias(service, candidateKeys);
+        const transportadorNome = String(
+          service?.transportador?.nome ||
+          service?.transportador?.contato?.nome ||
+          service?.transportador?.descricao ||
+          inferFrenetCarrierName(freteNome, normalizedService)
+        ).trim();
+        const logisticaDescricao = String(logisticDetail?.descricao || logistic?.descricao || 'Frenet').trim();
+
+        if (servicoAlias) {
+          console.log('[bling-sync-orders] Serviço Frenet localizado no Bling:', { logisticaDescricao, servicoAlias, transportadorNome });
+          return { servicoAlias, transportadorNome, logisticaDescricao };
+        }
+      }
+    }
+
+    console.log('[bling-sync-orders] Nenhum serviço Frenet correspondente encontrado no Bling para:', candidates);
+    return null;
+  } catch (error) {
+    console.log('[bling-sync-orders] Erro ao resolver logística Frenet no Bling:', error instanceof Error ? error.message : String(error));
+    return null;
+  }
+}
+
 async function sendOrderToBling(
   order: any, 
   cartItems: any[], 
@@ -1251,8 +1435,8 @@ async function sendOrderToBling(
     freteNome = freteNome.replace(/\s*\([^)]*\)\s*/g, '').trim();
     // Remover | e - no início e fim
     freteNome = freteNome.replace(/^[\s|\-–]+|[\s|\-–]+$/g, '').trim();
-    // Remover "Melhor Envio - " ou "Correios - " do início para deixar só o serviço
-    freteNome = freteNome.replace(/^(Melhor\s*Envio|Correios)\s*[-–]\s*/i, '').trim();
+    // Remover prefixos de integração do início para deixar só o serviço/transportadora
+    freteNome = freteNome.replace(/^(Melhor\s*Envio|Correios|Frenet)\s*[-–]\s*/i, '').trim();
     // Limitar tamanho para o Bling aceitar
     if (freteNome.length > 50) {
       freteNome = freteNome.substring(0, 50);
@@ -1264,6 +1448,7 @@ async function sendOrderToBling(
   // PRIORIDADE 2: Usar a integração de frete ativa do tenant
   let logisticaIntegracao = '';
   let servicoFrete = '';
+  let transportadorFrete = '';
   let customShippingMatch: CustomShippingOption | undefined;
   
   // Buscar opção customizada pelo nome do frete (ex: "Frete Fixo - Envio" na observação)
@@ -1328,15 +1513,48 @@ async function sendOrderToBling(
       servicoFrete = servicoMatch[1].toUpperCase().replace('ECONOMICO', 'Econômico').replace('MINIENVIO', 'Mini Envios').replace('RAPIDO', 'Rápido');
     }
   }
+
+  const isFrenetShipping = activeShippingProvider === 'frenet';
+
+  // Ajuste específico da Frenet: no Bling, `transporte.contato.nome` é o transportador,
+  // e o destinatário deve ir em `transporte.etiqueta`. Também tentamos usar o alias real
+  // do serviço configurado no Bling para que o dropdown "Logística" seja preenchido.
+  if (isFrenetShipping) {
+    const freteNomeOriginal = freteNome;
+    const frenetServiceLabel = normalizeFrenetServiceLabel(servicoFrete || freteNomeOriginal);
+
+    if (frenetServiceLabel) {
+      servicoFrete = frenetServiceLabel;
+    }
+
+    transportadorFrete = inferFrenetCarrierName(freteNomeOriginal, servicoFrete);
+    freteNome = transportadorFrete;
+
+    const resolvedFrenetDetails = await resolveBlingFrenetShippingDetails(
+      accessToken,
+      servicoFrete,
+      order.shipping_service_id,
+      freteNomeOriginal,
+    );
+
+    if (resolvedFrenetDetails) {
+      servicoFrete = resolvedFrenetDetails.servicoAlias;
+      transportadorFrete = resolvedFrenetDetails.transportadorNome || transportadorFrete;
+      freteNome = transportadorFrete;
+      logisticaIntegracao = resolvedFrenetDetails.logisticaDescricao || logisticaIntegracao;
+    }
+  }
   
-  console.log('[bling-sync-orders] Frete extraído:', { freteNome, freteValor, logisticaIntegracao, servicoFrete, activeShippingProvider, customShippingMatch: customShippingMatch?.name || null });
+  console.log('[bling-sync-orders] Frete extraído:', { freteNome, freteValor, logisticaIntegracao, servicoFrete, transportadorFrete, activeShippingProvider, customShippingMatch: customShippingMatch?.name || null });
 
   // Adicionar dados de transporte/entrega se tiver endereço
   if (customerCep && customerStreet) {
     blingOrder.transporte = {
       frete: freteValor,
       fretePorConta: 0, // 0 = Remetente, 1 = Destinatário
-      contato: {
+      contato: isFrenetShipping ? {
+        nome: transportadorFrete || freteNome || 'Transportadora Frenet',
+      } : {
         nome: customerName,
         endereco: customerStreet,
         numero: customerNumber,
@@ -1347,6 +1565,19 @@ async function sendOrderToBling(
         uf: customerState,
       },
     };
+
+    if (isFrenetShipping) {
+      blingOrder.transporte.etiqueta = {
+        nome: customerName,
+        endereco: customerStreet,
+        numero: customerNumber,
+        complemento: customerComplement,
+        bairro: customerNeighborhood,
+        cep: customerCep,
+        municipio: customerCity,
+        uf: customerState,
+      };
+    }
     
     // Adicionar transportadora se identificada
     if (freteNome) {
@@ -1363,6 +1594,7 @@ async function sendOrderToBling(
     // Adicionar serviço de frete nos volumes se identificado
     if (servicoFrete) {
       blingOrder.transporte.volumes = [{
+        ...(isFrenetShipping ? { id: 0 } : {}),
         servico: servicoFrete,
       }];
       console.log(`[bling-sync-orders] Serviço de frete: ${servicoFrete}`);
@@ -1383,8 +1615,14 @@ async function sendOrderToBling(
     }
     if (servicoFrete) {
       blingOrder.transporte.volumes = [{
+        ...(isFrenetShipping ? { id: 0 } : {}),
         servico: servicoFrete,
       }];
+    }
+    if (isFrenetShipping) {
+      blingOrder.transporte.contato = {
+        nome: transportadorFrete || freteNome || 'Transportadora Frenet',
+      };
     }
     console.log('[bling-sync-orders] Adicionando apenas valor de frete:', freteValor);
   }
