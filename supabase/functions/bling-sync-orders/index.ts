@@ -910,7 +910,7 @@ async function sendOrderToBling(
   const productCodesSeen = new Map<string, { hasBlindId: boolean; blingProductId?: number }>();
   const processedItems: any[] = [];
   
-  for (const item of cartItems) {
+  for (const [itemIndex, item] of cartItems.entries()) {
     const itemData: any = {
       quantidade: item.qty || 1,
       valor: Number(item.unit_price) || 0,
@@ -972,8 +972,11 @@ async function sendOrderToBling(
           itemData.codigo = productCode;
         }
         itemData.descricao = skipStock
-          ? `${item.product_name || 'Produto'} [${productCode}-${crypto.randomUUID().slice(0, 8)}]`
+          ? `Item Cartzy sem estoque ${order.id}-${itemIndex + 1}-${crypto.randomUUID().slice(0, 6)}`
           : (item.product_name || 'Produto');
+        if (skipStock) {
+          itemData.descricaoDetalhada = `${item.product_name || 'Produto'}${productCode ? ` | Código original: ${productCode}` : ''}`;
+        }
         console.log(`[bling-sync-orders] Item "${item.product_name}" ${skipStock ? '(SEM ESTOQUE)' : 'não encontrado no Bling, criando com código'}: ${productCode}`);
         // Registrar no seen para evitar duplicatas
         if (!productCodesSeen.has(productCode)) {
@@ -996,8 +999,11 @@ async function sendOrderToBling(
             itemData.codigo = `${productCode}${uniqueSuffix}`;
           }
           itemData.descricao = skipStock
-            ? `${item.product_name || 'Produto'} [${productCode}${uniqueSuffix}]`
+            ? `Item Cartzy sem estoque ${order.id}-${itemIndex + 1}-${crypto.randomUUID().slice(0, 6)}`
             : (item.product_name || 'Produto');
+          if (skipStock) {
+            itemData.descricaoDetalhada = `${item.product_name || 'Produto'}${productCode ? ` | Código original: ${productCode}${uniqueSuffix}` : ''}`;
+          }
           console.log(`[bling-sync-orders] Item duplicado "${item.product_name}" - usando ${skipStock ? 'descrição única' : 'código único'}: ${productCode}${uniqueSuffix}`);
         }
       }
