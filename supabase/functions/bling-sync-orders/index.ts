@@ -329,6 +329,56 @@ async function findBlingProductByCode(accessToken: string, codigo: string): Prom
   }
 }
 
+async function ensureBlingNoStockServiceProduct(accessToken: string): Promise<number> {
+  const serviceCode = 'ORDERZAP_SEM_ESTOQUE';
+  const existingId = await findBlingProductByCode(accessToken, serviceCode);
+  if (existingId) {
+    console.log(`[bling-sync-orders] Produto-serviço sem estoque encontrado no Bling: ${existingId}`);
+    return existingId;
+  }
+
+  const payload = {
+    nome: 'OrderZap - item sem baixa de estoque',
+    codigo: serviceCode,
+    tipo: 'S',
+    situacao: 'A',
+    formato: 'S',
+    preco: 0,
+    unidade: 'UN',
+    descricaoCurta: 'Item técnico usado pelo OrderZap para reenviar vendas sem movimentar estoque.',
+  };
+
+  const { response, text } = await blingFetchWithRetry(
+    `${BLING_API_URL}/produtos`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    },
+    { label: 'create-no-stock-service-product' }
+  );
+
+  if (!response.ok) {
+    const createdByRaceId = await findBlingProductByCode(accessToken, serviceCode);
+    if (createdByRaceId) return createdByRaceId;
+    throw new Error(`Não foi possível criar o produto-serviço sem estoque no Bling: ${response.status} - ${text}`);
+  }
+
+  const parsed = JSON.parse(text);
+  const id = parsed?.data?.id ?? parsed?.id;
+  if (typeof id === 'number') return id;
+  if (typeof id === 'string' && /^\d+$/.test(id)) return Number(id);
+
+  const foundAfterCreateId = await findBlingProductByCode(accessToken, serviceCode);
+  if (foundAfterCreateId) return foundAfterCreateId;
+
+  throw new Error('Produto-serviço sem estoque criado no Bling, mas não foi possível obter o ID retornado.');
+}
+
 async function refreshBlingToken(supabase: any, integration: any): Promise<string | null> {
   if (!integration.refresh_token || !integration.client_id || !integration.client_secret) {
     console.error('[bling-sync-orders] Missing credentials for token refresh');
@@ -909,6 +959,10 @@ async function sendOrderToBling(
   // Cache local para evitar enviar códigos duplicados no mesmo pedido
   const productCodesSeen = new Map<string, { hasBlindId: boolean; blingProductId?: number }>();
   const processedItems: any[] = [];
+  const noStockServiceProductId = skipStock ? await ensureBlingNoStockServiceProduct(accessToken) : null;
+  const originalItemsSummary = cartItems
+    .map((item: any) => `${item.qty || 1}x ${item.product_name || 'Produto'}${item.product_code ? ` (${item.product_code})` : ''}`)
+    .join('; ');
   
   for (const [itemIndex, item] of cartItems.entries()) {
     const itemData: any = {
@@ -917,7 +971,7 @@ async function sendOrderToBling(
       unidade: fiscalData?.default_unit || 'UN',
     };
 
-    let blingProductId = skipStock ? null : item.bling_product_id;
+    let blingProductId = skipStock ? noStockServiceProductId : item.bling_product_id;
     const productCode = item.product_code || `PROD-${item.id}`;
 
     // Verificar se já processamos este código neste pedido
@@ -957,13 +1011,20 @@ async function sendOrderToBling(
     // Se o produto tem bling_product_id (original ou encontrado), referenciar por ID
     if (blingProductId) {
       itemData.produto = { id: blingProductId };
-      console.log(`[bling-sync-orders] Item "${item.product_name}" usando bling_product_id: ${blingProductId}`);
+      if (skipStock) {
+        itemData.descricao = `Item sem baixa de estoque ${order.id}-${itemIndex + 1}`;
+        console.log(`[bling-sync-orders] Item "${item.product_name}" usando produto-serviço sem estoque: ${blingProductId}`);
+      } else {
+        console.log(`[bling-sync-orders] Item "${item.product_name}" usando bling_product_id: ${blingProductId}`);
+      }
       // SEMPRE atualizar dados fiscais (UN, NCM) no cadastro do produto no Bling
       // Mesmo sem fiscalData explícito, garantir que "UN" esteja definido
-      await updateBlingProductFiscalData(accessToken, blingProductId, {
-        default_unit: fiscalData?.default_unit || 'UN',
-        default_ncm: fiscalData?.default_ncm || null,
-      });
+      if (!skipStock) {
+        await updateBlingProductFiscalData(accessToken, blingProductId, {
+          default_unit: fiscalData?.default_unit || 'UN',
+          default_ncm: fiscalData?.default_ncm || null,
+        });
+      }
     } else {
       // Fallback: enviar código e descrição apenas se for a PRIMEIRA vez vendo este código
       if (!seenProduct) {
@@ -974,9 +1035,6 @@ async function sendOrderToBling(
         itemData.descricao = skipStock
           ? `Item Cartzy sem estoque ${order.id}-${itemIndex + 1}-${crypto.randomUUID().slice(0, 6)}`
           : (item.product_name || 'Produto');
-        if (skipStock) {
-          itemData.descricaoDetalhada = `${item.product_name || 'Produto'}${productCode ? ` | Código original: ${productCode}` : ''}`;
-        }
         console.log(`[bling-sync-orders] Item "${item.product_name}" ${skipStock ? '(SEM ESTOQUE)' : 'não encontrado no Bling, criando com código'}: ${productCode}`);
         // Registrar no seen para evitar duplicatas
         if (!productCodesSeen.has(productCode)) {
@@ -1001,9 +1059,6 @@ async function sendOrderToBling(
           itemData.descricao = skipStock
             ? `Item Cartzy sem estoque ${order.id}-${itemIndex + 1}-${crypto.randomUUID().slice(0, 6)}`
             : (item.product_name || 'Produto');
-          if (skipStock) {
-            itemData.descricaoDetalhada = `${item.product_name || 'Produto'}${productCode ? ` | Código original: ${productCode}${uniqueSuffix}` : ''}`;
-          }
           console.log(`[bling-sync-orders] Item duplicado "${item.product_name}" - usando ${skipStock ? 'descrição única' : 'código único'}: ${productCode}${uniqueSuffix}`);
         }
       }
@@ -1071,7 +1126,7 @@ async function sendOrderToBling(
     contato: { id: contactId },
     itens: consolidatedItems,
     observacoes: order.observation || '',
-    observacoesInternas: `Pedido ID: ${order.id} | Evento: ${order.event_type}${skipStock ? ' | SEM BAIXA DE ESTOQUE' : ''}`,
+    observacoesInternas: `Pedido ID: ${order.id} | Evento: ${order.event_type}${skipStock ? ` | SEM BAIXA DE ESTOQUE | Itens originais: ${originalItemsSummary}` : ''}`,
   };
 
   // Situação e tributos apenas quando NÃO está em modo skipStock
