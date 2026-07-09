@@ -1308,6 +1308,9 @@ async function sendOrderToBling(
       'melhor_envio': 'Melhor Envio',
       'mandae': 'Mandae',
       'correios': 'Correios',
+      'frenet': 'Frenet',
+      'superfrete': 'SuperFrete',
+      'meuscorreios': 'Correios',
     };
     
     logisticaIntegracao = providerMapping[activeShippingProvider] || '';
