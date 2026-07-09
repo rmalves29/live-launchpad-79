@@ -386,7 +386,7 @@ export default function TenantStorefront() {
                       <div key={product.id} className="border rounded-lg overflow-hidden bg-white hover:shadow-md transition-shadow flex flex-col">
                         <div className="aspect-square bg-gray-100 flex items-center justify-center overflow-hidden relative">
                           {product.image_url ? (
-                            <img src={product.image_url} alt={product.name} className={`w-full h-full object-cover ${isOutOfStock ? 'opacity-60' : ''}`} loading="lazy" />
+                            <img src={product.image_url} alt={product.name} className={`w-full h-full object-contain ${isOutOfStock ? 'opacity-60' : ''}`} loading="lazy" />
                           ) : (
                             <ShoppingBag className="h-12 w-12 text-gray-300" />
                           )}
