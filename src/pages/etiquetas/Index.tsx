@@ -516,20 +516,32 @@ const Etiquetas = () => {
     }
   };
 
-  // Cancelar remessa (detecta automaticamente se é Mandae ou Melhor Envio pelo prefixo)
+  // Cancelar remessa — roteia por provider ativo / prefixo do shipment_id
   const cancelShipment = async (orderId: number) => {
     console.log('🗑️ [ETIQUETAS] Cancelando remessa:', { orderId });
-    
+
     setCancellingOrders(prev => new Set(prev).add(orderId));
-    
+
     try {
-      // Buscar pedido para verificar se é Mandae ou Melhor Envio
       const order = orders.find(o => o.id === orderId);
-      const isMandae = order?.melhor_envio_shipment_id?.startsWith('mandae_');
-      
-      const functionName = isMandae ? 'mandae-labels' : 'melhor-envio-labels';
-      const action = isMandae ? 'cancel_order' : 'cancel_shipment';
-      
+      const shipId: string = order?.melhor_envio_shipment_id || '';
+
+      let providerKey: string | null = null;
+      if (shipId.startsWith('mandae_')) providerKey = 'mandae';
+      else if (shipId.startsWith('frenet_')) providerKey = 'frenet';
+      else if (shipId.startsWith('superfrete_')) providerKey = 'superfrete';
+      else providerKey = activeShippingProvider || 'melhor_envio';
+
+      const cancelActionByProvider: Record<string, string> = {
+        mandae: 'cancel_order',
+        frenet: 'cancel_shipping',
+        superfrete: 'cancel_shipment',
+        melhor_envio: 'cancel_shipment',
+      };
+      const cfg = SHIPPING_LABEL_PROVIDERS[providerKey];
+      const functionName = cfg?.functionName || 'melhor-envio-labels';
+      const action = cancelActionByProvider[providerKey] || 'cancel_shipment';
+
       const { data, error } = await supabaseTenant.functions.invoke(functionName, {
         body: {
           action,
