@@ -67,7 +67,7 @@ serve(async (req) => {
       const text = await r.text();
       if (!r.ok) return json({ success: false, error: "Erro Frenet /shipping/info", details: text }, 200);
       const data = JSON.parse(text);
-      return json({ success: true, services: data?.Services || data?.services || [] }, 200);
+      return json({ success: true, services: data?.ShippingSeviceAvailableArray || data?.ShippingServiceAvailableArray || data?.Services || data?.services || [] }, 200);
     }
 
     if (!order_id) return json({ success: false, error: "order_id obrigatório" }, 400);
