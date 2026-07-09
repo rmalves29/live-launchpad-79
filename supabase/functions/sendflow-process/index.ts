@@ -255,9 +255,11 @@ async function sendGroupMessageUazapi(
     await (await import("../_shared/evolution-api.ts")).runTypingSegments(instanceName, evoGroupId, message.length);
 
     if (imageUrl) {
+      // width sozinho faz o Supabase CORTAR as laterais (mantém a altura original).
+      // width+height com resize=contain redimensiona proporcionalmente sem cortar.
       const optimizedImageUrl = imageUrl
         .replace("/storage/v1/object/public/product-images/", "/storage/v1/render/image/public/product-images/")
-        .replace(/\?.*$/, "") + "?width=800&quality=75";
+        .replace(/\?.*$/, "") + "?width=800&height=800&resize=contain&quality=75";
 
       // Prefer URL mode for SendFlow groups: it keeps the Edge Function payload tiny and avoids base64 upload timeouts.
       let imgResult = await evoSendImageByUrl(instanceName, evoGroupId, optimizedImageUrl, message);
