@@ -87,6 +87,8 @@ serve(async (req) => {
         return await createShipping(supabase, integration, order, tenant, token, service_code);
       case "get_tracking":
         return await getTracking(supabase, integration, order, token);
+      case "get_label":
+        return await getLabel(order);
       case "cancel_shipping":
         return await cancelShipping(supabase, order);
       default:
@@ -305,6 +307,22 @@ async function getTracking(supabase: any, integration: any, order: any, token: s
   }
 
   return json({ success: true, tracking: { code: newTracking, events, raw: data } }, 200);
+}
+
+async function getLabel(order: any) {
+  // Extrai URL de etiqueta salva na observação (formato "[Frenet: <id> | <url>]")
+  const obs = order.observation || "";
+  const match = obs.match(/\[Frenet:[^\]]*\|\s*(https?:\/\/[^\s\]]+)\s*\]/);
+  if (match) {
+    return json({ success: true, data: { url: match[1] } }, 200);
+  }
+  // Fallback: painel Frenet para geração manual
+  return json({
+    success: true,
+    data: { url: "https://painel.frenet.com.br/Order/List" },
+    manual: true,
+    message: "Abra o painel Frenet, localize o pedido e imprima a etiqueta.",
+  }, 200);
 }
 
 async function cancelShipping(supabase: any, order: any) {
