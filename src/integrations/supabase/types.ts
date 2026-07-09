@@ -108,6 +108,42 @@ export type Database = {
           },
         ]
       }
+      bling_sync_logs: {
+        Row: {
+          action: string
+          bling_id: string | null
+          created_at: string
+          details: string | null
+          entity_id: string | null
+          entity_type: string
+          id: string
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          bling_id?: string | null
+          created_at?: string
+          details?: string | null
+          entity_id?: string | null
+          entity_type: string
+          id?: string
+          status: string
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          bling_id?: string | null
+          created_at?: string
+          details?: string | null
+          entity_id?: string | null
+          entity_type?: string
+          id?: string
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       cart_items: {
         Row: {
           cart_id: number

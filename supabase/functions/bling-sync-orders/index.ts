@@ -1953,7 +1953,7 @@ serve(async (req) => {
           forceOrder, forceCartItems, forceCustomer, accessToken, supabase, tenant_id,
           integration.bling_store_id || null, forceFiscalData,
           forceShipping?.provider || null, forceCustomShipping || [], forceBlingPaymentIds,
-          resyncSuffix
+          resyncSuffix, skip_stock === true
         );
 
         // Salvar novo bling_order_id
