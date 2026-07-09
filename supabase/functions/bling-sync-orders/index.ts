@@ -1467,11 +1467,13 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { action, tenant_id, order_id, order_ids, start_date, end_date, skip_stock } = await req.json();
+    const body = await req.json();
+    const { action, tenant_id, order_id, order_ids, start_date, end_date, skip_stock } = body;
 
     console.log(`[bling-sync-orders] ========================================`);
     console.log(`[bling-sync-orders] Action: ${action}, Tenant: ${tenant_id}, Order: ${order_id}`);
     console.log(`[bling-sync-orders] Date range: ${start_date} to ${end_date}`);
+    console.log(`[bling-sync-orders] skip_stock recebido: ${skip_stock}`);
 
     // sync_tracking can run without tenant_id (iterates all tenants)
     if (action === 'sync_tracking' && !tenant_id) {
@@ -1949,11 +1951,16 @@ serve(async (req) => {
 
         // Gerar sufixo único para evitar erro "idêntica à última venda" do Bling
         const resyncSuffix = `R${Date.now().toString(36).slice(-4).toUpperCase()}`;
+        // No reenvio forçado, o padrão é NÃO vincular produto/estoque.
+        // Isso protege contra cache de frontend ou chamadas antigas que ainda não enviem skip_stock=true.
+        const forceSkipStock = skip_stock !== false;
+        console.log(`[bling-sync-orders] force_resync_order: skipStock efetivo=${forceSkipStock}`);
+
         const forceResult = await sendOrderToBling(
           forceOrder, forceCartItems, forceCustomer, accessToken, supabase, tenant_id,
           integration.bling_store_id || null, forceFiscalData,
           forceShipping?.provider || null, forceCustomShipping || [], forceBlingPaymentIds,
-          resyncSuffix, skip_stock === true
+          resyncSuffix, forceSkipStock
         );
 
         // Salvar novo bling_order_id
