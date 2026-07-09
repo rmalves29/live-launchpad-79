@@ -155,6 +155,15 @@ function isDuplicateNumeroError(payloadText: string): boolean {
   );
 }
 
+function isInsufficientStockError(payloadText: string): boolean {
+  // Bling validation error: code 67 -> stock integration blocked by insufficient balance
+  return (
+    payloadText.includes('"code":67') ||
+    /saldo de um ou mais produtos (?:é|\u00e9) insuficiente/i.test(payloadText) ||
+    /N(?:ão|\u00e3o) (?:é|\u00e9) poss(?:í|\u00ed)vel integrar o estoque/i.test(payloadText)
+  );
+}
+
 async function findExistingBlingSaleOrderIdByNumero(accessToken: string, numero: number | string, storeId?: number): Promise<number | null> {
   // Primeira busca: tentar com a loja específica se configurada
   if (storeId) {
@@ -1418,6 +1427,25 @@ async function sendOrderToBling(
       if (existingId) {
         return { kind: 'already_exists', blingOrderId: existingId, raw: { error: responseText } };
       }
+    }
+
+    if (response.status === 400 && !skipStock && isInsufficientStockError(responseText)) {
+      console.log('[bling-sync-orders] Bling recusou por estoque insuficiente. Reenviando automaticamente em modo SEM BAIXA DE ESTOQUE.');
+      return await sendOrderToBling(
+        order,
+        cartItems,
+        customer,
+        accessToken,
+        supabase,
+        tenantId,
+        storeId,
+        fiscalData,
+        activeShippingProvider,
+        customShippingOptions,
+        blingPaymentIds,
+        resyncSuffix,
+        true,
+      );
     }
 
     throw new Error(`Bling API error: ${response.status} - ${responseText}`);
