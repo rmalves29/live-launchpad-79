@@ -570,22 +570,33 @@ const Etiquetas = () => {
   };
 
 
-  // Comprar frete (apenas Melhor Envio - Mandae não tem essa etapa)
+  // Comprar frete — roteia por provider ativo (Melhor Envio, Frenet, etc.)
   const buyShipment = async (orderId: number) => {
     const order = orders.find(o => o.id === orderId);
     const isMandae = order?.melhor_envio_shipment_id?.startsWith('mandae_');
-    
+
     if (isMandae) {
       toast.info('A Mandae gera a etiqueta automaticamente ao criar o pedido.');
       return;
     }
-    
+
+    // Detecta provider ativo (com fallback pelo prefixo do shipment_id)
+    let providerKey: string | null = activeShippingProvider || null;
+    const shipId: string = order?.melhor_envio_shipment_id || '';
+    if (shipId.startsWith('frenet_')) providerKey = 'frenet';
+    else if (shipId.startsWith('superfrete_')) providerKey = 'superfrete';
+
+    const cfg = providerKey ? SHIPPING_LABEL_PROVIDERS[providerKey] : undefined;
+    const functionName = cfg?.functionName || 'melhor-envio-labels';
+    const action = cfg ? cfg.createAction : 'buy_shipment';
+    const providerLabel = cfg?.label || 'Melhor Envio';
+
     setProcessingOrders(prev => new Set(prev).add(orderId));
-    
+
     try {
-      const { data, error } = await supabaseTenant.functions.invoke('melhor-envio-labels', {
+      const { data, error } = await supabaseTenant.functions.invoke(functionName, {
         body: {
-          action: 'buy_shipment',
+          action,
           order_id: orderId,
           tenant_id: supabaseTenant.getTenantId()
         }
@@ -604,16 +615,19 @@ const Etiquetas = () => {
         throw new Error(errorMessage);
       }
 
-      if (data.success) {
+      if (data?.success) {
         const trackingCode = data.tracking_code;
-        if (trackingCode) {
+        if (data.manual && data.label_url) {
+          window.open(data.label_url, '_blank');
+          toast.success(`Abra o painel ${providerLabel} para finalizar/pagar a etiqueta.`);
+        } else if (trackingCode) {
           toast.success(`Frete comprado! Código de rastreio: ${trackingCode}`);
         } else {
-          toast.success('Frete comprado no Melhor Envio!');
+          toast.success(`Frete comprado no ${providerLabel}!`);
         }
         loadPaidOrders();
       } else {
-        throw new Error(data.error || 'Erro desconhecido');
+        throw new Error(data?.error || 'Erro desconhecido');
       }
     } catch (error: any) {
       console.error('Erro ao comprar frete:', error);
