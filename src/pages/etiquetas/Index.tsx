@@ -653,48 +653,62 @@ const Etiquetas = () => {
     }
   };
 
-  // Imprimir etiqueta (suporta Melhor Envio e Mandae)
+  // Imprimir etiqueta — roteia por provider ativo / prefixo do shipment_id
   const printLabel = async (orderId: number) => {
     const order = orders.find(o => o.id === orderId);
-    const isMandae = order?.melhor_envio_shipment_id?.startsWith('mandae_');
-    
+    const shipId: string = order?.melhor_envio_shipment_id || '';
+
     setProcessingOrders(prev => new Set(prev).add(orderId));
-    
+
     try {
-      if (isMandae) {
-        // Mandae - abrir página de rastreamento que tem a etiqueta
-        const mandaeId = order.melhor_envio_shipment_id?.replace('mandae_', '');
+      // Mandae: página de rastreio pública contém a etiqueta
+      if (shipId.startsWith('mandae_')) {
+        const mandaeId = shipId.replace('mandae_', '');
         window.open(`https://rastreae.com.br/${mandaeId}`, '_blank');
         toast.success('Abrindo página de rastreamento da Mandae');
-      } else {
-        // Melhor Envio
-        const { data, error } = await supabaseTenant.functions.invoke('melhor-envio-labels', {
-          body: {
-            action: 'get_label',
-            order_id: orderId,
-            tenant_id: supabaseTenant.getTenantId()
-          }
-        });
+        return;
+      }
 
-        if (error) {
-          console.error('❌ [ETIQUETAS] Erro ao gerar etiqueta:', error, 'Data:', data);
-          let errorMessage = data?.error || data?.message;
-          if (!errorMessage && error.context) {
-            try {
-              const contextBody = await error.context.json();
-              errorMessage = contextBody?.error || contextBody?.message;
-            } catch { }
-          }
-          errorMessage = errorMessage || error.message || 'Erro ao gerar etiqueta';
-          throw new Error(errorMessage);
+      // Decide provider e função
+      let providerKey: string | null = null;
+      if (shipId.startsWith('frenet_')) providerKey = 'frenet';
+      else if (shipId.startsWith('superfrete_')) providerKey = 'superfrete';
+      else providerKey = activeShippingProvider || 'melhor_envio';
+
+      const cfg = SHIPPING_LABEL_PROVIDERS[providerKey];
+      const functionName = cfg?.functionName || 'melhor-envio-labels';
+
+      const { data, error } = await supabaseTenant.functions.invoke(functionName, {
+        body: {
+          action: 'get_label',
+          order_id: orderId,
+          tenant_id: supabaseTenant.getTenantId()
         }
+      });
 
-        if (data.success && data.data.url) {
-          window.open(data.data.url, '_blank');
-          toast.success('Etiqueta gerada com sucesso!');
+      if (error) {
+        console.error('❌ [ETIQUETAS] Erro ao gerar etiqueta:', error, 'Data:', data);
+        let errorMessage = data?.error || data?.message;
+        if (!errorMessage && error.context) {
+          try {
+            const contextBody = await error.context.json();
+            errorMessage = contextBody?.error || contextBody?.message;
+          } catch { }
+        }
+        errorMessage = errorMessage || error.message || 'Erro ao gerar etiqueta';
+        throw new Error(errorMessage);
+      }
+
+      const url = data?.data?.url || data?.label_url || data?.url;
+      if (data?.success && url) {
+        window.open(url, '_blank', 'noopener');
+        if (data.manual) {
+          toast.success(`Abra o painel ${cfg?.label || 'do provedor'} para imprimir a etiqueta.`);
         } else {
-          throw new Error(data.error || 'Erro ao gerar etiqueta');
+          toast.success('Etiqueta gerada com sucesso!');
         }
+      } else {
+        throw new Error(data?.error || 'Erro ao gerar etiqueta');
       }
     } catch (error: any) {
       console.error('Erro ao imprimir etiqueta:', error);
