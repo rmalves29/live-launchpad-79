@@ -985,7 +985,7 @@ function chooseLogisticServiceAlias(service: any, candidateKeys: Set<string>): s
     ? service.aliases.map((alias: unknown) => String(alias || '').trim()).filter(Boolean)
     : [];
 
-  const matchingAlias = aliases.find((alias) => candidateKeys.has(normalizeShippingText(alias)));
+  const matchingAlias = aliases.find((alias: string) => candidateKeys.has(normalizeShippingText(alias)));
   return matchingAlias || aliases[0] || String(service?.codigo || service?.descricao || '').trim();
 }
 
