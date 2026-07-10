@@ -73,6 +73,66 @@ export default function PushPage() {
   );
 }
 
+/* ================= Share Link ================= */
+function ShareLinkCard({ slug }: { slug: string }) {
+  const { toast } = useToast();
+  const url = `${window.location.origin}/t/${slug}/push`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(url)}`;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast({ title: 'Link copiado!', description: 'Cole onde quiser divulgar.' });
+    } catch {
+      toast({ title: 'Não foi possível copiar', variant: 'destructive' });
+    }
+  };
+
+  const share = async () => {
+    const text = `Ative as notificações e receba novidades e status do seu pedido no celular: ${url}`;
+    if ((navigator as any).share) {
+      try { await (navigator as any).share({ title: 'Ative as notificações', text, url }); return; } catch {}
+    }
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  return (
+    <div className="mb-5 rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50/60 to-white p-4 flex flex-col md:flex-row items-start md:items-center gap-4">
+      <img src={qrUrl} alt="QR code" className="h-[110px] w-[110px] rounded-md bg-white border border-slate-200" />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 text-[13px] font-semibold text-slate-800">
+          <Share2 className="h-4 w-4 text-[#4f46e5]" />
+          Link de divulgação
+        </div>
+        <p className="text-xs text-slate-500 mt-0.5 mb-2">
+          Compartilhe este link para que seus clientes ativem as notificações direto no celular.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex-1 min-w-[240px] font-mono text-xs bg-white border border-slate-200 rounded-md px-3 py-2 truncate">
+            {url}
+          </div>
+          <Button size="sm" variant="outline" onClick={copy}>
+            <Copy className="h-4 w-4 mr-1.5" /> Copiar
+          </Button>
+          <Button size="sm" variant="outline" onClick={share}>
+            <Share2 className="h-4 w-4 mr-1.5" /> Compartilhar
+          </Button>
+          <Button size="sm" variant="outline" asChild>
+            <a href={url} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4 mr-1.5" /> Abrir
+            </a>
+          </Button>
+          <Button size="sm" variant="outline" asChild>
+            <a href={qrUrl} download={`push-${slug}.png`}>
+              <QrCode className="h-4 w-4 mr-1.5" /> Baixar QR
+            </a>
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ================= Subscribers ================= */
 function SubscribersTab({ tenantId }: { tenantId?: string }) {
   const { toast } = useToast();
