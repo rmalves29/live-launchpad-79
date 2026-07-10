@@ -1109,26 +1109,32 @@ const PublicCheckout = () => {
     // Não bloqueia por isPushSupported aqui: o próprio dialog mostra as
     // instruções corretas (iOS/Safari precisa "Adicionar à Tela de Início").
     if (tenant) {
+      let alreadySubscribed = false;
       try {
-        let alreadySubscribed = false;
-        if (isPushSupported()) {
+        if (isPushSupported() && typeof Notification !== 'undefined') {
           const existing = await getExistingSubscription();
           alreadySubscribed = !!existing && Notification.permission === 'granted';
         }
+      } catch {}
+      try {
         const deviceKey = `push_optin_done:${tenant.id}`;
         const dismissedKey = `push_optin_dismissed:${tenant.id}`;
         const localDone = typeof window !== 'undefined' && window.localStorage.getItem(deviceKey) === '1';
         const localDismissed = typeof window !== 'undefined' && window.localStorage.getItem(dismissedKey);
-        // Reperguntar após 7 dias se o usuário dispensou anteriormente
-        const dismissedRecently = localDismissed && (Date.now() - Number(localDismissed)) < 7 * 24 * 60 * 60 * 1000;
+        // Reperguntar após 1 dia se dispensou (antes eram 7)
+        const dismissedRecently = localDismissed && (Date.now() - Number(localDismissed)) < 24 * 60 * 60 * 1000;
         if (alreadySubscribed) {
           window.localStorage.setItem(deviceKey, '1');
         } else if (!localDone && !dismissedRecently && pushAskedFor !== normalizedPhone) {
           setPushDialogOpen(true);
         }
-      } catch {}
+      } catch {
+        // Fallback: se localStorage falhar (modo privado etc), tenta abrir mesmo assim
+        if (!alreadySubscribed && pushAskedFor !== normalizedPhone) setPushDialogOpen(true);
+      }
       setPushAskedFor(normalizedPhone);
     }
+
 
     try {
       const { data: checkoutOrders, error: checkoutOrdersError } = await supabase.functions.invoke('public-checkout-orders', {
