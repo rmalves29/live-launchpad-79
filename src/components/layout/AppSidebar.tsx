@@ -89,6 +89,8 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           ? [{ type: 'item' as const, item: { path: '/sendflow', label: 'SendFlow', icon: Send } }]
           : []),
         { type: 'item', item: { path: '/fluxo-envio', label: 'Fluxo de Envio', icon: GitBranch } },
+        { type: 'item', item: { path: '/comunicacao/push', label: 'Push', icon: Bell } },
+
         {
           type: 'collapsible',
           key: 'whatsapp',
