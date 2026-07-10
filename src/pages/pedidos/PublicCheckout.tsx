@@ -133,6 +133,8 @@ const PublicCheckout = () => {
   const [tenantError, setTenantError] = useState<string | null>(null);
   
   const [phone, setPhone] = useState('');
+  const [pushDialogOpen, setPushDialogOpen] = useState(false);
+  const [pushAskedFor, setPushAskedFor] = useState<string | null>(null);
   const [historyPhone, setHistoryPhone] = useState('');
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
