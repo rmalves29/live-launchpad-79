@@ -154,22 +154,57 @@ function SubscribersTab({ tenantId }: { tenantId?: string }) {
   };
   useEffect(() => { load(); }, [tenantId]);
 
+  const isMobileUA = (ua?: string) => !!ua && /android|iphone|ipad|ipod|mobile|windows phone/i.test(ua);
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const r of rows) {
+      const key = (r.phone || `id:${r.id}`).toString();
+      const isMobile = isMobileUA(r.user_agent);
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, {
+          key,
+          ids: [r.id],
+          name: r.name || '',
+          phone: r.phone || '',
+          instagram_handle: r.instagram_handle || '',
+          cell: isMobile && r.is_active,
+          pc: !isMobile && r.is_active,
+          created_at: r.created_at,
+        });
+      } else {
+        existing.ids.push(r.id);
+        if (isMobile && r.is_active) existing.cell = true;
+        if (!isMobile && r.is_active) existing.pc = true;
+        if (!existing.name && r.name) existing.name = r.name;
+        if (!existing.instagram_handle && r.instagram_handle) existing.instagram_handle = r.instagram_handle;
+        if (new Date(r.created_at) < new Date(existing.created_at)) existing.created_at = r.created_at;
+      }
+    }
+    return Array.from(map.values());
+  }, [rows]);
+
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return rows;
-    return rows.filter((r) => (r.name || '').toLowerCase().includes(s) || (r.phone || '').includes(s) || (r.instagram_handle || '').toLowerCase().includes(s));
-  }, [rows, q]);
+    if (!s) return grouped;
+    return grouped.filter((r) => (r.name || '').toLowerCase().includes(s) || (r.phone || '').includes(s) || (r.instagram_handle || '').toLowerCase().includes(s));
+  }, [grouped, q]);
 
-  const remove = async (id: number) => {
-    await supabase.from('push_subscriptions').delete().eq('id', id);
+  const remove = async (ids: number[]) => {
+    await supabase.from('push_subscriptions').delete().in('id', ids);
     toast({ title: 'Assinante removido' });
     load();
   };
 
+  const YesNo = ({ v }: { v: boolean }) => v
+    ? <Badge variant="outline" className="border-emerald-300 text-emerald-700">Sim</Badge>
+    : <Badge variant="outline" className="text-muted-foreground">Não</Badge>;
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-base">Assinantes ({rows.length})</CardTitle>
+        <CardTitle className="text-base">Assinantes ({grouped.length})</CardTitle>
         <div className="flex gap-2 items-center">
           <Input placeholder="Buscar por nome, telefone ou @instagram" value={q} onChange={(e) => setQ(e.target.value)} className="w-72" />
           <Button variant="outline" size="sm" onClick={load}><RefreshCw className="h-4 w-4" /></Button>
@@ -180,18 +215,18 @@ function SubscribersTab({ tenantId }: { tenantId?: string }) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted-foreground border-b">
-                <tr><th className="py-2">Nome</th><th>Telefone</th><th>@Instagram</th><th>Dispositivo</th><th>Ativa</th><th>Cadastro</th><th></th></tr>
+                <tr><th className="py-2">Nome</th><th>Telefone</th><th>@Instagram</th><th className="text-center">PC</th><th className="text-center">Cell</th><th>Cadastro</th><th></th></tr>
               </thead>
               <tbody>
                 {filtered.map((r) => (
-                  <tr key={r.id} className="border-b hover:bg-muted/30">
+                  <tr key={r.key} className="border-b hover:bg-muted/30">
                     <td className="py-2">{r.name || '—'}</td>
                     <td>{r.phone || '—'}</td>
                     <td>{r.instagram_handle ? `@${r.instagram_handle}` : '—'}</td>
-                    <td className="max-w-[220px] truncate text-xs text-muted-foreground">{r.user_agent || '—'}</td>
-                    <td>{r.is_active ? <Badge variant="outline" className="border-emerald-300 text-emerald-700">Sim</Badge> : <Badge variant="outline">Não</Badge>}</td>
+                    <td className="text-center"><YesNo v={r.pc} /></td>
+                    <td className="text-center"><YesNo v={r.cell} /></td>
                     <td className="text-xs">{formatBrasiliaDate(r.created_at)}</td>
-                    <td><Button variant="ghost" size="sm" onClick={() => remove(r.id)}><Trash2 className="h-4 w-4" /></Button></td>
+                    <td><Button variant="ghost" size="sm" onClick={() => remove(r.ids)}><Trash2 className="h-4 w-4" /></Button></td>
                   </tr>
                 ))}
                 {filtered.length === 0 && <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">Nenhum assinante ainda.</td></tr>}
