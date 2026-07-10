@@ -18,6 +18,8 @@ import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { fetchCustomShippingOptions } from '@/hooks/useCustomShippingOptions';
 import { useOrderMerge, MERGE_ORDER_SHIPPING_OPTION } from '@/hooks/useOrderMerge';
 import { getActiveShippingIntegration, ShippingProvider } from '@/lib/shipping-utils';
+import { PushOptInCard } from '@/components/push/PushOptInCard';
+
 
 interface Tenant {
   id: string;
@@ -1400,6 +1402,13 @@ const PublicCheckout = () => {
             Localize seus pedidos e finalize o pagamento
           </p>
         </div>
+
+        <PushOptInCard
+          tenantId={tenant.id}
+          defaultName={customerData.name}
+          defaultPhone={phone}
+        />
+
 
         {/* Card de busca pedidos em aberto */}
         <Card className="overflow-hidden border-0 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50 bg-white dark:bg-slate-800/50 backdrop-blur-sm">
