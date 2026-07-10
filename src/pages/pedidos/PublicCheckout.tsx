@@ -1106,11 +1106,15 @@ const PublicCheckout = () => {
     setShowCheckout(false);
 
     // Perguntar sobre notificações push — cadastro por device.
-    // Só pergunta se ESTE dispositivo ainda não tem assinatura ativa.
-    if (tenant && isPushSupported()) {
+    // Não bloqueia por isPushSupported aqui: o próprio dialog mostra as
+    // instruções corretas (iOS/Safari precisa "Adicionar à Tela de Início").
+    if (tenant) {
       try {
-        const existing = await getExistingSubscription();
-        const alreadySubscribed = !!existing && Notification.permission === 'granted';
+        let alreadySubscribed = false;
+        if (isPushSupported()) {
+          const existing = await getExistingSubscription();
+          alreadySubscribed = !!existing && Notification.permission === 'granted';
+        }
         const deviceKey = `push_optin_done:${tenant.id}`;
         const dismissedKey = `push_optin_dismissed:${tenant.id}`;
         const localDone = typeof window !== 'undefined' && window.localStorage.getItem(deviceKey) === '1';
