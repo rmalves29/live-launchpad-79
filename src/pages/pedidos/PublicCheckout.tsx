@@ -1430,12 +1430,32 @@ const PublicCheckout = () => {
 
       <div className="max-w-3xl mx-auto px-4 md:px-6 pb-12 space-y-8">
         {/* Título da página */}
-        <div className="space-y-1 pt-2">
-          <h1 className="text-3xl font-bold tracking-tight">Checkout</h1>
-          <p className="text-muted-foreground">
-            Localize seus pedidos e finalize o pagamento
-          </p>
+        <div className="space-y-1 pt-2 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Checkout</h1>
+            <p className="text-muted-foreground">
+              Localize seus pedidos e finalize o pagamento
+            </p>
+          </div>
+          {tenant && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+              onClick={() => {
+                try {
+                  window.localStorage.removeItem(`push_optin_dismissed:${tenant.id}`);
+                  window.localStorage.removeItem(`push_optin_done:${tenant.id}`);
+                } catch {}
+                setPushDialogOpen(true);
+              }}
+            >
+              🔔 Ativar notificações
+            </Button>
+          )}
         </div>
+
 
         <PushOptInDialog
           open={pushDialogOpen}
