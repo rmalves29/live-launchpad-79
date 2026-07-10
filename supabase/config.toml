@@ -107,3 +107,21 @@ verify_jwt = false
 
 [functions.frenet-webhook]
 verify_jwt = false
+
+[functions.push-vapid-public-key]
+verify_jwt = false
+
+[functions.push-subscribe]
+verify_jwt = false
+
+[functions.push-unsubscribe]
+verify_jwt = false
+
+[functions.push-track-click]
+verify_jwt = false
+
+[functions.push-dispatch]
+verify_jwt = false
+
+[functions.push-send-campaign]
+verify_jwt = false
