@@ -34,6 +34,8 @@ import SendFlow from "./pages/sendflow/Index";
 import Etiquetas from "./pages/etiquetas/Index";
 import FluxoEnvio from "./pages/fluxo-envio/Index";
 import CampaignRedirect from "./pages/fluxo-envio/CampaignRedirect";
+import PushPage from "./pages/comunicacao/push/Index";
+
 import FilaEspera from "./pages/fila-espera/Index";
 import TenantIntegrationsPage from "./components/TenantIntegrationsPage";
 import TenantStorefront from "./pages/TenantStorefront";
