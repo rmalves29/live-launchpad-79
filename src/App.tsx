@@ -211,6 +211,11 @@ const AppContent = () => {
         <Route path="/fluxo-envio" element={
           <RequireTenantAuth><FluxoEnvio /></RequireTenantAuth>
         } />
+        <Route path="/comunicacao/push" element={
+          <RequireTenantAuth><PushPage /></RequireTenantAuth>
+        } />
+
+
         
         {/* Rota para templates de WhatsApp */}
         <Route path="/whatsapp/templates" element={
