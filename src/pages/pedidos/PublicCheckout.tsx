@@ -1433,6 +1433,16 @@ const PublicCheckout = () => {
           tenantId={tenant.id}
           phone={phone}
           name={customerData.name}
+          onDone={(accepted) => {
+            try {
+              if (accepted) {
+                window.localStorage.setItem(`push_optin_done:${tenant.id}`, '1');
+                window.localStorage.removeItem(`push_optin_dismissed:${tenant.id}`);
+              } else {
+                window.localStorage.setItem(`push_optin_dismissed:${tenant.id}`, String(Date.now()));
+              }
+            } catch {}
+          }}
         />
 
 
