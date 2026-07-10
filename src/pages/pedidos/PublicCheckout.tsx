@@ -18,7 +18,8 @@ import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { fetchCustomShippingOptions } from '@/hooks/useCustomShippingOptions';
 import { useOrderMerge, MERGE_ORDER_SHIPPING_OPTION } from '@/hooks/useOrderMerge';
 import { getActiveShippingIntegration, ShippingProvider } from '@/lib/shipping-utils';
-import { PushOptInCard } from '@/components/push/PushOptInCard';
+import { PushOptInDialog } from '@/components/push/PushOptInDialog';
+import { getExistingSubscription, isPushSupported } from '@/lib/push-client';
 
 
 interface Tenant {
@@ -132,6 +133,8 @@ const PublicCheckout = () => {
   const [tenantError, setTenantError] = useState<string | null>(null);
   
   const [phone, setPhone] = useState('');
+  const [pushDialogOpen, setPushDialogOpen] = useState(false);
+  const [pushAskedFor, setPushAskedFor] = useState<string | null>(null);
   const [historyPhone, setHistoryPhone] = useState('');
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
@@ -1102,6 +1105,17 @@ const PublicCheckout = () => {
     setSelectedOrderIds([]);
     setShowCheckout(false);
 
+    // Perguntar sobre notificações push (uma vez por telefone informado)
+    if (tenant && isPushSupported() && pushAskedFor !== normalizedPhone) {
+      try {
+        const existing = await getExistingSubscription();
+        if (!existing || Notification.permission !== 'granted') {
+          setPushDialogOpen(true);
+        }
+      } catch {}
+      setPushAskedFor(normalizedPhone);
+    }
+
     try {
       const { data: checkoutOrders, error: checkoutOrdersError } = await supabase.functions.invoke('public-checkout-orders', {
         body: { tenant_slug: slug!, customer_phone: normalizedPhone }
@@ -1403,11 +1417,15 @@ const PublicCheckout = () => {
           </p>
         </div>
 
-        <PushOptInCard
+        <PushOptInDialog
+          open={pushDialogOpen}
+          onOpenChange={setPushDialogOpen}
           tenantId={tenant.id}
-          defaultName={customerData.name}
-          defaultPhone={phone}
+          phone={phone}
+          name={customerData.name}
         />
+
+
 
 
         {/* Card de busca pedidos em aberto */}
