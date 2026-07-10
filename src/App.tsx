@@ -39,6 +39,7 @@ import PushPage from "./pages/comunicacao/push/Index";
 import FilaEspera from "./pages/fila-espera/Index";
 import TenantIntegrationsPage from "./components/TenantIntegrationsPage";
 import TenantStorefront from "./pages/TenantStorefront";
+import PushOptInPublic from "./pages/push/PushOptIn";
 import CadastroInstagram from "./pages/tenant/CadastroInstagram";
 
 import EmpresasIndex from "./pages/empresas/Index";
@@ -315,7 +316,10 @@ const AppContent = () => {
         
         {/* Cadastro público Instagram */}
         <Route path="/t/:slug/cadastro-instagram" element={<CadastroInstagram />} />
-        
+
+        {/* Opt-in público de notificações push */}
+        <Route path="/t/:slug/push" element={<PushOptInPublic />} />
+
         {/* Rotas públicas da loja por slug (path-based) - prefixo /t/ para evitar conflitos */}
         <Route path="/t/:slug" element={<TenantStorefront />} />
         <Route path="/t/:slug/checkout" element={<PublicCheckout />} />
