@@ -1417,11 +1417,15 @@ const PublicCheckout = () => {
           </p>
         </div>
 
-        <PushOptInCard
+        <PushOptInDialog
+          open={pushDialogOpen}
+          onOpenChange={setPushDialogOpen}
           tenantId={tenant.id}
-          defaultName={customerData.name}
-          defaultPhone={phone}
+          phone={phone}
+          name={customerData.name}
         />
+
+
 
 
         {/* Card de busca pedidos em aberto */}
