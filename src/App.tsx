@@ -39,6 +39,7 @@ import PushPage from "./pages/comunicacao/push/Index";
 import FilaEspera from "./pages/fila-espera/Index";
 import TenantIntegrationsPage from "./components/TenantIntegrationsPage";
 import TenantStorefront from "./pages/TenantStorefront";
+import PushOptInPublic from "./pages/push/PushOptIn";
 import CadastroInstagram from "./pages/tenant/CadastroInstagram";
 
 import EmpresasIndex from "./pages/empresas/Index";
