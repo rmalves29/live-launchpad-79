@@ -315,7 +315,10 @@ const AppContent = () => {
         
         {/* Cadastro público Instagram */}
         <Route path="/t/:slug/cadastro-instagram" element={<CadastroInstagram />} />
-        
+
+        {/* Opt-in público de notificações push */}
+        <Route path="/t/:slug/push" element={<PushOptInPublic />} />
+
         {/* Rotas públicas da loja por slug (path-based) - prefixo /t/ para evitar conflitos */}
         <Route path="/t/:slug" element={<TenantStorefront />} />
         <Route path="/t/:slug/checkout" element={<PublicCheckout />} />
