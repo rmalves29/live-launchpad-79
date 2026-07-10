@@ -2864,6 +2864,195 @@ export type Database = {
           },
         ]
       }
+      push_campaigns: {
+        Row: {
+          audience: Database["public"]["Enums"]["push_campaign_audience"]
+          body: string
+          click_url: string | null
+          created_at: string
+          created_by: string | null
+          id: number
+          image_url: string | null
+          tenant_id: string
+          title: string
+          total_clicked: number
+          total_failed: number
+          total_sent: number
+          total_targets: number
+        }
+        Insert: {
+          audience?: Database["public"]["Enums"]["push_campaign_audience"]
+          body: string
+          click_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: number
+          image_url?: string | null
+          tenant_id: string
+          title: string
+          total_clicked?: number
+          total_failed?: number
+          total_sent?: number
+          total_targets?: number
+        }
+        Update: {
+          audience?: Database["public"]["Enums"]["push_campaign_audience"]
+          body?: string
+          click_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: number
+          image_url?: string | null
+          tenant_id?: string
+          title?: string
+          total_clicked?: number
+          total_failed?: number
+          total_sent?: number
+          total_targets?: number
+        }
+        Relationships: []
+      }
+      push_notifications_log: {
+        Row: {
+          body: string | null
+          campaign_id: number | null
+          channel: Database["public"]["Enums"]["push_channel"]
+          clicked_at: string | null
+          created_at: string
+          customer_id: number | null
+          error: string | null
+          id: number
+          status: string
+          subscription_id: number | null
+          template_type:
+            | Database["public"]["Enums"]["push_template_type"]
+            | null
+          tenant_id: string
+          title: string | null
+        }
+        Insert: {
+          body?: string | null
+          campaign_id?: number | null
+          channel?: Database["public"]["Enums"]["push_channel"]
+          clicked_at?: string | null
+          created_at?: string
+          customer_id?: number | null
+          error?: string | null
+          id?: number
+          status?: string
+          subscription_id?: number | null
+          template_type?:
+            | Database["public"]["Enums"]["push_template_type"]
+            | null
+          tenant_id: string
+          title?: string | null
+        }
+        Update: {
+          body?: string | null
+          campaign_id?: number | null
+          channel?: Database["public"]["Enums"]["push_channel"]
+          clicked_at?: string | null
+          created_at?: string
+          customer_id?: number | null
+          error?: string | null
+          id?: number
+          status?: string
+          subscription_id?: number | null
+          template_type?:
+            | Database["public"]["Enums"]["push_template_type"]
+            | null
+          tenant_id?: string
+          title?: string | null
+        }
+        Relationships: []
+      }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          customer_id: number | null
+          endpoint: string
+          id: number
+          instagram_handle: string | null
+          is_active: boolean
+          last_seen_at: string
+          name: string | null
+          p256dh: string
+          phone: string | null
+          tenant_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          customer_id?: number | null
+          endpoint: string
+          id?: number
+          instagram_handle?: string | null
+          is_active?: boolean
+          last_seen_at?: string
+          name?: string | null
+          p256dh: string
+          phone?: string | null
+          tenant_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          customer_id?: number | null
+          endpoint?: string
+          id?: number
+          instagram_handle?: string | null
+          is_active?: boolean
+          last_seen_at?: string
+          name?: string | null
+          p256dh?: string
+          phone?: string | null
+          tenant_id?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
+      push_templates: {
+        Row: {
+          body: string
+          click_url: string | null
+          created_at: string
+          id: number
+          image_url: string | null
+          is_enabled: boolean
+          tenant_id: string
+          title: string
+          type: Database["public"]["Enums"]["push_template_type"]
+          updated_at: string
+        }
+        Insert: {
+          body?: string
+          click_url?: string | null
+          created_at?: string
+          id?: number
+          image_url?: string | null
+          is_enabled?: boolean
+          tenant_id: string
+          title?: string
+          type: Database["public"]["Enums"]["push_template_type"]
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          click_url?: string | null
+          created_at?: string
+          id?: number
+          image_url?: string | null
+          is_enabled?: boolean
+          tenant_id?: string
+          title?: string
+          type?: Database["public"]["Enums"]["push_template_type"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       scheduled_jobs: {
         Row: {
           created_at: string
@@ -4647,6 +4836,14 @@ export type Database = {
     }
     Enums: {
       cart_status: "OPEN" | "CLOSED"
+      push_campaign_audience: "all" | "paid" | "unpaid"
+      push_channel: "push" | "whatsapp_fallback"
+      push_template_type:
+        | "cart_item_added"
+        | "cart_item_removed"
+        | "order_paid"
+        | "tracking_code"
+        | "waitlist"
       user_role: "super_admin" | "tenant_admin" | "staff"
       whatsapp_message_type:
         | "incoming"
@@ -4814,6 +5011,15 @@ export const Constants = {
   public: {
     Enums: {
       cart_status: ["OPEN", "CLOSED"],
+      push_campaign_audience: ["all", "paid", "unpaid"],
+      push_channel: ["push", "whatsapp_fallback"],
+      push_template_type: [
+        "cart_item_added",
+        "cart_item_removed",
+        "order_paid",
+        "tracking_code",
+        "waitlist",
+      ],
       user_role: ["super_admin", "tenant_admin", "staff"],
       whatsapp_message_type: [
         "incoming",
