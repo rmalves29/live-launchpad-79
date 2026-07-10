@@ -18,7 +18,8 @@ import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { fetchCustomShippingOptions } from '@/hooks/useCustomShippingOptions';
 import { useOrderMerge, MERGE_ORDER_SHIPPING_OPTION } from '@/hooks/useOrderMerge';
 import { getActiveShippingIntegration, ShippingProvider } from '@/lib/shipping-utils';
-import { PushOptInCard } from '@/components/push/PushOptInCard';
+import { PushOptInDialog } from '@/components/push/PushOptInDialog';
+import { getExistingSubscription, isPushSupported } from '@/lib/push-client';
 
 
 interface Tenant {
