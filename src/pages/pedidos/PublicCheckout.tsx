@@ -1105,11 +1105,21 @@ const PublicCheckout = () => {
     setSelectedOrderIds([]);
     setShowCheckout(false);
 
-    // Perguntar sobre notificações push (uma vez por telefone informado)
-    if (tenant && isPushSupported() && pushAskedFor !== normalizedPhone) {
+    // Perguntar sobre notificações push — cadastro por device.
+    // Só pergunta se ESTE dispositivo ainda não tem assinatura ativa.
+    if (tenant && isPushSupported()) {
       try {
         const existing = await getExistingSubscription();
-        if (!existing || Notification.permission !== 'granted') {
+        const alreadySubscribed = !!existing && Notification.permission === 'granted';
+        const deviceKey = `push_optin_done:${tenant.id}`;
+        const dismissedKey = `push_optin_dismissed:${tenant.id}`;
+        const localDone = typeof window !== 'undefined' && window.localStorage.getItem(deviceKey) === '1';
+        const localDismissed = typeof window !== 'undefined' && window.localStorage.getItem(dismissedKey);
+        // Reperguntar após 7 dias se o usuário dispensou anteriormente
+        const dismissedRecently = localDismissed && (Date.now() - Number(localDismissed)) < 7 * 24 * 60 * 60 * 1000;
+        if (alreadySubscribed) {
+          window.localStorage.setItem(deviceKey, '1');
+        } else if (!localDone && !dismissedRecently && pushAskedFor !== normalizedPhone) {
           setPushDialogOpen(true);
         }
       } catch {}
