@@ -1105,6 +1105,17 @@ const PublicCheckout = () => {
     setSelectedOrderIds([]);
     setShowCheckout(false);
 
+    // Perguntar sobre notificações push (uma vez por telefone informado)
+    if (tenant && isPushSupported() && pushAskedFor !== normalizedPhone) {
+      try {
+        const existing = await getExistingSubscription();
+        if (!existing || Notification.permission !== 'granted') {
+          setPushDialogOpen(true);
+        }
+      } catch {}
+      setPushAskedFor(normalizedPhone);
+    }
+
     try {
       const { data: checkoutOrders, error: checkoutOrdersError } = await supabase.functions.invoke('public-checkout-orders', {
         body: { tenant_slug: slug!, customer_phone: normalizedPhone }
