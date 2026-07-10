@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bell, Users, LayoutTemplate, Send, BarChart3, Trash2, RefreshCw, ExternalLink } from 'lucide-react';
+import { Bell, Users, LayoutTemplate, Send, BarChart3, Trash2, RefreshCw, ExternalLink, Copy, Share2, QrCode } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
