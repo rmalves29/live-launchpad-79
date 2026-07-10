@@ -38,6 +38,7 @@ export default function PushPage() {
   const { tenant } = useTenant();
   const { toast } = useToast();
   const tenantId = tenant?.id;
+  const tenantSlug = (tenant as any)?.slug;
 
   return (
     <div className="min-h-screen bg-white">
@@ -47,6 +48,8 @@ export default function PushPage() {
           <h1 className="text-[24px] font-bold text-slate-900">Notificações Push</h1>
         </div>
         <p className="text-slate-500 text-[13px] mb-5">Assinantes, templates, campanhas e relatórios em um só lugar.</p>
+
+        {tenantSlug && <ShareLinkCard slug={tenantSlug} />}
       </div>
 
       <Tabs defaultValue="subscribers" className="w-full">
