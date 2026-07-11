@@ -316,15 +316,24 @@ function TemplatesTab({ tenantId }: { tenantId?: string }) {
 }
 
 /* ================= Campaign ================= */
+const BR_UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+
 function CampaignTab({ tenantId }: { tenantId?: string }) {
   const { toast } = useToast();
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [clickUrl, setClickUrl] = useState('');
-  const [audience, setAudience] = useState<'all' | 'paid' | 'unpaid'>('all');
+  const [audience, setAudience] = useState<'all' | 'paid' | 'unpaid' | 'buyers'>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [states, setStates] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [campaigns, setCampaigns] = useState<any[]>([]);
+
+  const toggleState = (uf: string) => {
+    setStates((prev) => prev.includes(uf) ? prev.filter((s) => s !== uf) : [...prev, uf]);
+  };
 
   const loadCampaigns = async () => {
     if (!tenantId) return;
@@ -338,14 +347,21 @@ function CampaignTab({ tenantId }: { tenantId?: string }) {
     if (!title.trim() || !body.trim()) { toast({ title: 'Preencha título e mensagem', variant: 'destructive' }); return; }
     setSending(true);
     const { data, error } = await supabase.functions.invoke('push-send-campaign', {
-      body: { tenant_id: tenantId, title, body, image_url: imageUrl || null, click_url: clickUrl || null, audience },
+      body: {
+        tenant_id: tenantId, title, body,
+        image_url: imageUrl || null, click_url: clickUrl || null,
+        audience,
+        states: states.length ? states : null,
+        date_from: (audience === 'paid' || audience === 'unpaid') && dateFrom ? dateFrom : null,
+        date_to: (audience === 'paid' || audience === 'unpaid') && dateTo ? dateTo : null,
+      },
     });
     setSending(false);
     if (error || (data as any)?.success === false) {
       toast({ title: 'Falha no envio', description: (data as any)?.error || error?.message, variant: 'destructive' });
       return;
     }
-    toast({ title: 'Campanha enviada', description: `Enviados: ${(data as any).sent} / Falhas: ${(data as any).failed}` });
+    toast({ title: 'Campanha enviada', description: `Alvos: ${(data as any).targets} • Enviados: ${(data as any).sent} • Falhas: ${(data as any).failed}` });
     setTitle(''); setBody(''); setImageUrl(''); setClickUrl('');
     loadCampaigns();
   };
@@ -375,11 +391,57 @@ function CampaignTab({ tenantId }: { tenantId?: string }) {
           </div>
           <div>
             <Label className="text-xs mb-2 block">Público</Label>
-            <RadioGroup value={audience} onValueChange={(v) => setAudience(v as any)} className="flex gap-6">
+            <RadioGroup value={audience} onValueChange={(v) => setAudience(v as any)} className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <div className="flex items-center gap-2"><RadioGroupItem id="all" value="all" /><Label htmlFor="all">Todos os cadastrados</Label></div>
-              <div className="flex items-center gap-2"><RadioGroupItem id="paid" value="paid" /><Label htmlFor="paid">Só clientes pagos</Label></div>
-              <div className="flex items-center gap-2"><RadioGroupItem id="unpaid" value="unpaid" /><Label htmlFor="unpaid">Só clientes não pagos</Label></div>
+              <div className="flex items-center gap-2"><RadioGroupItem id="buyers" value="buyers" /><Label htmlFor="buyers">Só clientes que já compraram</Label></div>
+              <div className="flex items-center gap-2"><RadioGroupItem id="paid" value="paid" /><Label htmlFor="paid">Clientes com pedido pago</Label></div>
+              <div className="flex items-center gap-2"><RadioGroupItem id="unpaid" value="unpaid" /><Label htmlFor="unpaid">Clientes com pedido não pago</Label></div>
             </RadioGroup>
+          </div>
+
+          {(audience === 'paid' || audience === 'unpaid') && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 rounded-md border border-slate-200 bg-slate-50/60 p-3">
+              <div>
+                <Label className="text-xs">Data inicial (opcional)</Label>
+                <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">Data final (opcional)</Label>
+                <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+              </div>
+              <div className="md:col-span-2 text-[11px] text-muted-foreground">
+                Filtra clientes pelo período em que o pedido foi criado. Deixe em branco para considerar todo o histórico.
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-xs">Estados (opcional)</Label>
+              {states.length > 0 && (
+                <button type="button" className="text-[11px] text-[#4f46e5] hover:underline" onClick={() => setStates([])}>
+                  Limpar seleção
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {BR_UFS.map((uf) => {
+                const active = states.includes(uf);
+                return (
+                  <button
+                    key={uf}
+                    type="button"
+                    onClick={() => toggleState(uf)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${active ? 'bg-[#4f46e5] text-white border-[#4f46e5]' : 'bg-white text-slate-600 border-slate-200 hover:border-[#4f46e5]/40'}`}
+                  >
+                    {uf}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="text-[11px] text-muted-foreground mt-1.5">
+              {states.length === 0 ? 'Nenhum estado selecionado — envia para todas as regiões.' : `Enviando apenas para: ${states.join(', ')}`}
+            </div>
           </div>
           <Button onClick={send} disabled={sending} className="bg-[#4f46e5] hover:bg-[#4338ca]">
             <Send className="h-4 w-4 mr-2" />{sending ? 'Enviando…' : 'Enviar campanha'}
