@@ -391,11 +391,57 @@ function CampaignTab({ tenantId }: { tenantId?: string }) {
           </div>
           <div>
             <Label className="text-xs mb-2 block">Público</Label>
-            <RadioGroup value={audience} onValueChange={(v) => setAudience(v as any)} className="flex gap-6">
+            <RadioGroup value={audience} onValueChange={(v) => setAudience(v as any)} className="grid grid-cols-1 md:grid-cols-2 gap-2">
               <div className="flex items-center gap-2"><RadioGroupItem id="all" value="all" /><Label htmlFor="all">Todos os cadastrados</Label></div>
-              <div className="flex items-center gap-2"><RadioGroupItem id="paid" value="paid" /><Label htmlFor="paid">Só clientes pagos</Label></div>
-              <div className="flex items-center gap-2"><RadioGroupItem id="unpaid" value="unpaid" /><Label htmlFor="unpaid">Só clientes não pagos</Label></div>
+              <div className="flex items-center gap-2"><RadioGroupItem id="buyers" value="buyers" /><Label htmlFor="buyers">Só clientes que já compraram</Label></div>
+              <div className="flex items-center gap-2"><RadioGroupItem id="paid" value="paid" /><Label htmlFor="paid">Clientes com pedido pago</Label></div>
+              <div className="flex items-center gap-2"><RadioGroupItem id="unpaid" value="unpaid" /><Label htmlFor="unpaid">Clientes com pedido não pago</Label></div>
             </RadioGroup>
+          </div>
+
+          {(audience === 'paid' || audience === 'unpaid') && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 rounded-md border border-slate-200 bg-slate-50/60 p-3">
+              <div>
+                <Label className="text-xs">Data inicial (opcional)</Label>
+                <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">Data final (opcional)</Label>
+                <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+              </div>
+              <div className="md:col-span-2 text-[11px] text-muted-foreground">
+                Filtra clientes pelo período em que o pedido foi criado. Deixe em branco para considerar todo o histórico.
+              </div>
+            </div>
+          )}
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-xs">Estados (opcional)</Label>
+              {states.length > 0 && (
+                <button type="button" className="text-[11px] text-[#4f46e5] hover:underline" onClick={() => setStates([])}>
+                  Limpar seleção
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {BR_UFS.map((uf) => {
+                const active = states.includes(uf);
+                return (
+                  <button
+                    key={uf}
+                    type="button"
+                    onClick={() => toggleState(uf)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${active ? 'bg-[#4f46e5] text-white border-[#4f46e5]' : 'bg-white text-slate-600 border-slate-200 hover:border-[#4f46e5]/40'}`}
+                  >
+                    {uf}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="text-[11px] text-muted-foreground mt-1.5">
+              {states.length === 0 ? 'Nenhum estado selecionado — envia para todas as regiões.' : `Enviando apenas para: ${states.join(', ')}`}
+            </div>
           </div>
           <Button onClick={send} disabled={sending} className="bg-[#4f46e5] hover:bg-[#4338ca]">
             <Send className="h-4 w-4 mr-2" />{sending ? 'Enviando…' : 'Enviar campanha'}
