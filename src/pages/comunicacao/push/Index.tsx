@@ -316,15 +316,24 @@ function TemplatesTab({ tenantId }: { tenantId?: string }) {
 }
 
 /* ================= Campaign ================= */
+const BR_UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+
 function CampaignTab({ tenantId }: { tenantId?: string }) {
   const { toast } = useToast();
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [clickUrl, setClickUrl] = useState('');
-  const [audience, setAudience] = useState<'all' | 'paid' | 'unpaid'>('all');
+  const [audience, setAudience] = useState<'all' | 'paid' | 'unpaid' | 'buyers'>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [states, setStates] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const [campaigns, setCampaigns] = useState<any[]>([]);
+
+  const toggleState = (uf: string) => {
+    setStates((prev) => prev.includes(uf) ? prev.filter((s) => s !== uf) : [...prev, uf]);
+  };
 
   const loadCampaigns = async () => {
     if (!tenantId) return;
@@ -338,14 +347,21 @@ function CampaignTab({ tenantId }: { tenantId?: string }) {
     if (!title.trim() || !body.trim()) { toast({ title: 'Preencha título e mensagem', variant: 'destructive' }); return; }
     setSending(true);
     const { data, error } = await supabase.functions.invoke('push-send-campaign', {
-      body: { tenant_id: tenantId, title, body, image_url: imageUrl || null, click_url: clickUrl || null, audience },
+      body: {
+        tenant_id: tenantId, title, body,
+        image_url: imageUrl || null, click_url: clickUrl || null,
+        audience,
+        states: states.length ? states : null,
+        date_from: (audience === 'paid' || audience === 'unpaid') && dateFrom ? dateFrom : null,
+        date_to: (audience === 'paid' || audience === 'unpaid') && dateTo ? dateTo : null,
+      },
     });
     setSending(false);
     if (error || (data as any)?.success === false) {
       toast({ title: 'Falha no envio', description: (data as any)?.error || error?.message, variant: 'destructive' });
       return;
     }
-    toast({ title: 'Campanha enviada', description: `Enviados: ${(data as any).sent} / Falhas: ${(data as any).failed}` });
+    toast({ title: 'Campanha enviada', description: `Alvos: ${(data as any).targets} • Enviados: ${(data as any).sent} • Falhas: ${(data as any).failed}` });
     setTitle(''); setBody(''); setImageUrl(''); setClickUrl('');
     loadCampaigns();
   };
