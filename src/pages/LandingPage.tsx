@@ -233,9 +233,9 @@ export default function LandingPage() {
           </div>
 
           {/* Dashboard preview */}
-          <div className="relative max-w-5xl mx-auto">
-            <div className="absolute -inset-px bg-gradient-to-r from-indigo-500/30 via-cyan-400/20 to-violet-500/30 rounded-2xl blur-lg" />
-            <div className="relative rounded-2xl border border-white/10 overflow-hidden shadow-2xl shadow-black/60 bg-slate-900">
+          <div className="relative max-w-5xl mx-auto group">
+            <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500/40 via-cyan-400/40 to-violet-500/40 rounded-2xl blur-2xl opacity-70 group-hover:opacity-100 transition-opacity animate-pulse" />
+            <div className="relative rounded-2xl fx-border-glow border border-white/10 overflow-hidden shadow-2xl shadow-black/60 bg-slate-900">
               <div className="flex items-center gap-2 px-4 py-3 bg-white/5 border-b border-white/10">
                 <div className="w-3 h-3 rounded-full bg-red-500/60" />
                 <div className="w-3 h-3 rounded-full bg-yellow-500/60" />
