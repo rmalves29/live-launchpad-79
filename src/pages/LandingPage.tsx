@@ -110,47 +110,14 @@ export default function LandingPage() {
     { name: "João Pedro", role: "Semijoias — MG", stars: 5, text: "Eu tinha medo de ser complicado — não sou bom com tecnologia. A equipe configurou tudo comigo e em uma semana eu já não vivia mais sem. Simples de verdade." },
   ];
 
-  const plans = [
-    {
-      name: "Mensal",
-      description: "Pra testar sem compromisso",
-      price: "R$ 499",
-      priceSuffix: "/mês",
-      priceNote: "Cancele quando quiser, sem multa",
-      cta: "Começar agora",
-      features: ["Todas as funcionalidades", "Pedidos ilimitados", "WhatsApp integrado", "Suporte via WhatsApp", "5% de desconto no PIX"],
-      highlight: false,
-    },
-    {
-      name: "Anual",
-      description: "O melhor custo-benefício",
-      price: "R$ 424",
-      priceSuffix: "/mês",
-      priceNote: "R$ 5.089,80/ano em até 12x — economia de R$ 898",
-      cta: "Quero o melhor preço",
-      features: ["Tudo do plano Mensal", "Economia de 15%", "Parcelamento em até 12x", "5% de desconto extra no PIX à vista", "Prioridade no suporte"],
-      highlight: true,
-    },
-    {
-      name: "Semestral",
-      description: "Compromisso médio, preço menor",
-      price: "R$ 449",
-      priceSuffix: "/mês",
-      priceNote: "R$ 2.694,60/semestre em até 6x — economia de R$ 299",
-      cta: "Quero o Semestral",
-      features: ["Tudo do plano Mensal", "Economia de 10%", "Parcelamento em até 6x", "5% de desconto no PIX à vista"],
-      highlight: false,
-    },
-  ];
-
   const faqs = [
     { question: "A automação não vai deixar meu atendimento frio?", answer: "Não — e essa é a nossa obsessão. As mensagens saem personalizadas com o nome da cliente, com variações naturais e no seu tom de voz. Suas clientes vão sentir que a loja ficou mais rápida e organizada, não robótica. E você continua entrando na conversa quando quiser — o sistema cuida do repetitivo, o encantamento continua sendo seu." },
     { question: "Não sou boa com tecnologia. Vou conseguir usar?", answer: "Vai. O Cartzy foi feito pra quem vende no WhatsApp, não pra quem entende de sistema. E você não configura nada sozinha: a implantação é feita com a nossa equipe, passo a passo, até o primeiro pedido rodar. Depois disso, o dia a dia é comentar código no grupo — igual você já faz hoje." },
     { question: "Isso não é coisa de empresa grande?", answer: "Pelo contrário: foi feito pra quem vende em grupo de WhatsApp e live — a loja que é tocada por uma pessoa (ou duas). É exatamente quando você NÃO tem equipe que precisa de um sistema fazendo o trabalho repetitivo." },
     { question: "E se der problema no meio de uma promoção?", answer: "O suporte é via WhatsApp, com gente de verdade respondendo. E o sistema roda na nuvem 24/7, com backups automáticos — sua operação não depende do seu computador estar ligado." },
-    { question: "Tem contrato de fidelidade?", answer: "No plano Mensal, não — você cancela quando quiser, sem multa. Os planos Semestral e Anual têm preço menor justamente pelo período, com parcelamento no cartão e 5% de desconto no PIX à vista." },
+    { question: "Tem contrato de fidelidade?", answer: "No plano mensal, não — você cancela quando quiser, sem multa. Também existem opções de período maior com condições especiais: fale com a equipe no WhatsApp que apresentamos os planos." },
     { question: "Tem custo extra por mensagem de WhatsApp?", answer: "Não. O Cartzy integra com o seu WhatsApp sem custo por mensagem e sem depender de aprovação da Meta. E com proteção anti-bloqueio: envios em ritmo humano, mensagens variadas e controle de consentimento das clientes." },
-    { question: "Como funciona a implantação?", answer: "Taxa única de R$ 600 que cobre a configuração completa: conexão do WhatsApp, cadastro no sistema, integração de pagamento e envio, e treinamento pra você começar vendendo — não apenas “com acesso”." },
+    { question: "Como funciona a implantação?", answer: "A configuração completa é feita com a nossa equipe: conexão do WhatsApp, cadastro no sistema, integração de pagamento e envio, e treinamento pra você começar vendendo — não apenas “com acesso”. Os detalhes e valores são apresentados na conversa com a equipe." },
     { question: "Funciona com a transportadora que eu já uso?", answer: "Integramos com Correios, Melhor Envio, Mandaê e as principais do Brasil — etiqueta e rastreio automáticos. No pagamento: Mercado Pago, Pagar.me, InfinitePay e mais." },
   ];
 
@@ -171,7 +138,7 @@ export default function LandingPage() {
 
           {/* Desktop links */}
           <div className="hidden md:flex items-center gap-8">
-            {[["#dores", "Isso é você?"], ["#features", "Funcionalidades"], ["#how-it-works", "Como funciona"], ["#pricing", "Planos"], ["#faq", "FAQ"]].map(([href, label]) => (
+            {[["#dores", "Isso é você?"], ["#features", "Funcionalidades"], ["#how-it-works", "Como funciona"], ["#faq", "FAQ"]].map(([href, label]) => (
               <a key={href} href={href} className="text-sm text-slate-400 hover:text-white transition-colors">{label}</a>
             ))}
           </div>
@@ -200,7 +167,7 @@ export default function LandingPage() {
         {/* Mobile menu */}
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-white/10 bg-[#07080F] px-5 py-4 flex flex-col gap-4">
-            {[["#dores", "Isso é você?"], ["#features", "Funcionalidades"], ["#how-it-works", "Como funciona"], ["#pricing", "Planos"], ["#faq", "FAQ"]].map(([href, label]) => (
+            {[["#dores", "Isso é você?"], ["#features", "Funcionalidades"], ["#how-it-works", "Como funciona"], ["#faq", "FAQ"]].map(([href, label]) => (
               <a key={href} href={href} onClick={() => setMobileMenuOpen(false)} className="text-sm text-slate-300 hover:text-white">{label}</a>
             ))}
             <Link to="/auth" onClick={() => setMobileMenuOpen(false)} className="text-sm text-slate-300 hover:text-white">Entrar</Link>
@@ -573,78 +540,6 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* ─── PRICING ─── */}
-      <section id="pricing" className="py-28 bg-[#07080F] border-b border-white/5">
-        <div className="container mx-auto px-5">
-          <div className="text-center mb-6">
-            <span className="inline-block text-xs font-semibold uppercase tracking-widest text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full mb-4">Planos</span>
-            <h2 className="text-3xl md:text-5xl font-bold mb-4 text-white tracking-tight">Quanto custa perder<br />4 horas por dia?</h2>
-            <p className="text-slate-400 max-w-lg mx-auto">
-              Menos que meio salário de uma atendente — pra um sistema que atende, cobra, confere pagamento e envia rastreio 24 horas por dia, sem errar pedido.
-            </p>
-          </div>
-          <p className="text-center text-xs text-slate-500 mb-12">
-            Implantação única de R$ 600 — nossa equipe configura tudo com você, do WhatsApp ao primeiro pedido rodando.
-          </p>
-
-          <div className="grid md:grid-cols-3 gap-4 max-w-5xl mx-auto items-start">
-            {plans.map((plan, i) => (
-              <div
-                key={i}
-                className={`relative rounded-2xl p-7 flex flex-col border transition-all ${
-                  plan.highlight
-                    ? "bg-indigo-600 border-indigo-500 shadow-2xl shadow-indigo-600/30 md:-mt-4 md:mb-0"
-                    : "bg-white/5 border-white/10 hover:border-white/20 hover:bg-white/8"
-                }`}
-              >
-                {plan.highlight && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span className="bg-white text-indigo-600 text-xs font-bold px-4 py-1.5 rounded-full shadow-lg tracking-wide">
-                      MELHOR CUSTO-BENEFÍCIO
-                    </span>
-                  </div>
-                )}
-
-                <div className="mb-7">
-                  <h3 className="font-bold text-xl mb-1 text-white">{plan.name}</h3>
-                  <p className={`text-sm mb-5 ${plan.highlight ? "text-indigo-200" : "text-slate-500"}`}>{plan.description}</p>
-                  <p className="text-3xl font-bold text-white">
-                    {plan.price}
-                    <span className={`text-base font-medium ${plan.highlight ? "text-indigo-200" : "text-slate-400"}`}>{plan.priceSuffix}</span>
-                  </p>
-                  <p className={`text-xs mt-2 ${plan.highlight ? "text-indigo-200" : "text-slate-500"}`}>{plan.priceNote}</p>
-                </div>
-
-                <div className="space-y-3.5 flex-1 mb-8">
-                  {plan.features.map((f, fi) => (
-                    <div key={fi} className="flex items-center gap-3">
-                      <div className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${plan.highlight ? "bg-white/20" : "bg-indigo-500/20"}`}>
-                        <Check className={`w-2.5 h-2.5 ${plan.highlight ? "text-white" : "text-indigo-400"}`} />
-                      </div>
-                      <span className={`text-sm ${plan.highlight ? "text-white" : "text-slate-300"}`}>{f}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer">
-                  <Button className={`w-full font-semibold h-11 ${
-                    plan.highlight
-                      ? "bg-white hover:bg-slate-100 text-indigo-600"
-                      : "bg-white/10 hover:bg-white/20 text-white border border-white/10"
-                  }`}>
-                    {plan.cta}
-                  </Button>
-                </a>
-              </div>
-            ))}
-          </div>
-
-          <p className="text-center mt-10 text-sm text-slate-500 max-w-md mx-auto">
-            💡 Uma live que deixa de perder 5 pedidos já paga o mês inteiro.
-          </p>
         </div>
       </section>
 
