@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import cartzyLogo from "@/assets/cartzy-logo.png";
+import FuturisticFX from "@/components/landing/FuturisticFX";
 
 const WHATSAPP_URL = "http://api.whatsapp.com/send?l=pt&phone=5531992904210";
 
