@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import cartzyLogo from "@/assets/cartzy-logo.png";
+import FuturisticFX from "@/components/landing/FuturisticFX";
 
 const WHATSAPP_URL = "http://api.whatsapp.com/send?l=pt&phone=5531992904210";
 
@@ -177,15 +178,10 @@ export default function LandingPage() {
 
       {/* ─── HERO ─── */}
       <section className="relative min-h-screen flex items-center justify-center bg-[#07080F] overflow-hidden pt-16">
-        {/* Background glow mesh */}
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[600px] bg-indigo-700/20 rounded-full blur-[130px]" />
-          <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-cyan-600/10 rounded-full blur-[100px]" />
-          <div className="absolute bottom-1/4 right-1/4 w-[350px] h-[350px] bg-violet-600/10 rounded-full blur-[100px]" />
-          <div className="absolute inset-0 opacity-[0.03]" style={{backgroundImage: "linear-gradient(white 1px, transparent 1px), linear-gradient(90deg, white 1px, transparent 1px)", backgroundSize: "60px 60px"}} />
-        </div>
+        {/* Efeitos futuristas */}
+        <FuturisticFX variant="hero" />
 
-        <div className="container mx-auto px-5 relative text-center">
+        <div className="container mx-auto px-5 relative z-10 text-center">
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 mb-10">
             <Zap className="w-3.5 h-3.5 text-indigo-400" />
@@ -237,9 +233,9 @@ export default function LandingPage() {
           </div>
 
           {/* Dashboard preview */}
-          <div className="relative max-w-5xl mx-auto">
-            <div className="absolute -inset-px bg-gradient-to-r from-indigo-500/30 via-cyan-400/20 to-violet-500/30 rounded-2xl blur-lg" />
-            <div className="relative rounded-2xl border border-white/10 overflow-hidden shadow-2xl shadow-black/60 bg-slate-900">
+          <div className="relative max-w-5xl mx-auto group">
+            <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500/40 via-cyan-400/40 to-violet-500/40 rounded-2xl blur-2xl opacity-70 group-hover:opacity-100 transition-opacity animate-pulse" />
+            <div className="relative rounded-2xl fx-border-glow border border-white/10 overflow-hidden shadow-2xl shadow-black/60 bg-slate-900">
               <div className="flex items-center gap-2 px-4 py-3 bg-white/5 border-b border-white/10">
                 <div className="w-3 h-3 rounded-full bg-red-500/60" />
                 <div className="w-3 h-3 rounded-full bg-yellow-500/60" />
