@@ -8,7 +8,6 @@ import {
   Check,
   X,
   Clock,
-  TrendingUp,
   ArrowRight,
   Star,
   ChevronDown,
@@ -18,6 +17,10 @@ import {
   Globe,
   Zap,
   Menu,
+  AlertCircle,
+  Heart,
+  Moon,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
@@ -41,65 +44,121 @@ export default function LandingPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // ─── Dores (na voz da cliente) ───
+  const pains = [
+    { icon: MessageSquare, title: "“Me passa o preço?” pela 40ª vez hoje", description: "Preço, frete, tamanho, forma de pagamento... as mesmas perguntas o dia inteiro, e você respondendo uma por uma enquanto as vendas escapam." },
+    { icon: Clock, title: "Respondeu tarde? A cliente já comprou de outra", description: "Ela mandou “eu quero”, você estava ocupada com outro pedido, e quando respondeu... silêncio. Venda perdida por pura falta de braço." },
+    { icon: AlertCircle, title: "O pós-live é um mutirão até de madrugada", description: "A live foi ótima — agora são 3 horas caçando “eu quero” no meio dos comentários, montando lista, conferindo quem pagou. Você termina querendo chorar." },
+    { icon: CreditCard, title: "Conferir comprovante um por um é castigo", description: "Print errado, PIX que não caiu, cliente que some depois de pedir a chave... você perde mais tempo checando pagamento do que vendendo." },
+    { icon: Package, title: "Pedido errado = reputação em risco", description: "Cor errada, tamanho errado, endereço trocado. Um erro no grupo e a cliente reclama na frente de todo mundo. Seu nome é tudo que você tem." },
+    { icon: Moon, title: "Você não desliga nunca", description: "Na cama, no almoço, no domingo — o WhatsApp apita e a paz morre. A sensação constante de “tô devendo resposta pra alguém” não te deixa descansar." },
+  ];
+
+  // ─── Gambiarras que ela já tentou ───
+  const failedFixes = [
+    { title: "Planilha no Excel", quote: "“Planilha é linda... até chegar pedido em 3 lugares ao mesmo tempo. No fim do dia tá tudo desatualizado e eu fico com raiva de mim.”" },
+    { title: "Caderninho / bloco de notas", quote: "“A letra vira garrancho no meio do caos. Se eu perco o caderno, acabou.”" },
+    { title: "Respostas prontas no WhatsApp", quote: "“Eu copio, colo... e mesmo assim tem 20 perguntas diferentes. Fico parecendo robô, mas sem automatizar nada.”" },
+    { title: "Chamar sobrinha / marido pra ajudar", quote: "“Gasto dinheiro, a pessoa não responde do meu jeito, e no fim eu fico supervisionando. Trabalho duas vezes.”" },
+    { title: "CRM “profissional” cheio de botão", quote: "“Eu abro e já dá preguiça. Até eu configurar, já passou a promoção, já passou a vontade, já passou tudo.”" },
+    { title: "Ficar 100% online pra não perder venda", quote: "“Eu virei escrava do celular. Meu negócio cresce... e a minha vida some.”" },
+  ];
+
   const features = [
-    { icon: Package, title: "Gestão de Pedidos", description: "Capture, organize e acompanhe todos os pedidos em tempo real durante suas Lives e Grupos de WhatsApp. Zero pedido perdido." },
-    { icon: MessageSquare, title: "WhatsApp Integrado", description: "Envio automático de confirmações, cobranças e código de rastreio. Seu cliente sempre informado." },
-    { icon: CreditCard, title: "Link de Pagamento", description: "Links gerados e enviados automaticamente. O cliente paga em segundos, você recebe na hora." },
-    { icon: Truck, title: "Logística Completa", description: "Etiquetas geradas e rastreio automático integrado às principais transportadoras do Brasil." },
-    { icon: Gift, title: "Cupons e Sorteios", description: "Sistema completo de promoções, cupons de desconto e sorteios para engajar seu público." },
-    { icon: BarChart3, title: "Relatórios em Tempo Real", description: "Métricas de vendas, faturamento e performance sempre atualizadas no seu painel." },
-    { icon: Repeat, title: "Automação de Campanhas", description: "Envie mensagens em massa para grupos de clientes com agendamento e personalização." },
-    { icon: ShieldCheck, title: "Multi-tenant Seguro", description: "Dados isolados por loja com criptografia e backups automáticos." },
-    { icon: Globe, title: "+11 Integrações", description: "Bling, Melhor Envio, Mercado Pago, Pagar.me, Correios, Mandaê, Olist, Bagy, Omie e mais." },
+    { icon: Package, title: "Pedido capturado sozinho", description: "A cliente comenta o código do produto no grupo ou na live — e o pedido entra no sistema montado: nome, produto, quantidade, valor. Sem você anotar nada." },
+    { icon: MessageSquare, title: "WhatsApp que trabalha por você", description: "Confirmação de item, cobrança, pagamento aprovado e código de rastreio: tudo enviado automaticamente, com jeito de gente — não de robô." },
+    { icon: CreditCard, title: "Cobrança sem ser “a chata do PIX”", description: "Link de pagamento gerado e enviado na hora. O sistema confirma o pagamento sozinho — zero conferência de comprovante." },
+    { icon: Truck, title: "Etiqueta e rastreio automáticos", description: "Pedido pago vira etiqueta pronta pra imprimir. A cliente recebe o rastreio no WhatsApp sem perguntar “já postou?”." },
+    { icon: BarChart3, title: "Fila de pedidos clara", description: "Novo, aguardando pagamento, pago, enviado, finalizado. Você sabe exatamente onde cada pedido está — sem depender de memória." },
+    { icon: Repeat, title: "Campanhas nos grupos", description: "Divulgue produtos em todos os seus grupos com agendamento, fotos e intervalo inteligente que protege seu número de bloqueios." },
+    { icon: Gift, title: "Cupons e sorteios", description: "Promoção sem virar caos: cupons de desconto e sorteios com regras claras, direto no sistema." },
+    { icon: ShieldCheck, title: "Proteção do seu chip", description: "Envios com ritmo humano, mensagens variadas e controle de consentimento — seu número de WhatsApp protegido contra bloqueio." },
+    { icon: Globe, title: "+11 integrações", description: "Bling, Mercado Pago, Pagar.me, InfinitePay, Correios, Melhor Envio, Mandaê, Olist, Bagy, Omie e mais." },
   ];
 
   const integrations = [
-    "WhatsApp", "Bling", "Mercado Pago", "Pagar.me", "Correios",
+    "WhatsApp", "Bling", "Mercado Pago", "Pagar.me", "InfinitePay", "Correios",
     "Melhor Envio", "Mandaê", "Olist", "Bagy", "Omie", "Instagram",
   ];
 
   const steps = [
-    { step: "01", title: "Cliente faz pedido na Live ou Grupo", description: "O Cartzy captura automaticamente o pedido, mesmo no meio do caos da Live." },
-    { step: "02", title: "Sistema confirma com o cliente", description: "Mensagem automática via WhatsApp confirmando os itens do pedido." },
-    { step: "03", title: "Link de pagamento enviado", description: "Cliente recebe o link e paga em segundos. Você recebe a confirmação na hora." },
-    { step: "04", title: "Etiqueta gerada automaticamente", description: "Pedido pago vira etiqueta pronta para imprimir, integrado com sua transportadora." },
-    { step: "05", title: "Rastreio enviado pelo WhatsApp", description: "Cliente acompanha a entrega em tempo real, sem precisar perguntar." },
+    { step: "01", title: "Cliente comenta o código na live ou no grupo", description: "“C123” no comentário — pronto. O Cartzy captura e monta o pedido sozinho, mesmo no meio do caos da live." },
+    { step: "02", title: "Ela recebe a confirmação no WhatsApp", description: "Mensagem automática com o item, valor e link pra finalizar. Rápido, organizado, com a sua cara." },
+    { step: "03", title: "Paga em segundos, sem você cobrar", description: "PIX ou cartão pelo link. O sistema confirma o pagamento sozinho — nada de conferir print." },
+    { step: "04", title: "Etiqueta pronta pra imprimir", description: "Pedido pago vira etiqueta na transportadora que você usa. Em lote, com um clique." },
+    { step: "05", title: "Rastreio enviado automaticamente", description: "A cliente acompanha a entrega pelo WhatsApp. Você nem fica sabendo que ela ia perguntar." },
   ];
 
   const comparison = [
-    { without: "Anotar pedidos um por um no caderno", with: "Captura automática direto da Live e Grupo" },
-    { without: "Cobrar no PIX manualmente", with: "Link de pagamento enviado em segundos" },
-    { without: "Gerar etiqueta uma a uma", with: "Etiquetas em lote, prontas pra imprimir" },
-    { without: "Cliente perdido sem saber do envio", with: "Rastreio automático via WhatsApp" },
-    { without: "Planilha bagunçada, sem controle", with: "Painel completo com tudo organizado" },
+    { without: "Caçar “eu quero” em 200 comentários", with: "Pedido montado sozinho na hora do comentário" },
+    { without: "Cobrar no privado, uma por uma", with: "Link de pagamento automático em segundos" },
+    { without: "Conferir comprovante print por print", with: "Pagamento confirmado pelo sistema, sozinho" },
+    { without: "Madrugada organizando o pós-live", with: "Live termina, pedidos já estão organizados" },
+    { without: "“Já postou meu pedido?” 10x por dia", with: "Rastreio enviado automaticamente no WhatsApp" },
+    { without: "Presa no celular pra não perder venda", with: "Venda rodando enquanto você vive sua vida" },
+  ];
+
+  const transformations = [
+    { icon: Heart, before: "“Eu era a atendente, o caixa, o SAC e o estoque — tudo ao mesmo tempo.”", after: "“Agora eu sou a dona do negócio. O sistema é meu funcionário invisível — sem salário e sem drama.”" },
+    { icon: Moon, before: "“Eu respondia mensagem até na cama. Não desligava nunca.”", after: "“Hoje eu durmo em paz. Não fico pensando ‘será que esqueci alguém?’.”" },
+    { icon: Users, before: "“Minha família só via a minha correria. Metade da minha cabeça vivia no WhatsApp.”", after: "“Agora eu tô presente de verdade. E o negócio vende até quando eu não tô online.”" },
   ];
 
   const testimonials = [
-    { name: "Mariana Silva", role: "Loja de Roupas — SP", stars: 5, text: "Antes eu perdia pelo menos 30% dos pedidos nas Lives e no Grupo Vip. Com o Cartzy, zero pedido perdido. Meu faturamento dobrou em 2 meses." },
-    { name: "João Pedro", role: "Bijuterias — MG", stars: 5, text: "O suporte é fantástico e o sistema é simples de usar. Hoje consigo fazer Lives muito mais tranquilas sabendo que tudo é capturado." },
-    { name: "Carla Mendes", role: "Cosméticos — RJ", stars: 5, text: "Economizo 4 horas por dia que eu gastava cobrando cliente no WhatsApp. Agora é tudo automático e eu foco só em vender." },
+    { name: "Mariana Silva", role: "Loja de Roupas — SP", stars: 5, text: "Antes eu terminava a live feliz e começava o pós-live querendo chorar. Hoje a live acaba e os pedidos já estão prontos, cobrados e organizados. Meu faturamento dobrou em 2 meses." },
+    { name: "Carla Mendes", role: "Cosméticos — RJ", stars: 5, text: "Eu perdia venda porque demorava a responder. Agora a cliente comenta o código e recebe tudo na hora — parece que ganhei uma funcionária que nunca dorme. Economizo 4 horas por dia." },
+    { name: "João Pedro", role: "Semijoias — MG", stars: 5, text: "Eu tinha medo de ser complicado — não sou bom com tecnologia. A equipe configurou tudo comigo e em uma semana eu já não vivia mais sem. Simples de verdade." },
   ];
 
   const plans = [
-    { name: "Starter", description: "Para quem está começando", price: "Sob consulta", cta: "Falar com a equipe", features: ["Até 200 pedidos/mês", "WhatsApp integrado", "Link de pagamento", "Suporte via WhatsApp"], highlight: false },
-    { name: "Pro", description: "O mais escolhido", price: "Sob consulta", cta: "Quero o Pro", features: ["Pedidos ilimitados", "Tudo do Starter", "Etiquetas e rastreio", "Cupons e sorteios", "Relatórios avançados"], highlight: true },
-    { name: "Business", description: "Para grandes operações", price: "Sob consulta", cta: "Falar com vendas", features: ["Tudo do Pro", "Multi-loja", "Integrações personalizadas", "Onboarding dedicado", "Suporte prioritário"], highlight: false },
+    {
+      name: "Mensal",
+      description: "Pra testar sem compromisso",
+      price: "R$ 499",
+      priceSuffix: "/mês",
+      priceNote: "Cancele quando quiser, sem multa",
+      cta: "Começar agora",
+      features: ["Todas as funcionalidades", "Pedidos ilimitados", "WhatsApp integrado", "Suporte via WhatsApp", "5% de desconto no PIX"],
+      highlight: false,
+    },
+    {
+      name: "Anual",
+      description: "O melhor custo-benefício",
+      price: "R$ 424",
+      priceSuffix: "/mês",
+      priceNote: "R$ 5.089,80/ano em até 12x — economia de R$ 898",
+      cta: "Quero o melhor preço",
+      features: ["Tudo do plano Mensal", "Economia de 15%", "Parcelamento em até 12x", "5% de desconto extra no PIX à vista", "Prioridade no suporte"],
+      highlight: true,
+    },
+    {
+      name: "Semestral",
+      description: "Compromisso médio, preço menor",
+      price: "R$ 449",
+      priceSuffix: "/mês",
+      priceNote: "R$ 2.694,60/semestre em até 6x — economia de R$ 299",
+      cta: "Quero o Semestral",
+      features: ["Tudo do plano Mensal", "Economia de 10%", "Parcelamento em até 6x", "5% de desconto no PIX à vista"],
+      highlight: false,
+    },
   ];
 
   const faqs = [
-    { question: "Preciso de internet boa para usar?", answer: "Sim, mas funciona perfeitamente com 4G ou Wi-Fi comum. Não exige nada complexo." },
-    { question: "O WhatsApp é o oficial ou Z-API?", answer: "Você escolhe. Suportamos WhatsApp comum (via Z-API) ou WhatsApp Business API oficial." },
-    { question: "Como faço para contratar?", answer: "Entre em contato pelo WhatsApp e nossa equipe vai apresentar os planos disponíveis e fazer o onboarding completo da sua loja." },
-    { question: "Tem contrato de fidelidade?", answer: "Não. Nossos planos são mensais e você pode cancelar quando quiser, sem multa." },
-    { question: "Quais transportadoras são suportadas?", answer: "Integramos com Correios, Melhor Envio, Mandae e as principais transportadoras do Brasil. Etiquetas e rastreio automáticos." },
-    { question: "Tem custo extra de WhatsApp?", answer: "Não. O Cartzy integra com seu WhatsApp sem custo adicional por mensagem e sem precisar de aprovação do Meta." },
+    { question: "A automação não vai deixar meu atendimento frio?", answer: "Não — e essa é a nossa obsessão. As mensagens saem personalizadas com o nome da cliente, com variações naturais e no seu tom de voz. Suas clientes vão sentir que a loja ficou mais rápida e organizada, não robótica. E você continua entrando na conversa quando quiser — o sistema cuida do repetitivo, o encantamento continua sendo seu." },
+    { question: "Não sou boa com tecnologia. Vou conseguir usar?", answer: "Vai. O Cartzy foi feito pra quem vende no WhatsApp, não pra quem entende de sistema. E você não configura nada sozinha: a implantação é feita com a nossa equipe, passo a passo, até o primeiro pedido rodar. Depois disso, o dia a dia é comentar código no grupo — igual você já faz hoje." },
+    { question: "Isso não é coisa de empresa grande?", answer: "Pelo contrário: foi feito pra quem vende em grupo de WhatsApp e live — a loja que é tocada por uma pessoa (ou duas). É exatamente quando você NÃO tem equipe que precisa de um sistema fazendo o trabalho repetitivo." },
+    { question: "E se der problema no meio de uma promoção?", answer: "O suporte é via WhatsApp, com gente de verdade respondendo. E o sistema roda na nuvem 24/7, com backups automáticos — sua operação não depende do seu computador estar ligado." },
+    { question: "Tem contrato de fidelidade?", answer: "No plano Mensal, não — você cancela quando quiser, sem multa. Os planos Semestral e Anual têm preço menor justamente pelo período, com parcelamento no cartão e 5% de desconto no PIX à vista." },
+    { question: "Tem custo extra por mensagem de WhatsApp?", answer: "Não. O Cartzy integra com o seu WhatsApp sem custo por mensagem e sem depender de aprovação da Meta. E com proteção anti-bloqueio: envios em ritmo humano, mensagens variadas e controle de consentimento das clientes." },
+    { question: "Como funciona a implantação?", answer: "Taxa única de R$ 600 que cobre a configuração completa: conexão do WhatsApp, cadastro no sistema, integração de pagamento e envio, e treinamento pra você começar vendendo — não apenas “com acesso”." },
+    { question: "Funciona com a transportadora que eu já uso?", answer: "Integramos com Correios, Melhor Envio, Mandaê e as principais do Brasil — etiqueta e rastreio automáticos. No pagamento: Mercado Pago, Pagar.me, InfinitePay e mais." },
   ];
 
   const benefits = [
-    { value: "10x", label: "Mais rápido", description: "no processo de venda" },
+    { value: "10x", label: "Mais clientes atendidas", description: "sem contratar ninguém" },
     { value: "0", label: "Pedidos perdidos", description: "com captura automática" },
-    { value: "24/7", label: "Funcionando", description: "sem interrupções" },
-    { value: "100%", label: "Integrado", description: "WhatsApp, pagamento e envio" },
+    { value: "4h", label: "Recuperadas por dia", description: "do trabalho manual repetitivo" },
+    { value: "24/7", label: "Vendendo", description: "mesmo quando você não está online" },
   ];
 
   return (
@@ -112,7 +171,7 @@ export default function LandingPage() {
 
           {/* Desktop links */}
           <div className="hidden md:flex items-center gap-8">
-            {[["#features", "Funcionalidades"], ["#how-it-works", "Como funciona"], ["#pricing", "Planos"], ["#faq", "FAQ"]].map(([href, label]) => (
+            {[["#dores", "Isso é você?"], ["#features", "Funcionalidades"], ["#how-it-works", "Como funciona"], ["#pricing", "Planos"], ["#faq", "FAQ"]].map(([href, label]) => (
               <a key={href} href={href} className="text-sm text-slate-400 hover:text-white transition-colors">{label}</a>
             ))}
           </div>
@@ -125,7 +184,7 @@ export default function LandingPage() {
             </Link>
             <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer">
               <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-lg shadow-indigo-600/20">
-                Fale conosco
+                Quero conhecer
               </Button>
             </a>
             {/* Mobile hamburger */}
@@ -141,7 +200,7 @@ export default function LandingPage() {
         {/* Mobile menu */}
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-white/10 bg-[#07080F] px-5 py-4 flex flex-col gap-4">
-            {[["#features", "Funcionalidades"], ["#how-it-works", "Como funciona"], ["#pricing", "Planos"], ["#faq", "FAQ"]].map(([href, label]) => (
+            {[["#dores", "Isso é você?"], ["#features", "Funcionalidades"], ["#how-it-works", "Como funciona"], ["#pricing", "Planos"], ["#faq", "FAQ"]].map(([href, label]) => (
               <a key={href} href={href} onClick={() => setMobileMenuOpen(false)} className="text-sm text-slate-300 hover:text-white">{label}</a>
             ))}
             <Link to="/auth" onClick={() => setMobileMenuOpen(false)} className="text-sm text-slate-300 hover:text-white">Entrar</Link>
@@ -156,7 +215,6 @@ export default function LandingPage() {
           <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[600px] bg-indigo-700/20 rounded-full blur-[130px]" />
           <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-cyan-600/10 rounded-full blur-[100px]" />
           <div className="absolute bottom-1/4 right-1/4 w-[350px] h-[350px] bg-violet-600/10 rounded-full blur-[100px]" />
-          {/* Grid overlay */}
           <div className="absolute inset-0 opacity-[0.03]" style={{backgroundImage: "linear-gradient(white 1px, transparent 1px), linear-gradient(90deg, white 1px, transparent 1px)", backgroundSize: "60px 60px"}} />
         </div>
 
@@ -165,7 +223,7 @@ export default function LandingPage() {
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 mb-10">
             <Zap className="w-3.5 h-3.5 text-indigo-400" />
             <span className="text-xs text-indigo-300 font-medium tracking-wide">
-              Sistema completo para lives do Instagram e Grupos de WhatsApp
+              Para quem vende em grupos de WhatsApp e lives no Instagram
             </span>
           </div>
 
@@ -176,23 +234,21 @@ export default function LandingPage() {
 
           {/* Headline */}
           <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold leading-[1.05] tracking-tight text-white mb-6 max-w-4xl mx-auto">
-            Chega de 5 dias para{" "}
-            <span className="relative">
-              <span className="bg-gradient-to-r from-cyan-400 via-indigo-400 to-violet-400 bg-clip-text text-transparent">
-                fechar uma venda.
-              </span>
+            Seu negócio virou um{" "}
+            <span className="bg-gradient-to-r from-cyan-400 via-indigo-400 to-violet-400 bg-clip-text text-transparent">
+              emprego dentro do WhatsApp?
             </span>
           </h1>
 
-          <p className="text-base md:text-lg text-slate-400 mb-10 max-w-xl mx-auto leading-relaxed">
-            O Cartzy captura pedidos automaticamente, envia cobranças e rastreio via WhatsApp — do pedido ao pagamento em minutos.
+          <p className="text-base md:text-lg text-slate-400 mb-10 max-w-2xl mx-auto leading-relaxed">
+            O Cartzy captura os pedidos da live e dos grupos, cobra, confirma o pagamento e envia o rastreio — <strong className="text-slate-200">sozinho</strong>. Você volta a ser a dona do negócio, não a atendente dele.
           </p>
 
           {/* CTAs */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
             <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer">
               <Button size="lg" className="bg-indigo-600 hover:bg-indigo-500 text-white px-8 h-12 text-sm font-semibold shadow-2xl shadow-indigo-600/40 transition-all hover:scale-105 hover:shadow-indigo-500/50">
-                Conhecer o Cartzy
+                Quero vender sem caos
                 <ArrowRight className="ml-2 w-4 h-4" />
               </Button>
             </a>
@@ -205,7 +261,7 @@ export default function LandingPage() {
 
           {/* Trust badges */}
           <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-slate-500 mb-16">
-            {["Sem fidelidade", "Suporte via WhatsApp", "WhatsApp sem custo extra"].map((t) => (
+            {["Implantação acompanhada passo a passo", "Suporte humano via WhatsApp", "Sem custo extra por mensagem"].map((t) => (
               <span key={t} className="flex items-center gap-1.5">
                 <Check className="w-3.5 h-3.5 text-indigo-400" />
                 {t}
@@ -223,8 +279,9 @@ export default function LandingPage() {
                 <div className="w-3 h-3 rounded-full bg-green-500/60" />
                 <div className="ml-2 h-5 flex-1 max-w-xs rounded-md bg-white/5 border border-white/10" />
               </div>
-              <img src="/dashboard.png" alt="Painel Cartzy" className="w-full h-auto opacity-90" />
+              <img src="/dashboard.png" alt="Painel do Cartzy — pedidos organizados em tempo real" className="w-full h-auto opacity-90" loading="lazy" />
             </div>
+            <p className="mt-4 text-xs text-slate-600">☝️ Painel real do Cartzy: cada pedido da live entra aqui sozinho, com status e pagamento</p>
           </div>
         </div>
       </section>
@@ -233,7 +290,7 @@ export default function LandingPage() {
       <section className="py-10 bg-slate-950 border-y border-white/5">
         <div className="container mx-auto px-5">
           <p className="text-center text-xs text-slate-600 uppercase tracking-widest mb-6 font-medium">
-            Integrado com as principais plataformas do mercado
+            Integrado com as plataformas que você já usa
           </p>
           <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
             {integrations.map((name) => (
@@ -243,25 +300,21 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ─── PROBLEM ─── */}
-      <section className="py-28 bg-white border-b border-slate-100">
+      {/* ─── DORES ─── */}
+      <section id="dores" className="py-28 bg-white border-b border-slate-100">
         <div className="container mx-auto px-5">
           <div className="text-center mb-16">
-            <span className="inline-block text-xs font-semibold uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full mb-4">O problema</span>
+            <span className="inline-block text-xs font-semibold uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full mb-4">Isso parece com o seu dia?</span>
             <h2 className="text-3xl md:text-5xl font-bold mb-5 text-slate-900 tracking-tight leading-tight">
-              Vender em live e Grupos Vip<br />é caótico sem a ferramenta certa
+              Você acorda com 80 mensagens<br />e não sabe por onde começar
             </h2>
             <p className="text-slate-500 max-w-lg mx-auto text-base">
-              Milhares de vendedores perdem dinheiro todo dia por falta de organização durante as lives e ações de Grupo Vip
+              Você é boa de venda. Tem produto, tem cliente, tem lábia. O problema nunca foi você — é fazer <strong className="text-slate-700">tudo</strong> na mão.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-4 max-w-4xl mx-auto">
-            {[
-              { icon: MessageSquare, title: "Pedidos perdidos no chat", description: "O chat corre rápido durante a Live e os Grupos ficam cheios de mensagens. Sem captura automática, pedidos somem." },
-              { icon: Clock, title: "Horas de trabalho manual", description: "Copiar nome, produto, endereço, cobrar um a um... isso toma horas do seu dia após cada Live ou ação no Grupo Vip." },
-              { icon: TrendingUp, title: "Clientes que desistem", description: "Quem espera resposta por muito tempo simplesmente vai embora e compra na concorrência." },
-            ].map((p, i) => (
+          <div className="grid md:grid-cols-3 gap-4 max-w-5xl mx-auto">
+            {pains.map((p, i) => (
               <div key={i} className="group rounded-2xl border border-slate-200 p-7 hover:border-red-200 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 bg-white">
                 <div className="w-11 h-11 rounded-xl bg-red-50 flex items-center justify-center mb-5">
                   <p.icon className="w-5 h-5 text-red-500" />
@@ -271,33 +324,64 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
+
+          <p className="text-center mt-12 text-slate-600 max-w-xl mx-auto text-base leading-relaxed">
+            Enquanto tudo depender de você estar online, o negócio não cresce — <strong>só você se esgota.</strong>
+          </p>
+        </div>
+      </section>
+
+      {/* ─── GAMBIARRAS ─── */}
+      <section className="py-28 bg-slate-950 border-b border-white/5">
+        <div className="container mx-auto px-5">
+          <div className="text-center mb-16">
+            <span className="inline-block text-xs font-semibold uppercase tracking-widest text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full mb-4">Você já tentou de tudo</span>
+            <h2 className="text-3xl md:text-5xl font-bold mb-5 text-white tracking-tight leading-tight">
+              Planilha, caderninho, sobrinha...<br />nada resolveu, né?
+            </h2>
+            <p className="text-slate-400 max-w-lg mx-auto">
+              Você não é desorganizada. Essas soluções falham por um único motivo: <strong className="text-white">nenhuma delas tira você do centro da operação.</strong> Elas só mudam a forma do caos.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl mx-auto">
+            {failedFixes.map((f, i) => (
+              <div key={i} className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:border-red-500/20 transition-colors">
+                <div className="flex items-center gap-2 mb-3">
+                  <X className="w-4 h-4 text-red-400 flex-shrink-0" />
+                  <h3 className="font-semibold text-sm text-white">{f.title}</h3>
+                </div>
+                <p className="text-sm text-slate-400 leading-relaxed italic">{f.quote}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* ─── WHAT IS CARTZY ─── */}
-      <section className="py-28 bg-slate-950 border-b border-white/5">
+      <section className="py-28 bg-white border-b border-slate-100">
         <div className="container mx-auto px-5">
           <div className="max-w-5xl mx-auto grid md:grid-cols-2 gap-16 items-center">
             <div>
-              <span className="inline-block text-xs font-semibold uppercase tracking-widest text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full mb-6">A solução</span>
-              <h2 className="text-3xl md:text-4xl font-bold mb-6 leading-tight text-white">
-                O sistema completo para quem vende em Live e Grupos de WhatsApp
+              <span className="inline-block text-xs font-semibold uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full mb-6">A solução</span>
+              <h2 className="text-3xl md:text-4xl font-bold mb-6 leading-tight text-slate-900">
+                Um funcionário invisível que nunca dorme, não erra pedido e não pede salário
               </h2>
-              <p className="text-slate-400 mb-8 leading-relaxed">
-                O Cartzy automatiza todo o processo de venda — da captura do pedido ao rastreio de entrega. Integrado ao WhatsApp, seu cliente é notificado em cada etapa sem você enviar uma mensagem sequer.
+              <p className="text-slate-500 mb-8 leading-relaxed">
+                O Cartzy assume o trabalho repetitivo da venda — captura, cobrança, confirmação, etiqueta, rastreio — e deixa pra você só o que você faz de melhor: <strong className="text-slate-700">vender e encantar.</strong>
               </p>
               <div className="space-y-4">
                 {[
-                  "Captura pedidos automaticamente durante a Live e nos Grupos de WhatsApp",
-                  "Envia link de pagamento via WhatsApp",
-                  "Gera etiqueta e envia rastreio ao cliente",
-                  "Tudo registrado e organizado no seu painel",
+                  "A cliente comenta o código → pedido montado sozinho",
+                  "Cobrança e confirmação de pagamento automáticas",
+                  "Etiqueta e rastreio sem trabalho manual",
+                  "Tudo organizado numa fila clara de pedidos",
                 ].map((item, i) => (
                   <div key={i} className="flex items-start gap-3">
-                    <div className="w-5 h-5 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center mt-0.5 flex-shrink-0">
-                      <Check className="w-3 h-3 text-indigo-400" />
+                    <div className="w-5 h-5 rounded-full bg-indigo-100 border border-indigo-200 flex items-center justify-center mt-0.5 flex-shrink-0">
+                      <Check className="w-3 h-3 text-indigo-600" />
                     </div>
-                    <span className="text-sm text-slate-300">{item}</span>
+                    <span className="text-sm text-slate-700">{item}</span>
                   </div>
                 ))}
               </div>
@@ -309,18 +393,48 @@ export default function LandingPage() {
                 { icon: Smartphone, label: "WhatsApp Nativo" },
                 { icon: CreditCard, label: "Pagamento Integrado" },
                 { icon: Truck, label: "Logística Completa" },
-                { icon: Globe, label: "11 Integrações" },
-                { icon: ShieldCheck, label: "Dados Seguros" },
-                { icon: BarChart3, label: "Relatórios" },
+                { icon: Globe, label: "+11 Integrações" },
+                { icon: ShieldCheck, label: "Chip Protegido" },
+                { icon: BarChart3, label: "Relatórios Simples" },
               ].map((tag, i) => (
-                <div key={i} className="flex items-center gap-3 p-4 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-indigo-500/30 transition-all group">
-                  <div className="w-9 h-9 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center flex-shrink-0 group-hover:bg-indigo-500/20 transition-colors">
-                    <tag.icon className="w-4 h-4 text-indigo-400" />
+                <div key={i} className="flex items-center gap-3 p-4 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50 hover:border-indigo-200 transition-all group">
+                  <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center flex-shrink-0 group-hover:border-indigo-300 transition-colors">
+                    <tag.icon className="w-4 h-4 text-indigo-600" />
                   </div>
-                  <span className="text-sm font-medium text-slate-300">{tag.label}</span>
+                  <span className="text-sm font-medium text-slate-700">{tag.label}</span>
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── HOW IT WORKS ─── */}
+      <section id="how-it-works" className="py-28 bg-slate-950 border-b border-white/5">
+        <div className="container mx-auto px-5">
+          <div className="text-center mb-16">
+            <span className="inline-block text-xs font-semibold uppercase tracking-widest text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full mb-4">Como funciona</span>
+            <h2 className="text-3xl md:text-5xl font-bold mb-4 text-white tracking-tight">Da live à entrega, em 5 passos automáticos</h2>
+            <p className="text-slate-400">Configure uma vez com a nossa equipe. Depois, o sistema trabalha e você vive.</p>
+          </div>
+
+          <div className="max-w-lg mx-auto">
+            {steps.map((step, i) => (
+              <div key={i} className="flex gap-6 group">
+                <div className="flex flex-col items-center flex-shrink-0">
+                  <div className="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-lg shadow-indigo-600/30 group-hover:bg-indigo-500 transition-colors">
+                    {step.step}
+                  </div>
+                  {i < steps.length - 1 && (
+                    <div className="w-px flex-1 bg-gradient-to-b from-indigo-500/50 to-transparent my-2" style={{ minHeight: "2rem" }} />
+                  )}
+                </div>
+                <div className="pb-10">
+                  <h3 className="font-semibold text-base mb-1.5 text-white">{step.title}</h3>
+                  <p className="text-sm text-slate-400 leading-relaxed">{step.description}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -330,8 +444,8 @@ export default function LandingPage() {
         <div className="container mx-auto px-5">
           <div className="text-center mb-16">
             <span className="inline-block text-xs font-semibold uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full mb-4">Funcionalidades</span>
-            <h2 className="text-3xl md:text-5xl font-bold mb-4 text-slate-900 tracking-tight">Tudo que você precisa em um só lugar</h2>
-            <p className="text-slate-500 max-w-md mx-auto">Chega de usar 5 ferramentas diferentes. O Cartzy centraliza sua operação inteira.</p>
+            <h2 className="text-3xl md:text-5xl font-bold mb-4 text-slate-900 tracking-tight">Sua operação inteira em um só lugar</h2>
+            <p className="text-slate-500 max-w-md mx-auto">Chega de malabarismo com 5 ferramentas. Do “eu quero” ao “chegou, amei!” — tudo no Cartzy.</p>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl mx-auto">
@@ -359,13 +473,13 @@ export default function LandingPage() {
         <div className="container mx-auto px-5">
           <div className="text-center mb-16">
             <span className="inline-block text-xs font-semibold uppercase tracking-widest text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full mb-4">Antes vs Depois</span>
-            <h2 className="text-3xl md:text-5xl font-bold mb-4 text-white tracking-tight">A diferença é visível<br />desde o primeiro dia</h2>
+            <h2 className="text-3xl md:text-5xl font-bold mb-4 text-white tracking-tight">O seu dia, antes e depois<br />do Cartzy</h2>
           </div>
 
           <div className="max-w-3xl mx-auto">
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-center">
-                <span className="text-red-400 font-semibold text-sm">❌ Sem Cartzy</span>
+                <span className="text-red-400 font-semibold text-sm">❌ Hoje (tudo na mão)</span>
               </div>
               <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-4 text-center">
                 <span className="text-indigo-300 font-semibold text-sm">✅ Com Cartzy</span>
@@ -387,29 +501,27 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ─── HOW IT WORKS ─── */}
-      <section id="how-it-works" className="py-28 bg-white border-b border-slate-100">
+      {/* ─── TRANSFORMAÇÃO ─── */}
+      <section className="py-28 bg-white border-b border-slate-100">
         <div className="container mx-auto px-5">
           <div className="text-center mb-16">
-            <span className="inline-block text-xs font-semibold uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full mb-4">Como funciona</span>
-            <h2 className="text-3xl md:text-5xl font-bold mb-4 text-slate-900 tracking-tight">Do pedido à entrega em 5 passos</h2>
-            <p className="text-slate-500">Configure uma vez e o sistema trabalha por você</p>
+            <span className="inline-block text-xs font-semibold uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full mb-4">Mais que organização</span>
+            <h2 className="text-3xl md:text-5xl font-bold mb-5 text-slate-900 tracking-tight leading-tight">
+              Não é só sobre vender mais.<br />É sobre ter a sua vida de volta.
+            </h2>
           </div>
 
-          <div className="max-w-lg mx-auto">
-            {steps.map((step, i) => (
-              <div key={i} className="flex gap-6 group">
-                <div className="flex flex-col items-center flex-shrink-0">
-                  <div className="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-lg shadow-indigo-600/30 group-hover:bg-indigo-500 transition-colors">
-                    {step.step}
-                  </div>
-                  {i < steps.length - 1 && (
-                    <div className="w-px flex-1 bg-gradient-to-b from-indigo-300 to-transparent my-2" style={{ minHeight: "2rem" }} />
-                  )}
+          <div className="grid md:grid-cols-3 gap-5 max-w-5xl mx-auto">
+            {transformations.map((t, i) => (
+              <div key={i} className="rounded-2xl border border-slate-200 overflow-hidden hover:shadow-xl transition-all duration-300">
+                <div className="p-6 bg-slate-50 border-b border-slate-200">
+                  <p className="text-sm text-slate-500 leading-relaxed italic">{t.before}</p>
                 </div>
-                <div className="pb-10">
-                  <h3 className="font-semibold text-base mb-1.5 text-slate-900">{step.title}</h3>
-                  <p className="text-sm text-slate-500 leading-relaxed">{step.description}</p>
+                <div className="p-6 bg-white relative">
+                  <div className="w-9 h-9 rounded-full bg-indigo-600 flex items-center justify-center absolute -top-[18px] left-6 shadow-lg shadow-indigo-600/30">
+                    <t.icon className="w-4 h-4 text-white" />
+                  </div>
+                  <p className="text-sm text-slate-800 leading-relaxed font-medium mt-3">{t.after}</p>
                 </div>
               </div>
             ))}
@@ -437,7 +549,7 @@ export default function LandingPage() {
         <div className="container mx-auto px-5">
           <div className="text-center mb-16">
             <span className="inline-block text-xs font-semibold uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full mb-4">Depoimentos</span>
-            <h2 className="text-3xl md:text-5xl font-bold mb-4 text-slate-900 tracking-tight">Quem usa, não volta atrás</h2>
+            <h2 className="text-3xl md:text-5xl font-bold mb-4 text-slate-900 tracking-tight">Quem usa, não volta pro caderninho</h2>
           </div>
 
           <div className="grid md:grid-cols-3 gap-5 max-w-5xl mx-auto">
@@ -467,11 +579,16 @@ export default function LandingPage() {
       {/* ─── PRICING ─── */}
       <section id="pricing" className="py-28 bg-[#07080F] border-b border-white/5">
         <div className="container mx-auto px-5">
-          <div className="text-center mb-16">
+          <div className="text-center mb-6">
             <span className="inline-block text-xs font-semibold uppercase tracking-widest text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full mb-4">Planos</span>
-            <h2 className="text-3xl md:text-5xl font-bold mb-4 text-white tracking-tight">Planos para cada etapa<br />do seu negócio</h2>
-            <p className="text-slate-400">Entre em contato e nossa equipe vai encontrar o plano ideal para você.</p>
+            <h2 className="text-3xl md:text-5xl font-bold mb-4 text-white tracking-tight">Quanto custa perder<br />4 horas por dia?</h2>
+            <p className="text-slate-400 max-w-lg mx-auto">
+              Menos que meio salário de uma atendente — pra um sistema que atende, cobra, confere pagamento e envia rastreio 24 horas por dia, sem errar pedido.
+            </p>
           </div>
+          <p className="text-center text-xs text-slate-500 mb-12">
+            Implantação única de R$ 600 — nossa equipe configura tudo com você, do WhatsApp ao primeiro pedido rodando.
+          </p>
 
           <div className="grid md:grid-cols-3 gap-4 max-w-5xl mx-auto items-start">
             {plans.map((plan, i) => (
@@ -486,15 +603,19 @@ export default function LandingPage() {
                 {plan.highlight && (
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
                     <span className="bg-white text-indigo-600 text-xs font-bold px-4 py-1.5 rounded-full shadow-lg tracking-wide">
-                      MAIS POPULAR
+                      MELHOR CUSTO-BENEFÍCIO
                     </span>
                   </div>
                 )}
 
                 <div className="mb-7">
-                  <h3 className={`font-bold text-xl mb-1 ${plan.highlight ? "text-white" : "text-white"}`}>{plan.name}</h3>
+                  <h3 className="font-bold text-xl mb-1 text-white">{plan.name}</h3>
                   <p className={`text-sm mb-5 ${plan.highlight ? "text-indigo-200" : "text-slate-500"}`}>{plan.description}</p>
-                  <p className={`text-2xl font-bold ${plan.highlight ? "text-white" : "text-white"}`}>{plan.price}</p>
+                  <p className="text-3xl font-bold text-white">
+                    {plan.price}
+                    <span className={`text-base font-medium ${plan.highlight ? "text-indigo-200" : "text-slate-400"}`}>{plan.priceSuffix}</span>
+                  </p>
+                  <p className={`text-xs mt-2 ${plan.highlight ? "text-indigo-200" : "text-slate-500"}`}>{plan.priceNote}</p>
                 </div>
 
                 <div className="space-y-3.5 flex-1 mb-8">
@@ -520,6 +641,10 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
+
+          <p className="text-center mt-10 text-sm text-slate-500 max-w-md mx-auto">
+            💡 Uma live que deixa de perder 5 pedidos já paga o mês inteiro.
+          </p>
         </div>
       </section>
 
@@ -528,7 +653,7 @@ export default function LandingPage() {
         <div className="container mx-auto px-5">
           <div className="text-center mb-16">
             <span className="inline-block text-xs font-semibold uppercase tracking-widest text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full mb-4">FAQ</span>
-            <h2 className="text-3xl md:text-5xl font-bold mb-4 text-slate-900 tracking-tight">Dúvidas frequentes</h2>
+            <h2 className="text-3xl md:text-5xl font-bold mb-4 text-slate-900 tracking-tight">O que você deve estar pensando...</h2>
           </div>
 
           <div className="max-w-2xl mx-auto space-y-2">
@@ -560,7 +685,6 @@ export default function LandingPage() {
             <div className="absolute inset-0 bg-gradient-to-r from-indigo-600/20 via-violet-600/20 to-cyan-600/20 rounded-3xl blur-3xl" />
 
             <div className="relative rounded-3xl border border-white/10 bg-white/5 backdrop-blur-sm p-12 md:p-20 text-center overflow-hidden">
-              {/* Inner glow */}
               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-40 bg-indigo-500/20 blur-3xl rounded-full" />
 
               <div className="relative">
@@ -569,16 +693,16 @@ export default function LandingPage() {
                 </div>
 
                 <h2 className="text-3xl md:text-5xl font-bold mb-5 leading-tight text-white tracking-tight">
-                  Pronto para nunca mais<br />perder um pedido?
+                  Pare de ser a atendente<br />do seu próprio negócio
                 </h2>
                 <p className="text-slate-400 mb-10 max-w-md mx-auto">
-                  Fale com nossa equipe e descubra como o Cartzy pode transformar suas vendas em Live e nos Grupos de WhatsApp.
+                  Chame a nossa equipe no WhatsApp. A gente te mostra o Cartzy funcionando com a sua operação — e você decide se faz sentido.
                 </p>
 
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                   <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer">
                     <Button size="lg" className="bg-indigo-600 hover:bg-indigo-500 text-white px-10 h-12 text-sm font-semibold shadow-2xl shadow-indigo-600/40 hover:scale-105 transition-all">
-                      Falar com a equipe Cartzy
+                      Quero ver funcionando
                       <ArrowRight className="ml-2 w-4 h-4" />
                     </Button>
                   </a>
@@ -589,7 +713,7 @@ export default function LandingPage() {
                   </Link>
                 </div>
 
-                <p className="mt-8 text-xs text-slate-600">Sem fidelidade · Cancele quando quiser · Suporte via WhatsApp</p>
+                <p className="mt-8 text-xs text-slate-600">Plano mensal sem fidelidade · Implantação acompanhada · Suporte humano via WhatsApp</p>
               </div>
             </div>
           </div>
