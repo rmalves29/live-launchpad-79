@@ -480,3 +480,138 @@
     min-width: max-content;
   }
 }
+
+/* ============================================================
+   Futuristic Landing FX — aurora, grid, particles, scanbeam
+   ============================================================ */
+.fx-aurora {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(120px);
+  opacity: 0.55;
+  mix-blend-mode: screen;
+  will-change: transform;
+}
+.fx-aurora-1 {
+  width: 620px; height: 620px;
+  top: -10%; left: 8%;
+  background: radial-gradient(circle at 30% 30%, #6366f1 0%, transparent 65%);
+  animation: fxFloat1 18s ease-in-out infinite;
+}
+.fx-aurora-2 {
+  width: 520px; height: 520px;
+  top: 20%; right: 5%;
+  background: radial-gradient(circle at 60% 40%, #22d3ee 0%, transparent 65%);
+  animation: fxFloat2 22s ease-in-out infinite;
+}
+.fx-aurora-3 {
+  width: 700px; height: 700px;
+  bottom: -20%; left: 30%;
+  background: radial-gradient(circle at 50% 50%, #a855f7 0%, transparent 65%);
+  animation: fxFloat3 26s ease-in-out infinite;
+}
+
+@keyframes fxFloat1 {
+  0%,100% { transform: translate(0,0) scale(1); }
+  50%     { transform: translate(120px,80px) scale(1.15); }
+}
+@keyframes fxFloat2 {
+  0%,100% { transform: translate(0,0) scale(1); }
+  50%     { transform: translate(-140px,60px) scale(1.1); }
+}
+@keyframes fxFloat3 {
+  0%,100% { transform: translate(0,0) scale(1); }
+  50%     { transform: translate(-60px,-120px) scale(1.2); }
+}
+
+/* Grid plano — pontinhos + linhas */
+.fx-grid-flat {
+  background-image:
+    linear-gradient(rgba(148,163,184,0.35) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148,163,184,0.35) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+}
+
+/* Grid em perspectiva estilo Tron */
+.fx-grid-perspective {
+  background-image:
+    linear-gradient(rgba(103,232,249,0.35) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(103,232,249,0.35) 1px, transparent 1px);
+  background-size: 60px 60px;
+  transform: perspective(600px) rotateX(60deg);
+  transform-origin: bottom;
+  animation: fxGridScroll 12s linear infinite;
+  mask-image: linear-gradient(to top, black 40%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, black 40%, transparent 100%);
+}
+@keyframes fxGridScroll {
+  from { background-position: 0 0; }
+  to   { background-position: 0 60px; }
+}
+
+/* Feixe de scan horizontal */
+.fx-scanbeam {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    rgba(103,232,249,0.08) 48%,
+    rgba(165,180,252,0.18) 50%,
+    rgba(103,232,249,0.08) 52%,
+    transparent 100%);
+  background-size: 100% 300%;
+  animation: fxScan 8s linear infinite;
+  mix-blend-mode: screen;
+  opacity: 0.7;
+}
+@keyframes fxScan {
+  0%   { background-position: 0 -100%; }
+  100% { background-position: 0 200%; }
+}
+
+/* Partículas flutuantes */
+.fx-particle {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(0.5px);
+  animation-name: fxRise;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  opacity: 0;
+}
+@keyframes fxRise {
+  0%   { transform: translateY(20px) scale(0.6); opacity: 0; }
+  20%  { opacity: 1; }
+  80%  { opacity: 0.8; }
+  100% { transform: translateY(-160px) scale(1); opacity: 0; }
+}
+
+/* Ruído sutil (SVG inline) */
+.fx-noise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/></svg>");
+}
+
+/* Borda animada com gradiente (para molduras) */
+.fx-border-glow {
+  position: relative;
+}
+.fx-border-glow::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(from 0deg, #22d3ee, #6366f1, #a855f7, #22d3ee);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  animation: fxSpin 6s linear infinite;
+  pointer-events: none;
+}
+@keyframes fxSpin { to { transform: rotate(360deg); } }
