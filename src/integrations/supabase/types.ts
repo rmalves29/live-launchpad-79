@@ -23,6 +23,7 @@ export type Database = {
           default_weight_kg: number | null
           default_width_cm: number | null
           handling_days: number | null
+          health_alert_phone: string | null
           id: number
           public_base_url: string | null
           updated_at: string
@@ -35,6 +36,7 @@ export type Database = {
           default_weight_kg?: number | null
           default_width_cm?: number | null
           handling_days?: number | null
+          health_alert_phone?: string | null
           id?: number
           public_base_url?: string | null
           updated_at?: string
@@ -47,6 +49,7 @@ export type Database = {
           default_weight_kg?: number | null
           default_width_cm?: number | null
           handling_days?: number | null
+          health_alert_phone?: string | null
           id?: number
           public_base_url?: string | null
           updated_at?: string
@@ -1198,6 +1201,36 @@ export type Database = {
           message_id?: string
           received_at?: string
           tenant_id?: string
+        }
+        Relationships: []
+      }
+      health_alerts_log: {
+        Row: {
+          detail: Json | null
+          id: number
+          rule_key: string
+          sent_at: string
+          sent_to: string | null
+          severity: string
+          title: string
+        }
+        Insert: {
+          detail?: Json | null
+          id?: number
+          rule_key: string
+          sent_at?: string
+          sent_to?: string | null
+          severity?: string
+          title: string
+        }
+        Update: {
+          detail?: Json | null
+          id?: number
+          rule_key?: string
+          sent_at?: string
+          sent_to?: string | null
+          severity?: string
+          title?: string
         }
         Relationships: []
       }
@@ -4018,8 +4051,10 @@ export type Database = {
           error_message: string | null
           external_event_id: string | null
           id: string
+          last_retry_at: string | null
           payload: Json | null
           response: string | null
+          retry_count: number
           status_code: number
           tenant_id: string | null
           webhook_type: string
@@ -4029,8 +4064,10 @@ export type Database = {
           error_message?: string | null
           external_event_id?: string | null
           id?: string
+          last_retry_at?: string | null
           payload?: Json | null
           response?: string | null
+          retry_count?: number
           status_code: number
           tenant_id?: string | null
           webhook_type: string
@@ -4040,8 +4077,10 @@ export type Database = {
           error_message?: string | null
           external_event_id?: string | null
           id?: string
+          last_retry_at?: string | null
           payload?: Json | null
           response?: string | null
+          retry_count?: number
           status_code?: number
           tenant_id?: string | null
           webhook_type?: string
@@ -4646,6 +4685,10 @@ export type Database = {
           total_sent: number
         }[]
       }
+      admin_whatsapp_activity_metrics_cached: {
+        Args: { p_from: string; p_to: string; p_ttl_seconds?: number }
+        Returns: Json
+      }
       bytea_to_text: { Args: { data: string }; Returns: string }
       cached_report_cleanup: { Args: never; Returns: number }
       cached_report_get: {
@@ -4684,6 +4727,10 @@ export type Database = {
         }[]
       }
       get_admin_metrics: { Args: never; Returns: Json }
+      get_admin_metrics_cached: {
+        Args: { p_ttl_seconds?: number }
+        Returns: Json
+      }
       get_cron_logs_for_export: {
         Args: { cutoff: string; lim: number; off: number }
         Returns: {
@@ -4700,6 +4747,7 @@ export type Database = {
         }[]
       }
       get_current_tenant_id: { Args: never; Returns: string }
+      get_health_snapshot: { Args: never; Returns: Json }
       get_orders_by_phone_public: {
         Args: { p_customer_phone: string; p_tenant_slug: string }
         Returns: {
@@ -4738,6 +4786,7 @@ export type Database = {
           total_amount: number
         }[]
       }
+      get_stuck_jobs: { Args: never; Returns: Json }
       get_tenant_by_id: {
         Args: { tenant_id_param: string }
         Returns: {
