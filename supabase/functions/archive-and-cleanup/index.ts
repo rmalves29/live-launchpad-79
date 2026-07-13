@@ -58,20 +58,21 @@ Deno.serve(async (req) => {
         break;
       }
 
-      // 1) Ler chunk em sub-páginas de 1000
-      const SUB = 1000;
+      // 1) Ler chunk em sub-páginas (respeita chunk_size pequeno para testes)
+      const SUB = Math.max(1, Math.min(1000, chunkSize));
       let rows: Record<string, unknown>[] = [];
       for (let off = 0; off < chunkSize; off += SUB) {
+        const take = Math.min(SUB, chunkSize - off);
         const { data, error } = await supabase
           .from(cfg.table)
           .select("*")
           .lt(cfg.dateColumn, cutoffISO)
           .order(cfg.orderColumn, { ascending: true })
-          .range(off, off + SUB - 1);
+          .range(off, off + take - 1);
         if (error) throw new Error(`fetch ${i}/${off}: ${error.message}`);
         if (!data || data.length === 0) break;
         rows = rows.concat(data as any);
-        if (data.length < SUB) break;
+        if (data.length < take) break;
       }
       if (rows.length === 0) {
         console.log(`[${runId}] no more rows`);
@@ -84,37 +85,40 @@ Deno.serve(async (req) => {
       const cs = new CompressionStream("gzip");
       const gzBuf = new Uint8Array(await new Response(new Blob([rawBytes]).stream().pipeThrough(cs)).arrayBuffer());
 
-      // 3) Nome com timestamp Brasília (UTC-3)
+      // 3) Nome com timestamp Brasília (UTC-3) + runId para evitar colisão
       const brNow = new Date(Date.now() - 3 * 60 * 60 * 1000);
       const y = brNow.getUTCFullYear();
       const m = String(brNow.getUTCMonth() + 1).padStart(2, "0");
       const d = String(brNow.getUTCDate()).padStart(2, "0");
       const hm = brNow.toISOString().slice(11, 19).replace(/:/g, "");
-      const storagePath = `${cfg.table}/${y}/${m}/${d}_${hm}_chunk${i}_${rows.length}rows.jsonl.gz`;
+      const prefix = dryRun ? "dryrun/" : "";
+      const storagePath = `${prefix}${cfg.table}/${y}/${m}/${d}_${hm}_${runId}_chunk${i}_${rows.length}rows.jsonl.gz`;
 
-      // 4) Upload ao bucket "archives"
+      // 4) Upload ao bucket "archives" (em dry_run permite overwrite)
       const { error: upErr } = await supabase.storage
         .from("archives")
         .upload(storagePath, gzBuf, {
           contentType: "application/gzip",
-          upsert: false,
+          upsert: dryRun,
         });
       if (upErr) throw new Error(`upload ${storagePath}: ${upErr.message}`);
       console.log(`[${runId}] uploaded ${storagePath} gz=${gzBuf.length}`);
 
-      // 5) Deletar as linhas arquivadas (range por id)
+      // 5) Deletar APENAS as linhas arquivadas usando IDs exatos (evita apagar linhas
+      //    que caiam no range de UUID mas não estavam no chunk).
       let deleted = 0;
       if (!dryRun) {
-        const minId = (rows[0] as any)[cfg.orderColumn];
-        const maxId = (rows[rows.length - 1] as any)[cfg.orderColumn];
-        const { error: delErr, count } = await supabase
-          .from(cfg.table)
-          .delete({ count: "exact" })
-          .lt(cfg.dateColumn, cutoffISO)
-          .gte(cfg.orderColumn, minId)
-          .lte(cfg.orderColumn, maxId);
-        if (delErr) throw new Error(`delete ${i} [${minId}..${maxId}]: ${delErr.message}`);
-        deleted = count ?? rows.length;
+        const ids = rows.map((r) => (r as any)[cfg.orderColumn]);
+        const DEL_BATCH = 500;
+        for (let k = 0; k < ids.length; k += DEL_BATCH) {
+          const slice = ids.slice(k, k + DEL_BATCH);
+          const { error: delErr, count } = await supabase
+            .from(cfg.table)
+            .delete({ count: "exact" })
+            .in(cfg.orderColumn, slice);
+          if (delErr) throw new Error(`delete ${i}/${k}: ${delErr.message}`);
+          deleted += count ?? slice.length;
+        }
       }
 
       // 6) Catalogar
