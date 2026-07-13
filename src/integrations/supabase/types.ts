@@ -53,6 +53,48 @@ export type Database = {
         }
         Relationships: []
       }
+      archive_files: {
+        Row: {
+          compressed_size_bytes: number
+          created_at: string
+          error_message: string | null
+          id: string
+          period_end: string
+          period_start: string
+          row_count: number
+          size_bytes: number
+          source_table: string
+          status: string
+          storage_path: string
+        }
+        Insert: {
+          compressed_size_bytes?: number
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          period_end: string
+          period_start: string
+          row_count?: number
+          size_bytes?: number
+          source_table: string
+          status?: string
+          storage_path: string
+        }
+        Update: {
+          compressed_size_bytes?: number
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          period_end?: string
+          period_start?: string
+          row_count?: number
+          size_bytes?: number
+          source_table?: string
+          status?: string
+          storage_path?: string
+        }
+        Relationships: []
+      }
       audit_logs: {
         Row: {
           action: string

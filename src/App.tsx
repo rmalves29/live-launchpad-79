@@ -46,6 +46,7 @@ import EmpresasIndex from "./pages/empresas/Index";
 import Debug from "./pages/Debug";
 import AdminErros from "./pages/admin/Erros";
 import MonitoramentoMensagens from "./pages/admin/MonitoramentoMensagens";
+import ArquivoHistorico from "./pages/admin/ArquivoHistorico";
 import LandingPage from "./pages/LandingPage";
 import RenovarAssinatura from "./pages/RenovarAssinatura";
 
@@ -300,6 +301,13 @@ const AppContent = () => {
           <RequireAuth>
             <SuperAdminOnly>
               <MonitoramentoMensagens />
+            </SuperAdminOnly>
+          </RequireAuth>
+        } />
+        <Route path="/admin/arquivo-historico" element={
+          <RequireAuth>
+            <SuperAdminOnly>
+              <ArquivoHistorico />
             </SuperAdminOnly>
           </RequireAuth>
         } />
