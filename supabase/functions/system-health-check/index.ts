@@ -24,7 +24,6 @@ Deno.serve(async (req) => {
     const alerts: AlertRule[] = [];
 
     // 1) Webhooks com > 20% erro na última hora
-    const { data: whAgg } = await supabase.rpc("get_webhook_error_stats" as any).catch(() => ({ data: null }));
     const { data: whRows } = await supabase
       .from("webhook_logs")
       .select("webhook_type, status_code")
