@@ -3095,6 +3095,51 @@ export type Database = {
         }
         Relationships: []
       }
+      report_cache: {
+        Row: {
+          computed_at: string
+          expires_at: string
+          id: number
+          params_hash: string
+          payload: Json
+          report_key: string
+          tenant_id: string
+        }
+        Insert: {
+          computed_at?: string
+          expires_at: string
+          id?: number
+          params_hash?: string
+          payload: Json
+          report_key: string
+          tenant_id: string
+        }
+        Update: {
+          computed_at?: string
+          expires_at?: string
+          id?: number
+          params_hash?: string
+          payload?: Json
+          report_key?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "report_cache_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "report_cache_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scheduled_jobs: {
         Row: {
           created_at: string
@@ -4602,6 +4647,25 @@ export type Database = {
         }[]
       }
       bytea_to_text: { Args: { data: string }; Returns: string }
+      cached_report_cleanup: { Args: never; Returns: number }
+      cached_report_get: {
+        Args: {
+          p_params_hash?: string
+          p_report_key: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
+      cached_report_set: {
+        Args: {
+          p_params_hash?: string
+          p_payload: Json
+          p_report_key: string
+          p_tenant_id: string
+          p_ttl_seconds?: number
+        }
+        Returns: undefined
+      }
       cleanup_net_http_responses: {
         Args: { older_than: string }
         Returns: undefined
