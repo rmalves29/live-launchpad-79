@@ -304,6 +304,13 @@ const AppContent = () => {
             </SuperAdminOnly>
           </RequireAuth>
         } />
+        <Route path="/admin/arquivo-historico" element={
+          <RequireAuth>
+            <SuperAdminOnly>
+              <ArquivoHistorico />
+            </SuperAdminOnly>
+          </RequireAuth>
+        } />
         <Route path="/design-preview" element={
           <RequireAuth><DesignPreview /></RequireAuth>
         } />
