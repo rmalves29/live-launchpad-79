@@ -794,8 +794,39 @@ useEffect(() => {
           </div>
         </div>
 
+        {/* Cupom aplicado */}
+        {(couponCode || couponDiscount > 0) && (
+          <div className="pt-4 border-t">
+            <Label>Cupom aplicado</Label>
+            <div className="mt-2 flex items-center justify-between gap-3 rounded-md border border-dashed border-emerald-300 bg-emerald-50 px-3 py-2">
+              <div className="text-sm">
+                <div className="font-semibold text-emerald-800">
+                  {couponCode || '—'}
+                </div>
+                <div className="text-emerald-700">
+                  Desconto: {formatCurrency(couponDiscount)}
+                </div>
+              </div>
+              {isPaid ? (
+                <span className="text-[11px] text-muted-foreground">Pedido pago — cupom bloqueado</span>
+              ) : (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleRemoveCoupon}
+                  disabled={removingCoupon}
+                >
+                  {removingCoupon ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
+                  Remover cupom
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Status / Rastreio / Observação / Impresso */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+
           <div>
             <Label>Status Pagamento</Label>
             <Select value={isPaid ? 'pago' : 'pendente'} onValueChange={(v) => setIsPaid(v === 'pago')}>
