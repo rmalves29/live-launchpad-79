@@ -46,6 +46,9 @@ interface Order {
   observation?: string;
   melhor_envio_tracking_code?: string;
   order_status?: string | null;
+  coupon_code?: string | null;
+  coupon_discount?: number | null;
+
   cart_items?: {
     id: number;
     qty: number;
