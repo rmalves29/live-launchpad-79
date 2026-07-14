@@ -165,9 +165,24 @@ async function processOne(supabase: any, tenant_id: string, product_id: number) 
       .replace(/\{\{\s*prazo\s*\}\}/g, prazo)
       .replace(/\{\{\s*link\s*\}\}/g, link);
 
-    await supabase.functions.invoke('zapi-send-message', {
-      body: { tenant_id, phone: next.customer_phone, message },
+    // Push-first: tenta enviar por push; só cai no WhatsApp se não houver push ativo/inscrito
+    const pushSent = await tryPushBeforeWhatsApp({
+      tenantId: tenant_id,
+      templateType: 'waitlist',
+      customerPhone: next.customer_phone,
+      vars: {
+        nome: next.customer_name || 'Cliente',
+        produto: product.name || '',
+        codigo: product.code || '',
+        prazo,
+        link,
+      },
     });
+    if (!pushSent) {
+      await supabase.functions.invoke('zapi-send-message', {
+        body: { tenant_id, phone: next.customer_phone, message },
+      });
+    }
   } catch (msgErr) {
     console.error('[waitlist-process-next] msg err', msgErr);
   }
