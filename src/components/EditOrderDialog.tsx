@@ -86,6 +86,10 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
   const [printed, setPrinted] = useState<boolean>(false);
   const [orderStatus, setOrderStatus] = useState<'em_separacao' | 'envio_pendente' | 'enviado' | 'liberado_retirada' | 'entregue' | ''>('');
   const [savingMeta, setSavingMeta] = useState(false);
+  const [couponCode, setCouponCode] = useState<string | null>(null);
+  const [couponDiscount, setCouponDiscount] = useState<number>(0);
+  const [removingCoupon, setRemovingCoupon] = useState(false);
+
 
   // ===== Assinatura digital para edição de pedidos pagos =====
   // IMPORTANTE: a assinatura é solicitada a CADA alteração (não é cacheada).
