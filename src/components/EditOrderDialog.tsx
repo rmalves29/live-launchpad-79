@@ -1000,9 +1000,14 @@ useEffect(() => {
                   );
                 }
 
-                toast({ title: 'Pedido atualizado', description: 'Alterações salvas com sucesso.' });
+                // Recalcular subtotal e total após salvar (garante consistência mesmo
+                // quando algo escapou dos gatilhos locais — remoção de item, cupom, frete etc.)
+                await updateOrderTotal(cartId);
+
+                toast({ title: 'Pedido atualizado', description: 'Alterações salvas e total recalculado.' });
                 onOrderUpdated();
                 onOpenChange(false);
+
               } catch (e: any) {
                 console.error('Erro ao salvar pedido:', e);
                 toast({
