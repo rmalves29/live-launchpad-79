@@ -24,11 +24,114 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import cartzyLogo from "@/assets/cartzy-logo.png";
 import FuturisticFX from "@/components/landing/FuturisticFX";
 
 const WHATSAPP_URL = "http://api.whatsapp.com/send?l=pt&phone=5531992904210";
+
+// ─── Efeitos visuais (CSS puro, sem libs) ───
+const FX_CSS = `
+@keyframes lpFloat { 0%,100% { transform: translate(0,0) scale(1); } 33% { transform: translate(40px,-30px) scale(1.08); } 66% { transform: translate(-30px,20px) scale(0.95); } }
+@keyframes lpFloatAlt { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-50px,40px) scale(1.12); } }
+@keyframes lpShimmer { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+@keyframes lpPulseDot { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(.75); } }
+@keyframes lpGlowPulse { 0%,100% { box-shadow: 0 0 30px 0 rgba(99,102,241,.45); } 50% { box-shadow: 0 0 55px 8px rgba(99,102,241,.7); } }
+@keyframes lpBorderSpin { to { transform: rotate(360deg); } }
+@keyframes lpMarquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes lpScanline { 0% { top: -10%; opacity: 0; } 15% { opacity: .6; } 85% { opacity: .6; } 100% { top: 110%; opacity: 0; } }
+@keyframes lpHeroFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+.lp-blob-a { animation: lpFloat 14s ease-in-out infinite; }
+.lp-blob-b { animation: lpFloatAlt 18s ease-in-out infinite; }
+.lp-blob-c { animation: lpFloat 22s ease-in-out infinite reverse; }
+.lp-shimmer-text { background-size: 200% auto; animation: lpShimmer 5s ease-in-out infinite; }
+.lp-pulse-dot { animation: lpPulseDot 1.6s ease-in-out infinite; }
+.lp-glow-cta { animation: lpGlowPulse 2.8s ease-in-out infinite; }
+.lp-hero-float { animation: lpHeroFloat 7s ease-in-out infinite; }
+.lp-marquee { animation: lpMarquee 28s linear infinite; }
+.lp-marquee:hover { animation-play-state: paused; }
+
+.lp-frame { position: relative; }
+.lp-frame::before {
+  content: ""; position: absolute; inset: -2px; border-radius: 1.05rem; z-index: 0;
+  background: conic-gradient(from 0deg, transparent 0%, rgba(99,102,241,.9) 12%, rgba(34,211,238,.9) 22%, transparent 34%);
+  animation: lpBorderSpin 6s linear infinite;
+}
+.lp-frame > * { position: relative; z-index: 1; }
+
+.lp-scan { position: relative; overflow: hidden; }
+.lp-scan::after {
+  content: ""; position: absolute; left: 0; right: 0; height: 90px; top: -10%;
+  background: linear-gradient(to bottom, transparent, rgba(34,211,238,.10), transparent);
+  animation: lpScanline 6s ease-in-out infinite; pointer-events: none;
+}
+
+.lp-reveal { opacity: 0; transform: translateY(28px); transition: opacity .7s ease, transform .7s cubic-bezier(.22,1,.36,1); will-change: opacity, transform; }
+.lp-reveal.lp-in { opacity: 1; transform: translateY(0); }
+
+.lp-card-glow { transition: box-shadow .3s ease, transform .3s ease, border-color .3s ease; }
+.lp-card-glow:hover { box-shadow: 0 0 35px -5px rgba(99,102,241,.35); }
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-blob-a, .lp-blob-b, .lp-blob-c, .lp-shimmer-text, .lp-pulse-dot, .lp-glow-cta,
+  .lp-hero-float, .lp-marquee, .lp-frame::before, .lp-scan::after { animation: none !important; }
+  .lp-reveal { opacity: 1; transform: none; transition: none; }
+}
+`;
+
+// Revela o conteúdo com fade-up quando entra na tela
+function Reveal({ children, delay = 0, className = "" }: { children: ReactNode; delay?: number; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          el.classList.add("lp-in");
+          obs.disconnect();
+        }
+      },
+      { threshold: 0.12 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+  return (
+    <div ref={ref} className={`lp-reveal ${className}`} style={delay ? { transitionDelay: `${delay}ms` } : undefined}>
+      {children}
+    </div>
+  );
+}
+
+// Contador animado quando visível
+function CountUp({ value, suffix = "" }: { value: string; suffix?: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [display, setDisplay] = useState(value);
+  useEffect(() => {
+    const numeric = parseInt(value, 10);
+    if (Number.isNaN(numeric)) return; // "24/7" etc. — mostra direto
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      obs.disconnect();
+      const dur = 1200;
+      const start = performance.now();
+      const tick = (now: number) => {
+        const p = Math.min((now - start) / dur, 1);
+        const eased = 1 - Math.pow(1 - p, 3);
+        setDisplay(String(Math.round(numeric * eased)) + value.replace(String(numeric), ""));
+        if (p < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }, { threshold: 0.5 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [value]);
+  return <span ref={ref}>{display}{suffix}</span>;
+}
 
 function CartzyLogo({ size = "md", invert = false }: { size?: "sm" | "md" | "lg"; invert?: boolean }) {
   const sizes = { sm: "h-7", md: "h-10", lg: "h-20 md:h-24" };
@@ -131,6 +234,7 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-white text-slate-900 overflow-x-hidden font-sans">
+      <style dangerouslySetInnerHTML={{ __html: FX_CSS }} />
 
       {/* ─── NAVBAR ─── */}
       <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/10 bg-[#07080F]/80 backdrop-blur-xl">
@@ -178,12 +282,13 @@ export default function LandingPage() {
 
       {/* ─── HERO ─── */}
       <section className="relative min-h-screen flex items-center justify-center bg-[#07080F] overflow-hidden pt-16">
-        {/* Efeitos futuristas */}
+        {/* Efeitos futuristas (aurora + grid em perspectiva + partículas) */}
         <FuturisticFX variant="hero" />
 
         <div className="container mx-auto px-5 relative z-10 text-center">
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 mb-10">
+            <span className="lp-pulse-dot w-2 h-2 rounded-full bg-emerald-400" />
             <Zap className="w-3.5 h-3.5 text-indigo-400" />
             <span className="text-xs text-indigo-300 font-medium tracking-wide">
               Para quem vende em grupos de WhatsApp e lives no Instagram
@@ -198,7 +303,7 @@ export default function LandingPage() {
           {/* Headline */}
           <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold leading-[1.05] tracking-tight text-white mb-6 max-w-4xl mx-auto">
             Seu negócio virou um{" "}
-            <span className="bg-gradient-to-r from-cyan-400 via-indigo-400 to-violet-400 bg-clip-text text-transparent">
+            <span className="lp-shimmer-text bg-gradient-to-r from-cyan-400 via-indigo-400 to-violet-400 bg-clip-text text-transparent">
               emprego dentro do WhatsApp?
             </span>
           </h1>
@@ -210,7 +315,7 @@ export default function LandingPage() {
           {/* CTAs */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
             <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer">
-              <Button size="lg" className="bg-indigo-600 hover:bg-indigo-500 text-white px-8 h-12 text-sm font-semibold shadow-2xl shadow-indigo-600/40 transition-all hover:scale-105 hover:shadow-indigo-500/50">
+              <Button size="lg" className="lp-glow-cta bg-indigo-600 hover:bg-indigo-500 text-white px-8 h-12 text-sm font-semibold transition-all hover:scale-105">
                 Quero vender sem caos
                 <ArrowRight className="ml-2 w-4 h-4" />
               </Button>
@@ -233,9 +338,9 @@ export default function LandingPage() {
           </div>
 
           {/* Dashboard preview */}
-          <div className="relative max-w-5xl mx-auto group">
+          <div className="lp-hero-float relative max-w-5xl mx-auto group">
             <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500/40 via-cyan-400/40 to-violet-500/40 rounded-2xl blur-2xl opacity-70 group-hover:opacity-100 transition-opacity animate-pulse" />
-            <div className="relative rounded-2xl fx-border-glow border border-white/10 overflow-hidden shadow-2xl shadow-black/60 bg-slate-900">
+            <div className="lp-scan relative rounded-2xl fx-border-glow border border-white/10 overflow-hidden shadow-2xl shadow-black/60 bg-slate-900">
               <div className="flex items-center gap-2 px-4 py-3 bg-white/5 border-b border-white/10">
                 <div className="w-3 h-3 rounded-full bg-red-500/60" />
                 <div className="w-3 h-3 rounded-full bg-yellow-500/60" />
@@ -255,10 +360,13 @@ export default function LandingPage() {
           <p className="text-center text-xs text-slate-600 uppercase tracking-widest mb-6 font-medium">
             Integrado com as plataformas que você já usa
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
-            {integrations.map((name) => (
-              <span key={name} className="text-slate-500 font-medium text-sm hover:text-slate-300 transition-colors cursor-default">{name}</span>
-            ))}
+          {/* Marquee infinito (lista duplicada para o loop ser contínuo) */}
+          <div className="relative overflow-hidden" style={{ maskImage: "linear-gradient(90deg, transparent, black 12%, black 88%, transparent)", WebkitMaskImage: "linear-gradient(90deg, transparent, black 12%, black 88%, transparent)" }}>
+            <div className="lp-marquee flex w-max items-center gap-12 pr-12">
+              {[...integrations, ...integrations].map((name, i) => (
+                <span key={`${name}-${i}`} className="text-slate-500 font-medium text-sm hover:text-slate-300 transition-colors cursor-default whitespace-nowrap">{name}</span>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -278,13 +386,15 @@ export default function LandingPage() {
 
           <div className="grid md:grid-cols-3 gap-4 max-w-5xl mx-auto">
             {pains.map((p, i) => (
-              <div key={i} className="group rounded-2xl border border-slate-200 p-7 hover:border-red-200 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 bg-white">
-                <div className="w-11 h-11 rounded-xl bg-red-50 flex items-center justify-center mb-5">
-                  <p.icon className="w-5 h-5 text-red-500" />
+              <Reveal key={i} delay={(i % 3) * 100}>
+                <div className="group h-full rounded-2xl border border-slate-200 p-7 hover:border-red-200 hover:shadow-lg hover:-translate-y-1 transition-all duration-300 bg-white">
+                  <div className="w-11 h-11 rounded-xl bg-red-50 flex items-center justify-center mb-5">
+                    <p.icon className="w-5 h-5 text-red-500" />
+                  </div>
+                  <h3 className="font-semibold text-base mb-2 text-slate-900">{p.title}</h3>
+                  <p className="text-sm text-slate-500 leading-relaxed">{p.description}</p>
                 </div>
-                <h3 className="font-semibold text-base mb-2 text-slate-900">{p.title}</h3>
-                <p className="text-sm text-slate-500 leading-relaxed">{p.description}</p>
-              </div>
+              </Reveal>
             ))}
           </div>
 
@@ -309,13 +419,15 @@ export default function LandingPage() {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl mx-auto">
             {failedFixes.map((f, i) => (
-              <div key={i} className="rounded-2xl border border-white/10 bg-white/5 p-6 hover:border-red-500/20 transition-colors">
-                <div className="flex items-center gap-2 mb-3">
-                  <X className="w-4 h-4 text-red-400 flex-shrink-0" />
-                  <h3 className="font-semibold text-sm text-white">{f.title}</h3>
+              <Reveal key={i} delay={(i % 3) * 100}>
+                <div className="h-full rounded-2xl border border-white/10 bg-white/5 p-6 hover:border-red-500/20 transition-colors">
+                  <div className="flex items-center gap-2 mb-3">
+                    <X className="w-4 h-4 text-red-400 flex-shrink-0" />
+                    <h3 className="font-semibold text-sm text-white">{f.title}</h3>
+                  </div>
+                  <p className="text-sm text-slate-400 leading-relaxed italic">{f.quote}</p>
                 </div>
-                <p className="text-sm text-slate-400 leading-relaxed italic">{f.quote}</p>
-              </div>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -413,9 +525,9 @@ export default function LandingPage() {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-5xl mx-auto">
             {features.map((feature, i) => (
+              <Reveal key={i} delay={(i % 3) * 100}>
               <div
-                key={i}
-                className="group relative rounded-2xl border border-slate-200 p-7 hover:border-indigo-200 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 bg-white overflow-hidden"
+                className="lp-card-glow group relative h-full rounded-2xl border border-slate-200 p-7 hover:border-indigo-200 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 bg-white overflow-hidden"
               >
                 <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/0 to-indigo-50/0 group-hover:from-indigo-50/60 group-hover:to-transparent transition-all duration-300" />
                 <div className="relative">
@@ -426,6 +538,7 @@ export default function LandingPage() {
                   <p className="text-sm text-slate-500 leading-relaxed">{feature.description}</p>
                 </div>
               </div>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -476,7 +589,8 @@ export default function LandingPage() {
 
           <div className="grid md:grid-cols-3 gap-5 max-w-5xl mx-auto">
             {transformations.map((t, i) => (
-              <div key={i} className="rounded-2xl border border-slate-200 overflow-hidden hover:shadow-xl transition-all duration-300">
+              <Reveal key={i} delay={i * 140}>
+              <div className="h-full rounded-2xl border border-slate-200 overflow-hidden hover:shadow-xl transition-all duration-300">
                 <div className="p-6 bg-slate-50 border-b border-slate-200">
                   <p className="text-sm text-slate-500 leading-relaxed italic">{t.before}</p>
                 </div>
@@ -487,6 +601,7 @@ export default function LandingPage() {
                   <p className="text-sm text-slate-800 leading-relaxed font-medium mt-3">{t.after}</p>
                 </div>
               </div>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -497,11 +612,15 @@ export default function LandingPage() {
         <div className="container mx-auto px-5">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 max-w-4xl mx-auto">
             {benefits.map((b, i) => (
-              <div key={i} className="text-center group">
-                <p className="text-4xl md:text-6xl font-bold bg-gradient-to-br from-cyan-400 to-indigo-400 bg-clip-text text-transparent mb-2 tabular-nums">{b.value}</p>
-                <p className="font-semibold text-white text-sm mb-1">{b.label}</p>
-                <p className="text-xs text-slate-500">{b.description}</p>
-              </div>
+              <Reveal key={i} delay={i * 120}>
+                <div className="text-center group">
+                  <p className="text-4xl md:text-6xl font-bold bg-gradient-to-br from-cyan-400 to-indigo-400 bg-clip-text text-transparent mb-2 tabular-nums">
+                    <CountUp value={b.value} />
+                  </p>
+                  <p className="font-semibold text-white text-sm mb-1">{b.label}</p>
+                  <p className="text-xs text-slate-500">{b.description}</p>
+                </div>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -517,7 +636,8 @@ export default function LandingPage() {
 
           <div className="grid md:grid-cols-3 gap-5 max-w-5xl mx-auto">
             {testimonials.map((t, i) => (
-              <div key={i} className="rounded-2xl border border-slate-200 p-7 flex flex-col hover:border-indigo-200 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 bg-white">
+              <Reveal key={i} delay={i * 140}>
+              <div className="lp-card-glow h-full rounded-2xl border border-slate-200 p-7 flex flex-col hover:border-indigo-200 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 bg-white">
                 <div className="flex gap-1 mb-5">
                   {Array.from({ length: t.stars }).map((_, s) => (
                     <Star key={s} className="w-4 h-4 fill-amber-400 text-amber-400" />
@@ -534,6 +654,7 @@ export default function LandingPage() {
                   </div>
                 </div>
               </div>
+              </Reveal>
             ))}
           </div>
         </div>
