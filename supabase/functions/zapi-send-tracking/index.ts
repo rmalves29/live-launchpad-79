@@ -96,6 +96,23 @@ serve(async (req: Request) => {
     let phone = order.customer_phone.replace(/\D/g, "");
     if (!phone.startsWith("55")) phone = "55" + phone;
 
+    // Push-first: se o cliente tiver assinatura ativa e template habilitado, envia push e SUPRIME o WhatsApp.
+    const pushSent = await tryPushBeforeWhatsApp({
+      tenantId: tenant_id,
+      templateType: "tracking_code",
+      customerPhone: order.customer_phone,
+      vars: {
+        nome: order.customer_name || "Cliente",
+        customer_name: order.customer_name || "",
+        order_id: order.unique_order_id || String(order.id),
+        tracking_code,
+        shipped_at: shippedDate,
+      },
+    });
+    if (pushSent) {
+      return new Response(JSON.stringify({ success: true, push_sent: true, whatsapp_sent: false }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     let sendSuccess = false;
     let msgId: string | null = null;
 
