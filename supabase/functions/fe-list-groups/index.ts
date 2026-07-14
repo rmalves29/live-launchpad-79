@@ -63,6 +63,25 @@ const parseCount = (source: any) => {
   return raw != null && !isNaN(Number(raw)) ? Number(raw) : 0;
 };
 
+// Só admin/superadmin consegue gerar o link de convite de um grupo — por isso
+// só chamamos isso para grupos onde o número conectado é admin.
+async function fetchUazapiInviteLink(uazUrl: string, uazH: Record<string, string>, groupJid: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${uazUrl}/group/invitecode`, {
+      method: "POST",
+      headers: uazH,
+      body: JSON.stringify({ groupjid: groupJid }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    const code = data?.invite_link || data?.inviteLink || data?.code || data?.InviteCode;
+    if (!code) return null;
+    return String(code).startsWith("http") ? String(code) : `https://chat.whatsapp.com/${code}`;
+  } catch {
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -190,18 +209,33 @@ serve(async (req) => {
             });
           }
 
+          let inviteLink: string | null = null;
+          if (isAdmin) {
+            inviteLink = await fetchUazapiInviteLink(uazUrl, uazH, groupJid);
+          }
+
           return {
             tenant_id,
             group_jid: groupJid,
             group_name: groupName,
             participant_count: participantCount,
             max_participants: 1024,
-            invite_link: null,
+            invite_link: inviteLink,
             is_admin: isAdmin,
           };
         });
 
         const upsertPayload = enriched.filter((g): g is any => !!g);
+
+        // Preserva o link já salvo quando a busca do link falhou (não sobrescreve com null)
+        const { data: existingUazGroups } = await supabase
+          .from("fe_groups")
+          .select("group_jid, invite_link")
+          .eq("tenant_id", tenant_id);
+        const existingUazLinks = new Map((existingUazGroups || []).map((g) => [g.group_jid, g.invite_link]));
+        for (const g of upsertPayload) {
+          if (!g.invite_link) g.invite_link = existingUazLinks.get(g.group_jid) || null;
+        }
 
         let added = 0;
         if (upsertPayload.length > 0) {
