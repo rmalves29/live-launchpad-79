@@ -15,6 +15,7 @@ import {
   sendPresenceComposing,
   calcTypingDuration,
 } from "../_shared/evolution-api.ts";
+import { tryPushBeforeWhatsApp } from "../_shared/push-fallback.ts";
 import {
   checkConsent,
   isConsentProtectionEnabled,
