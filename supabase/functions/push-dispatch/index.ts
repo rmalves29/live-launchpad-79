@@ -10,10 +10,20 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type TemplateType = "cart_item_added" | "cart_item_removed" | "order_paid" | "tracking_code" | "waitlist";
+type TemplateType =
+  | "cart_item_added"
+  | "cart_item_removed"
+  | "order_paid"
+  | "tracking_code"
+  | "waitlist"
+  | "blocked_customer"
+  | "instagram_signup";
 
 function interpolate(tpl: string, vars: Record<string, string>): string {
-  return String(tpl || "").replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? ""));
+  // suporta {var} (padrão push) e {{var}} (padrão WhatsApp) para alinhamento com templates existentes
+  return String(tpl || "")
+    .replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => (vars[k] ?? ""))
+    .replace(/\{\s*(\w+)\s*\}/g, (_, k) => (vars[k] ?? ""));
 }
 
 function normalizeDigits(v?: string | null) { return String(v || "").replace(/\D/g, ""); }
