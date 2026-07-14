@@ -14,22 +14,33 @@ import { useToast } from '@/hooks/use-toast';
 import { useTenant } from '@/hooks/useTenant';
 import { formatBrasiliaDate } from '@/lib/date-utils';
 
-type TplType = 'cart_item_added' | 'cart_item_removed' | 'order_paid' | 'tracking_code' | 'waitlist';
+type TplType =
+  | 'cart_item_added'
+  | 'cart_item_removed'
+  | 'order_paid'
+  | 'tracking_code'
+  | 'waitlist'
+  | 'blocked_customer'
+  | 'instagram_signup';
 
 const TPL_LABEL: Record<TplType, string> = {
-  cart_item_added: 'Produto no carrinho',
+  cart_item_added: 'Item adicionado ao pedido',
   cart_item_removed: 'Produto cancelado',
   order_paid: 'Pedido pago',
   tracking_code: 'Código de rastreio',
-  waitlist: 'Fila de espera',
+  waitlist: 'Fila de espera — disponível',
+  blocked_customer: 'Cliente bloqueado',
+  instagram_signup: 'Cadastro (Instagram DM)',
 };
 
 const TPL_VARS: Record<TplType, string[]> = {
-  cart_item_added: ['{nome}', '{produto}'],
-  cart_item_removed: ['{nome}', '{produto}'],
-  order_paid: ['{nome}', '{pedido_numero}'],
-  tracking_code: ['{nome}', '{codigo_rastreio}', '{pedido_numero}'],
-  waitlist: ['{nome}', '{produto}'],
+  cart_item_added: ['{nome}', '{produto}', '{codigo}', '{preco}', '{quantidade}', '{numero_pedido}', '{itens_pedido}', '{total_pedido}', '{link_checkout}'],
+  cart_item_removed: ['{nome}', '{produto}', '{codigo}'],
+  order_paid: ['{nome}', '{order_id}', '{total_amount}'],
+  tracking_code: ['{nome}', '{customer_name}', '{order_id}', '{tracking_code}', '{shipped_at}'],
+  waitlist: ['{nome}', '{produto}', '{codigo}', '{prazo}', '{link}'],
+  blocked_customer: [],
+  instagram_signup: ['{link_cadastro}'],
 };
 
 const tabTrig = 'flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium text-slate-500 whitespace-nowrap rounded-none border-b-2 border-transparent bg-transparent hover:text-[#4f46e5] data-[state=active]:text-[#4f46e5] data-[state=active]:border-[#4f46e5] data-[state=active]:shadow-none transition-colors';
@@ -269,7 +280,7 @@ function TemplatesTab({ tenantId }: { tenantId?: string }) {
     }
   };
 
-  const types: TplType[] = ['cart_item_added', 'cart_item_removed', 'order_paid', 'tracking_code', 'waitlist'];
+  const types: TplType[] = ['cart_item_added', 'cart_item_removed', 'order_paid', 'tracking_code', 'waitlist', 'blocked_customer', 'instagram_signup'];
   if (loading) return <div className="text-sm text-muted-foreground">Carregando…</div>;
 
   return (

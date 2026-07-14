@@ -15,6 +15,7 @@ import {
   sendPresenceComposing,
   calcTypingDuration,
 } from "../_shared/evolution-api.ts";
+import { tryPushBeforeWhatsApp } from "../_shared/push-fallback.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -146,6 +147,21 @@ serve(async (req) => {
     const baseMessage = formatMessage(template, body);
     const message = addMessageVariation(baseMessage);
     const formattedPhone = formatPhoneNumber(customer_phone);
+
+    // Push-first: se o cliente tiver assinatura ativa e template habilitado, envia push e SUPRIME o WhatsApp.
+    const pushSent = await tryPushBeforeWhatsApp({
+      tenantId: tenant_id,
+      templateType: "cart_item_removed",
+      customerPhone: customer_phone,
+      vars: {
+        produto: product_name + (product_code ? " (" + product_code + ")" : ""),
+        codigo: product_code || "",
+      },
+    });
+    if (pushSent) {
+      return new Response(JSON.stringify({ sent: false, push_sent: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
 
     // CONSENT V2: respeita bloqueio (waiting_reply/blocked)
     const consent = await checkConsent(supabase, tenant_id, formattedPhone);

@@ -15,6 +15,7 @@ import {
   sendPresenceComposing,
   calcTypingDuration,
 } from "../_shared/evolution-api.ts";
+import { tryPushBeforeWhatsApp } from "../_shared/push-fallback.ts";
 import {
   checkConsent,
   isConsentProtectionEnabled,
@@ -418,6 +419,28 @@ serve(async (req) => {
       if ((credentials as any).buttonEnabled) {
         useButton = true;
         resolvedButtonUrl = ((credentials as any).buttonUrl && (credentials as any).buttonUrl.trim()) ? (credentials as any).buttonUrl.trim() : checkoutUrl;
+      }
+
+      // Push-first: se cliente tiver assinatura ativa e template habilitado, envia push e SUPRIME o WhatsApp
+      const pushSent = await tryPushBeforeWhatsApp({
+        tenantId: tenant_id,
+        templateType: "cart_item_added",
+        customerPhone: customer_phone,
+        vars: {
+          produto: product_name + (product_code ? " (" + product_code + ")" : ""),
+          codigo: product_code || "",
+          quantidade: String(quantity ?? ""),
+          preco: "R$ " + (Number(unit_price) || 0).toFixed(2).replace(".", ","),
+          numero_pedido: orderCtx?.numeroPedido || String(order_id || ""),
+          itens_pedido: orderCtx?.itensPedido || "",
+          total_pedido: orderCtx?.totalPedido || "",
+          link_checkout: checkoutUrl,
+        },
+      });
+      if (pushSent) {
+        if (order_id) await supabase.from("orders").update({ item_added_message_sent: true }).eq("id", order_id);
+        await supabase.from("whatsapp_messages").insert({ tenant_id, phone: formattedPhone, message: "[PUSH] " + message.substring(0, 480), type: "item_added", product_name: product_name.substring(0, 100), sent_at: new Date().toISOString(), order_id: order_id || null, delivery_status: "PUSH_SENT" });
+        return;
       }
 
       const throttleDelay = await getThrottleDelay(formattedPhone);

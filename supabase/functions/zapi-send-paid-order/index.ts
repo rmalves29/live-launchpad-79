@@ -13,6 +13,7 @@ import {
   sendPresenceComposing,
   calcTypingDuration,
 } from "../_shared/evolution-api.ts";
+import { tryPushBeforeWhatsApp } from "../_shared/push-fallback.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -144,6 +145,24 @@ serve(async (req) => {
     const message = addMessageVariation(baseMessage);
 
     const formattedPhone = formatPhoneNumber(order.customer_phone);
+
+    // Push-first: se cliente tiver push assinado e template ativo, envia push e SUPRIME WhatsApp.
+    const pushSent = await tryPushBeforeWhatsApp({
+      tenantId: tenant_id,
+      templateType: "order_paid",
+      customerPhone: order.customer_phone,
+      vars: {
+        nome: order.customer_name || "Cliente",
+        order_id: order.unique_order_id || String(order_id),
+        pedido_numero: order.unique_order_id || String(order_id),
+        total_amount: "R$ " + totalFormatted,
+        total: totalFormatted,
+      },
+    });
+    if (pushSent) {
+      await supabase.from("orders").update({ payment_confirmation_sent: true }).eq("id", order_id);
+      return new Response(JSON.stringify({ sent: false, push_sent: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     const throttleDelay = await getThrottleDelay(formattedPhone);
     if (throttleDelay > 0) console.log("[zapi-send-paid-order] Throttle delay: " + (throttleDelay / 1000).toFixed(1) + "s");
