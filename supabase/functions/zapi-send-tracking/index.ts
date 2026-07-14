@@ -12,6 +12,7 @@ import {
   sendPresenceComposing,
   calcTypingDuration,
 } from "../_shared/uazapi-api.ts";
+import { tryPushBeforeWhatsApp } from "../_shared/push-fallback.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
