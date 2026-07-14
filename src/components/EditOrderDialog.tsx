@@ -46,6 +46,9 @@ interface Order {
   observation?: string;
   melhor_envio_tracking_code?: string;
   order_status?: string | null;
+  coupon_code?: string | null;
+  coupon_discount?: number | null;
+
   cart_items?: {
     id: number;
     qty: number;
@@ -83,6 +86,10 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
   const [printed, setPrinted] = useState<boolean>(false);
   const [orderStatus, setOrderStatus] = useState<'em_separacao' | 'envio_pendente' | 'enviado' | 'liberado_retirada' | 'entregue' | ''>('');
   const [savingMeta, setSavingMeta] = useState(false);
+  const [couponCode, setCouponCode] = useState<string | null>(null);
+  const [couponDiscount, setCouponDiscount] = useState<number>(0);
+  const [removingCoupon, setRemovingCoupon] = useState(false);
+
 
   // ===== Assinatura digital para edição de pedidos pagos =====
   // IMPORTANTE: a assinatura é solicitada a CADA alteração (não é cacheada).
@@ -139,10 +146,29 @@ useEffect(() => {
     setObservation(order.observation || '');
     setPrinted(!!order.printed);
     setOrderStatus((order.order_status as any) || '');
+    setCouponCode(order.coupon_code ?? null);
+    setCouponDiscount(Number(order.coupon_discount || 0));
     setSignerName('');
     setSignaturePromptOpen(false);
     setSignatureInput('');
     loadProducts();
+    // Buscar cupom mais atual do banco (caso a lista tenha vindo sem esses campos)
+    (async () => {
+      try {
+        const { data } = await supabaseTenant
+          .from('orders')
+          .select('coupon_code, coupon_discount')
+          .eq('id', order.id)
+          .maybeSingle();
+        if (data) {
+          setCouponCode((data as any).coupon_code ?? null);
+          setCouponDiscount(Number((data as any).coupon_discount || 0));
+        }
+      } catch (e) {
+        console.error('Erro ao carregar cupom do pedido:', e);
+      }
+    })();
+
   }
 }, [open, order]);
 
@@ -565,6 +591,31 @@ useEffect(() => {
 
   const currentTotal = cartItems.reduce((sum, item) => sum + (item.qty * item.unit_price), 0);
 
+  const handleRemoveCoupon = async () => {
+    if (!order || isPaid) return;
+    if (!couponCode && !couponDiscount) return;
+    if (!confirm(`Remover o cupom "${couponCode || ''}" deste pedido? O total será recalculado.`)) return;
+    setRemovingCoupon(true);
+    try {
+      const { error } = await supabaseTenant
+        .from('orders')
+        .update({ coupon_code: null, coupon_discount: 0 })
+        .eq('id', order.id);
+      if (error) throw error;
+      setCouponCode(null);
+      setCouponDiscount(0);
+      await updateOrderTotal(cartId);
+      toast({ title: 'Cupom removido', description: 'O total do pedido foi recalculado.' });
+      onOrderUpdated();
+    } catch (e: any) {
+      console.error('Erro ao remover cupom:', e);
+      toast({ title: 'Erro ao remover cupom', description: e?.message || 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setRemovingCoupon(false);
+    }
+  };
+
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -743,8 +794,39 @@ useEffect(() => {
           </div>
         </div>
 
+        {/* Cupom aplicado */}
+        {(couponCode || couponDiscount > 0) && (
+          <div className="pt-4 border-t">
+            <Label>Cupom aplicado</Label>
+            <div className="mt-2 flex items-center justify-between gap-3 rounded-md border border-dashed border-emerald-300 bg-emerald-50 px-3 py-2">
+              <div className="text-sm">
+                <div className="font-semibold text-emerald-800">
+                  {couponCode || '—'}
+                </div>
+                <div className="text-emerald-700">
+                  Desconto: {formatCurrency(couponDiscount)}
+                </div>
+              </div>
+              {isPaid ? (
+                <span className="text-[11px] text-muted-foreground">Pedido pago — cupom bloqueado</span>
+              ) : (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleRemoveCoupon}
+                  disabled={removingCoupon}
+                >
+                  {removingCoupon ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1" />}
+                  Remover cupom
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Status / Rastreio / Observação / Impresso */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+
           <div>
             <Label>Status Pagamento</Label>
             <Select value={isPaid ? 'pago' : 'pendente'} onValueChange={(v) => setIsPaid(v === 'pago')}>
