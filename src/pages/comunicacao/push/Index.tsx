@@ -280,7 +280,7 @@ function TemplatesTab({ tenantId }: { tenantId?: string }) {
     }
   };
 
-  const types: TplType[] = ['cart_item_added', 'cart_item_removed', 'order_paid', 'tracking_code', 'waitlist'];
+  const types: TplType[] = ['cart_item_added', 'cart_item_removed', 'order_paid', 'tracking_code', 'waitlist', 'blocked_customer', 'instagram_signup'];
   if (loading) return <div className="text-sm text-muted-foreground">Carregando…</div>;
 
   return (
