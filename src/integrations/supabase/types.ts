@@ -5002,6 +5002,8 @@ export type Database = {
         | "order_paid"
         | "tracking_code"
         | "waitlist"
+        | "blocked_customer"
+        | "instagram_signup"
       user_role: "super_admin" | "tenant_admin" | "staff"
       whatsapp_message_type:
         | "incoming"
@@ -5177,6 +5179,8 @@ export const Constants = {
         "order_paid",
         "tracking_code",
         "waitlist",
+        "blocked_customer",
+        "instagram_signup",
       ],
       user_role: ["super_admin", "tenant_admin", "staff"],
       whatsapp_message_type: [
