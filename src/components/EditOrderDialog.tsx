@@ -498,24 +498,15 @@ useEffect(() => {
   // Extrai valor do frete do campo observation
   const extractFreightFromObservation = (observation: string | null | undefined): number => {
     if (!observation) return 0;
-    
-    console.log('[extractFreight] Observation:', observation);
-    
-    // Tenta diferentes formatos de frete na observation
-    // Formato 1: "[FRETE] ... | R$ 19.90 | ..."
-    // Formato 2: "[FRETE] Retirar no local | R$ 3.00 | ..."
-    // Formato 3: "R$ 19,90" ou "R$ 19.90" em qualquer lugar
-    
-    // Primeiro tenta o formato específico com [FRETE]
-    let match = observation.match(/R\$\s*([\d]+[.,][\d]{2})/i);
-    if (match) {
-      const value = match[1].replace(',', '.');
-      const freight = parseFloat(value) || 0;
-      console.log('[extractFreight] Extracted freight:', freight);
-      return freight;
+
+    // Só considerar frete quando a tag [FRETE] estiver presente.
+    // Evita capturar valores de outras tags como [COUPON_DISCOUNT] R$ 44.00,
+    // [PIX_DISCOUNT] R$ 10.00, [PRESENTE] R$ 5.00 etc. — que quebravam o total do pedido.
+    const freteTagMatch = observation.match(/\[FRETE\][^\[]*?R\$\s*([\d]+[.,][\d]{2})/i);
+    if (freteTagMatch) {
+      return parseFloat(freteTagMatch[1].replace(',', '.')) || 0;
     }
-    
-    console.log('[extractFreight] No freight found');
+
     return 0;
   };
 
@@ -532,10 +523,10 @@ useEffect(() => {
 
       if (error) throw error;
 
-      // Buscar observation do pedido para extrair o frete
+      // Buscar observation + descontos do pedido
       const { data: orderData, error: orderError } = await supabaseTenant
         .from('orders')
-        .select('observation')
+        .select('observation, coupon_discount')
         .eq('id', order.id)
         .maybeSingle();
 
@@ -543,14 +534,17 @@ useEffect(() => {
 
       // Calcular total dos produtos
       const productsTotal = (data || []).reduce((sum: number, item: any) => sum + (item.qty * item.unit_price), 0);
-      
-      // Extrair frete da observation
-      const freightValue = extractFreightFromObservation(orderData?.observation);
-      
-      // Total = produtos + frete
-      const total = productsTotal + freightValue;
 
-      console.log(`[updateOrderTotal] Pedido #${order.id}: Produtos=${productsTotal}, Frete=${freightValue}, Total=${total}`);
+      // Extrair frete real da observation (só se tiver tag [FRETE])
+      const freightValue = extractFreightFromObservation(orderData?.observation);
+
+      // Desconto de cupom (já congelado no pedido)
+      const couponDiscount = Number(orderData?.coupon_discount || 0);
+
+      // Fórmula oficial: (subtotal - coupon_discount) + freight
+      const total = Math.max(0, productsTotal - couponDiscount) + freightValue;
+
+      console.log(`[updateOrderTotal] Pedido #${order.id}: Produtos=${productsTotal}, Frete=${freightValue}, Cupom=${couponDiscount}, Total=${total}`);
 
       const { error: updateError } = await supabaseTenant
         .from('orders')
@@ -562,6 +556,7 @@ useEffect(() => {
       console.error('Error updating order total:', error);
     }
   };
+
 
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
