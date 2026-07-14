@@ -38,6 +38,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <TopBar />
         <div className="flex-1 min-w-0 max-w-full">{children}</div>
       </main>
+      <AnnouncementPopup />
     </div>
   );
 }
