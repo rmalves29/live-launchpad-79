@@ -146,10 +146,29 @@ useEffect(() => {
     setObservation(order.observation || '');
     setPrinted(!!order.printed);
     setOrderStatus((order.order_status as any) || '');
+    setCouponCode(order.coupon_code ?? null);
+    setCouponDiscount(Number(order.coupon_discount || 0));
     setSignerName('');
     setSignaturePromptOpen(false);
     setSignatureInput('');
     loadProducts();
+    // Buscar cupom mais atual do banco (caso a lista tenha vindo sem esses campos)
+    (async () => {
+      try {
+        const { data } = await supabaseTenant
+          .from('orders')
+          .select('coupon_code, coupon_discount')
+          .eq('id', order.id)
+          .maybeSingle();
+        if (data) {
+          setCouponCode((data as any).coupon_code ?? null);
+          setCouponDiscount(Number((data as any).coupon_discount || 0));
+        }
+      } catch (e) {
+        console.error('Erro ao carregar cupom do pedido:', e);
+      }
+    })();
+
   }
 }, [open, order]);
 
