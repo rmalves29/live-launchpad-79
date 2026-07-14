@@ -591,6 +591,31 @@ useEffect(() => {
 
   const currentTotal = cartItems.reduce((sum, item) => sum + (item.qty * item.unit_price), 0);
 
+  const handleRemoveCoupon = async () => {
+    if (!order || isPaid) return;
+    if (!couponCode && !couponDiscount) return;
+    if (!confirm(`Remover o cupom "${couponCode || ''}" deste pedido? O total será recalculado.`)) return;
+    setRemovingCoupon(true);
+    try {
+      const { error } = await supabaseTenant
+        .from('orders')
+        .update({ coupon_code: null, coupon_discount: 0 })
+        .eq('id', order.id);
+      if (error) throw error;
+      setCouponCode(null);
+      setCouponDiscount(0);
+      await updateOrderTotal(cartId);
+      toast({ title: 'Cupom removido', description: 'O total do pedido foi recalculado.' });
+      onOrderUpdated();
+    } catch (e: any) {
+      console.error('Erro ao remover cupom:', e);
+      toast({ title: 'Erro ao remover cupom', description: e?.message || 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setRemovingCoupon(false);
+    }
+  };
+
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
