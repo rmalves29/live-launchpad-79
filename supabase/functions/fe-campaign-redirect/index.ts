@@ -42,7 +42,7 @@ serve(async (req) => {
     // Fetch campaign scoped to tenant
     const { data: campaign, error: campErr } = await supabase
       .from("fe_campaigns")
-      .select("id, tenant_id, name, is_entry_open, is_active, facebook_pixel_id")
+      .select("id, tenant_id, name, is_entry_open, is_active, facebook_pixel_id, auto_spawn_enabled, spawn_margin")
       .eq("slug", slug)
       .eq("tenant_id", tenant.id)
       .eq("is_active", true)
@@ -97,6 +97,24 @@ serve(async (req) => {
 
     // Pick the group with fewest participants (balancing)
     const selectedGroup = availableGroups[0];
+
+    // Auto-clonagem (equivalente ao "group spawn" do SendFlow): soma de vagas
+    // restantes entre os grupos abertos da campanha. Se estiver perto de lotar,
+    // dispara a criação do próximo grupo em background — sem bloquear o redirect
+    // do visitante atual.
+    if (campaign.auto_spawn_enabled) {
+      const remainingSlots = availableGroups.reduce((sum: number, g: any) => {
+        const cap = g.max_participants ? g.max_participants - (g.participant_count || 0) : Infinity;
+        return sum + (Number.isFinite(cap) ? cap : 0);
+      }, 0);
+      if (remainingSlots <= (campaign.spawn_margin ?? 3)) {
+        fetch(`${supabaseUrl}/functions/v1/fe-spawn-group`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseKey}` },
+          body: JSON.stringify({ tenant_id: campaign.tenant_id, campaign_id: campaign.id }),
+        }).catch((e) => console.warn("[fe-campaign-redirect] auto-spawn fire-and-forget falhou:", e?.message));
+      }
+    }
 
     // Record click
     const userAgent = req.headers.get("user-agent") || "";

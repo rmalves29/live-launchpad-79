@@ -12,9 +12,10 @@ import { Label } from '@/components/ui/label';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import {
   MousePointerClick, ArrowRightToLine, Percent, Users, Copy,
-  CheckSquare, Square, Settings, LogOut,
+  CheckSquare, Square, Settings, LogOut, Sparkles, PlusCircle, Loader2,
 } from 'lucide-react';
 
 interface CampaignDetailDialogProps {
@@ -71,6 +72,16 @@ export default function CampaignDetailDialog({
   const [loading, setLoading] = useState(true);
   const [facebookPixelId, setFacebookPixelId] = useState('');
   const [savingPixel, setSavingPixel] = useState(false);
+
+  // Auto-clonagem de grupo
+  const [autoSpawnEnabled, setAutoSpawnEnabled] = useState(false);
+  const [spawnMargin, setSpawnMargin] = useState(3);
+  const [templateNameBase, setTemplateNameBase] = useState('');
+  const [templateDescription, setTemplateDescription] = useState('');
+  const [templateImageUrl, setTemplateImageUrl] = useState('');
+  const [templateMaxParticipants, setTemplateMaxParticipants] = useState(1000);
+  const [savingSpawn, setSavingSpawn] = useState(false);
+  const [spawningNow, setSpawningNow] = useState(false);
   const fetchData = useCallback(async () => {
     if (!campaignId || !tenant) return;
     setLoading(true);
@@ -94,12 +105,19 @@ export default function CampaignDetailDialog({
         fetchAllTenantGroupEvents(tenant.id),
         supabase
           .from('fe_campaigns' as any)
-          .select('facebook_pixel_id')
+          .select('facebook_pixel_id, auto_spawn_enabled, spawn_margin, group_template')
           .eq('id', campaignId)
           .maybeSingle(),
       ]);
 
       setFacebookPixelId((campData as any)?.facebook_pixel_id || '');
+      setAutoSpawnEnabled((campData as any)?.auto_spawn_enabled ?? false);
+      setSpawnMargin((campData as any)?.spawn_margin ?? 3);
+      const tpl = (campData as any)?.group_template || {};
+      setTemplateNameBase(tpl.name_base || campaignName);
+      setTemplateDescription(tpl.description || '');
+      setTemplateImageUrl(tpl.image_url || '');
+      setTemplateMaxParticipants(tpl.max_participants || 1000);
 
       const cgs = (cgData || []) as CampaignGroup[];
       const groups = (gData || []) as FeGroup[];
@@ -187,6 +205,69 @@ export default function CampaignDetailDialog({
     setSavingPixel(false);
   };
 
+  const saveSpawnConfig = async () => {
+    if (!campaignId) return;
+    setSavingSpawn(true);
+    try {
+      const group_template = {
+        name_base: templateNameBase.trim() || campaignName,
+        description: templateDescription.trim() || null,
+        image_url: templateImageUrl.trim() || null,
+        max_participants: templateMaxParticipants || 1000,
+      };
+      const { error } = await supabase
+        .from('fe_campaigns' as any)
+        .update({
+          auto_spawn_enabled: autoSpawnEnabled,
+          spawn_margin: spawnMargin,
+          group_template,
+        } as any)
+        .eq('id', campaignId);
+      if (error) throw error;
+      toast({ title: 'Configuração de auto-clonagem salva!' });
+    } catch (err: any) {
+      toast({ title: 'Erro ao salvar', description: err.message, variant: 'destructive' });
+    } finally {
+      setSavingSpawn(false);
+    }
+  };
+
+  const spawnGroupNow = async () => {
+    if (!campaignId || !tenant) return;
+    setSpawningNow(true);
+    try {
+      // Salva o molde atual antes de criar, para o grupo novo já sair com a config certa
+      await supabase
+        .from('fe_campaigns' as any)
+        .update({
+          group_template: {
+            name_base: templateNameBase.trim() || campaignName,
+            description: templateDescription.trim() || null,
+            image_url: templateImageUrl.trim() || null,
+            max_participants: templateMaxParticipants || 1000,
+          },
+        } as any)
+        .eq('id', campaignId);
+
+      const { data, error } = await supabase.functions.invoke('fe-spawn-group', {
+        body: { tenant_id: tenant.id, campaign_id: campaignId },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      if (data?.skipped) {
+        toast({ title: 'Aguarde um pouco', description: 'Um grupo foi criado há menos de 2 minutos.' });
+      } else {
+        toast({ title: 'Grupo criado!', description: data?.group_name });
+        fetchData();
+        onRefresh();
+      }
+    } catch (err: any) {
+      toast({ title: 'Erro ao criar grupo', description: err.message, variant: 'destructive' });
+    } finally {
+      setSpawningNow(false);
+    }
+  };
+
   const toggleEntryOpen = async (group: FeGroup) => {
     const newValue = !group.is_entry_open;
     await supabase
@@ -266,6 +347,97 @@ export default function CampaignDetailDialog({
                   {savingPixel ? 'Salvando...' : 'Salvar'}
                 </Button>
               </div>
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 to-transparent p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2.5">
+                  <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                  <div>
+                    <Label className="text-sm font-semibold">Auto-clonagem de grupo</Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Quando os grupos abertos desta campanha estiverem perto de lotar, um grupo novo é criado
+                      automaticamente com o mesmo molde — o link nunca fica sem vaga.
+                    </p>
+                  </div>
+                </div>
+                <Switch checked={autoSpawnEnabled} onCheckedChange={setAutoSpawnEnabled} />
+              </div>
+
+              {autoSpawnEnabled && (
+                <div className="space-y-3 pl-[30px]">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Criar novo grupo quando restarem</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          min={1}
+                          value={spawnMargin}
+                          onChange={(e) => setSpawnMargin(Math.max(1, Number(e.target.value) || 1))}
+                          className="bg-background"
+                        />
+                        <span className="whitespace-nowrap text-xs text-muted-foreground">vagas somadas</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Limite de participantes do clone</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={templateMaxParticipants}
+                        onChange={(e) => setTemplateMaxParticipants(Math.max(1, Number(e.target.value) || 1000))}
+                        className="bg-background"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Nome base do grupo clonado</Label>
+                    <Input
+                      placeholder={campaignName}
+                      value={templateNameBase}
+                      onChange={(e) => setTemplateNameBase(e.target.value)}
+                      className="bg-background"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Descrição do grupo (opcional)</Label>
+                    <Textarea
+                      placeholder="Descrição aplicada a cada grupo novo..."
+                      value={templateDescription}
+                      onChange={(e) => setTemplateDescription(e.target.value)}
+                      className="bg-background"
+                      rows={2}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">URL da imagem do grupo (opcional)</Label>
+                    <Input
+                      placeholder="https://..."
+                      value={templateImageUrl}
+                      onChange={(e) => setTemplateImageUrl(e.target.value)}
+                      className="bg-background"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <Button size="sm" variant="outline" onClick={spawnGroupNow} disabled={spawningNow}>
+                      {spawningNow ? (
+                        <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                      ) : (
+                        <PlusCircle className="mr-1 h-4 w-4" />
+                      )}
+                      Criar grupo agora
+                    </Button>
+                    <Button size="sm" onClick={saveSpawnConfig} disabled={savingSpawn}>
+                      {savingSpawn ? 'Salvando...' : 'Salvar configuração'}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-3">
