@@ -804,38 +804,50 @@ export type Database = {
       }
       fe_campaigns: {
         Row: {
+          auto_spawn_enabled: boolean
           created_at: string | null
           description: string | null
           facebook_pixel_id: string | null
+          group_template: Json | null
           id: string
           is_active: boolean | null
           is_entry_open: boolean | null
+          last_spawn_at: string | null
           name: string
           slug: string
+          spawn_margin: number
           tenant_id: string
           updated_at: string | null
         }
         Insert: {
+          auto_spawn_enabled?: boolean
           created_at?: string | null
           description?: string | null
           facebook_pixel_id?: string | null
+          group_template?: Json | null
           id?: string
           is_active?: boolean | null
           is_entry_open?: boolean | null
+          last_spawn_at?: string | null
           name: string
           slug: string
+          spawn_margin?: number
           tenant_id: string
           updated_at?: string | null
         }
         Update: {
+          auto_spawn_enabled?: boolean
           created_at?: string | null
           description?: string | null
           facebook_pixel_id?: string | null
+          group_template?: Json | null
           id?: string
           is_active?: boolean | null
           is_entry_open?: boolean | null
+          last_spawn_at?: string | null
           name?: string
           slug?: string
+          spawn_margin?: number
           tenant_id?: string
           updated_at?: string | null
         }
