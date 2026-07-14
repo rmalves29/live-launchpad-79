@@ -48,6 +48,8 @@ import AdminErros from "./pages/admin/Erros";
 import MonitoramentoMensagens from "./pages/admin/MonitoramentoMensagens";
 import ArquivoHistorico from "./pages/admin/ArquivoHistorico";
 import SaudeSistema from "./pages/admin/SaudeSistema";
+import Comunicados from "./pages/admin/Comunicados";
+import { AnnouncementPopup } from "./components/AnnouncementPopup";
 import LandingPage from "./pages/LandingPage";
 import RenovarAssinatura from "./pages/RenovarAssinatura";
 
@@ -316,6 +318,13 @@ const AppContent = () => {
           <RequireAuth>
             <SuperAdminOnly>
               <SaudeSistema />
+            </SuperAdminOnly>
+          </RequireAuth>
+        } />
+        <Route path="/admin/comunicados" element={
+          <RequireAuth>
+            <SuperAdminOnly>
+              <Comunicados />
             </SuperAdminOnly>
           </RequireAuth>
         } />

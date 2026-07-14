@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Menu } from 'lucide-react';
 import cartzyLogo from '@/assets/cartzy-logo.png';
 import { NavLink } from 'react-router-dom';
+import { AnnouncementPopup } from '@/components/AnnouncementPopup';
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -37,6 +38,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <TopBar />
         <div className="flex-1 min-w-0 max-w-full">{children}</div>
       </main>
+      <AnnouncementPopup />
     </div>
   );
 }
