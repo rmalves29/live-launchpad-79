@@ -28,6 +28,7 @@ interface FeGroup {
   max_participants: number;
   is_entry_open: boolean;
   is_active: boolean;
+  is_admin: boolean | null;
   created_at: string;
 }
 
@@ -78,7 +79,9 @@ export default function GroupsManager() {
     if (!tenant) return;
     setSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('fe-list-groups-v2', {
+      // fe-list-groups suporta uazapi e Z-API; sincroniza todos os grupos e marca
+      // is_admin por linha (a filtragem "somente admin" é feita no cliente).
+      const { data, error } = await supabase.functions.invoke('fe-list-groups', {
         body: { tenant_id: tenant.id, admin_only: adminOnly },
       });
 
@@ -87,7 +90,8 @@ export default function GroupsManager() {
       } else if (data?.error) {
         toast({ title: 'Erro ao sincronizar', description: data.error, variant: 'destructive' });
       } else {
-        const msg = `${data.synced} grupos sincronizados (${data.total_found} encontrados no WhatsApp)`;
+        const adminMsg = typeof data.admin_count === 'number' ? ` — ${data.admin_count} onde você é admin` : '';
+        const msg = `${data.synced} grupos sincronizados (${data.total_found} encontrados no WhatsApp)${adminMsg}`;
         if (data.warning) {
           toast({ title: msg, description: data.warning });
         } else {
@@ -231,7 +235,10 @@ export default function GroupsManager() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {groups.filter(g => g.group_name.toLowerCase().includes(search.toLowerCase())).map(g => (
+                {groups
+                  .filter(g => g.group_name.toLowerCase().includes(search.toLowerCase()))
+                  .filter(g => !adminOnly || g.is_admin)
+                  .map(g => (
                   <TableRow key={g.id}>
                     <TableCell className="text-center">
                       <Switch checked={g.is_entry_open} onCheckedChange={() => toggleEntryOpen(g)} />
