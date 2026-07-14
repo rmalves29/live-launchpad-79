@@ -1,6 +1,8 @@
 // Processa a próxima cliente da fila de espera quando estoque volta.
 // Cria pedido reservado, decrementa estoque atomicamente, envia WhatsApp.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { tryPushBeforeWhatsApp } from "../_shared/push-fallback.ts";
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
