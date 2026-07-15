@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
 import { useToast } from '@/hooks/use-toast';
-import { fetchAllTenantGroupEvents, summarizeFlowEvents } from '@/lib/fluxo-envio-metrics';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -88,7 +88,7 @@ export default function CampaignDetailDialog({
     setLoading(true);
 
     try {
-      const [{ data: cgData }, { data: gData }, { count: clickCount }, allEvents, { data: campData }] = await Promise.all([
+      const [{ data: cgData }, { data: gData }, { count: clickCount }, { data: campData }] = await Promise.all([
         supabase
           .from('fe_campaign_groups' as any)
           .select('id, group_id')
@@ -104,7 +104,6 @@ export default function CampaignDetailDialog({
           .from('fe_link_clicks' as any)
           .select('id', { count: 'exact', head: true })
           .eq('campaign_id', campaignId),
-        fetchAllTenantGroupEvents(tenant.id),
         supabase
           .from('fe_campaigns' as any)
           .select('facebook_pixel_id, auto_spawn_enabled, spawn_margin, group_template')
@@ -133,14 +132,40 @@ export default function CampaignDetailDialog({
 
       const cgGroupIds = visibleCampaignGroups.map((campaignGroup) => campaignGroup.group_id);
       const linkedGroups = groups.filter((group) => cgGroupIds.includes(group.id));
+      const linkedGroupIds = linkedGroups.map((g) => g.id);
+      const linkedGroupJids = linkedGroups.map((g) => g.group_jid).filter(Boolean);
       const totalParticipants = linkedGroups.reduce((sum, group) => sum + (group.participant_count || 0), 0);
       const fullGroups = linkedGroups.filter((group) => group.max_participants && (group.participant_count || 0) >= group.max_participants).length;
       const availableGroups = linkedGroups.filter((group) => group.is_entry_open && group.is_active && (!group.max_participants || (group.participant_count || 0) < group.max_participants)).length;
-      const eventSummary = summarizeFlowEvents(allEvents || [], linkedGroups.map((group) => ({ id: group.id, group_jid: group.group_jid })));
+
+      // Contagem de entradas/saídas direto no servidor, filtrando apenas pelos grupos vinculados
+      let entries = 0;
+      let exits = 0;
+      if (linkedGroupIds.length > 0 || linkedGroupJids.length > 0) {
+        const orFilter = [
+          linkedGroupIds.length > 0 ? `group_id.in.(${linkedGroupIds.join(',')})` : null,
+          linkedGroupJids.length > 0 ? `group_jid.in.(${linkedGroupJids.map((j) => `"${j}"`).join(',')})` : null,
+        ].filter(Boolean).join(',');
+
+        const [{ count: joinCount }, { count: leaveCount }] = await Promise.all([
+          supabase
+            .from('fe_group_events' as any)
+            .select('id', { count: 'exact', head: true })
+            .eq('tenant_id', tenant.id)
+            .eq('event_type', 'join')
+            .or(orFilter),
+          supabase
+            .from('fe_group_events' as any)
+            .select('id', { count: 'exact', head: true })
+            .eq('tenant_id', tenant.id)
+            .eq('event_type', 'leave')
+            .or(orFilter),
+        ]);
+        entries = joinCount || 0;
+        exits = leaveCount || 0;
+      }
 
       const clicks = clickCount || 0;
-      const entries = eventSummary.entries || 0;
-      const exits = eventSummary.exits || 0;
 
       setStats({
         clicks,
