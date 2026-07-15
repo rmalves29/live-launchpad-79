@@ -83,7 +83,6 @@ export default function AutoMessagesManager() {
         .from('fe_groups' as any)
         .select('id, group_name')
         .eq('tenant_id', tenant.id)
-        .eq('is_active', true)
         .order('group_name'),
       supabase
         .from('fe_campaigns' as any)
