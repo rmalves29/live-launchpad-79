@@ -108,46 +108,87 @@ async function processOne(supabase: any, tenant_id: string, product_id: number) 
   const unit_price = product.promotional_price && Number(product.promotional_price) > 0
     ? Number(product.promotional_price) : Number(product.price);
   const today = todayBR();
-
-  // Cria carrinho + pedido
-  const { data: cart, error: cartErr } = await supabase.from('carts').insert({
-    tenant_id, customer_phone: next.customer_phone,
-    customer_instagram: next.customer_instagram,
-    event_type: 'LIVE', event_date: today, status: 'OPEN',
-  }).select('id').single();
-  if (cartErr || !cart) {
-    await supabase.from('products').update({ stock: product.stock }).eq('id', product.id);
-    return { tenant_id, product_id, error: 'create-cart-failed' };
-  }
-
-  await supabase.from('cart_items').insert({
-    tenant_id, cart_id: cart.id, product_id: product.id, qty: next.qty,
-    unit_price, product_name: product.name, product_code: product.code,
-    product_image_url: product.image_url,
-  });
-
-  const total = unit_price * next.qty;
   const reservedUntil = new Date(Date.now() + reserveMin * 60_000).toISOString();
 
-  const { data: order, error: orderErr } = await supabase.from('orders').insert({
-    tenant_id,
-    customer_phone: next.customer_phone,
-    customer_name: next.customer_name,
-    event_date: today, event_type: 'LIVE',
-    total_amount: total, is_paid: false,
-    source: 'waitlist', cart_id: cart.id,
-    observation: `[FILA_ESPERA] Reservado até ${new Date(reservedUntil).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
-  }).select('id').single();
-  if (orderErr || !order) {
-    await supabase.from('products').update({ stock: product.stock }).eq('id', product.id);
-    return { tenant_id, product_id, error: 'create-order-failed' };
+  // 🔎 Tenta localizar pedido ABERTO do mesmo cliente no mesmo dia para MERGE
+  // Regra: paid orders são imutáveis (nunca merge em pedido pago).
+  const { data: hostOrder } = await supabase
+    .from('orders')
+    .select('id, cart_id, total_amount, observation')
+    .eq('tenant_id', tenant_id)
+    .eq('customer_phone', next.customer_phone)
+    .eq('event_date', today)
+    .eq('is_paid', false)
+    .neq('source', 'waitlist')
+    .not('cart_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let orderId: number;
+  let cartId: number;
+
+  if (hostOrder?.cart_id) {
+    // ➕ Adiciona item ao carrinho do pedido existente
+    cartId = hostOrder.cart_id;
+    orderId = hostOrder.id;
+
+    await supabase.from('cart_items').insert({
+      tenant_id, cart_id: cartId, product_id: product.id, qty: next.qty,
+      unit_price, product_name: product.name, product_code: product.code,
+      product_image_url: product.image_url,
+    });
+
+    // Recalcula total do pedido hospedeiro somando o novo item
+    const addAmount = unit_price * next.qty;
+    const newTotal = Number(hostOrder.total_amount || 0) + addAmount;
+    const noteTag = `[FILA_ESPERA] ${product.code || product.name} adicionado até ${new Date(reservedUntil).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`;
+    const newObs = hostOrder.observation ? `${hostOrder.observation}\n${noteTag}` : noteTag;
+    await supabase.from('orders')
+      .update({ total_amount: newTotal, observation: newObs })
+      .eq('id', orderId);
+  } else {
+    // 🆕 Nenhum pedido aberto: cria carrinho + pedido novo (fluxo original)
+    const { data: cart, error: cartErr } = await supabase.from('carts').insert({
+      tenant_id, customer_phone: next.customer_phone,
+      customer_instagram: next.customer_instagram,
+      event_type: 'LIVE', event_date: today, status: 'OPEN',
+    }).select('id').single();
+    if (cartErr || !cart) {
+      await supabase.from('products').update({ stock: product.stock }).eq('id', product.id);
+      return { tenant_id, product_id, error: 'create-cart-failed' };
+    }
+
+    await supabase.from('cart_items').insert({
+      tenant_id, cart_id: cart.id, product_id: product.id, qty: next.qty,
+      unit_price, product_name: product.name, product_code: product.code,
+      product_image_url: product.image_url,
+    });
+
+    const total = unit_price * next.qty;
+    const { data: order, error: orderErr } = await supabase.from('orders').insert({
+      tenant_id,
+      customer_phone: next.customer_phone,
+      customer_name: next.customer_name,
+      event_date: today, event_type: 'LIVE',
+      total_amount: total, is_paid: false,
+      source: 'waitlist', cart_id: cart.id,
+      observation: `[FILA_ESPERA] Reservado até ${new Date(reservedUntil).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
+    }).select('id').single();
+    if (orderErr || !order) {
+      await supabase.from('products').update({ stock: product.stock }).eq('id', product.id);
+      return { tenant_id, product_id, error: 'create-order-failed' };
+    }
+    orderId = order.id;
+    cartId = cart.id;
   }
 
   // Atualiza waitlist -> notified
   await supabase.from('product_waitlist').update({
     status: 'notified', notified_at: new Date().toISOString(),
-    reserved_until: reservedUntil, order_id: order.id,
+    reserved_until: reservedUntil, order_id: orderId,
   }).eq('id', next.id);
+
 
   // Envia WhatsApp (template WAITLIST_AVAILABLE)
   try {
@@ -187,5 +228,5 @@ async function processOne(supabase: any, tenant_id: string, product_id: number) 
     console.error('[waitlist-process-next] msg err', msgErr);
   }
 
-  return { tenant_id, product_id, waitlist_id: next.id, order_id: order.id, reserved_until: reservedUntil };
+  return { tenant_id, product_id, waitlist_id: next.id, order_id: orderId, reserved_until: reservedUntil, merged: !!hostOrder?.cart_id };
 }
