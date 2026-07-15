@@ -14,6 +14,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
+import ReportsCharts, { type TimelinePoint } from './ReportsCharts';
 
 type PeriodKey = '24h' | '7d' | '30d' | '90d' | 'all';
 
