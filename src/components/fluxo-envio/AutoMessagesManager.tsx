@@ -81,8 +81,9 @@ export default function AutoMessagesManager() {
         .order('created_at', { ascending: false }),
       supabase
         .from('fe_groups' as any)
-        .select('id, group_name')
+        .select('id, group_name, is_admin')
         .eq('tenant_id', tenant.id)
+        .eq('is_admin', true)
         .order('group_name'),
       supabase
         .from('fe_campaigns' as any)
