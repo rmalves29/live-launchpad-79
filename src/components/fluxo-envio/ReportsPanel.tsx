@@ -276,6 +276,7 @@ export default function ReportsPanel() {
       setCampaignRows(campaignRowsBuilt);
       setGroupRows(groupRowsBuilt);
       setRecentEvents(recent);
+      setTimeline(buildTimeline(events, clicks, period));
     } finally {
       setLoading(false);
     }
