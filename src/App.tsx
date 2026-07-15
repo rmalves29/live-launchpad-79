@@ -10,6 +10,7 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import TenantAuth from "./pages/TenantAuth";
+import ResetPassword from "./pages/ResetPassword";
 import { usePageTitle } from "@/hooks/usePageTitle";
 
 // Callbacks
@@ -151,6 +152,7 @@ const AppContent = () => {
         
         {/* Auth genérico para site principal */}
         <Route path="/auth" element={<TenantAuthComponent />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         
         {/* Callback do Mercado Pago */}
         <Route path="/mp/callback" element={<MercadoPagoCallback />} />
