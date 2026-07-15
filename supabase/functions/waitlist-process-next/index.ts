@@ -228,5 +228,5 @@ async function processOne(supabase: any, tenant_id: string, product_id: number) 
     console.error('[waitlist-process-next] msg err', msgErr);
   }
 
-  return { tenant_id, product_id, waitlist_id: next.id, order_id: order.id, reserved_until: reservedUntil };
+  return { tenant_id, product_id, waitlist_id: next.id, order_id: orderId, reserved_until: reservedUntil, merged: !!hostOrder?.cart_id };
 }
