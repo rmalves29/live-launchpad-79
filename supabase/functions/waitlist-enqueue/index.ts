@@ -75,9 +75,14 @@ Deno.serve(async (req) => {
     // Tenta resolver customer_id
     let customer_id: number | null = null;
     const { data: existingCustomer } = await supabase
-      .from('customers').select('id, name')
+      .from('customers').select('id, name, is_blocked')
       .eq('tenant_id', tenant_id).eq('phone', phone).maybeSingle();
-    if (existingCustomer) customer_id = existingCustomer.id;
+    if (existingCustomer) {
+      if (existingCustomer.is_blocked) {
+        return jsonResp({ error: 'Cliente bloqueado. Entre em contato com a loja.', code: 'CUSTOMER_BLOCKED' }, 403);
+      }
+      customer_id = existingCustomer.id;
+    }
 
     // Já está na fila ativa?
     const { data: existingWl } = await supabase
