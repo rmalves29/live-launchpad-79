@@ -151,6 +151,7 @@ const AppContent = () => {
         
         {/* Auth genérico para site principal */}
         <Route path="/auth" element={<TenantAuthComponent />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         
         {/* Callback do Mercado Pago */}
         <Route path="/mp/callback" element={<MercadoPagoCallback />} />
