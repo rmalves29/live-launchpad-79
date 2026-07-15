@@ -244,25 +244,46 @@ export default function SendFlow() {
 
     setCheckingConnection(true);
     try {
-      // Read connection status from DB (instant) instead of live API call
-      const { data, error } = await supabaseTenant.raw
+      // Descobre o provider ativo
+      const { data: integ, error: integErr } = await supabaseTenant.raw
         .from('integration_whatsapp')
         .select('is_active, provider, zapi_instance_id, uazapi_url, uazapi_token')
         .eq('tenant_id', tenant.id)
         .maybeSingle();
 
-      if (error) {
-        console.log('Erro ao verificar conexão WhatsApp:', error.message);
+      if (integErr || !integ?.is_active) {
         setWhatsappConnected(false);
         return;
       }
 
-      // Consider connected if active and has the relevant instance configured
-      const isConnected = !!(data?.is_active && (
-        (data.provider === 'uazapi' && data.uazapi_url && data.uazapi_token) ||
-        (data.provider !== 'uazapi' && data.zapi_instance_id)
-      ));
-      setWhatsappConnected(isConnected);
+      // Verifica status REAL na API do provider (não só flags do DB)
+      if (integ.provider === 'uazapi') {
+        if (!integ.uazapi_url || !integ.uazapi_token) {
+          setWhatsappConnected(false);
+          return;
+        }
+        const { data, error } = await supabaseTenant.raw.functions.invoke('uazapi-instance-manager', {
+          body: { action: 'status', tenant_id: tenant.id }
+        });
+        if (error) {
+          setWhatsappConnected(false);
+          return;
+        }
+        setWhatsappConnected(!!data?.connected);
+      } else {
+        if (!integ.zapi_instance_id) {
+          setWhatsappConnected(false);
+          return;
+        }
+        const { data, error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+          body: { action: 'status', tenant_id: tenant.id }
+        });
+        if (error) {
+          setWhatsappConnected(false);
+          return;
+        }
+        setWhatsappConnected(!!data?.connected);
+      }
     } catch (error) {
       console.log('WhatsApp não conectado');
       setWhatsappConnected(false);
@@ -270,6 +291,7 @@ export default function SendFlow() {
       setCheckingConnection(false);
     }
   };
+
 
   const loadProducts = async () => {
     try {
