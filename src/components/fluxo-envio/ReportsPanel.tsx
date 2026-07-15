@@ -14,6 +14,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
+import ReportsCharts, { type TimelinePoint } from './ReportsCharts';
 
 type PeriodKey = '24h' | '7d' | '30d' | '90d' | 'all';
 
@@ -91,6 +92,74 @@ async function fetchAllRange<T>(builder: () => any, pageSize = 1000): Promise<T[
   return rows;
 }
 
+function buildTimeline(
+  events: { event_type: string; created_at: string }[],
+  clicks: { clicked_at: string }[],
+  period: PeriodKey,
+): TimelinePoint[] {
+  const isHourly = period === '24h';
+  const now = new Date();
+
+  // Determina buckets a preencher
+  let bucketCount: number;
+  let stepMs: number;
+  if (isHourly) {
+    bucketCount = 24;
+    stepMs = 3_600_000;
+  } else if (period === '7d') { bucketCount = 7; stepMs = 86_400_000; }
+  else if (period === '30d') { bucketCount = 30; stepMs = 86_400_000; }
+  else if (period === '90d') { bucketCount = 90; stepMs = 86_400_000; }
+  else {
+    // 'all' — do primeiro evento até hoje, cap em 90 dias
+    const earliest = [...events, ...clicks].reduce<number | null>((min, row: any) => {
+      const t = new Date((row as any).created_at || (row as any).clicked_at).getTime();
+      return min === null || t < min ? t : min;
+    }, null);
+    if (earliest === null) return [];
+    const days = Math.min(90, Math.max(1, Math.ceil((now.getTime() - earliest) / 86_400_000)));
+    bucketCount = days;
+    stepMs = 86_400_000;
+  }
+
+  const bucketKey = (d: Date) => {
+    if (isHourly) {
+      const c = new Date(d);
+      c.setMinutes(0, 0, 0);
+      return c.getTime();
+    }
+    // Bucket diário em UTC-3 (Brasília)
+    const c = new Date(d.getTime() - 3 * 3_600_000);
+    c.setUTCHours(0, 0, 0, 0);
+    return c.getTime() + 3 * 3_600_000;
+  };
+
+  const startBucket = bucketKey(new Date(now.getTime() - (bucketCount - 1) * stepMs));
+  const buckets = new Map<number, TimelinePoint>();
+  for (let i = 0; i < bucketCount; i++) {
+    const ts = startBucket + i * stepMs;
+    const date = new Date(ts);
+    const label = isHourly
+      ? date.toLocaleTimeString('pt-BR', { hour: '2-digit', timeZone: 'America/Sao_Paulo' }).replace(':00', 'h')
+      : date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });
+    buckets.set(ts, { bucket: date.toISOString(), label, clicks: 0, entries: 0, exits: 0 });
+  }
+
+  for (const e of events) {
+    const ts = bucketKey(new Date(e.created_at));
+    const b = buckets.get(ts);
+    if (!b) continue;
+    if (e.event_type === 'join') b.entries += 1;
+    else if (e.event_type === 'leave') b.exits += 1;
+  }
+  for (const c of clicks) {
+    const ts = bucketKey(new Date(c.clicked_at));
+    const b = buckets.get(ts);
+    if (b) b.clicks += 1;
+  }
+
+  return Array.from(buckets.values());
+}
+
 export default function ReportsPanel() {
   const { tenant } = useTenant();
   const [period, setPeriod] = useState<PeriodKey>('30d');
@@ -100,6 +169,7 @@ export default function ReportsPanel() {
   const [campaignRows, setCampaignRows] = useState<CampaignRow[]>([]);
   const [groupRows, setGroupRows] = useState<GroupRow[]>([]);
   const [recentEvents, setRecentEvents] = useState<EventRow[]>([]);
+  const [timeline, setTimeline] = useState<TimelinePoint[]>([]);
 
   const fetchData = useCallback(async () => {
     if (!tenant) return;
@@ -274,6 +344,7 @@ export default function ReportsPanel() {
       setCampaignRows(campaignRowsBuilt);
       setGroupRows(groupRowsBuilt);
       setRecentEvents(recent);
+      setTimeline(buildTimeline(events, clicks, period));
     } finally {
       setLoading(false);
     }
@@ -362,6 +433,16 @@ export default function ReportsPanel() {
           </Card>
         ))}
       </div>
+
+      {/* Gráficos futuristas */}
+      <ReportsCharts
+        timeline={timeline}
+        topGroups={groupRows}
+        conversion={conversion}
+        entries={totals.entries}
+        exits={totals.exits}
+        clicks={totals.clicks}
+      />
 
       {/* Ranking de Campanhas */}
       <Card>
