@@ -434,6 +434,16 @@ export default function ReportsPanel() {
         ))}
       </div>
 
+      {/* Gráficos futuristas */}
+      <ReportsCharts
+        timeline={timeline}
+        topGroups={groupRows}
+        conversion={conversion}
+        entries={totals.entries}
+        exits={totals.exits}
+        clicks={totals.clicks}
+      />
+
       {/* Ranking de Campanhas */}
       <Card>
         <CardHeader>
