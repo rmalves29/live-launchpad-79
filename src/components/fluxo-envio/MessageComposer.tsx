@@ -54,7 +54,7 @@ export default function MessageComposer() {
     if (!tenant) return;
     setLoading(true);
     const [grp, cmp, msgs] = await Promise.all([
-      supabase.from('fe_groups' as any).select('id, group_name, group_jid').eq('tenant_id', tenant.id).order('group_name'),
+      supabase.from('fe_groups' as any).select('id, group_name, group_jid, is_admin').eq('tenant_id', tenant.id).eq('is_admin', true).order('group_name'),
       supabase.from('fe_campaigns' as any).select('id, name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
       supabase.from('fe_messages' as any).select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(20),
     ]);
