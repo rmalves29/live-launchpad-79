@@ -39,6 +39,7 @@ interface FeGroup {
   max_participants: number | null;
   is_entry_open: boolean;
   is_active: boolean;
+  is_admin: boolean | null;
   invite_link: string | null;
 }
 
@@ -94,8 +95,9 @@ export default function CampaignDetailDialog({
           .eq('campaign_id', campaignId),
         supabase
           .from('fe_groups' as any)
-          .select('id, group_jid, group_name, participant_count, max_participants, is_entry_open, is_active, invite_link')
+          .select('id, group_jid, group_name, participant_count, max_participants, is_entry_open, is_active, is_admin, invite_link')
           .eq('tenant_id', tenant.id)
+          .eq('is_admin', true)
           .eq('is_active', true)
           .order('group_name'),
         supabase
@@ -121,12 +123,15 @@ export default function CampaignDetailDialog({
 
       const cgs = (cgData || []) as CampaignGroup[];
       const groups = (gData || []) as FeGroup[];
-      setCampaignGroups(cgs);
+      const visibleGroupIds = new Set(groups.map((group) => group.id));
+      const visibleCampaignGroups = cgs.filter((campaignGroup) => visibleGroupIds.has(campaignGroup.group_id));
+
+      setCampaignGroups(visibleCampaignGroups);
       setAllGroups(groups);
-      setPendingGroupIds(new Set(cgs.map(cg => cg.group_id)));
+      setPendingGroupIds(new Set(visibleCampaignGroups.map(cg => cg.group_id)));
       setHasPendingChanges(false);
 
-      const cgGroupIds = cgs.map((campaignGroup) => campaignGroup.group_id);
+      const cgGroupIds = visibleCampaignGroups.map((campaignGroup) => campaignGroup.group_id);
       const linkedGroups = groups.filter((group) => cgGroupIds.includes(group.id));
       const totalParticipants = linkedGroups.reduce((sum, group) => sum + (group.participant_count || 0), 0);
       const fullGroups = linkedGroups.filter((group) => group.max_participants && (group.participant_count || 0) >= group.max_participants).length;
