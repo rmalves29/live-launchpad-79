@@ -10,6 +10,7 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import TenantAuth from "./pages/TenantAuth";
+import ResetPassword from "./pages/ResetPassword";
 import { usePageTitle } from "@/hooks/usePageTitle";
 
 // Callbacks
