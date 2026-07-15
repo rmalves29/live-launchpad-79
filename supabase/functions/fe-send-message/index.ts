@@ -245,7 +245,7 @@ serve(async (req) => {
             const result = await sendToGroupEvolution(creds.instanceName!, group.group_jid, content_type, content_text, media_url);
             sent = result.success;
             errMsg = result.error;
-            console.log("[fe-send-message] Evolution - Group " + group.group_name + ": sent=" + sent);
+            console.log("[fe-send-message] uazapi - Group " + group.group_name + " (" + group.group_jid + "): sent=" + sent + (errMsg ? " error=" + errMsg : ""));
           } else {
             const res = await sendToGroupZapi(zapiBaseUrl, creds.clientToken!, group.group_jid, content_type, content_text, media_url, mention_all);
             const resText = await res.text();
