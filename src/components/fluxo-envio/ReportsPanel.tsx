@@ -101,6 +101,7 @@ export default function ReportsPanel() {
   const [campaignRows, setCampaignRows] = useState<CampaignRow[]>([]);
   const [groupRows, setGroupRows] = useState<GroupRow[]>([]);
   const [recentEvents, setRecentEvents] = useState<EventRow[]>([]);
+  const [timeline, setTimeline] = useState<TimelinePoint[]>([]);
 
   const fetchData = useCallback(async () => {
     if (!tenant) return;
