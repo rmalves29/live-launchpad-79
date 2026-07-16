@@ -844,6 +844,7 @@ export type Database = {
           group_id: string
           id: string
           sort_order: number | null
+          weight_percent: number | null
         }
         Insert: {
           campaign_id: string
@@ -851,6 +852,7 @@ export type Database = {
           group_id: string
           id?: string
           sort_order?: number | null
+          weight_percent?: number | null
         }
         Update: {
           campaign_id?: string
@@ -858,6 +860,7 @@ export type Database = {
           group_id?: string
           id?: string
           sort_order?: number | null
+          weight_percent?: number | null
         }
         Relationships: [
           {
