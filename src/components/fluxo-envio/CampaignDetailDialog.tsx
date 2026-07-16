@@ -133,7 +133,13 @@ export default function CampaignDetailDialog({
       setCampaignGroups(visibleCampaignGroups);
       setAllGroups(groups);
       setPendingGroupIds(new Set(visibleCampaignGroups.map(cg => cg.group_id)));
+      const weights: Record<string, string> = {};
+      visibleCampaignGroups.forEach((cg) => {
+        weights[cg.group_id] = cg.weight_percent == null ? '' : String(cg.weight_percent);
+      });
+      setGroupWeights(weights);
       setHasPendingChanges(false);
+
 
       const cgGroupIds = visibleCampaignGroups.map((campaignGroup) => campaignGroup.group_id);
       const linkedGroups = groups.filter((group) => cgGroupIds.includes(group.id));
