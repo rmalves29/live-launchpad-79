@@ -68,7 +68,9 @@ export default function CampaignDetailDialog({
   const [campaignGroups, setCampaignGroups] = useState<CampaignGroup[]>([]);
   const [allGroups, setAllGroups] = useState<FeGroup[]>([]);
   const [pendingGroupIds, setPendingGroupIds] = useState<Set<string>>(new Set());
+  const [groupWeights, setGroupWeights] = useState<Record<string, string>>({});
   const [hasPendingChanges, setHasPendingChanges] = useState(false);
+
   const [saving, setSaving] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
   const [showGroupManager, setShowGroupManager] = useState(false);
