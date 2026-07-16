@@ -321,6 +321,30 @@ export default function CampaignDetailDialog({
     setAllGroups(prev => prev.map(g => g.id === group.id ? { ...g, is_entry_open: newValue } : g));
   };
 
+  const updateGroupWeight = (groupId: string, value: string) => {
+    setGroupWeights((prev) => ({ ...prev, [groupId]: value }));
+  };
+
+  const commitGroupWeight = async (groupId: string) => {
+    if (!campaignId) return;
+    const raw = groupWeights[groupId];
+    const num = raw === '' || raw == null ? null : Number(raw);
+    const weight_percent = num != null && Number.isFinite(num) ? Math.max(0, Math.min(100, num)) : null;
+    await supabase
+      .from('fe_campaign_groups' as any)
+      .update({ weight_percent } as any)
+      .eq('campaign_id', campaignId)
+      .eq('group_id', groupId);
+    setCampaignGroups((prev) => prev.map((cg) => cg.group_id === groupId ? { ...cg, weight_percent } : cg));
+  };
+
+  const weightsSum = campaignGroups.reduce((s, cg) => {
+    const raw = groupWeights[cg.group_id];
+    const num = raw === '' || raw == null ? null : Number(raw);
+    return s + (num != null && Number.isFinite(num) ? Math.max(0, Math.min(100, num)) : 0);
+  }, 0);
+
+
   const getCampaignLink = () => {
     if (!tenant) return '';
     return `https://app.orderzaps.com/fluxo/${tenant.slug}/${campaignSlug}`;
