@@ -2,8 +2,22 @@
 <html lang="pt-BR">
   <head>
     <script>
-      // Tema claro forçado em todo o sistema (branco + sky/cyan da logo)
+      // Fast-path: redireciona links de campanha ANTES de carregar o bundle React.
+      // Corta 2-4s de download/parse do SPA + init de auth no fluxo do WhatsApp.
       (function () {
+        try {
+          var m = location.pathname.match(/^\/fluxo\/([^\/]+)\/([^\/?#]+)/);
+          if (m) {
+            location.replace(
+              'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/fe-campaign-redirect'
+              + '?tenant=' + encodeURIComponent(m[1])
+              + '&slug=' + encodeURIComponent(m[2])
+            );
+            // aborta parse do resto da página
+            if (window.stop) window.stop();
+            return;
+          }
+        } catch (e) {}
         try {
           document.documentElement.classList.remove('dark');
           localStorage.setItem('theme', 'light');

@@ -146,18 +146,22 @@ serve(async (req) => {
     const hashBuffer = await crypto.subtle.digest("SHA-256", data);
     const ipHash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, "0")).join("").substring(0, 16);
 
-    await supabase.from("fe_link_clicks").insert({
-      campaign_id: campaign.id,
-      ip_hash: ipHash,
-      user_agent: userAgent.substring(0, 500),
-      redirected_group_id: selectedGroup.id,
-    });
-
-    // Increment participant_count optimistically
-    await supabase
-      .from("fe_groups")
-      .update({ participant_count: (selectedGroup.participant_count || 0) + 1 })
-      .eq("id", selectedGroup.id);
+    // Fire-and-forget: gravar clique e incrementar contador NÃO devem bloquear o 302.
+    // @ts-ignore EdgeRuntime está disponível no Deno Deploy da Supabase
+    const bg = Promise.all([
+      supabase.from("fe_link_clicks").insert({
+        campaign_id: campaign.id,
+        ip_hash: ipHash,
+        user_agent: userAgent.substring(0, 500),
+        redirected_group_id: selectedGroup.id,
+      }),
+      supabase
+        .from("fe_groups")
+        .update({ participant_count: (selectedGroup.participant_count || 0) + 1 })
+        .eq("id", selectedGroup.id),
+    ]).catch((e) => console.warn("[fe-campaign-redirect] bg write falhou:", e?.message));
+    // @ts-ignore
+    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) EdgeRuntime.waitUntil(bg);
 
     const pixelId = campaign.facebook_pixel_id?.trim();
     const redirectUrl = selectedGroup.invite_link;
