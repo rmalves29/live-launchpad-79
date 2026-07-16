@@ -215,14 +215,17 @@ export default function CampaignDetailDialog({
       // Remove all existing links
       await supabase.from('fe_campaign_groups' as any).delete().eq('campaign_id', campaignId);
 
-      // Insert new links
+      // Insert new links (preservando peso configurado)
       if (pendingGroupIds.size > 0) {
-        const inserts = Array.from(pendingGroupIds).map(groupId => ({
-          campaign_id: campaignId,
-          group_id: groupId,
-        }));
+        const inserts = Array.from(pendingGroupIds).map(groupId => {
+          const raw = groupWeights[groupId];
+          const num = raw === '' || raw == null ? null : Number(raw);
+          const weight_percent = num != null && Number.isFinite(num) ? Math.max(0, Math.min(100, num)) : null;
+          return { campaign_id: campaignId, group_id: groupId, weight_percent };
+        });
         await supabase.from('fe_campaign_groups' as any).insert(inserts as any);
       }
+
 
       toast({ title: 'Grupos salvos com sucesso!' });
       setHasPendingChanges(false);
