@@ -29,7 +29,9 @@ interface CampaignDetailDialogProps {
 interface CampaignGroup {
   id: string;
   group_id: string;
+  weight_percent: number | null;
 }
+
 
 interface FeGroup {
   id: string;
