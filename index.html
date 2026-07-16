@@ -13,8 +13,7 @@
               + '?tenant=' + encodeURIComponent(m[1])
               + '&slug=' + encodeURIComponent(m[2])
             );
-            // aborta parse do resto da página
-            if (window.stop) window.stop();
+            // NÃO chamar window.stop() aqui — ele cancela a navegação pendente do location.replace
             return;
           }
         } catch (e) {}
