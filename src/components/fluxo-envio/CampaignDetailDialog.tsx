@@ -559,16 +559,23 @@ export default function CampaignDetailDialog({
               )}
 
               {!showGroupManager && campaignGroups.length > 0 && (
-                <div className="space-y-1">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground px-1">
+                    <span>Ative para receber novos membros e defina o % de distribuição</span>
+                    <span className={weightsSum > 0 && Math.abs(weightsSum - 100) > 0.01 ? 'text-amber-500' : ''}>
+                      Soma: {weightsSum.toFixed(0)}%
+                      {weightsSum === 0 && ' (distribuição igualitária)'}
+                    </span>
+                  </div>
                   {allGroups
                     .filter((group) => campaignGroups.some((campaignGroup) => campaignGroup.group_id === group.id))
                     .map((group) => (
-                      <div key={group.id} className="flex items-center justify-between rounded-lg bg-muted/30 p-2 text-sm">
+                      <div key={group.id} className="flex items-center justify-between gap-2 rounded-lg bg-muted/30 p-2 text-sm">
                         <div className="flex items-center gap-3 min-w-0 flex-1">
                           <Switch
                             checked={group.is_entry_open}
                             onCheckedChange={() => toggleEntryOpen(group)}
-                            title="Enviar pessoas para este grupo"
+                            title="Ativar/desativar entrada de novos membros neste grupo"
                           />
                           <div className="min-w-0">
                             <span className="truncate font-medium block">{group.group_name}</span>
@@ -577,13 +584,29 @@ export default function CampaignDetailDialog({
                             )}
                           </div>
                         </div>
-                        <span className="ml-2 shrink-0 text-xs text-muted-foreground">
-                          {group.participant_count || 0}/{group.max_participants || 1024} participantes
-                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={1}
+                            placeholder="auto"
+                            value={groupWeights[group.id] ?? ''}
+                            onChange={(e) => updateGroupWeight(group.id, e.target.value)}
+                            onBlur={() => commitGroupWeight(group.id)}
+                            className="h-8 w-16 bg-background text-xs text-right"
+                            title="% de novos membros que este grupo recebe"
+                          />
+                          <span className="text-xs text-muted-foreground">%</span>
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            {group.participant_count || 0}/{group.max_participants || 1024}
+                          </span>
+                        </div>
                       </div>
                     ))}
                 </div>
               )}
+
             </div>
           </div>
         )}
