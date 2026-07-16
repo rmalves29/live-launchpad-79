@@ -167,44 +167,23 @@ serve(async (req) => {
     const redirectUrl = selectedGroup.invite_link;
     const groupName = selectedGroup.group_name || "";
 
-    // If pixel is configured, render an HTML page that fires the pixel then redirects
+    // If pixel is configured, fire the Facebook tracking pixel server-side
+    // (image beacon endpoint) in background and STILL respond with a 302.
+    // Isso evita a tela intermediária que quebrava em alguns in-app browsers
+    // (WhatsApp/Instagram) exibindo o HTML como texto puro.
     if (pixelId) {
-      const safeGroupName = groupName.replace(/'/g, "\\'").replace(/"/g, "&quot;");
-      const html = `<!DOCTYPE html>
-<html><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Redirecionando...</title>
-<script>
-!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
-n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
-t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
-document,'script','https://connect.facebook.net/en_US/fbevents.js');
-fbq('init','${pixelId}');
-fbq('track','PageView');
-fbq('track','Lead',{content_name:'${safeGroupName}'});
-setTimeout(function(){window.location.href='${redirectUrl}';},800);
-</script>
-<noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=${pixelId}&ev=Lead&noscript=1"/></noscript>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a 0%,#1e293b 50%,#0f172a 100%);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-.c{text-align:center;padding:2rem}
-.s{width:40px;height:40px;border:3px solid rgba(255,255,255,.1);border-top-color:#25D366;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 1.25rem}
-@keyframes spin{to{transform:rotate(360deg)}}
-h1{color:#f1f5f9;font-size:1.25rem;font-weight:600;margin-bottom:.5rem}
-p{color:#64748b;font-size:.875rem}
-</style>
-</head><body><div class="c"><div class="s"></div><h1>Entrando no grupo...</h1><p>Você será redirecionado em instantes</p></div></body></html>`;
-
-      return new Response(html, {
-        status: 200,
+      const pixelUrl = `https://www.facebook.com/tr/?id=${encodeURIComponent(pixelId)}`
+        + `&ev=Lead&noscript=1`
+        + `&cd[content_name]=${encodeURIComponent(groupName)}`;
+      const pixelFetch = fetch(pixelUrl, {
+        method: "GET",
         headers: {
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "User-Agent": userAgent || "Mozilla/5.0",
+          "X-Forwarded-For": forwarded,
         },
-      });
+      }).catch((e) => console.warn("[fe-campaign-redirect] pixel beacon falhou:", e?.message));
+      // @ts-ignore
+      if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) EdgeRuntime.waitUntil(pixelFetch);
     }
 
     // No pixel — direct 302 redirect
