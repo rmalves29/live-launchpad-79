@@ -29,7 +29,9 @@ interface CampaignDetailDialogProps {
 interface CampaignGroup {
   id: string;
   group_id: string;
+  weight_percent: number | null;
 }
+
 
 interface FeGroup {
   id: string;
@@ -66,7 +68,9 @@ export default function CampaignDetailDialog({
   const [campaignGroups, setCampaignGroups] = useState<CampaignGroup[]>([]);
   const [allGroups, setAllGroups] = useState<FeGroup[]>([]);
   const [pendingGroupIds, setPendingGroupIds] = useState<Set<string>>(new Set());
+  const [groupWeights, setGroupWeights] = useState<Record<string, string>>({});
   const [hasPendingChanges, setHasPendingChanges] = useState(false);
+
   const [saving, setSaving] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
   const [showGroupManager, setShowGroupManager] = useState(false);
@@ -91,8 +95,9 @@ export default function CampaignDetailDialog({
       const [{ data: cgData }, { data: gData }, { count: clickCount }, { data: campData }] = await Promise.all([
         supabase
           .from('fe_campaign_groups' as any)
-          .select('id, group_id')
+          .select('id, group_id, weight_percent')
           .eq('campaign_id', campaignId),
+
         supabase
           .from('fe_groups' as any)
           .select('id, group_jid, group_name, participant_count, max_participants, is_entry_open, is_active, is_admin, invite_link')
@@ -128,7 +133,13 @@ export default function CampaignDetailDialog({
       setCampaignGroups(visibleCampaignGroups);
       setAllGroups(groups);
       setPendingGroupIds(new Set(visibleCampaignGroups.map(cg => cg.group_id)));
+      const weights: Record<string, string> = {};
+      visibleCampaignGroups.forEach((cg) => {
+        weights[cg.group_id] = cg.weight_percent == null ? '' : String(cg.weight_percent);
+      });
+      setGroupWeights(weights);
       setHasPendingChanges(false);
+
 
       const cgGroupIds = visibleCampaignGroups.map((campaignGroup) => campaignGroup.group_id);
       const linkedGroups = groups.filter((group) => cgGroupIds.includes(group.id));
@@ -204,14 +215,17 @@ export default function CampaignDetailDialog({
       // Remove all existing links
       await supabase.from('fe_campaign_groups' as any).delete().eq('campaign_id', campaignId);
 
-      // Insert new links
+      // Insert new links (preservando peso configurado)
       if (pendingGroupIds.size > 0) {
-        const inserts = Array.from(pendingGroupIds).map(groupId => ({
-          campaign_id: campaignId,
-          group_id: groupId,
-        }));
+        const inserts = Array.from(pendingGroupIds).map(groupId => {
+          const raw = groupWeights[groupId];
+          const num = raw === '' || raw == null ? null : Number(raw);
+          const weight_percent = num != null && Number.isFinite(num) ? Math.max(0, Math.min(100, num)) : null;
+          return { campaign_id: campaignId, group_id: groupId, weight_percent };
+        });
         await supabase.from('fe_campaign_groups' as any).insert(inserts as any);
       }
+
 
       toast({ title: 'Grupos salvos com sucesso!' });
       setHasPendingChanges(false);
@@ -306,6 +320,30 @@ export default function CampaignDetailDialog({
       .eq('id', group.id);
     setAllGroups(prev => prev.map(g => g.id === group.id ? { ...g, is_entry_open: newValue } : g));
   };
+
+  const updateGroupWeight = (groupId: string, value: string) => {
+    setGroupWeights((prev) => ({ ...prev, [groupId]: value }));
+  };
+
+  const commitGroupWeight = async (groupId: string) => {
+    if (!campaignId) return;
+    const raw = groupWeights[groupId];
+    const num = raw === '' || raw == null ? null : Number(raw);
+    const weight_percent = num != null && Number.isFinite(num) ? Math.max(0, Math.min(100, num)) : null;
+    await supabase
+      .from('fe_campaign_groups' as any)
+      .update({ weight_percent } as any)
+      .eq('campaign_id', campaignId)
+      .eq('group_id', groupId);
+    setCampaignGroups((prev) => prev.map((cg) => cg.group_id === groupId ? { ...cg, weight_percent } : cg));
+  };
+
+  const weightsSum = campaignGroups.reduce((s, cg) => {
+    const raw = groupWeights[cg.group_id];
+    const num = raw === '' || raw == null ? null : Number(raw);
+    return s + (num != null && Number.isFinite(num) ? Math.max(0, Math.min(100, num)) : 0);
+  }, 0);
+
 
   const getCampaignLink = () => {
     if (!tenant) return '';
@@ -521,16 +559,23 @@ export default function CampaignDetailDialog({
               )}
 
               {!showGroupManager && campaignGroups.length > 0 && (
-                <div className="space-y-1">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground px-1">
+                    <span>Ative para receber novos membros e defina o % de distribuição</span>
+                    <span className={weightsSum > 0 && Math.abs(weightsSum - 100) > 0.01 ? 'text-amber-500' : ''}>
+                      Soma: {weightsSum.toFixed(0)}%
+                      {weightsSum === 0 && ' (distribuição igualitária)'}
+                    </span>
+                  </div>
                   {allGroups
                     .filter((group) => campaignGroups.some((campaignGroup) => campaignGroup.group_id === group.id))
                     .map((group) => (
-                      <div key={group.id} className="flex items-center justify-between rounded-lg bg-muted/30 p-2 text-sm">
+                      <div key={group.id} className="flex items-center justify-between gap-2 rounded-lg bg-muted/30 p-2 text-sm">
                         <div className="flex items-center gap-3 min-w-0 flex-1">
                           <Switch
                             checked={group.is_entry_open}
                             onCheckedChange={() => toggleEntryOpen(group)}
-                            title="Enviar pessoas para este grupo"
+                            title="Ativar/desativar entrada de novos membros neste grupo"
                           />
                           <div className="min-w-0">
                             <span className="truncate font-medium block">{group.group_name}</span>
@@ -539,13 +584,29 @@ export default function CampaignDetailDialog({
                             )}
                           </div>
                         </div>
-                        <span className="ml-2 shrink-0 text-xs text-muted-foreground">
-                          {group.participant_count || 0}/{group.max_participants || 1024} participantes
-                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={1}
+                            placeholder="auto"
+                            value={groupWeights[group.id] ?? ''}
+                            onChange={(e) => updateGroupWeight(group.id, e.target.value)}
+                            onBlur={() => commitGroupWeight(group.id)}
+                            className="h-8 w-16 bg-background text-xs text-right"
+                            title="% de novos membros que este grupo recebe"
+                          />
+                          <span className="text-xs text-muted-foreground">%</span>
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            {group.participant_count || 0}/{group.max_participants || 1024}
+                          </span>
+                        </div>
                       </div>
                     ))}
                 </div>
               )}
+
             </div>
           </div>
         )}

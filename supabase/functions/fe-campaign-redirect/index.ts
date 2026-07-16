@@ -65,10 +65,10 @@ serve(async (req) => {
       );
     }
 
-    // Fetch campaign groups with their group details
+    // Fetch campaign groups with their group details + weight
     const { data: campaignGroups } = await supabase
       .from("fe_campaign_groups")
-      .select("group_id, fe_groups!inner(id, group_name, invite_link, participant_count, max_participants, is_entry_open, is_active)")
+      .select("group_id, weight_percent, fe_groups!inner(id, group_name, invite_link, participant_count, max_participants, is_entry_open, is_active)")
       .eq("campaign_id", campaign.id);
 
     if (!campaignGroups?.length) {
@@ -78,12 +78,12 @@ serve(async (req) => {
       });
     }
 
-    // Filter: only active groups with entry open and below max capacity
+    // Filter: only active groups with entry open and below max capacity.
+    // Keep weight_percent attached to each candidate for weighted selection below.
     const availableGroups = campaignGroups
-      .map((cg: any) => cg.fe_groups)
+      .map((cg: any) => ({ ...cg.fe_groups, weight_percent: cg.weight_percent }))
       .filter((g: any) => g && g.is_active && g.is_entry_open && g.invite_link)
-      .filter((g: any) => !g.max_participants || (g.participant_count || 0) < g.max_participants)
-      .sort((a: any, b: any) => (a.participant_count || 0) - (b.participant_count || 0));
+      .filter((g: any) => !g.max_participants || (g.participant_count || 0) < g.max_participants);
 
     if (!availableGroups.length) {
       return new Response(
@@ -95,8 +95,30 @@ serve(async (req) => {
       );
     }
 
-    // Pick the group with fewest participants (balancing)
-    const selectedGroup = availableGroups[0];
+    // Weighted random pick. Groups sem weight_percent explícito recebem peso
+    // igual (distribuição uniforme). Se todos têm peso 0/null, cai para uniforme.
+    const weighted = availableGroups.map((g: any) => ({
+      g,
+      w: Number.isFinite(g.weight_percent) && g.weight_percent !== null ? Math.max(0, Number(g.weight_percent)) : -1,
+    }));
+    const hasExplicit = weighted.some((x) => x.w >= 0);
+    const finalWeights = hasExplicit
+      ? weighted.map((x) => (x.w >= 0 ? x.w : 0))
+      : weighted.map(() => 1);
+    const totalWeight = finalWeights.reduce((s, w) => s + w, 0);
+    let selectedGroup: any;
+    if (totalWeight <= 0) {
+      // fallback: menor lotação
+      selectedGroup = [...availableGroups].sort((a: any, b: any) => (a.participant_count || 0) - (b.participant_count || 0))[0];
+    } else {
+      let r = Math.random() * totalWeight;
+      selectedGroup = availableGroups[availableGroups.length - 1];
+      for (let i = 0; i < availableGroups.length; i++) {
+        r -= finalWeights[i];
+        if (r <= 0) { selectedGroup = availableGroups[i]; break; }
+      }
+    }
+
 
     // Auto-clonagem (equivalente ao "group spawn" do SendFlow): soma de vagas
     // restantes entre os grupos abertos da campanha. Se estiver perto de lotar,
