@@ -93,8 +93,9 @@ export default function CampaignDetailDialog({
       const [{ data: cgData }, { data: gData }, { count: clickCount }, { data: campData }] = await Promise.all([
         supabase
           .from('fe_campaign_groups' as any)
-          .select('id, group_id')
+          .select('id, group_id, weight_percent')
           .eq('campaign_id', campaignId),
+
         supabase
           .from('fe_groups' as any)
           .select('id, group_jid, group_name, participant_count, max_participants, is_entry_open, is_active, is_admin, invite_link')
