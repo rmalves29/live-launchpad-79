@@ -26,6 +26,20 @@ async function parallelLimit<T, R>(
 
 const normalizePhone = (value?: string | null) => value?.replace(/\D/g, "") || "";
 
+// Normalize any group JID variant (e.g. "12345-group", "12345@g.us", "12345") to canonical "<id>@g.us"
+const canonicalGroupJid = (raw?: string | null): string => {
+  if (!raw) return "";
+  const s = String(raw).trim();
+  if (!s) return "";
+  // Strip suffix variants
+  const base = s
+    .replace(/@g\.us$/i, "")
+    .replace(/@s\.whatsapp\.net$/i, "")
+    .replace(/-group$/i, "");
+  if (!base) return "";
+  return `${base}@g.us`;
+};
+
 // Extract core number (DDD + subscriber) stripping country code and normalizing 9th digit
 const coreNumber = (phone: string): string => {
   let n = phone.replace(/\D/g, "");
