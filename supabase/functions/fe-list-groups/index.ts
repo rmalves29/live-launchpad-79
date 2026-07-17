@@ -433,7 +433,7 @@ serve(async (req) => {
           }
 
           return {
-            group_jid: group.phone,
+            group_jid: canonicalGroupJid(group.phone),
             group_name: group.name || group.subject || group.phone,
             participant_count: count,
             invite_link: meta.invitationLink || meta.inviteLink || group.invitationLink || group.inviteLink || null,
@@ -447,7 +447,7 @@ serve(async (req) => {
 
       // Fallback: no metadata available
       return {
-        group_jid: group.phone,
+        group_jid: canonicalGroupJid(group.phone),
         group_name: group.name || group.subject || group.phone,
         participant_count: baseCount,
         invite_link: group.invitationLink || group.inviteLink || null,
