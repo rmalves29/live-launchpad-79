@@ -326,12 +326,26 @@ Deno.serve(async (req) => {
     }
 
     // ─── 4) Eventos de grupo (participantes entram/saem) ────────────────────
-    if (event === "groups" || event === "groups_update" || event === "group_participants_update" || event === "group_update" || data?.participants) {
-      const groupJid: string = data?.chatid || data?.chatId || data?.group_id || data?.groupId || data?.id || "";
-      const action: string = (data?.action || data?.type || "").toLowerCase();
-      const participants: string[] = (data?.participants || []).map((p: any) =>
-        typeof p === "string" ? p : (p?.id || p?.jid || p?.phone || "")
+    // Detecção ampla: uazapi pode emitir sob nomes variados
+    // ("groups", "groups_update", "group_participants_update", "group_update",
+    // "chats_update" com participants, "presence", etc). Trata como evento de
+    // grupo qualquer payload que traga participantes ou uma action típica.
+    const rawAction = String(data?.action || data?.type || payload?.action || "").toLowerCase();
+    const groupActionKeywords = ["add", "remove", "join", "leave", "left", "invite", "promote", "demote", "introduced"];
+    const looksLikeGroupEvent = (
+      event.includes("group") ||
+      Array.isArray(data?.participants) ||
+      Array.isArray(payload?.participants) ||
+      (rawAction && groupActionKeywords.some((k) => rawAction.includes(k)))
+    );
+    if (looksLikeGroupEvent) {
+      const groupJid: string = data?.chatid || data?.chatId || data?.group_id || data?.groupId || data?.jid || data?.remoteJid || data?.id || "";
+      const action: string = rawAction;
+      const rawParticipants = data?.participants || payload?.participants || [];
+      const participants: string[] = (Array.isArray(rawParticipants) ? rawParticipants : [rawParticipants]).map((p: any) =>
+        typeof p === "string" ? p : (p?.id || p?.jid || p?.phone || p?.participant || "")
       ).filter(Boolean);
+      console.log(`[uazapi-webhook] 📥 group event | event=${event} action=${action} group=${groupJid} participants=${participants.length}`);
 
       const zapiPayload: Record<string, unknown> = {
         uazapi_tenant_id: tenantId,
@@ -365,6 +379,16 @@ Deno.serve(async (req) => {
       return json({ ok: true, handled: "group_event_forwarded", action });
     }
 
+    // Log payload de eventos desconhecidos para descobrir novos formatos da uazapi.
+    if (event === "unknown") {
+      try {
+        console.log(`[uazapi-webhook] payload desconhecido keys=${Object.keys(payload || {}).join(",")} sample=${JSON.stringify(payload).slice(0, 500)}`);
+        await supabase.from("whatsapp_webhook_orphans").insert({
+          payload: { _reason: "unknown_event_kind", tenant_id: tenantId, ...payload },
+          received_at: new Date().toISOString(),
+        });
+      } catch (_) { /* ignore */ }
+    }
     return json({ ok: true, handled: "ignored", event });
   } catch (e: any) {
     console.error("[uazapi-webhook] erro fatal:", e.message);
