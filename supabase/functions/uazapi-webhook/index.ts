@@ -65,6 +65,34 @@ function isGroupJid(jid: string): boolean {
   return String(jid || "").includes("@g.us");
 }
 
+function normalizeGroupAction(value: unknown): string {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "";
+
+  const compact = raw.replace(/[\s_\-.]+/g, "");
+  if (["add", "join", "joined", "invite", "introduced", "participantadd", "groupadd"].some((k) => compact.includes(k))) {
+    return "add";
+  }
+  if ([
+    "remove",
+    "removed",
+    "leave",
+    "left",
+    "exit",
+    "exited",
+    "out",
+    "kick",
+    "kicked",
+    "participantremove",
+    "participantremoved",
+    "groupremove",
+    "deleteparticipant",
+  ].some((k) => compact.includes(k))) {
+    return "remove";
+  }
+  return raw;
+}
+
 function extractText(data: any): string {
   if (!data) return "";
   return (
@@ -337,30 +365,63 @@ Deno.serve(async (req) => {
     // "chats_update" com participants, "presence", etc). Trata como evento de
     // grupo qualquer payload que traga participantes ou uma action típica.
     // Detecta ações. Formato novo uazapi: `JoinReason` presente → participante entrou;
+    // campos de saída/remoção variam conforme a versão (`LeaveReason`, `RemoveReason`, etc.).
     // presença de `PrevParticipantVersionID`/`ParticipantVersionID` também indica update de participantes.
     const hasJoinReason = !!(data?.JoinReason || data?.joinReason || data?.join_reason);
+    const hasLeaveReason = !!(data?.LeaveReason || data?.leaveReason || data?.leave_reason || data?.RemoveReason || data?.removeReason || data?.remove_reason);
     const hasParticipantVersion = !!(data?.ParticipantVersionID || data?.participantVersionID);
-      let rawAction = String(data?.action || data?.Action || data?.type || data?.Type || payload?.action || payload?.Action || "").toLowerCase();
+    const rawActionCandidates = [
+      data?.action,
+      data?.Action,
+      data?.type,
+      data?.Type,
+      data?.event,
+      data?.Event,
+      data?.operation,
+      data?.Operation,
+      data?.status,
+      data?.Status,
+      data?.JoinReason,
+      data?.joinReason,
+      data?.join_reason,
+      data?.LeaveReason,
+      data?.leaveReason,
+      data?.leave_reason,
+      data?.RemoveReason,
+      data?.removeReason,
+      data?.remove_reason,
+      payload?.action,
+      payload?.Action,
+      payload?.operation,
+      payload?.Operation,
+    ];
+    let rawAction = "";
+    for (const candidate of rawActionCandidates) {
+      rawAction = normalizeGroupAction(candidate);
+      if (rawAction) break;
+    }
     if (!rawAction && hasJoinReason) rawAction = "add";
-    const groupActionKeywords = ["add", "remove", "join", "leave", "left", "invite", "promote", "demote", "introduced"];
+    if (!rawAction && hasLeaveReason) rawAction = "remove";
+    const groupActionKeywords = ["add", "remove", "removed", "join", "joined", "leave", "left", "exit", "out", "kick", "kicked", "invite", "promote", "demote", "introduced"];
     const looksLikeGroupEvent = (
       event.includes("group") ||
       Array.isArray(data?.participants) ||
       Array.isArray(payload?.participants) ||
       (rawAction && groupActionKeywords.some((k) => rawAction.includes(k))) ||
       hasJoinReason ||
+      hasLeaveReason ||
       (hasParticipantVersion && !!(data?.JID || data?.Sender))
     );
     if (looksLikeGroupEvent) {
       const groupJid: string = data?.chatid || data?.chatId || data?.group_id || data?.groupId || data?.GroupJID || data?.GroupJid || data?.groupJid || data?.jid || data?.JID || data?.remoteJid || data?.id || "";
-      const action: string = rawAction || (hasJoinReason ? "add" : "group_event");
+      const action: string = rawAction || (hasJoinReason ? "add" : hasLeaveReason ? "remove" : "group_event");
       const rawParticipants = data?.participants || data?.Participants || data?.participant || data?.Participant || payload?.participants || payload?.Participants || [];
       let participants: string[] = (Array.isArray(rawParticipants) ? rawParticipants : [rawParticipants]).map((p: any) =>
-        typeof p === "string" ? p : (p?.id || p?.jid || p?.JID || p?.phone || p?.Phone || p?.PhoneNumber || p?.participant || p?.Participant || p?.Sender || p?.SenderPN || p?.PN || "")
+        typeof p === "string" ? p : (p?.id || p?.jid || p?.JID || p?.phone || p?.Phone || p?.PhoneNumber || p?.participant || p?.Participant || p?.Sender || p?.SenderPN || p?.PN || p?.LID || p?.lid || "")
       ).filter(Boolean);
       // Formato novo uazapi: participante único vem em Sender/SenderPN
       if (!participants.length) {
-        const single = data?.Sender || data?.SenderPN || data?.SenderJID || data?.sender || data?.sender_pn || data?.senderPN || data?.ParticipantPN || data?.participantPN || data?.ParticipantJID || data?.participantJID;
+        const single = data?.Sender || data?.SenderPN || data?.SenderJID || data?.sender || data?.sender_pn || data?.senderPN || data?.ParticipantPN || data?.participantPN || data?.ParticipantJID || data?.participantJID || data?.RemovedParticipant || data?.removedParticipant || data?.LeftParticipant || data?.leftParticipant || data?.LID || data?.lid;
         if (single) participants = [String(single)];
       }
 

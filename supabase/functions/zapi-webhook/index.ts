@@ -537,8 +537,9 @@ serve(async (req) => {
         zapiCreds = { zapi_instance_id: integ.zapi_instance_id, zapi_token: integ.zapi_token, zapi_client_token: integ.zapi_client_token };
       }
 
-      const isJoinEvent = ['add', 'join', 'invite', 'introduced'].includes(normalizedAction);
-      const isLeaveEvent = ['remove', 'leave', 'left', 'exit'].includes(normalizedAction);
+      const actionCompact = normalizedAction.replace(/[\s_\-.]+/g, '');
+      const isJoinEvent = ['add', 'join', 'joined', 'invite', 'introduced'].includes(actionCompact);
+      const isLeaveEvent = ['remove', 'removed', 'leave', 'left', 'exit', 'exited', 'out', 'kick', 'kicked'].includes(actionCompact);
 
       if (eventTenantId && groupJid && (isJoinEvent || isLeaveEvent)) {
         const feEventType = isJoinEvent ? 'join' : 'leave';
