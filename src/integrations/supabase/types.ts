@@ -1323,6 +1323,39 @@ export type Database = {
         }
         Relationships: []
       }
+      help_tutorials: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          page_key: string
+          sort_order: number
+          title: string
+          updated_at: string
+          youtube_url: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          page_key: string
+          sort_order?: number
+          title: string
+          updated_at?: string
+          youtube_url: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          page_key?: string
+          sort_order?: number
+          title?: string
+          updated_at?: string
+          youtube_url?: string
+        }
+        Relationships: []
+      }
       instagram_live_comments: {
         Row: {
           comment_id: string | null
