@@ -240,7 +240,15 @@ serve(async (req) => {
           };
         });
 
-        const upsertPayload = enriched.filter((g): g is any => !!g);
+        const dedupMapUaz = new Map<string, any>();
+        for (const g of enriched) {
+          if (!g) continue;
+          const prev = dedupMapUaz.get(g.group_jid);
+          if (!prev || (g.participant_count || 0) > (prev.participant_count || 0)) {
+            dedupMapUaz.set(g.group_jid, g);
+          }
+        }
+        const upsertPayload = Array.from(dedupMapUaz.values());
 
         // Preserva o link já salvo quando a busca do link falhou (não sobrescreve com null)
         const { data: existingUazGroups } = await supabase
