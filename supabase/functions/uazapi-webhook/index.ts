@@ -336,21 +336,34 @@ Deno.serve(async (req) => {
     // ("groups", "groups_update", "group_participants_update", "group_update",
     // "chats_update" com participants, "presence", etc). Trata como evento de
     // grupo qualquer payload que traga participantes ou uma action típica.
-    const rawAction = String(data?.action || data?.type || payload?.action || "").toLowerCase();
+    // Detecta ações. Formato novo uazapi: `JoinReason` presente → participante entrou;
+    // presença de `PrevParticipantVersionID`/`ParticipantVersionID` também indica update de participantes.
+    const hasJoinReason = !!(data?.JoinReason || data?.joinReason || data?.join_reason);
+    const hasParticipantVersion = !!(data?.ParticipantVersionID || data?.participantVersionID);
+    let rawAction = String(data?.action || data?.type || payload?.action || "").toLowerCase();
+    if (!rawAction && hasJoinReason) rawAction = "add";
     const groupActionKeywords = ["add", "remove", "join", "leave", "left", "invite", "promote", "demote", "introduced"];
     const looksLikeGroupEvent = (
       event.includes("group") ||
       Array.isArray(data?.participants) ||
       Array.isArray(payload?.participants) ||
-      (rawAction && groupActionKeywords.some((k) => rawAction.includes(k)))
+      (rawAction && groupActionKeywords.some((k) => rawAction.includes(k))) ||
+      hasJoinReason ||
+      (hasParticipantVersion && !!(data?.JID || data?.Sender))
     );
     if (looksLikeGroupEvent) {
-      const groupJid: string = data?.chatid || data?.chatId || data?.group_id || data?.groupId || data?.jid || data?.remoteJid || data?.id || "";
-      const action: string = rawAction;
+      const groupJid: string = data?.chatid || data?.chatId || data?.group_id || data?.groupId || data?.jid || data?.JID || data?.remoteJid || data?.id || "";
+      const action: string = rawAction || (hasJoinReason ? "add" : "group_event");
       const rawParticipants = data?.participants || payload?.participants || [];
-      const participants: string[] = (Array.isArray(rawParticipants) ? rawParticipants : [rawParticipants]).map((p: any) =>
+      let participants: string[] = (Array.isArray(rawParticipants) ? rawParticipants : [rawParticipants]).map((p: any) =>
         typeof p === "string" ? p : (p?.id || p?.jid || p?.phone || p?.participant || "")
       ).filter(Boolean);
+      // Formato novo uazapi: participante único vem em Sender/SenderPN
+      if (!participants.length) {
+        const single = data?.Sender || data?.SenderPN || data?.sender || data?.sender_pn;
+        if (single) participants = [String(single)];
+      }
+
       console.log(`[uazapi-webhook] 📥 group event | event=${event} action=${action} group=${groupJid} participants=${participants.length}`);
 
       const zapiPayload: Record<string, unknown> = {
