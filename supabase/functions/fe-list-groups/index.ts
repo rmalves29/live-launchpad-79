@@ -172,7 +172,8 @@ serve(async (req) => {
 
         // Enrich each group with admin detection (parallel, concurrency 10)
         const enriched = await parallelLimit(uazGroups, 10, async (g: any) => {
-          const groupJid = g.JID || g.id || g.jid || g.remoteJid || g.groupJid;
+          const rawJid = g.JID || g.id || g.jid || g.remoteJid || g.groupJid;
+          const groupJid = canonicalGroupJid(rawJid);
           if (!groupJid) return null;
 
           const groupName = g.Name || g.subject || g.name || groupJid;
