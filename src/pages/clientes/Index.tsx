@@ -442,6 +442,7 @@ const Clientes = () => {
         .update({
           name: editingCustomer.name,
           phone: normalizedPhone,
+          email: editingCustomer.email?.trim() || null,
           instagram: editingCustomer.instagram?.trim().replace('@', '') || null,
           cpf: editingCustomer.cpf || null,
           street: editingCustomer.street || null,
@@ -1506,7 +1507,17 @@ const Clientes = () => {
                                                  onChange={(e) => setEditingCustomer(prev => prev ? {...prev, cpf: e.target.value} : null)}
                                                />
                                              </div>
-                                            <div>
+                                             <div className="col-span-2">
+                                               <Label htmlFor="email">E-mail</Label>
+                                               <Input
+                                                 id="email"
+                                                 type="email"
+                                                 placeholder="cliente@exemplo.com"
+                                                 value={editingCustomer.email || ''}
+                                                 onChange={(e) => setEditingCustomer(prev => prev ? {...prev, email: e.target.value} : null)}
+                                               />
+                                             </div>
+                                             <div>
                                               <Label htmlFor="cep">CEP</Label>
                                               <div className="flex gap-2">
                                                 <Input
