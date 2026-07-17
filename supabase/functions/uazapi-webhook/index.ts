@@ -339,11 +339,13 @@ Deno.serve(async (req) => {
       (rawAction && groupActionKeywords.some((k) => rawAction.includes(k)))
     );
     if (looksLikeGroupEvent) {
-      const groupJid: string = data?.chatid || data?.chatId || data?.group_id || data?.groupId || data?.id || "";
-      const action: string = (data?.action || data?.type || "").toLowerCase();
-      const participants: string[] = (data?.participants || []).map((p: any) =>
-        typeof p === "string" ? p : (p?.id || p?.jid || p?.phone || "")
+      const groupJid: string = data?.chatid || data?.chatId || data?.group_id || data?.groupId || data?.jid || data?.remoteJid || data?.id || "";
+      const action: string = rawAction;
+      const rawParticipants = data?.participants || payload?.participants || [];
+      const participants: string[] = (Array.isArray(rawParticipants) ? rawParticipants : [rawParticipants]).map((p: any) =>
+        typeof p === "string" ? p : (p?.id || p?.jid || p?.phone || p?.participant || "")
       ).filter(Boolean);
+      console.log(`[uazapi-webhook] 📥 group event | event=${event} action=${action} group=${groupJid} participants=${participants.length}`);
 
       const zapiPayload: Record<string, unknown> = {
         uazapi_tenant_id: tenantId,
