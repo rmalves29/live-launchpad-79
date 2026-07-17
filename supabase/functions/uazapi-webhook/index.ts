@@ -326,7 +326,19 @@ Deno.serve(async (req) => {
     }
 
     // ─── 4) Eventos de grupo (participantes entram/saem) ────────────────────
-    if (event === "groups" || event === "groups_update" || event === "group_participants_update" || event === "group_update" || data?.participants) {
+    // Detecção ampla: uazapi pode emitir sob nomes variados
+    // ("groups", "groups_update", "group_participants_update", "group_update",
+    // "chats_update" com participants, "presence", etc). Trata como evento de
+    // grupo qualquer payload que traga participantes ou uma action típica.
+    const rawAction = String(data?.action || data?.type || payload?.action || "").toLowerCase();
+    const groupActionKeywords = ["add", "remove", "join", "leave", "left", "invite", "promote", "demote", "introduced"];
+    const looksLikeGroupEvent = (
+      event.includes("group") ||
+      Array.isArray(data?.participants) ||
+      Array.isArray(payload?.participants) ||
+      (rawAction && groupActionKeywords.some((k) => rawAction.includes(k)))
+    );
+    if (looksLikeGroupEvent) {
       const groupJid: string = data?.chatid || data?.chatId || data?.group_id || data?.groupId || data?.id || "";
       const action: string = (data?.action || data?.type || "").toLowerCase();
       const participants: string[] = (data?.participants || []).map((p: any) =>
