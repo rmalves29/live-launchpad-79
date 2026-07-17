@@ -477,16 +477,25 @@ serve(async (req) => {
 
     const existingLinks = new Map((existingGroups || []).map((g) => [g.group_jid, g.invite_link]));
 
-    // --- Upsert in batch ---
-    const upsertPayload = filteredGroups.map((g) => ({
-      tenant_id,
-      group_jid: g.group_jid,
-      group_name: g.group_name,
-      participant_count: g.participant_count || 0,
-      max_participants: 1024,
-      invite_link: g.invite_link || existingLinks.get(g.group_jid) || null,
-      is_admin: !!g._isAdmin,
-    }));
+    // --- Upsert in batch (dedup by canonical group_jid) ---
+    const dedupMap = new Map<string, any>();
+    for (const g of filteredGroups) {
+      if (!g.group_jid) continue;
+      const row = {
+        tenant_id,
+        group_jid: g.group_jid,
+        group_name: g.group_name,
+        participant_count: g.participant_count || 0,
+        max_participants: 1024,
+        invite_link: g.invite_link || existingLinks.get(g.group_jid) || null,
+        is_admin: !!g._isAdmin,
+      };
+      const prev = dedupMap.get(g.group_jid);
+      if (!prev || (row.participant_count || 0) > (prev.participant_count || 0)) {
+        dedupMap.set(g.group_jid, row);
+      }
+    }
+    const upsertPayload = Array.from(dedupMap.values());
 
     let added = 0;
     if (upsertPayload.length > 0) {
