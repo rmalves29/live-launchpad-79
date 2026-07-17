@@ -1522,16 +1522,31 @@ const Clientes = () => {
                                                  onChange={(e) => setEditingCustomer(prev => prev ? {...prev, cpf: e.target.value} : null)}
                                                />
                                              </div>
-                                             <div className="col-span-2">
-                                               <Label htmlFor="email">E-mail</Label>
-                                               <Input
-                                                 id="email"
-                                                 type="email"
-                                                 placeholder="cliente@exemplo.com"
-                                                 value={editingCustomer.email || ''}
-                                                 onChange={(e) => setEditingCustomer(prev => prev ? {...prev, email: e.target.value} : null)}
-                                               />
-                                             </div>
+                                              <div className="col-span-2">
+                                                <Label htmlFor="email">E-mail</Label>
+                                                {(() => {
+                                                  const emailVal = (editingCustomer.email || '').trim();
+                                                  const emailInvalid = emailVal.length > 0 && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailVal);
+                                                  return (
+                                                    <>
+                                                      <Input
+                                                        id="email"
+                                                        type="email"
+                                                        placeholder="cliente@exemplo.com"
+                                                        value={editingCustomer.email || ''}
+                                                        onChange={(e) => setEditingCustomer(prev => prev ? {...prev, email: e.target.value} : null)}
+                                                        aria-invalid={emailInvalid}
+                                                        className={emailInvalid ? 'border-destructive focus-visible:ring-destructive' : ''}
+                                                      />
+                                                      {emailInvalid && (
+                                                        <p className="text-xs text-destructive mt-1">
+                                                          E-mail inválido. Use o formato cliente@exemplo.com.
+                                                        </p>
+                                                      )}
+                                                    </>
+                                                  );
+                                                })()}
+                                              </div>
                                              <div>
                                               <Label htmlFor="cep">CEP</Label>
                                               <div className="flex gap-2">
