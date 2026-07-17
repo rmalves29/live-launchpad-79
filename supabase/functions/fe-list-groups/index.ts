@@ -26,6 +26,20 @@ async function parallelLimit<T, R>(
 
 const normalizePhone = (value?: string | null) => value?.replace(/\D/g, "") || "";
 
+// Normalize any group JID variant (e.g. "12345-group", "12345@g.us", "12345") to canonical "<id>@g.us"
+const canonicalGroupJid = (raw?: string | null): string => {
+  if (!raw) return "";
+  const s = String(raw).trim();
+  if (!s) return "";
+  // Strip suffix variants
+  const base = s
+    .replace(/@g\.us$/i, "")
+    .replace(/@s\.whatsapp\.net$/i, "")
+    .replace(/-group$/i, "");
+  if (!base) return "";
+  return `${base}@g.us`;
+};
+
 // Extract core number (DDD + subscriber) stripping country code and normalizing 9th digit
 const coreNumber = (phone: string): string => {
   let n = phone.replace(/\D/g, "");
@@ -158,7 +172,8 @@ serve(async (req) => {
 
         // Enrich each group with admin detection (parallel, concurrency 10)
         const enriched = await parallelLimit(uazGroups, 10, async (g: any) => {
-          const groupJid = g.JID || g.id || g.jid || g.remoteJid || g.groupJid;
+          const rawJid = g.JID || g.id || g.jid || g.remoteJid || g.groupJid;
+          const groupJid = canonicalGroupJid(rawJid);
           if (!groupJid) return null;
 
           const groupName = g.Name || g.subject || g.name || groupJid;
@@ -225,7 +240,15 @@ serve(async (req) => {
           };
         });
 
-        const upsertPayload = enriched.filter((g): g is any => !!g);
+        const dedupMapUaz = new Map<string, any>();
+        for (const g of enriched) {
+          if (!g) continue;
+          const prev = dedupMapUaz.get(g.group_jid);
+          if (!prev || (g.participant_count || 0) > (prev.participant_count || 0)) {
+            dedupMapUaz.set(g.group_jid, g);
+          }
+        }
+        const upsertPayload = Array.from(dedupMapUaz.values());
 
         // Preserva o link já salvo quando a busca do link falhou (não sobrescreve com null)
         const { data: existingUazGroups } = await supabase
@@ -418,7 +441,7 @@ serve(async (req) => {
           }
 
           return {
-            group_jid: group.phone,
+            group_jid: canonicalGroupJid(group.phone),
             group_name: group.name || group.subject || group.phone,
             participant_count: count,
             invite_link: meta.invitationLink || meta.inviteLink || group.invitationLink || group.inviteLink || null,
@@ -432,7 +455,7 @@ serve(async (req) => {
 
       // Fallback: no metadata available
       return {
-        group_jid: group.phone,
+        group_jid: canonicalGroupJid(group.phone),
         group_name: group.name || group.subject || group.phone,
         participant_count: baseCount,
         invite_link: group.invitationLink || group.inviteLink || null,
@@ -454,16 +477,25 @@ serve(async (req) => {
 
     const existingLinks = new Map((existingGroups || []).map((g) => [g.group_jid, g.invite_link]));
 
-    // --- Upsert in batch ---
-    const upsertPayload = filteredGroups.map((g) => ({
-      tenant_id,
-      group_jid: g.group_jid,
-      group_name: g.group_name,
-      participant_count: g.participant_count || 0,
-      max_participants: 1024,
-      invite_link: g.invite_link || existingLinks.get(g.group_jid) || null,
-      is_admin: !!g._isAdmin,
-    }));
+    // --- Upsert in batch (dedup by canonical group_jid) ---
+    const dedupMap = new Map<string, any>();
+    for (const g of filteredGroups) {
+      if (!g.group_jid) continue;
+      const row = {
+        tenant_id,
+        group_jid: g.group_jid,
+        group_name: g.group_name,
+        participant_count: g.participant_count || 0,
+        max_participants: 1024,
+        invite_link: g.invite_link || existingLinks.get(g.group_jid) || null,
+        is_admin: !!g._isAdmin,
+      };
+      const prev = dedupMap.get(g.group_jid);
+      if (!prev || (row.participant_count || 0) > (prev.participant_count || 0)) {
+        dedupMap.set(g.group_jid, row);
+      }
+    }
+    const upsertPayload = Array.from(dedupMap.values());
 
     let added = 0;
     if (upsertPayload.length > 0) {
