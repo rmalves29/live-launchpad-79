@@ -91,6 +91,9 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           : []),
         { type: 'item', item: { path: '/fluxo-envio', label: 'Fluxo de Envio', icon: GitBranch } },
         { type: 'item', item: { path: '/comunicacao/push', label: 'Push', icon: Bell } },
+        ...(isSuperAdmin
+          ? [{ type: 'item' as const, item: { path: '/admin/tutoriais', label: 'Tutoriais', icon: PlayCircle } }]
+          : []),
 
         {
           type: 'collapsible',
