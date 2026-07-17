@@ -91,6 +91,9 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           : []),
         { type: 'item', item: { path: '/fluxo-envio', label: 'Fluxo de Envio', icon: GitBranch } },
         { type: 'item', item: { path: '/comunicacao/push', label: 'Push', icon: Bell } },
+        ...(isSuperAdmin
+          ? [{ type: 'item' as const, item: { path: '/admin/tutoriais', label: 'Tutoriais', icon: PlayCircle } }]
+          : []),
 
         {
           type: 'collapsible',
@@ -242,7 +245,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                 {renderItem({ path: '/debug', label: 'Debug', icon: Settings }, true)}
                 {renderItem({ path: '/admin/monitoramento-mensagens', label: 'Monitoramento WhatsApp', icon: Activity }, true)}
                 {renderItem({ path: '/admin/comunicados', label: 'Comunicados', icon: Bell }, true)}
-                {renderItem({ path: '/admin/tutoriais', label: 'Tutoriais', icon: PlayCircle }, true)}
+                
                 {isRafael && renderItem({ path: '/admin/erros', label: 'Monitor de Erros', icon: Bug }, true)}
               </>,
             )}
