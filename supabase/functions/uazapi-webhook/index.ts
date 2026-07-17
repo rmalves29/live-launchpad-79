@@ -340,7 +340,7 @@ Deno.serve(async (req) => {
     // presença de `PrevParticipantVersionID`/`ParticipantVersionID` também indica update de participantes.
     const hasJoinReason = !!(data?.JoinReason || data?.joinReason || data?.join_reason);
     const hasParticipantVersion = !!(data?.ParticipantVersionID || data?.participantVersionID);
-    let rawAction = String(data?.action || data?.type || payload?.action || "").toLowerCase();
+      let rawAction = String(data?.action || data?.Action || data?.type || data?.Type || payload?.action || payload?.Action || "").toLowerCase();
     if (!rawAction && hasJoinReason) rawAction = "add";
     const groupActionKeywords = ["add", "remove", "join", "leave", "left", "invite", "promote", "demote", "introduced"];
     const looksLikeGroupEvent = (
@@ -352,15 +352,15 @@ Deno.serve(async (req) => {
       (hasParticipantVersion && !!(data?.JID || data?.Sender))
     );
     if (looksLikeGroupEvent) {
-      const groupJid: string = data?.chatid || data?.chatId || data?.group_id || data?.groupId || data?.jid || data?.JID || data?.remoteJid || data?.id || "";
+      const groupJid: string = data?.chatid || data?.chatId || data?.group_id || data?.groupId || data?.GroupJID || data?.GroupJid || data?.groupJid || data?.jid || data?.JID || data?.remoteJid || data?.id || "";
       const action: string = rawAction || (hasJoinReason ? "add" : "group_event");
-      const rawParticipants = data?.participants || payload?.participants || [];
+      const rawParticipants = data?.participants || data?.Participants || data?.participant || data?.Participant || payload?.participants || payload?.Participants || [];
       let participants: string[] = (Array.isArray(rawParticipants) ? rawParticipants : [rawParticipants]).map((p: any) =>
-        typeof p === "string" ? p : (p?.id || p?.jid || p?.phone || p?.participant || "")
+        typeof p === "string" ? p : (p?.id || p?.jid || p?.JID || p?.phone || p?.Phone || p?.PhoneNumber || p?.participant || p?.Participant || p?.Sender || p?.SenderPN || p?.PN || "")
       ).filter(Boolean);
       // Formato novo uazapi: participante único vem em Sender/SenderPN
       if (!participants.length) {
-        const single = data?.Sender || data?.SenderPN || data?.sender || data?.sender_pn;
+        const single = data?.Sender || data?.SenderPN || data?.SenderJID || data?.sender || data?.sender_pn || data?.senderPN || data?.ParticipantPN || data?.participantPN || data?.ParticipantJID || data?.participantJID;
         if (single) participants = [String(single)];
       }
 
@@ -384,7 +384,7 @@ Deno.serve(async (req) => {
       };
 
       try {
-        await fetch(`${supabaseUrl}/functions/v1/zapi-webhook`, {
+        const resp = await fetch(`${supabaseUrl}/functions/v1/zapi-webhook`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -392,6 +392,8 @@ Deno.serve(async (req) => {
           },
           body: JSON.stringify(zapiPayload),
         });
+        const body = await resp.text();
+        console.log(`[uazapi-webhook] group → zapi-webhook ${resp.status} | ${body.slice(0, 200)}`);
       } catch (e: any) {
         console.error("[uazapi-webhook] erro encaminhando evento de grupo:", e.message);
       }
