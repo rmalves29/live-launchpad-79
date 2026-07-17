@@ -419,6 +419,21 @@ const Clientes = () => {
     try {
       const normalizedPhone = normalizePhone(editingCustomer.phone);
 
+      // Validação de e-mail (opcional, mas se preenchido deve ser válido)
+      const emailTrimmed = editingCustomer.email?.trim() || '';
+      if (emailTrimmed) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+        if (!emailRegex.test(emailTrimmed)) {
+          toast({
+            title: 'E-mail inválido',
+            description: 'Informe um e-mail válido (ex: cliente@exemplo.com) ou deixe o campo em branco.',
+            variant: 'destructive'
+          });
+          setSaving(false);
+          return;
+        }
+      }
+
       // Check for duplicate phone in the same tenant before updating
       const { data: existing } = await supabaseTenant
         .from('customers')
