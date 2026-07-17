@@ -465,6 +465,7 @@ serve(async (req) => {
 
     const isGroupParticipantsUpdateType =
       eventType === 'GroupParticipantsUpdate' ||
+      eventType === 'GroupParticipantsCallback' ||
       eventType === 'group-participants.update' ||
       eventType === 'onGroupParticipantsUpdate';
 
@@ -506,7 +507,7 @@ serve(async (req) => {
       } else {
         // Format 1: Dedicated GroupParticipantsUpdate type
         const eventPayload = payload.data || payload;
-        const action = eventPayload.action || eventPayload.event || '';
+        const action = eventPayload.action || eventPayload.event || eventPayload.notification || payload.notification || '';
         normalizedAction = String(action).toLowerCase();
         groupJid = eventPayload.chatId || eventPayload.groupId || payload.chatId || payload.groupId || '';
         const participantsRaw = eventPayload.participants || payload.participants || [
@@ -517,6 +518,14 @@ serve(async (req) => {
           payload.phone,
         ].filter(Boolean);
         participants = Array.isArray(participantsRaw) ? participantsRaw : [participantsRaw];
+      }
+
+      // Bridge UazAPI: alguns eventos chegam como `GroupParticipantsCallback`
+      // com action/notification genérico (`group_event`), mas contendo o
+      // participante que entrou. Nesse caso, tratar como entrada para não perder
+      // a contagem do relatório.
+      if ((!normalizedAction || normalizedAction === 'group_event') && participants.length > 0 && eventType === 'GroupParticipantsCallback') {
+        normalizedAction = 'add';
       }
 
       let eventTenantId: string | null = null;
@@ -647,6 +656,46 @@ serve(async (req) => {
           .eq('tenant_id', eventTenantId)
           .eq('group_jid', groupJid)
           .maybeSingle();
+
+        // UazAPI às vezes envia o evento de entrada com action=add, porém sem
+        // o telefone do participante. Antes isso resultava em 0 linhas gravadas
+        // e o relatório ficava menor que o WhatsApp. Registramos um evento
+        // anônimo estável por timestamp para preservar a contagem e evitar
+        // duplicidade em retry do mesmo webhook.
+        if (participants.length === 0 && feGroup) {
+          const anonymousPhone = `unknown-${eventTimestamp}`;
+          const dedupeKey = `${eventTenantId}:${groupJid}:${anonymousPhone}:${feEventType}:${eventTimestamp}`;
+          if (!isDuplicateGroupEvent(dedupeKey)) {
+            const { data: existingAnonymous } = await supabase
+              .from('fe_group_events')
+              .select('id')
+              .eq('tenant_id', eventTenantId)
+              .eq('group_jid', groupJid)
+              .eq('phone', anonymousPhone)
+              .eq('event_type', feEventType)
+              .limit(1)
+              .maybeSingle();
+
+            if (!existingAnonymous) {
+              await supabase.from('fe_group_events').insert({
+                tenant_id: eventTenantId,
+                group_id: feGroup.id,
+                group_jid: groupJid,
+                phone: anonymousPhone,
+                event_type: feEventType,
+              });
+
+              const newCount = Math.max(0, (feGroup.participant_count || 0) + (feEventType === 'join' ? 1 : -1));
+              feGroup.participant_count = newCount;
+              await supabase.from('fe_groups').update({ participant_count: newCount }).eq('id', feGroup.id);
+              console.log(`[zapi-webhook] ✅ Anonymous group event recorded: ${feEventType} group=${groupJid} timestamp=${eventTimestamp}`);
+            }
+          }
+
+          return new Response(JSON.stringify({ success: true, event: feEventType, group: groupJid, anonymous: true }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
 
         for (const rawPhone of participants) {
           const normalizedPhone = normalizeParticipantPhone(rawPhone);
