@@ -442,6 +442,7 @@ const Clientes = () => {
         .update({
           name: editingCustomer.name,
           phone: normalizedPhone,
+          email: editingCustomer.email?.trim() || null,
           instagram: editingCustomer.instagram?.trim().replace('@', '') || null,
           cpf: editingCustomer.cpf || null,
           street: editingCustomer.street || null,
