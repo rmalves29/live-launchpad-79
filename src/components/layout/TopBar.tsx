@@ -1,10 +1,14 @@
+import { useLocation, Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useTenant } from '@/hooks/useTenant';
 import { TenantSwitcher } from '@/components/TenantSwitcher';
+import { HelpCircle } from 'lucide-react';
+import { getHelpPageMeta } from '@/lib/help-page-key';
 
 export function TopBar() {
   const { user, profile } = useAuth();
   const { tenant } = useTenant();
+  const location = useLocation();
 
   if (!user) return null;
 
@@ -16,8 +20,21 @@ export function TopBar() {
       .map((s) => s[0]?.toUpperCase())
       .join('') || '?';
 
+  const isSuperAdmin = profile?.role === 'super_admin';
+  const helpMeta = getHelpPageMeta(location.pathname);
+
   return (
     <div className="hidden lg:flex sticky top-0 z-30 bg-white border-b border-[#e5e7eb] h-14 items-center justify-end gap-3 px-6">
+      {isSuperAdmin && (
+        <Link
+          to={`/ajuda?page=${encodeURIComponent(helpMeta.key)}`}
+          className="flex items-center gap-1.5 text-[12px] font-medium text-[#4f46e5] hover:text-[#3730a3] hover:underline"
+          title={`Ver tutoriais de ${helpMeta.label}`}
+        >
+          <HelpCircle className="h-4 w-4" />
+          Tutoriais
+        </Link>
+      )}
       <TenantSwitcher />
       <div className="flex items-center gap-2 pl-3 border-l border-[#e5e7eb]">
         <div className="text-right">
