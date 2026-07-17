@@ -81,15 +81,19 @@ function extractText(data: any): string {
 
 function pickEventKind(payload: any): string {
   // uazapi emite eventos como `messages`, `messages_update`, `connection`, `presence`, `groups`
-  // mas também pode mandar payload com `event`, `type`, ou só `data` puro.
-  const eventValue = payload?.event || payload?.type || payload?.EventType || "";
-  const raw = typeof eventValue === "string" ? eventValue.toLowerCase() : "";
-  if (raw) return raw;
+  // mas também pode mandar payload com `event` (string OU objeto), `type`, ou só `data` puro.
+  // IMPORTANTE: em payloads novos da uazapi, `payload.event` pode ser um OBJETO com os dados
+  // do evento (JID/Sender/JoinReason). Precisamos priorizar strings de tipo.
+  const candidates = [payload?.EventType, payload?.type, payload?.event];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.trim()) return c.toLowerCase();
+  }
   if (payload?.status && payload?.ids) return "messages_update";
   if (payload?.data?.message || payload?.message || payload?.text) return "messages";
   if (payload?.instance?.status || payload?.connection) return "connection";
   return "unknown";
 }
+
 
 const ACK_MAP: Record<string, string> = {
   "0": "SENT",
