@@ -168,7 +168,9 @@ Deno.serve(async (req) => {
       return json({ ok: true, warning: "tenant não identificado" });
     }
 
-    const data = payload?.data || payload?.message || payload;
+    const eventObj = (payload?.event && typeof payload.event === "object" && !Array.isArray(payload.event)) ? payload.event : null;
+    const data = payload?.data || payload?.message || eventObj || payload;
+
 
     // ─── 1) Eventos de conexão ──────────────────────────────────────────────
     if (event === "connection" || event === "connection_update" || (!["messages", "messages.upsert", "message"].includes(event) && (payload?.instance?.status || payload?.connection))) {
