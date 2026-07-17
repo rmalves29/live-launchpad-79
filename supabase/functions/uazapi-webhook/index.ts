@@ -379,6 +379,16 @@ Deno.serve(async (req) => {
       return json({ ok: true, handled: "group_event_forwarded", action });
     }
 
+    // Log payload de eventos desconhecidos para descobrir novos formatos da uazapi.
+    if (event === "unknown") {
+      try {
+        console.log(`[uazapi-webhook] payload desconhecido keys=${Object.keys(payload || {}).join(",")} sample=${JSON.stringify(payload).slice(0, 500)}`);
+        await supabase.from("whatsapp_webhook_orphans").insert({
+          payload: { _reason: "unknown_event_kind", tenant_id: tenantId, ...payload },
+          received_at: new Date().toISOString(),
+        });
+      } catch (_) { /* ignore */ }
+    }
     return json({ ok: true, handled: "ignored", event });
   } catch (e: any) {
     console.error("[uazapi-webhook] erro fatal:", e.message);
