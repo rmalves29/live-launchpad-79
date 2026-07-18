@@ -243,6 +243,7 @@ export default function GroupsManager() {
                 {groups
                   .filter(g => g.group_name.toLowerCase().includes(search.toLowerCase()))
                   .filter(g => !adminOnly || g.is_admin)
+                  .filter(g => showInactive || g.is_active)
                   .map(g => (
                   <TableRow key={g.id}>
                     <TableCell className="text-center">
