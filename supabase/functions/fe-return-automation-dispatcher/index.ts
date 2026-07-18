@@ -11,7 +11,10 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const BATCH = 50;
+// Rate limit: 1 mensagem a cada 5s. Cron roda a cada 1min → processamos até 12 por execução.
+const BATCH = 12;
+const RATE_LIMIT_MS = 5000;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function fillVars(tpl: string, vars: Record<string, string>): string {
   return tpl.replace(/\{(\w+)\}/g, (_m, k) => vars[k] ?? "");
@@ -104,6 +107,8 @@ serve(async (req) => {
           .update({ status: "failed", error_message: String(e?.message || e).slice(0, 500) })
           .eq("id", p.id);
       }
+      // Rate limit: 1 msg / 5s
+      await sleep(RATE_LIMIT_MS);
     }
 
     return new Response(

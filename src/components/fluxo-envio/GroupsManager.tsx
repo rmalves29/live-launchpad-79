@@ -39,6 +39,7 @@ export default function GroupsManager() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [adminOnly, setAdminOnly] = useState(true);
+  const [showInactive, setShowInactive] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [newGroup, setNewGroup] = useState({ group_jid: '', group_name: '', invite_link: '' });
   const [search, setSearch] = useState('');
@@ -177,6 +178,10 @@ export default function GroupsManager() {
             <ShieldCheck className="h-4 w-4" />
             Somente grupos que sou admin
           </label>
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+            <Checkbox checked={showInactive} onCheckedChange={(v) => setShowInactive(!!v)} />
+            Mostrar inativos
+          </label>
           <Button variant="outline" size="sm" onClick={syncFromWhatsApp} disabled={syncing}>
             <RefreshCw className={`h-4 w-4 mr-1 ${syncing ? 'animate-spin' : ''}`} />
             Buscar do WhatsApp
@@ -238,6 +243,7 @@ export default function GroupsManager() {
                 {groups
                   .filter(g => g.group_name.toLowerCase().includes(search.toLowerCase()))
                   .filter(g => !adminOnly || g.is_admin)
+                  .filter(g => showInactive || g.is_active)
                   .map(g => (
                   <TableRow key={g.id}>
                     <TableCell className="text-center">

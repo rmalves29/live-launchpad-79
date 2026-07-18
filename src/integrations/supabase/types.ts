@@ -1226,6 +1226,7 @@ export type Database = {
       }
       fe_return_automations: {
         Row: {
+          campaign_ids: string[]
           cooldown_hours: number
           coupon_code: string
           created_at: string
@@ -1241,6 +1242,7 @@ export type Database = {
           validity_days: number
         }
         Insert: {
+          campaign_ids?: string[]
           cooldown_hours?: number
           coupon_code: string
           created_at?: string
@@ -1256,6 +1258,7 @@ export type Database = {
           validity_days?: number
         }
         Update: {
+          campaign_ids?: string[]
           cooldown_hours?: number
           coupon_code?: string
           created_at?: string

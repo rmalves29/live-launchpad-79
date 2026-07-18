@@ -73,9 +73,22 @@ serve(async (req) => {
         .eq("tenant_id", tenant_id)
         .eq("is_active", true);
 
-      const applicable = (autos || []).filter((a: any) =>
-        groupId && Array.isArray(a.group_ids) && a.group_ids.includes(groupId),
-      );
+      // Descobre campanhas que contêm este grupo
+      let campaignIds: string[] = [];
+      if (groupId) {
+        const { data: cg } = await supabase
+          .from("fe_campaign_groups")
+          .select("campaign_id")
+          .eq("group_id", groupId);
+        campaignIds = (cg || []).map((r: any) => r.campaign_id);
+      }
+
+      const applicable = (autos || []).filter((a: any) => {
+        const inGroups = groupId && Array.isArray(a.group_ids) && a.group_ids.includes(groupId);
+        const inCampaigns = Array.isArray(a.campaign_ids)
+          && campaignIds.some((cid) => a.campaign_ids.includes(cid));
+        return inGroups || inCampaigns;
+      });
 
       if (applicable.length === 0) {
         return new Response(JSON.stringify({ ok: true, scheduled: 0 }), {
@@ -112,9 +125,10 @@ serve(async (req) => {
         if (active && active.length > 0) continue;
 
         const now = Date.now();
-        const inviteAt = new Date(now + (a.delay_minutes || 60) * 60 * 1000).toISOString();
+        const delayMs = Math.max(0, (a.delay_minutes ?? 0)) * 60 * 1000;
+        const inviteAt = new Date(now + delayMs).toISOString();
         const expiresAt = new Date(
-          now + (a.delay_minutes || 60) * 60 * 1000 + (a.validity_days || 7) * 86400 * 1000,
+          now + delayMs + (a.validity_days || 7) * 86400 * 1000,
         ).toISOString();
 
         const { error } = await supabase.from("fe_return_pending").insert({
