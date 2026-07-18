@@ -223,8 +223,8 @@ export default function AutoMessagesManager() {
 
   const saveLeave = async () => {
     if (!tenant) return;
-    if (!leaveForm.name.trim() || leaveForm.scope_ids.length === 0 || !leaveForm.invite_message.trim() || !leaveForm.reward_message.trim() || !leaveForm.coupon_code.trim()) {
-      toast({ title: 'Preencha nome, escopo, mensagens e cupom', variant: 'destructive' });
+    if (!leaveForm.name.trim() || leaveForm.scope_ids.length === 0 || !leaveForm.invite_message.trim() || !leaveForm.reward_message.trim()) {
+      toast({ title: 'Preencha nome, escopo e mensagens', variant: 'destructive' });
       return;
     }
     const payload = {
