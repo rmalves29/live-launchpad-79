@@ -115,18 +115,21 @@ export default function AutoMessagesManager() {
   const fetchData = useCallback(async () => {
     if (!tenant) return;
     setLoading(true);
-    const [{ data: msgs }, { data: autos }, { data: grps }, { data: camps }, { data: cps }] = await Promise.all([
+    const [{ data: msgs }, { data: autos }, { data: grps }, { data: camps }, { data: cps }, { count: leftCount }, { count: returnedCount }] = await Promise.all([
       supabase.from('fe_auto_messages' as any).select('*').eq('tenant_id', tenant.id).eq('event_type', 'join').order('created_at', { ascending: false }),
       supabase.from('fe_return_automations' as any).select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }),
       supabase.from('fe_groups' as any).select('id, group_name, is_admin, is_active').eq('tenant_id', tenant.id).eq('is_admin', true).eq('is_active', true).order('group_name'),
       supabase.from('fe_campaigns' as any).select('id, name').eq('tenant_id', tenant.id).order('name'),
       supabase.from('coupons').select('id, code').eq('tenant_id', tenant.id).eq('is_active', true).order('code'),
+      supabase.from('fe_return_pending' as any).select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id),
+      supabase.from('fe_return_pending' as any).select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('status', 'rewarded'),
     ]);
     if (msgs) setJoinMessages(msgs as any);
     if (autos) setReturnAutos(autos as any);
     if (grps) setGroups(grps as any);
     if (camps) setCampaigns(camps as any);
     if (cps) setCoupons(cps as any);
+    setReturnStats({ left: leftCount || 0, returned: returnedCount || 0 });
     setLoading(false);
   }, [tenant]);
 
