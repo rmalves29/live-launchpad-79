@@ -178,6 +178,10 @@ export default function GroupsManager() {
             <ShieldCheck className="h-4 w-4" />
             Somente grupos que sou admin
           </label>
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+            <Checkbox checked={showInactive} onCheckedChange={(v) => setShowInactive(!!v)} />
+            Mostrar inativos
+          </label>
           <Button variant="outline" size="sm" onClick={syncFromWhatsApp} disabled={syncing}>
             <RefreshCw className={`h-4 w-4 mr-1 ${syncing ? 'animate-spin' : ''}`} />
             Buscar do WhatsApp
