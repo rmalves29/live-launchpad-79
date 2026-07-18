@@ -370,43 +370,43 @@ Deno.serve(async (req) => {
     const hasJoinReason = !!(data?.JoinReason || data?.joinReason || data?.join_reason);
     const hasLeaveReason = !!(data?.LeaveReason || data?.leaveReason || data?.leave_reason || data?.RemoveReason || data?.removeReason || data?.remove_reason);
     const hasParticipantVersion = !!(data?.ParticipantVersionID || data?.participantVersionID);
+
+    // Formato uazapi novo: arrays de topo Join/Leave/Promote/Demote com JIDs
+    const joinArr: any[] = Array.isArray(data?.Join) ? data.Join : (Array.isArray(data?.join) ? data.join : []);
+    const leaveArr: any[] = Array.isArray(data?.Leave) ? data.Leave : (Array.isArray(data?.leave) ? data.leave : []);
+    const promoteArr: any[] = Array.isArray(data?.Promote) ? data.Promote : [];
+    const demoteArr: any[] = Array.isArray(data?.Demote) ? data.Demote : [];
+
     const rawActionCandidates = [
-      data?.action,
-      data?.Action,
-      data?.type,
-      data?.Type,
-      data?.event,
-      data?.Event,
-      data?.operation,
-      data?.Operation,
-      data?.status,
-      data?.Status,
-      data?.JoinReason,
-      data?.joinReason,
-      data?.join_reason,
-      data?.LeaveReason,
-      data?.leaveReason,
-      data?.leave_reason,
-      data?.RemoveReason,
-      data?.removeReason,
-      data?.remove_reason,
-      payload?.action,
-      payload?.Action,
-      payload?.operation,
-      payload?.Operation,
+      data?.action, data?.Action, data?.type, data?.Type,
+      data?.operation, data?.Operation, data?.status, data?.Status,
+      data?.JoinReason, data?.joinReason, data?.join_reason,
+      data?.LeaveReason, data?.leaveReason, data?.leave_reason,
+      data?.RemoveReason, data?.removeReason, data?.remove_reason,
+      payload?.action, payload?.Action, payload?.operation, payload?.Operation,
     ];
     let rawAction = "";
     for (const candidate of rawActionCandidates) {
       rawAction = normalizeGroupAction(candidate);
       if (rawAction) break;
     }
-    if (!rawAction && hasJoinReason) rawAction = "add";
-    if (!rawAction && hasLeaveReason) rawAction = "remove";
+    // Prioriza arrays concretos (fonte de verdade no formato novo da uazapi)
+    if (leaveArr.length > 0) rawAction = "remove";
+    else if (joinArr.length > 0) rawAction = "add";
+    else if (promoteArr.length > 0) rawAction = "promote";
+    else if (demoteArr.length > 0) rawAction = "demote";
+    else if (!rawAction && hasJoinReason) rawAction = "add";
+    else if (!rawAction && hasLeaveReason) rawAction = "remove";
+
     const groupActionKeywords = ["add", "remove", "removed", "join", "joined", "leave", "left", "exit", "out", "kick", "kicked", "invite", "promote", "demote", "introduced"];
     const looksLikeGroupEvent = (
       event.includes("group") ||
       Array.isArray(data?.participants) ||
       Array.isArray(payload?.participants) ||
+      joinArr.length > 0 ||
+      leaveArr.length > 0 ||
+      promoteArr.length > 0 ||
+      demoteArr.length > 0 ||
       (rawAction && groupActionKeywords.some((k) => rawAction.includes(k))) ||
       hasJoinReason ||
       hasLeaveReason ||
@@ -414,14 +414,25 @@ Deno.serve(async (req) => {
     );
     if (looksLikeGroupEvent) {
       const groupJid: string = data?.chatid || data?.chatId || data?.group_id || data?.groupId || data?.GroupJID || data?.GroupJid || data?.groupJid || data?.jid || data?.JID || data?.remoteJid || data?.id || "";
-      const action: string = rawAction || (hasJoinReason ? "add" : hasLeaveReason ? "remove" : "group_event");
-      const rawParticipants = data?.participants || data?.Participants || data?.participant || data?.Participant || payload?.participants || payload?.Participants || [];
+      const action: string = rawAction || "group_event";
+
+      // Fonte primária: arrays Join/Leave/Promote/Demote quando disponíveis
+      let primaryArr: any[] = [];
+      if (action === "remove") primaryArr = leaveArr;
+      else if (action === "add") primaryArr = joinArr;
+      else if (action === "promote") primaryArr = promoteArr;
+      else if (action === "demote") primaryArr = demoteArr;
+
+      const rawParticipants = primaryArr.length
+        ? primaryArr
+        : (data?.participants || data?.Participants || data?.participant || data?.Participant || payload?.participants || payload?.Participants || []);
       let participants: string[] = (Array.isArray(rawParticipants) ? rawParticipants : [rawParticipants]).map((p: any) =>
         typeof p === "string" ? p : (p?.id || p?.jid || p?.JID || p?.phone || p?.Phone || p?.PhoneNumber || p?.participant || p?.Participant || p?.Sender || p?.SenderPN || p?.PN || p?.LID || p?.lid || "")
       ).filter(Boolean);
-      // Formato novo uazapi: participante único vem em Sender/SenderPN
       if (!participants.length) {
-        const single = data?.Sender || data?.SenderPN || data?.SenderJID || data?.sender || data?.sender_pn || data?.senderPN || data?.ParticipantPN || data?.participantPN || data?.ParticipantJID || data?.participantJID || data?.RemovedParticipant || data?.removedParticipant || data?.LeftParticipant || data?.leftParticipant || data?.LID || data?.lid;
+        // Sender é quem executou a ação (admin removendo), não o participante afetado.
+        // Só use como fallback se realmente não houver nada nos arrays.
+        const single = data?.ParticipantPN || data?.participantPN || data?.ParticipantJID || data?.participantJID || data?.RemovedParticipant || data?.removedParticipant || data?.LeftParticipant || data?.leftParticipant;
         if (single) participants = [String(single)];
       }
 
