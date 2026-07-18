@@ -1,38 +1,88 @@
-## Fase 1 — Estabilização (P0)
+## Automação de Retorno ao Grupo
 
-Antes de mexer em qualquer trigger de pedido pago, quero **confirmar 3 pontos** com você, porque cada um afeta pedidos reais em produção:
-
-### 1. Trigger `process_paid_order` (o mais crítico — bloqueia o banco por ~5s)
-Hoje o `UPDATE orders SET is_paid=true` dispara uma chamada HTTP **síncrona** dentro do trigger (Bling, WhatsApp de rastreio, etc). Vou:
-- Trocar por `net.http_post` (pg_net) → fire-and-forget assíncrono.
-- Criar tabela `paid_order_dispatch_log` para rastrear cada disparo (id, status, retry_count, last_error).
-- Manter idempotência: se já houve dispatch com sucesso para o `order_id`, não redispara.
-
-**Efeito colateral esperado:** o pedido é marcado como pago **instantaneamente**, mas o envio ao Bling / WhatsApp acontece 1–3s depois (em vez de travar a resposta HTTP do webhook).
-
-### 2. Idempotência de webhooks de pagamento
-Adicionar coluna `external_event_id` (unique) em `webhook_logs` para bloquear reprocessamento de eventos duplicados vindos de Pagar.me / Mercado Pago / Appmax.
-
-### 3. RLS + Índices pendentes da auditoria de segurança
-- `cron_logs_backups`, `webhook_logs_backups`, `storage_file_references` → habilitar RLS (somente service_role).
-- `push_subscriptions`, `push_campaigns`, `push_notifications_log` → restringir policies ao tenant do usuário.
-- `cart_items` → remover SELECT anônimo global; permitir apenas por `cart_id` do próprio visitante.
-- `whatsapp_messages` → remover INSERT anônimo.
-- Índices compostos: `orders(tenant_id, is_paid, created_at DESC)`, `fe_group_events(tenant_id, created_at DESC)`, `webhook_logs(tenant_id, created_at DESC)`.
-
-### 4. Bateria de testes (após aplicar)
-- Deno tests nas edge functions críticas: `bling-sync-orders`, `pagarme-subscription-webhook`, `push-send-campaign`, `create-infinitepay-payment`.
-- Query manual: marcar pedido de teste como pago e medir tempo do `UPDATE` (esperado <100ms).
-- Verificar via `edge_function_logs` que o dispatch assíncrono completou.
-- Rodar `supabase--linter` para confirmar que RLS foi corrigido sem regressão.
-- Fumar o checkout público (`/t/:slug`) para garantir que RLS de `cart_items` não quebrou o carrinho anônimo.
+Criar um sistema de reengajamento: quando um cliente sai de um grupo, o sistema envia um convite privado com promessa de cupom. Se o cliente voltar ao **mesmo grupo** dentro do prazo, recebe o código do cupom.
 
 ---
 
-### Confirmações que preciso antes de iniciar
+### 1. Rastreamento de estado por participante
 
-1. **Posso mover o dispatch do trigger para async?** Isso muda a semântica: o webhook responde em 200ms, mas o Bling recebe o pedido 1–3s depois. Se algum código do frontend depende do Bling já estar sincronizado imediatamente após marcar como pago, precisamos ajustar.
-2. **Janela de manutenção:** posso executar agora (impacto ~30s de indisponibilidade parcial nos triggers durante o `CREATE OR REPLACE`)?
-3. **Cart público:** posso restringir `cart_items` a leitura por `cart_id` (via cookie/sessionid), quebrando qualquer script que hoje leia carrinhos alheios? (é o comportamento correto, só quero confirmação)
+Nova tabela `fe_group_membership_state` para saber, em O(1), se um telefone é **novo**, **ativo** ou **retornando** em cada grupo:
 
-Se responder "pode tudo" eu sigo direto.
+| coluna | uso |
+|---|---|
+| tenant_id, group_jid, phone | chave composta |
+| status | `active` / `left` |
+| first_joined_at | primeira vez que entrou |
+| last_left_at | última saída |
+| rejoin_count | quantas vezes voltou |
+| pending_automation_id | automação de retorno pendente |
+| pending_expires_at | prazo para receber o cupom |
+
+Alimentada automaticamente pelo webhook (`uazapi-webhook` / `zapi-webhook`) sempre que houver `join` ou `leave`.
+
+---
+
+### 2. Nova aba **"Retorno"** no Fluxo de Envio
+
+Cada tenant cria quantas automações quiser. Cada automação tem:
+
+- **Nome** (ex.: "Volta VIP")
+- **Grupos alvo** (multi-seleção — pode aplicar em vários grupos)
+- **Delay do convite** após a saída (5 min / 1h / 24h / custom)
+- **Mensagem de convite** (com `{nome}`, `{grupo}`, `{link_grupo}`)
+- **Janela de validade** em dias (configurável — se voltar depois disso, não ganha cupom)
+- **Cupom prometido** (código único compartilhado — dropdown de `coupons`)
+- **Mensagem de recompensa** (entregue no privado quando voltar, com `{cupom}`)
+- **Ativa / Pausada**
+
+---
+
+### 3. Fluxo de execução
+
+```text
+[cliente sai do grupo]
+        ↓ webhook detecta leave
+        ↓ atualiza fe_group_membership_state (status=left, rejoin_count++)
+        ↓ busca automações ativas para esse grupo
+        ↓ agenda sendflow_task após delay
+        ↓ marca pending_automation_id + pending_expires_at
+
+[após delay]
+        ↓ edge function envia convite 1:1 (WhatsApp privado)
+
+[cliente volta ao mesmo grupo]
+        ↓ webhook detecta join
+        ↓ se pending_automation_id existe E não expirou:
+             → envia mensagem de recompensa com {cupom}
+             → limpa pending
+        ↓ senão: apenas atualiza status=active
+```
+
+Filtros importantes:
+- Só aciona para telefones que **já tinham histórico** no grupo (não dispara para clientes novos — esses seguem o fluxo de boas-vindas existente).
+- Uma pessoa não recebe convite duplicado se já tem um pendente.
+- Se o cliente sair e voltar várias vezes, o cooldown evita spam (mín. 24h entre convites do mesmo grupo).
+
+---
+
+### 4. Alterações técnicas
+
+**Backend / DB:**
+- Migration: tabela `fe_group_membership_state` + tabela `fe_return_automations` + índices + GRANTs + RLS
+- Migration: popular `fe_group_membership_state` a partir do histórico existente em `fe_group_events`
+
+**Edge Functions:**
+- `uazapi-webhook` e `zapi-webhook`: atualizar estado e enfileirar convites/recompensas
+- Nova `fe-return-automation-dispatcher`: cron a cada 1 min que processa convites agendados
+- Reaproveita `zapi-send-message` para o envio 1:1
+
+**Frontend:**
+- Nova aba **"Retorno"** dentro de `src/pages/fluxo-envio/Index.tsx`
+- Novo componente `ReturnAutomationsManager.tsx` (CRUD + listagem de execuções recentes)
+
+---
+
+### Fora do escopo desta entrega
+- Boas-vindas para clientes novos (já existe fluxo próprio).
+- Cupom individual gerado na hora (você optou por código compartilhado).
+- Relatório dedicado de conversão — nesta versão só logamos convite enviado / cupom entregue em `fe_messages`; se quiser dashboard depois, faço numa segunda fase.
