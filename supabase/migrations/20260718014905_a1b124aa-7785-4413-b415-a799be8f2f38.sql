@@ -1,0 +1,1 @@
+ALTER TABLE public.fe_return_automations ADD COLUMN IF NOT EXISTS campaign_ids uuid[] NOT NULL DEFAULT '{}'::uuid[]; ALTER TABLE public.fe_return_automations ALTER COLUMN delay_minutes SET DEFAULT 0;
