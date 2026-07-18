@@ -102,6 +102,7 @@ export default function AutoMessagesManager() {
   const [groups, setGroups] = useState<FeGroup[]>([]);
   const [campaigns, setCampaigns] = useState<FeCampaign[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [returnStats, setReturnStats] = useState({ left: 0, returned: 0 });
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [eventType, setEventType] = useState<'join' | 'leave'>('join');
