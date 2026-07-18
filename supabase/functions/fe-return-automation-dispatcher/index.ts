@@ -107,6 +107,8 @@ serve(async (req) => {
           .update({ status: "failed", error_message: String(e?.message || e).slice(0, 500) })
           .eq("id", p.id);
       }
+      // Rate limit: 1 msg / 5s
+      await sleep(RATE_LIMIT_MS);
     }
 
     return new Response(
