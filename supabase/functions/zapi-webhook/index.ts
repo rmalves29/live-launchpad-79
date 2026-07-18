@@ -740,6 +740,20 @@ serve(async (req) => {
 
           console.log(`[zapi-webhook] ✅ Group event recorded: ${feEventType} phone=${normalizedPhone} group=${groupJid}`);
 
+          // Automação de retorno: dispara em fire-and-forget para não bloquear o webhook
+          try {
+            supabase.functions.invoke('fe-return-automation-trigger', {
+              body: {
+                tenant_id: eventTenantId,
+                group_id: feGroup?.id || null,
+                group_jid: groupJid,
+                group_name: feGroup?.group_name || null,
+                phone: normalizedPhone,
+                event_type: feEventType,
+              },
+            }).catch((err) => console.error('[zapi-webhook] return-automation-trigger error:', err?.message));
+          } catch (_) { /* ignore */ }
+
           if (feGroup) {
             const newCount = Math.max(0, (feGroup.participant_count || 0) + (feEventType === 'join' ? 1 : -1));
             feGroup.participant_count = newCount;
