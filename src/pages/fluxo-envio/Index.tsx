@@ -1,10 +1,11 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, Megaphone, Send, BarChart3, Bot } from 'lucide-react';
+import { Users, Megaphone, Send, BarChart3, Bot, Undo2 } from 'lucide-react';
 import GroupsManager from '@/components/fluxo-envio/GroupsManager';
 import CampaignsManager from '@/components/fluxo-envio/CampaignsManager';
 import MessageComposer from '@/components/fluxo-envio/MessageComposer';
 import ReportsPanel from '@/components/fluxo-envio/ReportsPanel';
 import AutoMessagesManager from '@/components/fluxo-envio/AutoMessagesManager';
+import ReturnAutomationsManager from '@/components/fluxo-envio/ReturnAutomationsManager';
 export default function FluxoEnvioIndex() {
   // Fluxo de Envio liberado para todas as empresas
   return (
