@@ -39,6 +39,7 @@ export default function GroupsManager() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [adminOnly, setAdminOnly] = useState(true);
+  const [showInactive, setShowInactive] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [newGroup, setNewGroup] = useState({ group_jid: '', group_name: '', invite_link: '' });
   const [search, setSearch] = useState('');
