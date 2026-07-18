@@ -331,6 +331,36 @@ export default function AutoMessagesManager() {
         )}
       </div>
 
+      {/* Estatísticas de retorno */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Card>
+          <CardContent className="py-4">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <UserMinus className="h-3.5 w-3.5 text-destructive" /> Clientes que saíram
+            </div>
+            <div className="text-2xl font-bold text-foreground">{returnStats.left}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-4">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <UserPlus className="h-3.5 w-3.5 text-primary" /> Clientes que retornaram
+            </div>
+            <div className="text-2xl font-bold text-foreground">{returnStats.returned}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-4">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <Gift className="h-3.5 w-3.5 text-primary" /> Sucesso de retorno
+            </div>
+            <div className="text-2xl font-bold text-foreground">
+              {returnStats.left > 0 ? ((returnStats.returned / returnStats.left) * 100).toFixed(1) : '0.0'}%
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Retorno */}
       <div className="space-y-2">
         <div className="flex items-center gap-2">
