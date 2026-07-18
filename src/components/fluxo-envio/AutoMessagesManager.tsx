@@ -102,6 +102,7 @@ export default function AutoMessagesManager() {
   const [groups, setGroups] = useState<FeGroup[]>([]);
   const [campaigns, setCampaigns] = useState<FeCampaign[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [returnStats, setReturnStats] = useState({ left: 0, returned: 0 });
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [eventType, setEventType] = useState<'join' | 'leave'>('join');
@@ -114,18 +115,21 @@ export default function AutoMessagesManager() {
   const fetchData = useCallback(async () => {
     if (!tenant) return;
     setLoading(true);
-    const [{ data: msgs }, { data: autos }, { data: grps }, { data: camps }, { data: cps }] = await Promise.all([
+    const [{ data: msgs }, { data: autos }, { data: grps }, { data: camps }, { data: cps }, { count: leftCount }, { count: returnedCount }] = await Promise.all([
       supabase.from('fe_auto_messages' as any).select('*').eq('tenant_id', tenant.id).eq('event_type', 'join').order('created_at', { ascending: false }),
       supabase.from('fe_return_automations' as any).select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }),
       supabase.from('fe_groups' as any).select('id, group_name, is_admin, is_active').eq('tenant_id', tenant.id).eq('is_admin', true).eq('is_active', true).order('group_name'),
       supabase.from('fe_campaigns' as any).select('id, name').eq('tenant_id', tenant.id).order('name'),
       supabase.from('coupons').select('id, code').eq('tenant_id', tenant.id).eq('is_active', true).order('code'),
+      supabase.from('fe_return_pending' as any).select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id),
+      supabase.from('fe_return_pending' as any).select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('status', 'rewarded'),
     ]);
     if (msgs) setJoinMessages(msgs as any);
     if (autos) setReturnAutos(autos as any);
     if (grps) setGroups(grps as any);
     if (camps) setCampaigns(camps as any);
     if (cps) setCoupons(cps as any);
+    setReturnStats({ left: leftCount || 0, returned: returnedCount || 0 });
     setLoading(false);
   }, [tenant]);
 
@@ -325,6 +329,36 @@ export default function AutoMessagesManager() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Estatísticas de retorno */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Card>
+          <CardContent className="py-4">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <UserMinus className="h-3.5 w-3.5 text-destructive" /> Clientes que saíram
+            </div>
+            <div className="text-2xl font-bold text-foreground">{returnStats.left}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-4">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <UserPlus className="h-3.5 w-3.5 text-primary" /> Clientes que retornaram
+            </div>
+            <div className="text-2xl font-bold text-foreground">{returnStats.returned}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-4">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <Gift className="h-3.5 w-3.5 text-primary" /> Sucesso de retorno
+            </div>
+            <div className="text-2xl font-bold text-foreground">
+              {returnStats.left > 0 ? ((returnStats.returned / returnStats.left) * 100).toFixed(1) : '0.0'}%
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Retorno */}
