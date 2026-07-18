@@ -73,9 +73,22 @@ serve(async (req) => {
         .eq("tenant_id", tenant_id)
         .eq("is_active", true);
 
-      const applicable = (autos || []).filter((a: any) =>
-        groupId && Array.isArray(a.group_ids) && a.group_ids.includes(groupId),
-      );
+      // Descobre campanhas que contêm este grupo
+      let campaignIds: string[] = [];
+      if (groupId) {
+        const { data: cg } = await supabase
+          .from("fe_campaign_groups")
+          .select("campaign_id")
+          .eq("group_id", groupId);
+        campaignIds = (cg || []).map((r: any) => r.campaign_id);
+      }
+
+      const applicable = (autos || []).filter((a: any) => {
+        const inGroups = groupId && Array.isArray(a.group_ids) && a.group_ids.includes(groupId);
+        const inCampaigns = Array.isArray(a.campaign_ids)
+          && campaignIds.some((cid) => a.campaign_ids.includes(cid));
+        return inGroups || inCampaigns;
+      });
 
       if (applicable.length === 0) {
         return new Response(JSON.stringify({ ok: true, scheduled: 0 }), {
