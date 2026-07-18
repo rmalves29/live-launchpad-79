@@ -499,16 +499,6 @@ export default function AutoMessagesManager() {
                     )}
                   </div>
                 </div>
-                <div>
-                  <Label>Cupom único que será entregue</Label>
-                  <Select value={leaveForm.coupon_code} onValueChange={v => setLeaveForm(p => ({ ...p, coupon_code: v }))}>
-                    <SelectTrigger><SelectValue placeholder="Selecione um cupom" /></SelectTrigger>
-                    <SelectContent>
-                      {coupons.length === 0 && <SelectItem value="__none" disabled>Nenhum cupom ativo</SelectItem>}
-                      {coupons.map(c => <SelectItem key={c.id} value={c.code}>{c.code}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label>Validade (dias)</Label>
