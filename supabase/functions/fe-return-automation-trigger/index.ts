@@ -125,9 +125,10 @@ serve(async (req) => {
         if (active && active.length > 0) continue;
 
         const now = Date.now();
-        const inviteAt = new Date(now + (a.delay_minutes || 60) * 60 * 1000).toISOString();
+        const delayMs = Math.max(0, (a.delay_minutes ?? 0)) * 60 * 1000;
+        const inviteAt = new Date(now + delayMs).toISOString();
         const expiresAt = new Date(
-          now + (a.delay_minutes || 60) * 60 * 1000 + (a.validity_days || 7) * 86400 * 1000,
+          now + delayMs + (a.validity_days || 7) * 86400 * 1000,
         ).toISOString();
 
         const { error } = await supabase.from("fe_return_pending").insert({
