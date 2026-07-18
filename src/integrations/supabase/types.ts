@@ -1224,6 +1224,149 @@ export type Database = {
           },
         ]
       }
+      fe_return_automations: {
+        Row: {
+          cooldown_hours: number
+          coupon_code: string
+          created_at: string
+          delay_minutes: number
+          group_ids: string[]
+          id: string
+          invite_message: string
+          is_active: boolean
+          name: string
+          reward_message: string
+          tenant_id: string
+          updated_at: string
+          validity_days: number
+        }
+        Insert: {
+          cooldown_hours?: number
+          coupon_code: string
+          created_at?: string
+          delay_minutes?: number
+          group_ids?: string[]
+          id?: string
+          invite_message: string
+          is_active?: boolean
+          name: string
+          reward_message: string
+          tenant_id: string
+          updated_at?: string
+          validity_days?: number
+        }
+        Update: {
+          cooldown_hours?: number
+          coupon_code?: string
+          created_at?: string
+          delay_minutes?: number
+          group_ids?: string[]
+          id?: string
+          invite_message?: string
+          is_active?: boolean
+          name?: string
+          reward_message?: string
+          tenant_id?: string
+          updated_at?: string
+          validity_days?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fe_return_automations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fe_return_automations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fe_return_pending: {
+        Row: {
+          automation_id: string
+          created_at: string
+          error_message: string | null
+          expires_at: string
+          group_id: string | null
+          group_jid: string
+          id: string
+          invite_send_at: string
+          invite_sent_at: string | null
+          phone: string
+          reward_sent_at: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          automation_id: string
+          created_at?: string
+          error_message?: string | null
+          expires_at: string
+          group_id?: string | null
+          group_jid: string
+          id?: string
+          invite_send_at: string
+          invite_sent_at?: string | null
+          phone: string
+          reward_sent_at?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          automation_id?: string
+          created_at?: string
+          error_message?: string | null
+          expires_at?: string
+          group_id?: string | null
+          group_jid?: string
+          id?: string
+          invite_send_at?: string
+          invite_sent_at?: string | null
+          phone?: string
+          reward_sent_at?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fe_return_pending_automation_id_fkey"
+            columns: ["automation_id"]
+            isOneToOne: false
+            referencedRelation: "fe_return_automations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fe_return_pending_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "fe_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fe_return_pending_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fe_return_pending_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gifts: {
         Row: {
           created_at: string
