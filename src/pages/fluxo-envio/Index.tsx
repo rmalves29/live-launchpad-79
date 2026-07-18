@@ -16,7 +16,7 @@ export default function FluxoEnvioIndex() {
       </div>
 
       <Tabs defaultValue="grupos" className="w-full">
-        <TabsList className="w-full sm:w-auto grid grid-cols-5 sm:inline-flex">
+        <TabsList className="w-full sm:w-auto grid grid-cols-6 sm:inline-flex">
           <TabsTrigger value="grupos" className="gap-1">
             <Users className="h-4 w-4" />
             <span className="hidden sm:inline">Grupos</span>
@@ -33,6 +33,10 @@ export default function FluxoEnvioIndex() {
             <Bot className="h-4 w-4" />
             <span className="hidden sm:inline">Automações</span>
           </TabsTrigger>
+          <TabsTrigger value="retorno" className="gap-1">
+            <Undo2 className="h-4 w-4" />
+            <span className="hidden sm:inline">Retorno</span>
+          </TabsTrigger>
           <TabsTrigger value="relatorios" className="gap-1">
             <BarChart3 className="h-4 w-4" />
             <span className="hidden sm:inline">Relatórios</span>
@@ -43,6 +47,7 @@ export default function FluxoEnvioIndex() {
         <TabsContent value="campanhas"><CampaignsManager /></TabsContent>
         <TabsContent value="envios"><MessageComposer /></TabsContent>
         <TabsContent value="automacoes"><AutoMessagesManager /></TabsContent>
+        <TabsContent value="retorno"><ReturnAutomationsManager /></TabsContent>
         <TabsContent value="relatorios"><ReportsPanel /></TabsContent>
       </Tabs>
     </div>
