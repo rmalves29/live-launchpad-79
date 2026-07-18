@@ -427,6 +427,25 @@ Deno.serve(async (req) => {
 
       console.log(`[uazapi-webhook] 📥 group event | event=${event} action=${action} group=${groupJid} participants=${participants.length}`);
 
+      // ─── DIAGNÓSTICO: se ação for genérica, logar payload BRUTO completo e
+      // persistir em whatsapp_webhook_orphans p/ análise offline.
+      if (!rawAction || action === "group_event") {
+        try {
+          const rawJson = JSON.stringify(payload);
+          console.warn(`[uazapi-webhook] ⚠️ GROUP_EVENT AÇÃO INDEFINIDA — RAW PAYLOAD: ${rawJson}`);
+          await supabase.from("whatsapp_webhook_orphans").insert({
+            phone: groupJid || null,
+            status: `uazapi_group_action_unresolved:${event}`,
+            message_id: null,
+            zaap_id: null,
+            ids: null,
+            raw_payload: payload as any,
+          });
+        } catch (diagErr: any) {
+          console.error("[uazapi-webhook] erro salvando diagnóstico:", diagErr?.message);
+        }
+      }
+
       const zapiPayload: Record<string, unknown> = {
         uazapi_tenant_id: tenantId,
         instanceId: `uazapi:${tenantId}`,
