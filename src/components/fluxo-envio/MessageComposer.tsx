@@ -47,6 +47,7 @@ export default function MessageComposer() {
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [sending, setSending] = useState(false);
   const [mentionAll, setMentionAll] = useState(false);
+  const [mentionRespondeuVoce, setMentionRespondeuVoce] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
   const [viewMessage, setViewMessage] = useState<any>(null);
 
@@ -209,6 +210,7 @@ export default function MessageComposer() {
             content_text: contentText,
             media_url: mediaUrl,
             mention_all: mentionAll,
+            mention_label: mentionRespondeuVoce ? 'respondeu_voce' : undefined,
             message_ids: targetGroupIds.map(gid => (insertedMessages as any[] | null)?.find(m => m.group_id === gid)?.id),
             async: true,
           },
@@ -326,15 +328,25 @@ export default function MessageComposer() {
                 onChange={(e) => setContentText(e.target.value)} rows={4} />
             </div>
 
-            {/* Mention all toggle */}
+            {/* Mention toggles */}
             <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/30">
-              <Checkbox checked={mentionAll} onCheckedChange={(v) => setMentionAll(!!v)} id="mention-all" />
+              <Checkbox checked={mentionAll} onCheckedChange={(v) => { setMentionAll(!!v); if (v) setMentionRespondeuVoce(false); }} id="mention-all" />
               <label htmlFor="mention-all" className="text-sm font-medium text-foreground flex items-center gap-1.5 cursor-pointer">
                 <AtSign className="h-4 w-4 text-primary" />
                 Mencionar todos os participantes
               </label>
               <span className="text-xs text-muted-foreground ml-auto">Marca todos com @</span>
             </div>
+
+            <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/30">
+              <Checkbox checked={mentionRespondeuVoce} onCheckedChange={(v) => { setMentionRespondeuVoce(!!v); if (v) setMentionAll(false); }} id="mention-respondeu" />
+              <label htmlFor="mention-respondeu" className="text-sm font-medium text-foreground flex items-center gap-1.5 cursor-pointer">
+                <AtSign className="h-4 w-4 text-primary" />
+                @respondeu_voce
+              </label>
+              <span className="text-xs text-muted-foreground ml-auto">Marca todos mostrando @respondeu_voce</span>
+            </div>
+
 
             {/* File upload for media */}
             {contentType !== 'text' && (
