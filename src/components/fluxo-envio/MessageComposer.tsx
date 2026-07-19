@@ -210,6 +210,7 @@ export default function MessageComposer() {
             content_text: contentText,
             media_url: mediaUrl,
             mention_all: mentionAll,
+            mention_label: mentionRespondeuVoce ? 'respondeu_voce' : undefined,
             message_ids: targetGroupIds.map(gid => (insertedMessages as any[] | null)?.find(m => m.group_id === gid)?.id),
             async: true,
           },
