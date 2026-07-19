@@ -47,6 +47,7 @@ export default function MessageComposer() {
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [sending, setSending] = useState(false);
   const [mentionAll, setMentionAll] = useState(false);
+  const [mentionRespondeuVoce, setMentionRespondeuVoce] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
   const [viewMessage, setViewMessage] = useState<any>(null);
 
