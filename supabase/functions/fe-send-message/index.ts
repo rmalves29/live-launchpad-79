@@ -24,6 +24,7 @@ interface SendRequest {
   content_text?: string;
   media_url?: string;
   mention_all?: boolean;
+  mention_label?: string;
   async?: boolean;
 }
 
