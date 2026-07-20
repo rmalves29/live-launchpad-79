@@ -1,6 +1,9 @@
 // Provisiona um usuário "fluxo_envio" a partir da landing /fluxo-envio:
-// cria auth user, tenant trial e profile com access_scope='fluxo_envio'.
+// cria auth user, tenant trial, profile com access_scope='fluxo_envio'
+// e já configura a integração WhatsApp/uazapi (mesma base dos tenants Cartzy).
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { createInstance, setWebhook } from '../_shared/uazapi-api.ts';
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
