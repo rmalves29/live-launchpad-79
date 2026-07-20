@@ -54,6 +54,7 @@ import Tutoriais from "./pages/admin/Tutoriais";
 import Ajuda from "./pages/ajuda/Index";
 import { AnnouncementPopup } from "./components/AnnouncementPopup";
 import LandingPage from "./pages/LandingPage";
+import LandingFluxoEnvio from "./pages/LandingFluxoEnvio";
 import RenovarAssinatura from "./pages/RenovarAssinatura";
 
 // WhatsApp
