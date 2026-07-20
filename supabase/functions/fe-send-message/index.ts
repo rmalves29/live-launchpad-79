@@ -188,16 +188,8 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body: SendRequest = await req.json();
-    const { tenant_id, group_ids, message_ids, content_type, content_text: rawContentText, media_url, mention_all: rawMentionAll, mention_label } = body;
+    const { tenant_id, group_ids, message_ids, content_type, content_text, media_url, mention_all } = body;
 
-    // When mention_label is set, force mentionAll (to fetch participants and ping them)
-    // and prepend the custom label to the visible text/caption.
-    const useLabel = mention_label === "respondeu_voce";
-    const mention_all = useLabel ? true : rawMentionAll;
-    const labelPrefix = useLabel ? "@respondeu_voce " : "";
-    const content_text = (rawContentText && useLabel && !rawContentText.startsWith(labelPrefix))
-      ? labelPrefix + rawContentText
-      : (useLabel && !rawContentText ? labelPrefix.trim() : rawContentText);
 
     if (!tenant_id || !group_ids?.length) {
       return new Response(JSON.stringify({ error: "tenant_id e group_ids sao obrigatorios" }), {
