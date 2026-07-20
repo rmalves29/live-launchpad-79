@@ -89,7 +89,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         ...(enableSendflow
           ? [{ type: 'item' as const, item: { path: '/sendflow', label: 'SendFlow', icon: Send } }]
           : []),
-        { type: 'item', item: { path: '/fluxo-envio', label: 'Fluxo de Envio', icon: GitBranch } },
+        { type: 'item', item: { path: '/fluxo-envio/painel', label: 'Fluxo de Envio', icon: GitBranch } },
         { type: 'item', item: { path: '/comunicacao/push', label: 'Push', icon: Bell } },
         ...(isSuperAdmin
           ? [{ type: 'item' as const, item: { path: '/admin/tutoriais', label: 'Tutoriais', icon: PlayCircle } }]
