@@ -54,6 +54,7 @@ import Tutoriais from "./pages/admin/Tutoriais";
 import Ajuda from "./pages/ajuda/Index";
 import { AnnouncementPopup } from "./components/AnnouncementPopup";
 import LandingPage from "./pages/LandingPage";
+import LandingFluxoEnvio from "./pages/LandingFluxoEnvio";
 import RenovarAssinatura from "./pages/RenovarAssinatura";
 
 // WhatsApp
@@ -139,6 +140,7 @@ const AppContent = () => {
     <Routes>
       {/* Landing page pública institucional */}
       <Route path="/landing" element={<LandingPage />} />
+      <Route path="/fluxo-envio" element={<LandingFluxoEnvio />} />
 
         
         {/* Rota principal - Index ou TenantAuth dependendo do contexto */}
