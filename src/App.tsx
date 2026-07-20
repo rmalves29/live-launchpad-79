@@ -140,6 +140,7 @@ const AppContent = () => {
     <Routes>
       {/* Landing page pública institucional */}
       <Route path="/landing" element={<LandingPage />} />
+      <Route path="/fluxo-envio" element={<LandingFluxoEnvio />} />
 
         
         {/* Rota principal - Index ou TenantAuth dependendo do contexto */}
