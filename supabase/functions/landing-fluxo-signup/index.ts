@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
     // 2) Criar tenant (slug único)
     const baseSlug = slugify(company);
     let slug = `${baseSlug}-${userId.slice(0, 6)}`;
-    const trialEnds = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const trialEnds = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
 
     const { data: tenant, error: tenantErr } = await admin
       .from('tenants')
