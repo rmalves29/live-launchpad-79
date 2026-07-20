@@ -8,6 +8,7 @@ interface UserProfile {
   email: string | null;
   role: 'super_admin' | 'tenant_admin' | 'staff';
   tenant_id: string | null;
+  access_scope?: 'full' | 'fluxo_envio' | string | null;
   created_at: string;
   updated_at: string;
 }
