@@ -158,6 +158,18 @@ export default function Auth() {
           setAccessError(accessCheck.reason || 'Acesso negado.');
           return;
         }
+
+        // Se o usuário tem escopo restrito ao Fluxo de Envio, redirecionar
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('access_scope')
+          .eq('id', data.user.id)
+          .maybeSingle();
+        if ((prof as any)?.access_scope === 'fluxo_envio') {
+          toast({ title: 'Bem-vindo!', description: 'Login realizado.' });
+          navigate('/fluxo-envio/app', { replace: true });
+          return;
+        }
       }
 
       toast({ title: "Bem-vindo!", description: "Login realizado com sucesso." });

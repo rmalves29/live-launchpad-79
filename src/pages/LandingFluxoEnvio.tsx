@@ -28,6 +28,7 @@ import { Link } from "react-router-dom";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import cartzyLogo from "@/assets/cartzy-logo.png";
 import FuturisticFX from "@/components/landing/FuturisticFX";
+import FluxoSignupDialog from "@/components/landing/FluxoSignupDialog";
 
 const WHATSAPP_URL = "http://api.whatsapp.com/send?l=pt&phone=5531992904210";
 
@@ -123,6 +124,7 @@ function CountUp({ value, suffix = "" }: { value: string; suffix?: string }) {
 export default function LandingFluxoEnvio() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [signupOpen, setSignupOpen] = useState(false);
 
   useEffect(() => {
     document.title = "Fluxo de Envio — Escale seus grupos de WhatsApp sem tomar bloqueio";
@@ -231,11 +233,9 @@ export default function LandingFluxoEnvio() {
             <Link to="/auth" className="hidden md:block">
               <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white hover:bg-white/10">Entrar</Button>
             </Link>
-            <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer">
-              <Button size="sm" className="bg-sky-500 hover:bg-sky-400 text-white font-medium shadow-lg shadow-sky-500/30">
-                Quero testar
-              </Button>
-            </a>
+            <Button onClick={() => setSignupOpen(true)} size="sm" className="bg-sky-500 hover:bg-sky-400 text-white font-medium shadow-lg shadow-sky-500/30">
+              Quero testar
+            </Button>
             <button className="md:hidden text-slate-400 hover:text-white" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
               <Menu className="w-5 h-5" />
             </button>
@@ -278,12 +278,10 @@ export default function LandingFluxoEnvio() {
             </Reveal>
             <Reveal delay={240}>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer">
-                  <Button size="lg" className="lp-glow-cta bg-sky-500 hover:bg-sky-400 text-white font-semibold text-base px-8 h-14 shadow-xl shadow-sky-500/40">
-                    Quero testar o Fluxo de Envio
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </a>
+                <Button onClick={() => setSignupOpen(true)} size="lg" className="lp-glow-cta bg-sky-500 hover:bg-sky-400 text-white font-semibold text-base px-8 h-14 shadow-xl shadow-sky-500/40">
+                  Quero testar o Fluxo de Envio
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
                 <a href="#how-it-works">
                   <Button size="lg" variant="ghost" className="text-slate-300 hover:text-white hover:bg-white/10 font-medium text-base px-6 h-14">
                     Ver como funciona
@@ -571,12 +569,10 @@ export default function LandingFluxoEnvio() {
               </p>
             </Reveal>
             <Reveal delay={200}>
-              <a href={WHATSAPP_URL} target="_blank" rel="noopener noreferrer">
-                <Button size="lg" className="lp-glow-cta bg-sky-500 hover:bg-sky-400 text-white font-semibold text-base px-10 h-14 shadow-xl shadow-sky-500/40">
-                  Falar com a equipe no WhatsApp
-                  <MessageSquare className="w-4 h-4 ml-2" />
-                </Button>
-              </a>
+              <Button onClick={() => setSignupOpen(true)} size="lg" className="lp-glow-cta bg-sky-500 hover:bg-sky-400 text-white font-semibold text-base px-10 h-14 shadow-xl shadow-sky-500/40">
+                Criar minha conta grátis
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
             </Reveal>
             <Reveal delay={280}>
               <p className="text-xs text-slate-500 mt-6">Sem cartão de crédito • Suporte humano em português • Cancele quando quiser</p>
@@ -599,6 +595,8 @@ export default function LandingFluxoEnvio() {
           </div>
         </div>
       </footer>
+
+      <FluxoSignupDialog open={signupOpen} onOpenChange={setSignupOpen} />
     </div>
   );
 }

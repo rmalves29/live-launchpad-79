@@ -35,7 +35,7 @@ const Navbar = () => {
     { path: '/clientes', label: 'Clientes' },
     { path: '/pedidos', label: 'Pedidos' },
     ...(enableSendflow ? [{ path: '/sendflow', label: 'SendFlow' }] : []),
-    { path: '/fluxo-envio', label: 'Fluxo de Envio' },
+    { path: '/fluxo-envio/painel', label: 'Fluxo de Envio' },
     
     { path: '/relatorios', label: 'Relatórios' },
     { path: '/sorteio', label: 'Sorteio' },

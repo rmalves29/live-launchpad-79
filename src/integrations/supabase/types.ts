@@ -3167,6 +3167,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          access_scope: string
           created_at: string | null
           email: string | null
           id: string
@@ -3175,6 +3176,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          access_scope?: string
           created_at?: string | null
           email?: string | null
           id: string
@@ -3183,6 +3185,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          access_scope?: string
           created_at?: string | null
           email?: string | null
           id?: string

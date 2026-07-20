@@ -55,6 +55,8 @@ import Ajuda from "./pages/ajuda/Index";
 import { AnnouncementPopup } from "./components/AnnouncementPopup";
 import LandingPage from "./pages/LandingPage";
 import LandingFluxoEnvio from "./pages/LandingFluxoEnvio";
+import FluxoEnvioAppLayout from "./pages/fluxo-envio/AppLayout";
+import RequireFluxoScope from "./components/RequireFluxoScope";
 import RenovarAssinatura from "./pages/RenovarAssinatura";
 
 // WhatsApp
@@ -88,7 +90,7 @@ const queryClient = new QueryClient({
 const AppContent = () => {
   const location = useLocation();
   const { tenant, isMainSite } = useTenantContext();
-  const showShell = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && location.pathname !== '/politica-de-privacidade' && location.pathname !== '/termos-de-uso' && location.pathname !== '/design-preview' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/');
+  const showShell = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && location.pathname !== '/politica-de-privacidade' && location.pathname !== '/termos-de-uso' && location.pathname !== '/design-preview' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/') && location.pathname !== '/fluxo-envio' && !location.pathname.startsWith('/fluxo-envio/app');
   
   // Atualiza o título da aba do navegador baseado na página atual
   usePageTitle();
@@ -218,8 +220,12 @@ const AppContent = () => {
           <RequireTenantAuth><Etiquetas /></RequireTenantAuth>
         } />
         
-        {/* Fluxo de Envio - gerenciamento de grupos WhatsApp */}
-        <Route path="/fluxo-envio" element={
+        {/* Fluxo de Envio - app público para usuários da landing (sem sidebar) */}
+        <Route path="/fluxo-envio/app" element={
+          <RequireFluxoScope><FluxoEnvioAppLayout /></RequireFluxoScope>
+        } />
+        {/* Fluxo de Envio - dentro do sistema completo (com sidebar) */}
+        <Route path="/fluxo-envio/painel" element={
           <RequireTenantAuth><FluxoEnvio /></RequireTenantAuth>
         } />
         <Route path="/comunicacao/push" element={
