@@ -102,6 +102,11 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
     return <Navigate to="/auth" replace />;
   }
 
+  // Usuários com escopo restrito só podem acessar /fluxo-envio/app
+  if ((profile as any)?.access_scope === 'fluxo_envio' && profile?.role !== 'super_admin') {
+    return <Navigate to="/fluxo-envio/app" replace />;
+  }
+
   // Se não tem profile carregado ainda (primeiro load apenas)
   if (!profile && !hasInitiallyLoaded) {
     return (
