@@ -1,6 +1,9 @@
 // Provisiona um usuário "fluxo_envio" a partir da landing /fluxo-envio:
-// cria auth user, tenant trial e profile com access_scope='fluxo_envio'.
+// cria auth user, tenant trial, profile com access_scope='fluxo_envio'
+// e já configura a integração WhatsApp/uazapi (mesma base dos tenants Cartzy).
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { createInstance, setWebhook } from '../_shared/uazapi-api.ts';
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -104,8 +107,59 @@ Deno.serve(async (req) => {
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    return new Response(JSON.stringify({ success: true, tenantId: tenant.id }),
+    // 4) Provisionar integração WhatsApp/uazapi (mesma base dos tenants Cartzy)
+    //    Reaproveita a URL e o admin token compartilhado por qualquer tenant já
+    //    configurado. Cria uma nova instância uazapi automaticamente.
+    let whatsappProvisioned = false;
+    try {
+      const { data: sample } = await admin
+        .from('integration_whatsapp')
+        .select('uazapi_url, uazapi_admin_token')
+        .eq('provider', 'uazapi')
+        .not('uazapi_admin_token', 'is', null)
+        .not('uazapi_url', 'is', null)
+        .limit(1)
+        .maybeSingle();
+
+      if (sample?.uazapi_url && sample?.uazapi_admin_token) {
+        const instName = `fluxo-${tenant.id.slice(0, 8)}`;
+        const webhookSecret = crypto.randomUUID();
+
+        // Cria a linha primeiro para não perder o vínculo caso o create falhe
+        await admin.from('integration_whatsapp').insert({
+          tenant_id: tenant.id,
+          provider: 'uazapi',
+          uazapi_url: sample.uazapi_url,
+          uazapi_admin_token: sample.uazapi_admin_token,
+          instance_name: instName,
+          webhook_secret: webhookSecret,
+          is_active: true,
+        });
+
+        const created = await createInstance(
+          { url: sample.uazapi_url, adminToken: sample.uazapi_admin_token },
+          instName,
+          company,
+        );
+        if (created.success && created.token) {
+          await admin
+            .from('integration_whatsapp')
+            .update({ uazapi_token: created.token, updated_at: new Date().toISOString() })
+            .eq('tenant_id', tenant.id);
+          await setWebhook(
+            { url: sample.uazapi_url, token: created.token },
+            `${Deno.env.get('SUPABASE_URL')}/functions/v1/uazapi-webhook`,
+          ).catch(() => {});
+          whatsappProvisioned = true;
+        }
+      }
+    } catch (e) {
+      console.error('[landing-fluxo-signup] whatsapp provisioning failed:', (e as Error).message);
+    }
+
+    return new Response(JSON.stringify({ success: true, tenantId: tenant.id, whatsappProvisioned }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
   } catch (e) {
     return new Response(JSON.stringify({ success: false, error: (e as Error).message }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
