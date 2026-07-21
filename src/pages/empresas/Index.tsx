@@ -198,6 +198,18 @@ export default function EmpresasIndex() {
       if (credentialsError) throw credentialsError;
       setCredentials(credentialsData || []);
 
+      // Identificar tenants "Fluxo de Envio" via profiles.access_scope
+      const { data: fluxoProfiles } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('access_scope', 'fluxo_envio');
+      const ids = new Set<string>();
+      (fluxoProfiles || []).forEach((p: any) => {
+        if (p.tenant_id) ids.add(p.tenant_id);
+      });
+      setFluxoTenantIds(ids);
+
+
     } catch (err: any) {
       console.error('Erro ao carregar empresas:', err);
       setError(err.message);
