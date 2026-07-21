@@ -11,17 +11,21 @@ import { Loader2 } from 'lucide-react';
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  initialMode?: 'signup' | 'login';
 }
 
-export default function FluxoSignupDialog({ open, onOpenChange }: Props) {
+export default function FluxoSignupDialog({ open, onOpenChange, initialMode = 'signup' }: Props) {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [mode, setMode] = useState<'signup' | 'login'>('signup');
+  const [mode, setMode] = useState<'signup' | 'login'>(initialMode);
   const [name, setName] = useState('');
   const [company, setCompany] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Sincronizar modo quando o dialog reabre com um initialMode diferente
+  useState(() => setMode(initialMode));
 
   const handleSubmit = async () => {
     setLoading(true);
