@@ -44,7 +44,22 @@ interface Product {
   is_active: boolean;
   sale_type: 'LIVE' | 'BAZAR' | 'AMBOS';
   category_id?: string | null;
+  parent_product_id?: number | null;
 }
+
+interface VariationRow {
+  id?: number;
+  size: string;
+  code: string;
+  price: string;
+  promotional_price: string;
+  stock: string;
+}
+
+const PRESET_SIZES = ['PP', 'P', 'M', 'G', 'GG'] as const;
+const padVar = (n: number) => String(n).padStart(2, '0');
+const buildVariationCode = (parentCode: string, index: number) =>
+  `${(parentCode || '').trim()}-${padVar(index + 1)}`;
 
 interface ImportRow {
   codigo: string;
