@@ -1366,6 +1366,108 @@ const Produtos = () => {
                   </div>
                 </div>
 
+                {/* Variações de Tamanho */}
+                <div className="rounded-lg border p-4 space-y-3 bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-primary" />
+                    <Label className="text-sm font-semibold">Variações de tamanho</Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Cada tamanho vira um SKU próprio (ex: <code className="font-mono">{formData.code || 'P001'}-01</code>) com estoque e preço individuais. Preços são pré-preenchidos a partir do produto principal.
+                  </p>
+
+                  <div className="flex flex-wrap gap-2">
+                    {PRESET_SIZES.map((sz) => {
+                      const already = variations.some((v) => v.size.toUpperCase() === sz);
+                      return (
+                        <Button
+                          key={sz}
+                          type="button"
+                          size="sm"
+                          variant={already ? 'secondary' : 'outline'}
+                          disabled={already}
+                          onClick={() => addVariation(sz)}
+                        >
+                          + {sz}
+                        </Button>
+                      );
+                    })}
+                    <div className="flex items-center gap-1">
+                      <Input
+                        placeholder="Tamanho custom (ex: 38, U)"
+                        className="h-8 w-40"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addVariation((e.target as HTMLInputElement).value);
+                            (e.target as HTMLInputElement).value = '';
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {variations.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-12 gap-2 text-[11px] font-medium text-muted-foreground px-1">
+                        <div className="col-span-2">Tamanho</div>
+                        <div className="col-span-3">Código</div>
+                        <div className="col-span-2">Preço</div>
+                        <div className="col-span-2">Promo</div>
+                        <div className="col-span-2">Estoque</div>
+                        <div className="col-span-1"></div>
+                      </div>
+                      {variations.map((v, i) => (
+                        <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                          <Input
+                            className="col-span-2 h-9"
+                            value={v.size}
+                            onChange={(e) => updateVariation(i, { size: e.target.value.toUpperCase() })}
+                          />
+                          <Input
+                            className="col-span-3 h-9 font-mono text-xs"
+                            value={v.code}
+                            onChange={(e) => updateVariation(i, { code: e.target.value })}
+                          />
+                          <Input
+                            className="col-span-2 h-9"
+                            type="number"
+                            step="0.01"
+                            value={v.price}
+                            onChange={(e) => updateVariation(i, { price: e.target.value })}
+                          />
+                          <Input
+                            className="col-span-2 h-9"
+                            type="number"
+                            step="0.01"
+                            value={v.promotional_price}
+                            onChange={(e) => updateVariation(i, { promotional_price: e.target.value })}
+                          />
+                          <Input
+                            className="col-span-2 h-9"
+                            type="number"
+                            value={v.stock}
+                            onChange={(e) => updateVariation(i, { stock: e.target.value })}
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="col-span-1 h-9 w-9 text-destructive"
+                            onClick={() => removeVariation(i)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      <p className="text-[11px] text-muted-foreground">
+                        Quando há variações, o produto principal fica oculto para venda — o cliente escolhe uma variação pelo código.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+
                 <div>
                   <Label htmlFor="image">Imagem do Produto</Label>
                   <div className="space-y-2">
