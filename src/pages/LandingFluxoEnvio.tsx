@@ -160,10 +160,6 @@ export default function LandingFluxoEnvio() {
     { icon: Bot, title: "Suporte humano no WhatsApp", description: "Quando algo der ruim no meio do lançamento, você fala com gente de verdade — nada de ticket que responde daqui a 4 dias." },
   ];
 
-  const integrations = [
-    "WhatsApp", "Instagram", "Bling", "Mercado Pago", "Pagar.me", "InfinitePay",
-    "Correios", "Melhor Envio", "Mandaê", "Olist", "Bagy", "Omie", "Hotmart", "Kiwify",
-  ];
 
   const steps = [
     { step: "01", title: "Conecte seu WhatsApp", description: "Escaneia o QR Code igual você faz no WhatsApp Web. Em 30 segundos está pareado — sem depender de aprovação da Meta." },
