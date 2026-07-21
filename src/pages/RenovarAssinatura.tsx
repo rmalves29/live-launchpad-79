@@ -88,6 +88,12 @@ export default function RenovarAssinatura() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user, profile } = useAuth();
+
+  // Fluxo de Envio tem página de renovação própria
+  if ((profile as any)?.access_scope === 'fluxo_envio' && profile?.role !== 'super_admin') {
+    return <Navigate to="/fluxo-envio/pagamento" replace />;
+  }
+
   
   const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
   const [tenantInfo, setTenantInfo] = useState<{
