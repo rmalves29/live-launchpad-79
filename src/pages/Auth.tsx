@@ -143,15 +143,25 @@ export default function Auth() {
         if (!accessCheck.allowed) {
           // Se assinatura expirou, redirecionar para página de renovação
           if (accessCheck.reason === 'subscription_expired') {
-            console.log('[Auth] Redirecionando para /renovar-assinatura');
-            toast({ 
-              title: "Assinatura Expirada", 
-              description: "Você será redirecionado para renovar seu plano." 
+            // Verificar escopo para escolher página de renovação correta
+            const { data: profScope } = await supabase
+              .from('profiles')
+              .select('access_scope')
+              .eq('id', data.user.id)
+              .maybeSingle();
+            const target = (profScope as any)?.access_scope === 'fluxo_envio'
+              ? '/fluxo-envio/pagamento'
+              : '/renovar-assinatura';
+            console.log('[Auth] Redirecionando para', target);
+            toast({
+              title: "Assinatura Expirada",
+              description: "Você será redirecionado para renovar seu plano."
             });
             // NÃO fazer logout - manter o usuário logado para a página de renovação
-            navigate("/renovar-assinatura", { replace: true });
+            navigate(target, { replace: true });
             return;
           }
+
           
           // Outros casos: fazer logout
           await supabase.auth.signOut();
