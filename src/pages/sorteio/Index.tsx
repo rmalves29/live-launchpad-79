@@ -30,6 +30,10 @@ interface Winner extends Candidate {
   profile_image?: string;
 }
 
+const ROANNE_TENANT_ID = '014457e5-e85f-4d62-874b-6bd0b72213bc';
+
+type EligibilityMode = 'paid' | 'all';
+
 const Sorteio = () => {
   const { toast } = useToast();
   const { tenantId } = useTenantContext();
@@ -39,6 +43,9 @@ const Sorteio = () => {
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [excludedPhones, setExcludedPhones] = useState<Set<string>>(new Set());
+  const [eligibilityMode, setEligibilityMode] = useState<EligibilityMode>('paid');
+
+  const showEligibilityToggle = tenantId === ROANNE_TENANT_ID;
 
   // Candidatos filtrados (remove já sorteados na sessão)
   const activeCandidates = useMemo(() => {
