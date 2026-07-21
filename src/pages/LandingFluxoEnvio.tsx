@@ -160,10 +160,6 @@ export default function LandingFluxoEnvio() {
     { icon: Bot, title: "Suporte humano no WhatsApp", description: "Quando algo der ruim no meio do lançamento, você fala com gente de verdade — nada de ticket que responde daqui a 4 dias." },
   ];
 
-  const integrations = [
-    "WhatsApp", "Instagram", "Bling", "Mercado Pago", "Pagar.me", "InfinitePay",
-    "Correios", "Melhor Envio", "Mandaê", "Olist", "Bagy", "Omie", "Hotmart", "Kiwify",
-  ];
 
   const steps = [
     { step: "01", title: "Conecte seu WhatsApp", description: "Escaneia o QR Code igual você faz no WhatsApp Web. Em 30 segundos está pareado — sem depender de aprovação da Meta." },
@@ -313,22 +309,6 @@ export default function LandingFluxoEnvio() {
         </div>
       </section>
 
-      {/* ─── MARQUEE DE INTEGRAÇÕES ─── */}
-      <section className="py-10 border-y border-white/5 bg-white/[0.015]">
-        <div className="container mx-auto px-5">
-          <p className="text-center text-xs uppercase tracking-widest text-slate-500 mb-6">Integra com as ferramentas que você já usa</p>
-          <div className="overflow-hidden">
-            <div className="lp-marquee flex gap-12 w-max">
-              {[...integrations, ...integrations].map((name, i) => (
-                <span key={i} className="text-slate-400 text-sm font-medium whitespace-nowrap flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 bg-sky-400/60 rounded-full" />
-                  {name}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* ─── DORES ─── */}
       <section id="dores" className="py-24 md:py-32 relative">
