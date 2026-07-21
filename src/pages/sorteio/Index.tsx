@@ -309,6 +309,37 @@ const Sorteio = () => {
               </Popover>
             </div>
 
+            {showEligibilityToggle && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Quem participa</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant={eligibilityMode === 'paid' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setEligibilityMode('paid')}
+                    className="w-full"
+                  >
+                    Só pedidos pagos
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={eligibilityMode === 'all' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setEligibilityMode('all')}
+                    className="w-full"
+                  >
+                    Todos com pedido
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {eligibilityMode === 'paid'
+                    ? 'Somente clientes com pedidos pagos na data selecionada.'
+                    : 'Todos os clientes com pedido (pago ou não) na data selecionada.'}
+                </p>
+              </div>
+            )}
+
             <Button
               onClick={loadCandidates}
               disabled={loadingCandidates || !eventDate}
