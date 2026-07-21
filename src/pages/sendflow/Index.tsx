@@ -217,12 +217,36 @@ export default function SendFlow() {
     group.name.toLowerCase().includes(debouncedGroupSearch.toLowerCase())
   );
   
-  const filteredProducts = products
-    .filter(product => 
-      product.name.toLowerCase().includes(debouncedProductSearch.toLowerCase()) ||
-      product.code.toLowerCase().includes(debouncedProductSearch.toLowerCase())
-    )
-    .sort((a, b) => extractCodeNumber(a.code) - extractCodeNumber(b.code));
+  const filteredProducts = (() => {
+    const term = debouncedProductSearch.toLowerCase().trim();
+    const parents = products.filter((p: any) => !p.parent_product_id);
+    const parentsById = new Map(parents.map((p) => [p.id, p]));
+    // If search matches a child (variation) code/name, map it back to the parent
+    const parentIdsFromChildren = new Set<number>();
+    if (term) {
+      for (const p of products as any[]) {
+        if (!p.parent_product_id) continue;
+        if (
+          p.code?.toLowerCase().includes(term) ||
+          p.name?.toLowerCase().includes(term)
+        ) {
+          if (parentsById.has(p.parent_product_id)) {
+            parentIdsFromChildren.add(p.parent_product_id);
+          }
+        }
+      }
+    }
+    return parents
+      .filter((product) => {
+        if (!term) return true;
+        return (
+          product.name.toLowerCase().includes(term) ||
+          product.code.toLowerCase().includes(term) ||
+          parentIdsFromChildren.has(product.id)
+        );
+      })
+      .sort((a, b) => extractCodeNumber(a.code) - extractCodeNumber(b.code));
+  })();
   
   // Lista de produtos priorizados para exibição (garantir sem duplicatas)
   const prioritizedProducts = [...new Set(prioritizedProductIds)]
