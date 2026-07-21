@@ -309,22 +309,6 @@ export default function LandingFluxoEnvio() {
         </div>
       </section>
 
-      {/* ─── MARQUEE DE INTEGRAÇÕES ─── */}
-      <section className="py-10 border-y border-white/5 bg-white/[0.015]">
-        <div className="container mx-auto px-5">
-          <p className="text-center text-xs uppercase tracking-widest text-slate-500 mb-6">Integra com as ferramentas que você já usa</p>
-          <div className="overflow-hidden">
-            <div className="lp-marquee flex gap-12 w-max">
-              {[...integrations, ...integrations].map((name, i) => (
-                <span key={i} className="text-slate-400 text-sm font-medium whitespace-nowrap flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 bg-sky-400/60 rounded-full" />
-                  {name}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* ─── DORES ─── */}
       <section id="dores" className="py-24 md:py-32 relative">
