@@ -355,6 +355,26 @@ export default function SendFlow() {
 
       console.log('📦 [SendFlow] Produtos carregados:', all.length, '| count(exact):', totalCount, '| pagesize:', pageSize);
 
+      // Buscar produtos-pai (mesmo inativos) referenciados por variações ativas,
+      // para que apareçam na listagem quando o pai foi desativado após criar filhos.
+      const parentIdsFromChildren = Array.from(
+        new Set(
+          all
+            .map((p: any) => p.parent_product_id)
+            .filter((id: any) => id != null && !all.some((x: any) => x.id === id))
+        )
+      );
+
+      if (parentIdsFromChildren.length > 0) {
+        const { data: parentData, error: parentErr } = await supabaseTenant
+          .from('products')
+          .select('*')
+          .in('id', parentIdsFromChildren as number[]);
+        if (!parentErr && parentData) {
+          all = all.concat(parentData as Product[]);
+        }
+      }
+
       setProducts(all);
       setSelectedProducts(new Set()); // Limpar seleção ao mudar filtro
       setPrioritizedProductIds([]); // Limpar priorização ao mudar filtro
