@@ -713,8 +713,16 @@ const Produtos = () => {
   };
 
   const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-      product.code.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
+    const term = debouncedSearchTerm.toLowerCase().trim();
+    const matchesSearch =
+      !term ||
+      product.name.toLowerCase().includes(term) ||
+      product.code.toLowerCase().includes(term) ||
+      (childrenByParent[product.id] || []).some(
+        (c) =>
+          c.code.toLowerCase().includes(term) ||
+          c.name.toLowerCase().includes(term)
+      );
     const matchesType = saleTypeFilter === 'ALL' || 
       product.sale_type === saleTypeFilter || 
       (product.sale_type === 'AMBOS' && (saleTypeFilter === 'BAZAR' || saleTypeFilter === 'LIVE'));
