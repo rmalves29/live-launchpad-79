@@ -221,7 +221,16 @@ const Produtos = () => {
         pageSize
       );
 
-      setProducts(all);
+      // Separa filhos (variações) dos pais para exibir só os pais na lista
+      const parents = all.filter((p) => !p.parent_product_id);
+      const counts: Record<number, number> = {};
+      for (const p of all) {
+        if (p.parent_product_id) {
+          counts[p.parent_product_id] = (counts[p.parent_product_id] || 0) + 1;
+        }
+      }
+      setVariationCounts(counts);
+      setProducts(parents);
     } catch (error: any) {
       console.error('Error loading products:', error);
       toast({
