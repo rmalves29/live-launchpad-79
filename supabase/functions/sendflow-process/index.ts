@@ -150,7 +150,7 @@ function personalizeMessage(template: string, product: Product): string {
   }
 
   const activeVariations = (product.variations || []).filter(
-    (v) => v && v.code && (v.stock == null || Number(v.stock) > 0)
+    (v) => v && v.code
   );
   if (activeVariations.length > 0) {
     const variationsText = activeVariations
