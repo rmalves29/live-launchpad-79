@@ -293,44 +293,121 @@ const Produtos = () => {
         saleType = 'BAZAR';
       }
 
+      // Validar variações
+      const cleanVariations = variations
+        .map((v) => ({ ...v, size: v.size.trim(), code: v.code.trim() }))
+        .filter((v) => v.size || v.code);
+      const hasVars = cleanVariations.length > 0;
+      for (const v of cleanVariations) {
+        if (!v.size) {
+          throw new Error('Cada variação precisa de um tamanho.');
+        }
+        if (!v.code) {
+          throw new Error(`Variação "${v.size}" está sem código.`);
+        }
+        if (!v.price || isNaN(parseFloat(v.price))) {
+          throw new Error(`Variação "${v.size}" está sem preço válido.`);
+        }
+      }
+      const varCodes = cleanVariations.map((v) => v.code.toLowerCase());
+      if (new Set(varCodes).size !== varCodes.length) {
+        throw new Error('Há códigos de variação duplicados.');
+      }
+
       const productData = {
         code: formData.code,
         name: formData.name,
         price: parseFloat(formData.price),
         promotional_price: formData.promotional_price ? parseFloat(formData.promotional_price) : null,
         observation: formData.observation.trim() || null,
-        stock: parseInt(formData.stock) || 0,
+        // Quando há variações, o estoque real fica nas variações; o pai vira "template"
+        stock: hasVars ? 0 : (parseInt(formData.stock) || 0),
         color: formData.color || null,
         size: formData.size || null,
         image_url: imageUrl,
-        is_active: formData.is_active,
+        // Pai fica inativo quando tem variações, pra não aparecer duplicado na venda
+        is_active: hasVars ? false : formData.is_active,
         sale_type: saleType
       };
+
+      let parentId: number | null = editingProduct?.id ?? null;
 
       if (editingProduct) {
         const { error } = await supabaseTenant
           .from('products')
           .update(productData)
           .eq('id', editingProduct.id);
-
         if (error) throw error;
-
-        toast({
-          title: "Produto atualizado",
-          description: `${productData.code} foi atualizado com sucesso`,
-        });
       } else {
-        const { error } = await supabaseTenant
+        const { data: inserted, error } = await supabaseTenant
           .from('products')
-          .insert([productData]);
-
+          .insert([productData])
+          .select('id')
+          .single();
         if (error) throw error;
-
-        toast({
-          title: "Produto cadastrado",
-          description: `${productData.code} foi cadastrado com sucesso`,
-        });
+        parentId = (inserted as any)?.id ?? null;
       }
+
+      // Sincronizar variações (produtos-filhos)
+      if (parentId) {
+        // Buscar filhos existentes
+        const { data: existingChildren, error: exErr } = await supabaseTenant
+          .from('products')
+          .select('id')
+          .eq('parent_product_id', parentId);
+        if (exErr) throw exErr;
+
+        const keepIds = new Set(cleanVariations.map((v) => v.id).filter(Boolean) as number[]);
+        const toDelete = (existingChildren || [])
+          .map((c: any) => c.id as number)
+          .filter((id) => !keepIds.has(id));
+
+        if (toDelete.length > 0) {
+          const { error: delErr } = await supabaseTenant
+            .from('products')
+            .delete()
+            .in('id', toDelete);
+          if (delErr) throw delErr;
+        }
+
+        for (const v of cleanVariations) {
+          const childData: any = {
+            tenant_id: currentTenantId,
+            parent_product_id: parentId,
+            code: v.code,
+            name: `${formData.name} - ${v.size}`,
+            price: parseFloat(v.price),
+            promotional_price: v.promotional_price ? parseFloat(v.promotional_price) : null,
+            observation: formData.observation.trim() || null,
+            stock: parseInt(v.stock) || 0,
+            color: formData.color || null,
+            size: v.size,
+            image_url: imageUrl,
+            is_active: formData.is_active,
+            sale_type: saleType,
+            category_id: (editingProduct as any)?.category_id ?? null,
+          };
+          if (v.id) {
+            const { error: uErr } = await supabaseTenant
+              .from('products')
+              .update(childData)
+              .eq('id', v.id);
+            if (uErr) throw uErr;
+          } else {
+            const { error: iErr } = await supabaseTenant
+              .from('products')
+              .insert([childData]);
+            if (iErr) throw iErr;
+          }
+        }
+      }
+
+      toast({
+        title: editingProduct ? 'Produto atualizado' : 'Produto cadastrado',
+        description: hasVars
+          ? `${productData.code} salvo com ${cleanVariations.length} variação(ões).`
+          : `${productData.code} salvo com sucesso.`,
+      });
 
       setIsDialogOpen(false);
       setEditingProduct(null);
@@ -348,6 +425,7 @@ const Produtos = () => {
         sale_type_bazar: true,
         sale_type_live: false
       });
+      setVariations([]);
       setSelectedFile(null);
       loadProducts();
     } catch (error: any) {
