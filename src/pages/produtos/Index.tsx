@@ -225,16 +225,22 @@ const Produtos = () => {
       // Separa filhos (variações) dos pais para exibir só os pais na lista
       const parents = all.filter((p) => !p.parent_product_id);
       const counts: Record<number, number> = {};
+      const stockSum: Record<number, number> = {};
       const childMap: Record<number, Product[]> = {};
       for (const p of all) {
         if (p.parent_product_id) {
           counts[p.parent_product_id] = (counts[p.parent_product_id] || 0) + 1;
+          stockSum[p.parent_product_id] = (stockSum[p.parent_product_id] || 0) + (p.stock || 0);
           (childMap[p.parent_product_id] ||= []).push(p);
         }
       }
+      // Sobrescreve o estoque do pai com a soma das variações (quando houver)
+      const parentsWithSum = parents.map((p) =>
+        counts[p.id] > 0 ? { ...p, stock: stockSum[p.id] || 0 } : p
+      );
       setVariationCounts(counts);
       setChildrenByParent(childMap);
-      setProducts(parents);
+      setProducts(parentsWithSum);
     } catch (error: any) {
       console.error('Error loading products:', error);
       toast({
@@ -329,8 +335,8 @@ const Produtos = () => {
         color: formData.color || null,
         size: formData.size || null,
         image_url: imageUrl,
-        // Pai fica inativo quando tem variações, pra não aparecer duplicado na venda
-        is_active: hasVars ? false : formData.is_active,
+        // Respeita a escolha do usuário — o pai pode ficar ativo mesmo com variações
+        is_active: formData.is_active,
         sale_type: saleType
       };
 
@@ -1296,7 +1302,7 @@ const Produtos = () => {
                     <Input
                       id="stock"
                       type="number"
-                      value={variations.length > 0 ? '' : formData.stock}
+                      value={variations.length > 0 ? String(variations.reduce((s, v) => s + (parseInt(v.stock) || 0), 0)) : formData.stock}
                       onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
                       placeholder={variations.length > 0 ? 'Somado das variações' : '0'}
                       disabled={variations.length > 0}
