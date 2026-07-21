@@ -75,7 +75,7 @@ const TEMPLATE_TYPES = [
     value: 'SENDFLOW',
     label: 'Fluxo de envio',
     description: 'Mensagem de divulgação de produtos',
-    variables: ['{codigo}', '{nome}', '{cor}', '{tamanho}', '{valor}'],
+    variables: ['{codigo}', '{nome}', '{cor}', '{tamanho}', '{valor}', '{valor_original}', '{valor_promo}', '{observacao}', '{variacoes}'],
     color: {
       badgeBg: 'bg-[#f3e8ff]',
       badgeText: 'text-[#9333ea]',
