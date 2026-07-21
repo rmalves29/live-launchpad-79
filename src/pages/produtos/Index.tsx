@@ -126,6 +126,8 @@ const Produtos = () => {
     sale_type_bazar: true,
     sale_type_live: false
   });
+  const [variations, setVariations] = useState<VariationRow[]>([]);
+  const [variationCounts, setVariationCounts] = useState<Record<number, number>>({});
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
