@@ -991,30 +991,31 @@ serve(async (req) => {
     // Supports variants with "/" or "-": C370/24, C014-1
     const productEntries: Array<{ code: string; qty: number }> = [];
 
-    // Code suffix capture: digits, optionally followed by /NN or -NN (variants like /24, -1)
-    // Pattern 1: code first, then optional quantity — C76126x2, C014-1x2, C370/24 x2
-    const codeFirstRegex = /\b[Cc](\d{1,6}(?:[\/\-]\d{1,3})?)\s*[xX]\s*(\d{1,3})\b/g;
-    // Pattern 2: quantity first, then code — 2xC76126, 2xC014-1, 2xC370/24
-    const qtyFirstRegex = /\b(\d{1,3})\s*[xX]\s*[Cc](\d{1,6}(?:[\/\-]\d{1,3})?)\b/g;
-    // Pattern 3: plain code without quantity — C76126, C014-1, C370/24
-    const plainCodeRegex = /\b[Cc](\d{1,6}(?:[\/\-]\d{1,3})?)/g;
+    // Code suffix capture: digits, optionally followed by /NN or -NN (variants like /24, -1, T002-01)
+    // Accepts 1-3 letter prefix (C, T, P, SKU...) followed by digits and optional variant suffix.
+    // Pattern 1: code first, then optional quantity — C76126x2, T002-01x2, C370/24 x2
+    const codeFirstRegex = /\b([A-Za-z]{1,3})(\d{1,6}(?:[\/\-]\d{1,3})?)\s*[xX]\s*(\d{1,3})\b/g;
+    // Pattern 2: quantity first, then code — 2xC76126, 2xT002-01
+    const qtyFirstRegex = /\b(\d{1,3})\s*[xX]\s*([A-Za-z]{1,3})(\d{1,6}(?:[\/\-]\d{1,3})?)\b/g;
+    // Pattern 3: plain code without quantity — C76126, T002-01, C370/24
+    const plainCodeRegex = /\b([A-Za-z]{1,3})(\d{1,6}(?:[\/\-]\d{1,3})?)/g;
 
     const processedCodes = new Set<string>();
     let match;
 
-    // First pass: "C76126x2" style
+    // First pass: "C76126x2" / "T002-01x2" style
     while ((match = codeFirstRegex.exec(messageText)) !== null) {
-      const normalized = `C${match[1]}`;
-      const qty = Math.max(1, Math.min(parseInt(match[2], 10), 99));
+      const normalized = `${match[1].toUpperCase()}${match[2]}`;
+      const qty = Math.max(1, Math.min(parseInt(match[3], 10), 99));
       if (!processedCodes.has(normalized)) {
         processedCodes.add(normalized);
         productEntries.push({ code: normalized, qty });
       }
     }
 
-    // Second pass: "2xC76126" style
+    // Second pass: "2xC76126" / "2xT002-01" style
     while ((match = qtyFirstRegex.exec(messageText)) !== null) {
-      const normalized = `C${match[2]}`;
+      const normalized = `${match[2].toUpperCase()}${match[3]}`;
       const qty = Math.max(1, Math.min(parseInt(match[1], 10), 99));
       if (!processedCodes.has(normalized)) {
         processedCodes.add(normalized);
@@ -1022,13 +1023,13 @@ serve(async (req) => {
       }
     }
 
-    // Third pass: plain "C76126" (only if not already matched with quantity)
+    // Third pass: plain "C76126" / "T002-01" (only if not already matched with quantity)
     // Prefer the longer/more specific match: if "C370/24" was captured, don't also add "C370".
     const plainMatches: string[] = [];
     while ((match = plainCodeRegex.exec(messageText)) !== null) {
-      plainMatches.push(`C${match[1]}`);
+      plainMatches.push(`${match[1].toUpperCase()}${match[2]}`);
     }
-    // Sort by length DESC so variants come first (C370/24 before C370)
+    // Sort by length DESC so variants come first (T002-01 before T002)
     plainMatches.sort((a, b) => b.length - a.length);
     for (const normalized of plainMatches) {
       // Skip if a more specific variant of this code was already added
