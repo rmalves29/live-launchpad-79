@@ -1302,7 +1302,7 @@ const Produtos = () => {
                     <Input
                       id="stock"
                       type="number"
-                      value={variations.length > 0 ? '' : formData.stock}
+                      value={variations.length > 0 ? String(variations.reduce((s, v) => s + (parseInt(v.stock) || 0), 0)) : formData.stock}
                       onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
                       placeholder={variations.length > 0 ? 'Somado das variações' : '0'}
                       disabled={variations.length > 0}
