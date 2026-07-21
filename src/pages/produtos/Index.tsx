@@ -1278,13 +1278,16 @@ const Produtos = () => {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="stock">Estoque</Label>
+                    <Label htmlFor="stock">
+                      Estoque {variations.length > 0 && <span className="text-xs text-muted-foreground">(usa o estoque das variações)</span>}
+                    </Label>
                     <Input
                       id="stock"
                       type="number"
-                      value={formData.stock}
+                      value={variations.length > 0 ? '' : formData.stock}
                       onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                      placeholder="0"
+                      placeholder={variations.length > 0 ? 'Somado das variações' : '0'}
+                      disabled={variations.length > 0}
                     />
                   </div>
                 </div>
