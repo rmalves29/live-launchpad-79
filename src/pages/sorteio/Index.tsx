@@ -30,6 +30,10 @@ interface Winner extends Candidate {
   profile_image?: string;
 }
 
+const ROANNE_TENANT_ID = '014457e5-e85f-4d62-874b-6bd0b72213bc';
+
+type EligibilityMode = 'paid' | 'all';
+
 const Sorteio = () => {
   const { toast } = useToast();
   const { tenantId } = useTenantContext();
@@ -39,6 +43,9 @@ const Sorteio = () => {
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [excludedPhones, setExcludedPhones] = useState<Set<string>>(new Set());
+  const [eligibilityMode, setEligibilityMode] = useState<EligibilityMode>('paid');
+
+  const showEligibilityToggle = tenantId === ROANNE_TENANT_ID;
 
   // Candidatos filtrados (remove já sorteados na sessão)
   const activeCandidates = useMemo(() => {
@@ -88,18 +95,24 @@ const Sorteio = () => {
 
     try {
       const selectedDate = format(eventDate, 'yyyy-MM-dd');
+      const usePaidOnly = showEligibilityToggle ? eligibilityMode === 'paid' : true;
 
-      // Buscar todos os pedidos pagos da data
-      const { data: paidOrders, error } = await supabaseTenant
+      // Buscar pedidos da data (pagos ou todos, conforme modo)
+      let query = supabaseTenant
         .from('orders')
-        .select('id, customer_phone, customer_name, total_amount, event_date')
-        .eq('is_paid', true)
+        .select('id, customer_phone, customer_name, total_amount, event_date, is_paid')
         .eq('event_date', selectedDate);
+
+      if (usePaidOnly) {
+        query = query.eq('is_paid', true);
+      }
+
+      const { data: paidOrders, error } = await query;
 
       if (error) throw error;
 
       if (!paidOrders || paidOrders.length === 0) {
-        toast({ title: 'Nenhum Pedido', description: 'Não há pedidos pagos para esta data.', variant: 'destructive' });
+        toast({ title: 'Nenhum Pedido', description: usePaidOnly ? 'Não há pedidos pagos para esta data.' : 'Não há pedidos para esta data.', variant: 'destructive' });
         setCandidates([]);
         return;
       }
@@ -296,6 +309,37 @@ const Sorteio = () => {
               </Popover>
             </div>
 
+            {showEligibilityToggle && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Quem participa</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant={eligibilityMode === 'paid' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setEligibilityMode('paid')}
+                    className="w-full"
+                  >
+                    Só pedidos pagos
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={eligibilityMode === 'all' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setEligibilityMode('all')}
+                    className="w-full"
+                  >
+                    Todos com pedido
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {eligibilityMode === 'paid'
+                    ? 'Somente clientes com pedidos pagos na data selecionada.'
+                    : 'Todos os clientes com pedido (pago ou não) na data selecionada.'}
+                </p>
+              </div>
+            )}
+
             <Button
               onClick={loadCandidates}
               disabled={loadingCandidates || !eventDate}
@@ -311,7 +355,11 @@ const Sorteio = () => {
             <div className="space-y-2 text-xs text-muted-foreground">
               <div className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 bg-primary rounded-full mt-1.5 shrink-0" />
-                <span>Apenas pedidos <strong className="text-foreground">PAGOS</strong> da data participam</span>
+                <span>
+                  {showEligibilityToggle && eligibilityMode === 'all'
+                    ? <>Todos os pedidos <strong className="text-foreground">(pagos ou não)</strong> da data participam</>
+                    : <>Apenas pedidos <strong className="text-foreground">PAGOS</strong> da data participam</>}
+                </span>
               </div>
               <div className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 bg-primary rounded-full mt-1.5 shrink-0" />
