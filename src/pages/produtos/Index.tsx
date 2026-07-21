@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags, FolderTree } from 'lucide-react';
+import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags, FolderTree, Layers } from 'lucide-react';
 import PrintLabelsDialog from '@/components/tenant/PrintLabelsDialog';
 import CategoriasManagerDialog from '@/components/produtos/CategoriasManagerDialog';
 import { supabaseTenant } from '@/lib/supabase-tenant';
@@ -44,7 +44,22 @@ interface Product {
   is_active: boolean;
   sale_type: 'LIVE' | 'BAZAR' | 'AMBOS';
   category_id?: string | null;
+  parent_product_id?: number | null;
 }
+
+interface VariationRow {
+  id?: number;
+  size: string;
+  code: string;
+  price: string;
+  promotional_price: string;
+  stock: string;
+}
+
+const PRESET_SIZES = ['PP', 'P', 'M', 'G', 'GG'] as const;
+const padVar = (n: number) => String(n).padStart(2, '0');
+const buildVariationCode = (parentCode: string, index: number) =>
+  `${(parentCode || '').trim()}-${padVar(index + 1)}`;
 
 interface ImportRow {
   codigo: string;
@@ -111,6 +126,8 @@ const Produtos = () => {
     sale_type_bazar: true,
     sale_type_live: false
   });
+  const [variations, setVariations] = useState<VariationRow[]>([]);
+  const [variationCounts, setVariationCounts] = useState<Record<number, number>>({});
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
@@ -204,7 +221,16 @@ const Produtos = () => {
         pageSize
       );
 
-      setProducts(all);
+      // Separa filhos (variações) dos pais para exibir só os pais na lista
+      const parents = all.filter((p) => !p.parent_product_id);
+      const counts: Record<number, number> = {};
+      for (const p of all) {
+        if (p.parent_product_id) {
+          counts[p.parent_product_id] = (counts[p.parent_product_id] || 0) + 1;
+        }
+      }
+      setVariationCounts(counts);
+      setProducts(parents);
     } catch (error: any) {
       console.error('Error loading products:', error);
       toast({
@@ -267,44 +293,121 @@ const Produtos = () => {
         saleType = 'BAZAR';
       }
 
+      // Validar variações
+      const cleanVariations = variations
+        .map((v) => ({ ...v, size: v.size.trim(), code: v.code.trim() }))
+        .filter((v) => v.size || v.code);
+      const hasVars = cleanVariations.length > 0;
+      for (const v of cleanVariations) {
+        if (!v.size) {
+          throw new Error('Cada variação precisa de um tamanho.');
+        }
+        if (!v.code) {
+          throw new Error(`Variação "${v.size}" está sem código.`);
+        }
+        if (!v.price || isNaN(parseFloat(v.price))) {
+          throw new Error(`Variação "${v.size}" está sem preço válido.`);
+        }
+      }
+      const varCodes = cleanVariations.map((v) => v.code.toLowerCase());
+      if (new Set(varCodes).size !== varCodes.length) {
+        throw new Error('Há códigos de variação duplicados.');
+      }
+
       const productData = {
         code: formData.code,
         name: formData.name,
         price: parseFloat(formData.price),
         promotional_price: formData.promotional_price ? parseFloat(formData.promotional_price) : null,
         observation: formData.observation.trim() || null,
-        stock: parseInt(formData.stock) || 0,
+        // Quando há variações, o estoque real fica nas variações; o pai vira "template"
+        stock: hasVars ? 0 : (parseInt(formData.stock) || 0),
         color: formData.color || null,
         size: formData.size || null,
         image_url: imageUrl,
-        is_active: formData.is_active,
+        // Pai fica inativo quando tem variações, pra não aparecer duplicado na venda
+        is_active: hasVars ? false : formData.is_active,
         sale_type: saleType
       };
+
+      let parentId: number | null = editingProduct?.id ?? null;
 
       if (editingProduct) {
         const { error } = await supabaseTenant
           .from('products')
           .update(productData)
           .eq('id', editingProduct.id);
-
         if (error) throw error;
-
-        toast({
-          title: "Produto atualizado",
-          description: `${productData.code} foi atualizado com sucesso`,
-        });
       } else {
-        const { error } = await supabaseTenant
+        const { data: inserted, error } = await supabaseTenant
           .from('products')
-          .insert([productData]);
-
+          .insert([productData])
+          .select('id')
+          .single();
         if (error) throw error;
-
-        toast({
-          title: "Produto cadastrado",
-          description: `${productData.code} foi cadastrado com sucesso`,
-        });
+        parentId = (inserted as any)?.id ?? null;
       }
+
+      // Sincronizar variações (produtos-filhos)
+      if (parentId) {
+        // Buscar filhos existentes
+        const { data: existingChildren, error: exErr } = await supabaseTenant
+          .from('products')
+          .select('id')
+          .eq('parent_product_id', parentId);
+        if (exErr) throw exErr;
+
+        const keepIds = new Set(cleanVariations.map((v) => v.id).filter(Boolean) as number[]);
+        const toDelete = (existingChildren || [])
+          .map((c: any) => c.id as number)
+          .filter((id) => !keepIds.has(id));
+
+        if (toDelete.length > 0) {
+          const { error: delErr } = await supabaseTenant
+            .from('products')
+            .delete()
+            .in('id', toDelete);
+          if (delErr) throw delErr;
+        }
+
+        for (const v of cleanVariations) {
+          const childData: any = {
+            tenant_id: currentTenantId,
+            parent_product_id: parentId,
+            code: v.code,
+            name: `${formData.name} - ${v.size}`,
+            price: parseFloat(v.price),
+            promotional_price: v.promotional_price ? parseFloat(v.promotional_price) : null,
+            observation: formData.observation.trim() || null,
+            stock: parseInt(v.stock) || 0,
+            color: formData.color || null,
+            size: v.size,
+            image_url: imageUrl,
+            is_active: formData.is_active,
+            sale_type: saleType,
+            category_id: (editingProduct as any)?.category_id ?? null,
+          };
+          if (v.id) {
+            const { error: uErr } = await supabaseTenant
+              .from('products')
+              .update(childData)
+              .eq('id', v.id);
+            if (uErr) throw uErr;
+          } else {
+            const { error: iErr } = await supabaseTenant
+              .from('products')
+              .insert([childData]);
+            if (iErr) throw iErr;
+          }
+        }
+      }
+
+      toast({
+        title: editingProduct ? 'Produto atualizado' : 'Produto cadastrado',
+        description: hasVars
+          ? `${productData.code} salvo com ${cleanVariations.length} variação(ões).`
+          : `${productData.code} salvo com sucesso.`,
+      });
 
       setIsDialogOpen(false);
       setEditingProduct(null);
@@ -322,6 +425,7 @@ const Produtos = () => {
         sale_type_bazar: true,
         sale_type_live: false
       });
+      setVariations([]);
       setSelectedFile(null);
       loadProducts();
     } catch (error: any) {
@@ -386,7 +490,7 @@ const Produtos = () => {
     }
   };
 
-  const handleEdit = (product: Product) => {
+  const handleEdit = async (product: Product) => {
     setEditingProduct(product);
     const saleType = product.sale_type || 'BAZAR';
     setFormData({
@@ -404,8 +508,73 @@ const Produtos = () => {
         sale_type_live: saleType === 'LIVE' || saleType === 'AMBOS'
     });
     setSelectedFile(null);
+    setVariations([]);
+
+    // Carrega variações do produto (se houver)
+    try {
+      const { data: children, error } = await supabaseTenant
+        .from('products')
+        .select('id, code, size, price, promotional_price, stock')
+        .eq('parent_product_id', product.id)
+        .order('id', { ascending: true });
+      if (error) throw error;
+      if (children && children.length > 0) {
+        setVariations(
+          (children as any[]).map((c) => ({
+            id: c.id,
+            size: c.size || '',
+            code: c.code,
+            price: c.price?.toString() ?? '',
+            promotional_price: c.promotional_price?.toString() ?? '',
+            stock: c.stock?.toString() ?? '0',
+          }))
+        );
+      }
+    } catch (e) {
+      console.warn('[Produtos] Falha ao carregar variações:', e);
+    }
+
     setIsDialogOpen(true);
   };
+
+  // Helpers de variações
+  const addVariation = (size: string) => {
+    const trimmed = size.trim().toUpperCase();
+    if (!trimmed) return;
+    if (variations.some((v) => v.size.toUpperCase() === trimmed)) {
+      toast({ title: 'Tamanho já adicionado', description: trimmed });
+      return;
+    }
+    const newIndex = variations.length;
+    setVariations([
+      ...variations,
+      {
+        size: trimmed,
+        code: buildVariationCode(formData.code, newIndex),
+        price: formData.price,
+        promotional_price: formData.promotional_price,
+        stock: '0',
+      },
+    ]);
+  };
+
+  const updateVariation = (index: number, patch: Partial<VariationRow>) => {
+    setVariations((prev) => prev.map((v, i) => (i === index ? { ...v, ...patch } : v)));
+  };
+
+  const removeVariation = (index: number) => {
+    setVariations((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Regenera códigos automáticos quando o código do pai muda
+  useEffect(() => {
+    if (variations.length === 0) return;
+    setVariations((prev) =>
+      prev.map((v, i) => ({ ...v, code: buildVariationCode(formData.code, i) }))
+    );
+     
+  }, [formData.code]);
+
 
   const handleDelete = async (id: number) => {
     const confirmed = await confirm({
@@ -1053,14 +1222,20 @@ const Produtos = () => {
             </Dialog>
 
             {/* New Product Dialog */}
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <Dialog open={isDialogOpen} onOpenChange={(open) => {
+              setIsDialogOpen(open);
+              if (!open) {
+                setEditingProduct(null);
+                setVariations([]);
+              }
+            }}>
               <DialogTrigger asChild>
-                <Button>
+                <Button onClick={() => { setEditingProduct(null); setVariations([]); }}>
                   <Plus className="h-4 w-4 mr-2" />
                   Novo Produto
                 </Button>
               </DialogTrigger>
-            <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col gap-0 p-0">
+            <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0">
               <DialogHeader className="p-6 pb-2 flex-shrink-0">
                 <DialogTitle>
                   {editingProduct ? 'Editar Produto' : 'Novo Produto'}
@@ -1103,13 +1278,16 @@ const Produtos = () => {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="stock">Estoque</Label>
+                    <Label htmlFor="stock">
+                      Estoque {variations.length > 0 && <span className="text-xs text-muted-foreground">(usa o estoque das variações)</span>}
+                    </Label>
                     <Input
                       id="stock"
                       type="number"
-                      value={formData.stock}
+                      value={variations.length > 0 ? '' : formData.stock}
                       onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                      placeholder="0"
+                      placeholder={variations.length > 0 ? 'Somado das variações' : '0'}
+                      disabled={variations.length > 0}
                     />
                   </div>
                 </div>
@@ -1187,6 +1365,108 @@ const Produtos = () => {
                     />
                   </div>
                 </div>
+
+                {/* Variações de Tamanho */}
+                <div className="rounded-lg border p-4 space-y-3 bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-primary" />
+                    <Label className="text-sm font-semibold">Variações de tamanho</Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Cada tamanho vira um SKU próprio (ex: <code className="font-mono">{formData.code || 'P001'}-01</code>) com estoque e preço individuais. Preços são pré-preenchidos a partir do produto principal.
+                  </p>
+
+                  <div className="flex flex-wrap gap-2">
+                    {PRESET_SIZES.map((sz) => {
+                      const already = variations.some((v) => v.size.toUpperCase() === sz);
+                      return (
+                        <Button
+                          key={sz}
+                          type="button"
+                          size="sm"
+                          variant={already ? 'secondary' : 'outline'}
+                          disabled={already}
+                          onClick={() => addVariation(sz)}
+                        >
+                          + {sz}
+                        </Button>
+                      );
+                    })}
+                    <div className="flex items-center gap-1">
+                      <Input
+                        placeholder="Tamanho custom (ex: 38, U)"
+                        className="h-8 w-40"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addVariation((e.target as HTMLInputElement).value);
+                            (e.target as HTMLInputElement).value = '';
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {variations.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-12 gap-2 text-[11px] font-medium text-muted-foreground px-1">
+                        <div className="col-span-2">Tamanho</div>
+                        <div className="col-span-3">Código</div>
+                        <div className="col-span-2">Preço</div>
+                        <div className="col-span-2">Promo</div>
+                        <div className="col-span-2">Estoque</div>
+                        <div className="col-span-1"></div>
+                      </div>
+                      {variations.map((v, i) => (
+                        <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                          <Input
+                            className="col-span-2 h-9"
+                            value={v.size}
+                            onChange={(e) => updateVariation(i, { size: e.target.value.toUpperCase() })}
+                          />
+                          <Input
+                            className="col-span-3 h-9 font-mono text-xs"
+                            value={v.code}
+                            onChange={(e) => updateVariation(i, { code: e.target.value })}
+                          />
+                          <Input
+                            className="col-span-2 h-9"
+                            type="number"
+                            step="0.01"
+                            value={v.price}
+                            onChange={(e) => updateVariation(i, { price: e.target.value })}
+                          />
+                          <Input
+                            className="col-span-2 h-9"
+                            type="number"
+                            step="0.01"
+                            value={v.promotional_price}
+                            onChange={(e) => updateVariation(i, { promotional_price: e.target.value })}
+                          />
+                          <Input
+                            className="col-span-2 h-9"
+                            type="number"
+                            value={v.stock}
+                            onChange={(e) => updateVariation(i, { stock: e.target.value })}
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="col-span-1 h-9 w-9 text-destructive"
+                            onClick={() => removeVariation(i)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      <p className="text-[11px] text-muted-foreground">
+                        Quando há variações, o produto principal fica oculto para venda — o cliente escolhe uma variação pelo código.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
 
                 <div>
                   <Label htmlFor="image">Imagem do Produto</Label>
@@ -1410,7 +1690,17 @@ const Produtos = () => {
                             />
                           </TableCell>
                           <TableCell className="font-mono">{product.code}</TableCell>
-                          <TableCell>{product.name}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span>{product.name}</span>
+                              {variationCounts[product.id] > 0 && (
+                                <Badge variant="secondary" className="gap-1">
+                                  <Layers className="h-3 w-3" />
+                                  {variationCounts[product.id]} tam.
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell>
                             <div className="text-sm">
                               {product.color && <div>Cor: {product.color}</div>}

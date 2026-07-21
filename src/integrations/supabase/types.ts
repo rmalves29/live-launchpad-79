@@ -3092,6 +3092,7 @@ export type Database = {
           is_active: boolean
           name: string
           observation: string | null
+          parent_product_id: number | null
           price: number
           promotional_price: number | null
           sale_type: string
@@ -3112,6 +3113,7 @@ export type Database = {
           is_active?: boolean
           name: string
           observation?: string | null
+          parent_product_id?: number | null
           price: number
           promotional_price?: number | null
           sale_type?: string
@@ -3132,6 +3134,7 @@ export type Database = {
           is_active?: boolean
           name?: string
           observation?: string | null
+          parent_product_id?: number | null
           price?: number
           promotional_price?: number | null
           sale_type?: string
@@ -3147,6 +3150,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "product_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_parent_product_id_fkey"
+            columns: ["parent_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
