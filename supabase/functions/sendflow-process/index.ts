@@ -25,6 +25,8 @@ interface ProductVariation {
   code: string;
   size?: string | null;
   stock?: number | null;
+  price?: number | null;
+  promotional_price?: number | null;
 }
 
 interface Product {
@@ -37,6 +39,7 @@ interface Product {
   promotional_price?: number | null;
   observation?: string | null;
   image_url?: string;
+  parent_product_id?: number | null;
   variations?: ProductVariation[];
 }
 
@@ -153,7 +156,10 @@ function personalizeMessage(template: string, product: Product): string {
     const variationsText = activeVariations
       .map((v) => {
         const label = (v.size && v.size.trim()) ? v.size.trim() : v.code.trim();
-        return `▪️ ${label} — *${v.code.trim()}*`;
+        const priceValue = (v.promotional_price && v.promotional_price > 0)
+          ? v.promotional_price
+          : (v.price && v.price > 0 ? v.price : product.promotional_price || product.price);
+        return `(${label}) ${v.code.trim()} - ${formatPrice(priceValue as number)}`;
       })
       .join("\n");
     message = message.replace(/\{\{?\s*variacoes\s*\}?\}/gi, variationsText);
@@ -449,7 +455,7 @@ async function processTaskQueue({
   const productIds = [...new Set(tasks.map((t: SendFlowTask) => t.product_id))];
   const { data: products, error: productsError } = await supabase
     .from("products")
-    .select("id, code, name, color, size, price, promotional_price, observation, image_url")
+    .select("id, code, name, color, size, price, promotional_price, observation, image_url, parent_product_id")
     .eq("tenant_id", tenantId)
     .in("id", productIds);
 
@@ -461,26 +467,61 @@ async function processTaskQueue({
     return;
   }
 
-  // Busca variações ativas (produtos filhos) para cada produto pai
-  const { data: variationsData } = await supabase
-    .from("products")
-    .select("id, code, size, stock, parent_product_id")
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true)
-    .in("parent_product_id", productIds);
+  // Se algum produto da fila for uma variação (filho), buscamos o pai para usar no lugar
+  const parentIdsToFetch = [...new Set(
+    (products as any[])
+      .map((p) => p.parent_product_id)
+      .filter((pid) => pid && !productIds.includes(pid))
+  )];
+
+  let parentProducts: any[] = [];
+  if (parentIdsToFetch.length > 0) {
+    const { data: parents } = await supabase
+      .from("products")
+      .select("id, code, name, color, size, price, promotional_price, observation, image_url, parent_product_id")
+      .eq("tenant_id", tenantId)
+      .in("id", parentIdsToFetch);
+    parentProducts = parents || [];
+  }
+
+  // Todos os IDs que precisam ter variações listadas (pais originais + pais recém-descobertos)
+  const parentIds = [
+    ...productIds.filter((id) => !(products as any[]).find((p) => p.id === id)?.parent_product_id),
+    ...parentIdsToFetch,
+  ];
+
+  const { data: variationsData } = parentIds.length > 0
+    ? await supabase
+        .from("products")
+        .select("id, code, size, stock, price, promotional_price, parent_product_id")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true)
+        .in("parent_product_id", parentIds)
+    : { data: [] as any[] };
 
   const variationsByParent = new Map<number, ProductVariation[]>();
   for (const v of (variationsData || []) as any[]) {
     if (!v.parent_product_id) continue;
     const list = variationsByParent.get(v.parent_product_id) || [];
-    list.push({ code: v.code, size: v.size, stock: v.stock });
+    list.push({ code: v.code, size: v.size, stock: v.stock, price: v.price, promotional_price: v.promotional_price });
     variationsByParent.set(v.parent_product_id, list);
   }
-  for (const p of products as any[]) {
+
+  const allProducts = [...(products as any[]), ...parentProducts];
+  for (const p of allProducts) {
     p.variations = variationsByParent.get(p.id) || [];
   }
+  const productById = new Map<number, any>(allProducts.map((p) => [p.id, p]));
 
-  const productsMap = new Map(products.map((p: any) => [p.id, p]));
+  // Mapeia cada id de task -> produto a usar (pai quando for filho)
+  const productsMap = new Map<number, any>();
+  for (const p of products as any[]) {
+    if (p.parent_product_id && productById.has(p.parent_product_id)) {
+      productsMap.set(p.id, productById.get(p.parent_product_id));
+    } else {
+      productsMap.set(p.id, p);
+    }
+  }
 
   let sentMessages = jobData.sentMessages || 0;
   let errorMessages = jobData.errorMessages || 0;
