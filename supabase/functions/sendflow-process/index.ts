@@ -21,6 +21,12 @@ const ZAPI_BASE_URL = "https://api.z-api.io";
 
 const MAX_EXECUTION_MS = 120_000;
 
+interface ProductVariation {
+  code: string;
+  size?: string | null;
+  stock?: number | null;
+}
+
 interface Product {
   id: number;
   code: string;
@@ -31,6 +37,7 @@ interface Product {
   promotional_price?: number | null;
   observation?: string | null;
   image_url?: string;
+  variations?: ProductVariation[];
 }
 
 interface SendFlowTask {
@@ -137,6 +144,21 @@ function personalizeMessage(template: string, product: Product): string {
     message = message.replace(/\{\{?\s*observacao\s*\}?\}/gi, product.observation.trim());
   } else {
     message = removeLineWithVariable(message, "observacao");
+  }
+
+  const activeVariations = (product.variations || []).filter(
+    (v) => v && v.code && (v.stock == null || Number(v.stock) > 0)
+  );
+  if (activeVariations.length > 0) {
+    const variationsText = activeVariations
+      .map((v) => {
+        const label = (v.size && v.size.trim()) ? v.size.trim() : v.code.trim();
+        return `▪️ ${label} — *${v.code.trim()}*`;
+      })
+      .join("\n");
+    message = message.replace(/\{\{?\s*variacoes\s*\}?\}/gi, variationsText);
+  } else {
+    message = removeLineWithVariable(message, "variacoes");
   }
 
   message = message
@@ -437,6 +459,25 @@ async function processTaskQueue({
       .update({ status: "error", error_message: "Produtos nao encontrados", updated_at: new Date().toISOString() })
       .eq("id", jobId);
     return;
+  }
+
+  // Busca variações ativas (produtos filhos) para cada produto pai
+  const { data: variationsData } = await supabase
+    .from("products")
+    .select("id, code, size, stock, parent_product_id")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .in("parent_product_id", productIds);
+
+  const variationsByParent = new Map<number, ProductVariation[]>();
+  for (const v of (variationsData || []) as any[]) {
+    if (!v.parent_product_id) continue;
+    const list = variationsByParent.get(v.parent_product_id) || [];
+    list.push({ code: v.code, size: v.size, stock: v.stock });
+    variationsByParent.set(v.parent_product_id, list);
+  }
+  for (const p of products as any[]) {
+    p.variations = variationsByParent.get(p.id) || [];
   }
 
   const productsMap = new Map(products.map((p: any) => [p.id, p]));
