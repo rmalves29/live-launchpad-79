@@ -95,18 +95,24 @@ const Sorteio = () => {
 
     try {
       const selectedDate = format(eventDate, 'yyyy-MM-dd');
+      const usePaidOnly = showEligibilityToggle ? eligibilityMode === 'paid' : true;
 
-      // Buscar todos os pedidos pagos da data
-      const { data: paidOrders, error } = await supabaseTenant
+      // Buscar pedidos da data (pagos ou todos, conforme modo)
+      let query = supabaseTenant
         .from('orders')
-        .select('id, customer_phone, customer_name, total_amount, event_date')
-        .eq('is_paid', true)
+        .select('id, customer_phone, customer_name, total_amount, event_date, is_paid')
         .eq('event_date', selectedDate);
+
+      if (usePaidOnly) {
+        query = query.eq('is_paid', true);
+      }
+
+      const { data: paidOrders, error } = await query;
 
       if (error) throw error;
 
       if (!paidOrders || paidOrders.length === 0) {
-        toast({ title: 'Nenhum Pedido', description: 'Não há pedidos pagos para esta data.', variant: 'destructive' });
+        toast({ title: 'Nenhum Pedido', description: usePaidOnly ? 'Não há pedidos pagos para esta data.' : 'Não há pedidos para esta data.', variant: 'destructive' });
         setCandidates([]);
         return;
       }
