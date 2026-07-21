@@ -146,6 +146,21 @@ function personalizeMessage(template: string, product: Product): string {
     message = removeLineWithVariable(message, "observacao");
   }
 
+  const activeVariations = (product.variations || []).filter(
+    (v) => v && v.code && (v.stock == null || Number(v.stock) > 0 || v.stock === undefined)
+  );
+  if (activeVariations.length > 0) {
+    const variationsText = activeVariations
+      .map((v) => {
+        const label = (v.size && v.size.trim()) ? v.size.trim() : v.code.trim();
+        return `▪️ ${label} — *${v.code.trim()}*`;
+      })
+      .join("\n");
+    message = message.replace(/\{\{?\s*variacoes\s*\}?\}/gi, variationsText);
+  } else {
+    message = removeLineWithVariable(message, "variacoes");
+  }
+
   message = message
     .split("\n")
     .map((line) => line.replace(/[ \t]+$/g, ""))
