@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { AlertTriangle, Check, Crown, Rocket, Building2, Loader2, Zap, RefreshCw, XCircle, CreditCard } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -88,6 +88,12 @@ export default function RenovarAssinatura() {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user, profile } = useAuth();
+
+  // Fluxo de Envio tem página de renovação própria
+  if ((profile as any)?.access_scope === 'fluxo_envio' && profile?.role !== 'super_admin') {
+    return <Navigate to="/fluxo-envio/pagamento" replace />;
+  }
+
   
   const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
   const [tenantInfo, setTenantInfo] = useState<{
