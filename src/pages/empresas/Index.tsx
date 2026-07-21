@@ -713,13 +713,28 @@ export default function EmpresasIndex() {
   });
 
   // Estatísticas
-  const totalEmpresas = tenants.length;
-  const empresasAtivas = tenants.filter(t => t.is_active && !t.is_blocked).length;
-  const empresasInativas = tenants.filter(t => !t.is_active || t.is_blocked).length;
-  const empresasExpiradas = tenants.filter(t => {
-    const days = getDaysRemaining(t.subscription_ends_at || t.trial_ends_at);
-    return days !== null && days <= 0;
-  }).length;
+  const cartzyTenants = tenants.filter(t => !fluxoTenantIds.has(t.id));
+  const fluxoTenants = tenants.filter(t => fluxoTenantIds.has(t.id));
+
+  const getTenantStats = (list: Tenant[]) => ({
+    total: list.length,
+    active: list.filter(t => t.is_active && !t.is_blocked).length,
+    inactive: list.filter(t => !t.is_active || t.is_blocked).length,
+    expired: list.filter(t => {
+      const days = getDaysRemaining(t.subscription_ends_at || t.trial_ends_at);
+      return days !== null && days <= 0;
+    }).length,
+  });
+
+  const totalStats = getTenantStats(tenants);
+  const cartzyStats = getTenantStats(cartzyTenants);
+  const fluxoStats = getTenantStats(fluxoTenants);
+
+  // Mantém compatibilidade com variáveis anteriores
+  const totalEmpresas = totalStats.total;
+  const empresasAtivas = totalStats.active;
+  const empresasInativas = totalStats.inactive;
+  const empresasExpiradas = totalStats.expired;
 
   if (profile?.role !== 'super_admin') {
     return (
