@@ -128,6 +128,7 @@ const Produtos = () => {
   });
   const [variations, setVariations] = useState<VariationRow[]>([]);
   const [variationCounts, setVariationCounts] = useState<Record<number, number>>({});
+  const [childrenByParent, setChildrenByParent] = useState<Record<number, Product[]>>({});
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
@@ -224,12 +225,15 @@ const Produtos = () => {
       // Separa filhos (variações) dos pais para exibir só os pais na lista
       const parents = all.filter((p) => !p.parent_product_id);
       const counts: Record<number, number> = {};
+      const childMap: Record<number, Product[]> = {};
       for (const p of all) {
         if (p.parent_product_id) {
           counts[p.parent_product_id] = (counts[p.parent_product_id] || 0) + 1;
+          (childMap[p.parent_product_id] ||= []).push(p);
         }
       }
       setVariationCounts(counts);
+      setChildrenByParent(childMap);
       setProducts(parents);
     } catch (error: any) {
       console.error('Error loading products:', error);
@@ -709,8 +713,16 @@ const Produtos = () => {
   };
 
   const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-      product.code.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
+    const term = debouncedSearchTerm.toLowerCase().trim();
+    const matchesSearch =
+      !term ||
+      product.name.toLowerCase().includes(term) ||
+      product.code.toLowerCase().includes(term) ||
+      (childrenByParent[product.id] || []).some(
+        (c) =>
+          c.code.toLowerCase().includes(term) ||
+          c.name.toLowerCase().includes(term)
+      );
     const matchesType = saleTypeFilter === 'ALL' || 
       product.sale_type === saleTypeFilter || 
       (product.sale_type === 'AMBOS' && (saleTypeFilter === 'BAZAR' || saleTypeFilter === 'LIVE'));
