@@ -335,8 +335,8 @@ const Produtos = () => {
         color: formData.color || null,
         size: formData.size || null,
         image_url: imageUrl,
-        // Pai fica inativo quando tem variações, pra não aparecer duplicado na venda
-        is_active: hasVars ? false : formData.is_active,
+        // Respeita a escolha do usuário — o pai pode ficar ativo mesmo com variações
+        is_active: formData.is_active,
         sale_type: saleType
       };
 
