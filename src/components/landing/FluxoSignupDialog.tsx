@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -11,17 +11,22 @@ import { Loader2 } from 'lucide-react';
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  initialMode?: 'signup' | 'login';
 }
 
-export default function FluxoSignupDialog({ open, onOpenChange }: Props) {
+export default function FluxoSignupDialog({ open, onOpenChange, initialMode = 'signup' }: Props) {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const [mode, setMode] = useState<'signup' | 'login'>('signup');
+  const [mode, setMode] = useState<'signup' | 'login'>(initialMode);
   const [name, setName] = useState('');
   const [company, setCompany] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (open) setMode(initialMode);
+  }, [open, initialMode]);
 
   const handleSubmit = async () => {
     setLoading(true);
