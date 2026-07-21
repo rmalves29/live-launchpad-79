@@ -1082,6 +1082,27 @@ export default function EmpresasIndex() {
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-4">
+            {/* Abas Cartzy x Fluxo de Envio */}
+            <div className="inline-flex items-center rounded-lg border border-border bg-muted p-1 self-start">
+              {([
+                { key: 'cartzy', label: 'Cartzy', count: tenants.filter(t => !fluxoTenantIds.has(t.id)).length },
+                { key: 'fluxo', label: 'Fluxo de Envio', count: tenants.filter(t => fluxoTenantIds.has(t.id)).length },
+              ] as const).map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                    activeTab === tab.key
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {tab.label}
+                  <span className="ml-2 text-xs opacity-70">({tab.count})</span>
+                </button>
+              ))}
+            </div>
+
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
                 <CardTitle>Lista de Empresas</CardTitle>
