@@ -1053,6 +1053,9 @@ export default function EmpresasIndex() {
               <div>
                 <p className="text-sm text-muted-foreground">Total</p>
                 <p className="text-2xl font-bold">{totalEmpresas}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Cartzy {cartzyStats.total} · Fluxo {fluxoStats.total}
+                </p>
               </div>
               <Building2 className="h-8 w-8 text-primary/30" />
             </div>
@@ -1064,6 +1067,9 @@ export default function EmpresasIndex() {
               <div>
                 <p className="text-sm text-muted-foreground">Ativas</p>
                 <p className="text-2xl font-bold text-emerald-600">{empresasAtivas}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Cartzy {cartzyStats.active} · Fluxo {fluxoStats.active}
+                </p>
               </div>
               <CheckCircle className="h-8 w-8 text-emerald-500/30" />
             </div>
@@ -1075,6 +1081,9 @@ export default function EmpresasIndex() {
               <div>
                 <p className="text-sm text-muted-foreground">Inativas</p>
                 <p className="text-2xl font-bold text-gray-500">{empresasInativas}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Cartzy {cartzyStats.inactive} · Fluxo {fluxoStats.inactive}
+                </p>
               </div>
               <XCircle className="h-8 w-8 text-gray-400/30" />
             </div>
@@ -1086,6 +1095,9 @@ export default function EmpresasIndex() {
               <div>
                 <p className="text-sm text-muted-foreground">Expiradas</p>
                 <p className="text-2xl font-bold text-destructive">{empresasExpiradas}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Cartzy {cartzyStats.expired} · Fluxo {fluxoStats.expired}
+                </p>
               </div>
               <AlertTriangle className="h-8 w-8 text-destructive/30" />
             </div>
