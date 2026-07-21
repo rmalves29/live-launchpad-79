@@ -355,7 +355,11 @@ const Sorteio = () => {
             <div className="space-y-2 text-xs text-muted-foreground">
               <div className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 bg-primary rounded-full mt-1.5 shrink-0" />
-                <span>Apenas pedidos <strong className="text-foreground">PAGOS</strong> da data participam</span>
+                <span>
+                  {showEligibilityToggle && eligibilityMode === 'all'
+                    ? <>Todos os pedidos <strong className="text-foreground">(pagos ou não)</strong> da data participam</>
+                    : <>Apenas pedidos <strong className="text-foreground">PAGOS</strong> da data participam</>}
+                </span>
               </div>
               <div className="flex items-start gap-2">
                 <div className="w-1.5 h-1.5 bg-primary rounded-full mt-1.5 shrink-0" />
