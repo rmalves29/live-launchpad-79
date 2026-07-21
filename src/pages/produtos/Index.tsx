@@ -128,6 +128,7 @@ const Produtos = () => {
   });
   const [variations, setVariations] = useState<VariationRow[]>([]);
   const [variationCounts, setVariationCounts] = useState<Record<number, number>>({});
+  const [childrenByParent, setChildrenByParent] = useState<Record<number, Product[]>>({});
   const [uploading, setUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
