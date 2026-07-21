@@ -225,16 +225,22 @@ const Produtos = () => {
       // Separa filhos (variações) dos pais para exibir só os pais na lista
       const parents = all.filter((p) => !p.parent_product_id);
       const counts: Record<number, number> = {};
+      const stockSum: Record<number, number> = {};
       const childMap: Record<number, Product[]> = {};
       for (const p of all) {
         if (p.parent_product_id) {
           counts[p.parent_product_id] = (counts[p.parent_product_id] || 0) + 1;
+          stockSum[p.parent_product_id] = (stockSum[p.parent_product_id] || 0) + (p.stock || 0);
           (childMap[p.parent_product_id] ||= []).push(p);
         }
       }
+      // Sobrescreve o estoque do pai com a soma das variações (quando houver)
+      const parentsWithSum = parents.map((p) =>
+        counts[p.id] > 0 ? { ...p, stock: stockSum[p.id] || 0 } : p
+      );
       setVariationCounts(counts);
       setChildrenByParent(childMap);
-      setProducts(parents);
+      setProducts(parentsWithSum);
     } catch (error: any) {
       console.error('Error loading products:', error);
       toast({
