@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -24,8 +24,9 @@ export default function FluxoSignupDialog({ open, onOpenChange, initialMode = 's
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Sincronizar modo quando o dialog reabre com um initialMode diferente
-  useState(() => setMode(initialMode));
+  useEffect(() => {
+    if (open) setMode(initialMode);
+  }, [open, initialMode]);
 
   const handleSubmit = async () => {
     setLoading(true);
