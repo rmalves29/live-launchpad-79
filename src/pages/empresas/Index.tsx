@@ -644,6 +644,11 @@ export default function EmpresasIndex() {
   };
 
   const filteredTenants = tenants.filter(tenant => {
+    // Filtro por aba (Cartzy x Fluxo de Envio)
+    const isFluxo = fluxoTenantIds.has(tenant.id);
+    if (activeTab === 'fluxo' && !isFluxo) return false;
+    if (activeTab === 'cartzy' && isFluxo) return false;
+
     // Filtro de busca por texto
     if (searchTerm) {
       const search = searchTerm.toLowerCase();
