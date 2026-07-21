@@ -1690,7 +1690,17 @@ const Produtos = () => {
                             />
                           </TableCell>
                           <TableCell className="font-mono">{product.code}</TableCell>
-                          <TableCell>{product.name}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span>{product.name}</span>
+                              {variationCounts[product.id] > 0 && (
+                                <Badge variant="secondary" className="gap-1">
+                                  <Layers className="h-3 w-3" />
+                                  {variationCounts[product.id]} tam.
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell>
                             <div className="text-sm">
                               {product.color && <div>Cor: {product.color}</div>}
