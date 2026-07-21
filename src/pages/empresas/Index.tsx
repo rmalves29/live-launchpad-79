@@ -713,13 +713,28 @@ export default function EmpresasIndex() {
   });
 
   // Estatísticas
-  const totalEmpresas = tenants.length;
-  const empresasAtivas = tenants.filter(t => t.is_active && !t.is_blocked).length;
-  const empresasInativas = tenants.filter(t => !t.is_active || t.is_blocked).length;
-  const empresasExpiradas = tenants.filter(t => {
-    const days = getDaysRemaining(t.subscription_ends_at || t.trial_ends_at);
-    return days !== null && days <= 0;
-  }).length;
+  const cartzyTenants = tenants.filter(t => !fluxoTenantIds.has(t.id));
+  const fluxoTenants = tenants.filter(t => fluxoTenantIds.has(t.id));
+
+  const getTenantStats = (list: Tenant[]) => ({
+    total: list.length,
+    active: list.filter(t => t.is_active && !t.is_blocked).length,
+    inactive: list.filter(t => !t.is_active || t.is_blocked).length,
+    expired: list.filter(t => {
+      const days = getDaysRemaining(t.subscription_ends_at || t.trial_ends_at);
+      return days !== null && days <= 0;
+    }).length,
+  });
+
+  const totalStats = getTenantStats(tenants);
+  const cartzyStats = getTenantStats(cartzyTenants);
+  const fluxoStats = getTenantStats(fluxoTenants);
+
+  // Mantém compatibilidade com variáveis anteriores
+  const totalEmpresas = totalStats.total;
+  const empresasAtivas = totalStats.active;
+  const empresasInativas = totalStats.inactive;
+  const empresasExpiradas = totalStats.expired;
 
   if (profile?.role !== 'super_admin') {
     return (
@@ -1038,6 +1053,9 @@ export default function EmpresasIndex() {
               <div>
                 <p className="text-sm text-muted-foreground">Total</p>
                 <p className="text-2xl font-bold">{totalEmpresas}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Cartzy {cartzyStats.total} · Fluxo {fluxoStats.total}
+                </p>
               </div>
               <Building2 className="h-8 w-8 text-primary/30" />
             </div>
@@ -1049,6 +1067,9 @@ export default function EmpresasIndex() {
               <div>
                 <p className="text-sm text-muted-foreground">Ativas</p>
                 <p className="text-2xl font-bold text-emerald-600">{empresasAtivas}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Cartzy {cartzyStats.active} · Fluxo {fluxoStats.active}
+                </p>
               </div>
               <CheckCircle className="h-8 w-8 text-emerald-500/30" />
             </div>
@@ -1060,6 +1081,9 @@ export default function EmpresasIndex() {
               <div>
                 <p className="text-sm text-muted-foreground">Inativas</p>
                 <p className="text-2xl font-bold text-gray-500">{empresasInativas}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Cartzy {cartzyStats.inactive} · Fluxo {fluxoStats.inactive}
+                </p>
               </div>
               <XCircle className="h-8 w-8 text-gray-400/30" />
             </div>
@@ -1071,6 +1095,9 @@ export default function EmpresasIndex() {
               <div>
                 <p className="text-sm text-muted-foreground">Expiradas</p>
                 <p className="text-2xl font-bold text-destructive">{empresasExpiradas}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Cartzy {cartzyStats.expired} · Fluxo {fluxoStats.expired}
+                </p>
               </div>
               <AlertTriangle className="h-8 w-8 text-destructive/30" />
             </div>
