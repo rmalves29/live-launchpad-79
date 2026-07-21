@@ -125,6 +125,8 @@ export default function LandingFluxoEnvio() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [signupOpen, setSignupOpen] = useState(false);
+  const [signupMode, setSignupMode] = useState<'signup' | 'login'>('signup');
+  const openSignup = (mode: 'signup' | 'login' = 'signup') => { setSignupMode(mode); setSignupOpen(true); };
 
   useEffect(() => {
     document.title = "Fluxo de Envio — Escale seus grupos de WhatsApp sem tomar bloqueio";
@@ -224,9 +226,9 @@ export default function LandingFluxoEnvio() {
           </div>
 
           <div className="flex items-center gap-3">
-            <Link to="/auth" className="hidden md:block">
+            <button onClick={() => openSignup('login')} className="hidden md:block">
               <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white hover:bg-white/10">Entrar</Button>
-            </Link>
+            </button>
             <Button onClick={() => setSignupOpen(true)} size="sm" className="bg-sky-500 hover:bg-sky-400 text-white font-medium shadow-lg shadow-sky-500/30">
               Quero testar
             </Button>
@@ -240,7 +242,7 @@ export default function LandingFluxoEnvio() {
             {[["#dores", "Isso é você?"], ["#features", "Funcionalidades"], ["#how-it-works", "Como funciona"], ["#faq", "FAQ"]].map(([href, label]) => (
               <a key={href} href={href} onClick={() => setMobileMenuOpen(false)} className="text-sm text-slate-300 hover:text-sky-300">{label}</a>
             ))}
-            <Link to="/auth" className="text-sm text-slate-300 hover:text-sky-300">Entrar</Link>
+            <button onClick={() => { setMobileMenuOpen(false); openSignup('login'); }} className="text-sm text-slate-300 hover:text-sky-300 text-left">Entrar</button>
           </div>
         )}
       </nav>
@@ -574,7 +576,7 @@ export default function LandingFluxoEnvio() {
         </div>
       </footer>
 
-      <FluxoSignupDialog open={signupOpen} onOpenChange={setSignupOpen} />
+      <FluxoSignupDialog open={signupOpen} onOpenChange={setSignupOpen} initialMode={signupMode} />
     </div>
   );
 }
