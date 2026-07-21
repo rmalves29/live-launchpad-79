@@ -27,6 +27,8 @@ import {
   Activity,
   Bell,
   PlayCircle,
+  Link as LinkIcon,
+
 
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -245,6 +247,8 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                 {renderItem({ path: '/debug', label: 'Debug', icon: Settings }, true)}
                 {renderItem({ path: '/admin/monitoramento-mensagens', label: 'Monitoramento WhatsApp', icon: Activity }, true)}
                 {renderItem({ path: '/admin/comunicados', label: 'Comunicados', icon: Bell }, true)}
+                {renderItem({ path: '/admin/links', label: 'Links do Sistema', icon: LinkIcon }, true)}
+                
                 
                 {isRafael && renderItem({ path: '/admin/erros', label: 'Monitor de Erros', icon: Bug }, true)}
               </>,
