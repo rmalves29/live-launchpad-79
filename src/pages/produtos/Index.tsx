@@ -490,7 +490,7 @@ const Produtos = () => {
     }
   };
 
-  const handleEdit = (product: Product) => {
+  const handleEdit = async (product: Product) => {
     setEditingProduct(product);
     const saleType = product.sale_type || 'BAZAR';
     setFormData({
@@ -508,8 +508,73 @@ const Produtos = () => {
         sale_type_live: saleType === 'LIVE' || saleType === 'AMBOS'
     });
     setSelectedFile(null);
+    setVariations([]);
+
+    // Carrega variações do produto (se houver)
+    try {
+      const { data: children, error } = await supabaseTenant
+        .from('products')
+        .select('id, code, size, price, promotional_price, stock')
+        .eq('parent_product_id', product.id)
+        .order('id', { ascending: true });
+      if (error) throw error;
+      if (children && children.length > 0) {
+        setVariations(
+          (children as any[]).map((c) => ({
+            id: c.id,
+            size: c.size || '',
+            code: c.code,
+            price: c.price?.toString() ?? '',
+            promotional_price: c.promotional_price?.toString() ?? '',
+            stock: c.stock?.toString() ?? '0',
+          }))
+        );
+      }
+    } catch (e) {
+      console.warn('[Produtos] Falha ao carregar variações:', e);
+    }
+
     setIsDialogOpen(true);
   };
+
+  // Helpers de variações
+  const addVariation = (size: string) => {
+    const trimmed = size.trim().toUpperCase();
+    if (!trimmed) return;
+    if (variations.some((v) => v.size.toUpperCase() === trimmed)) {
+      toast({ title: 'Tamanho já adicionado', description: trimmed });
+      return;
+    }
+    const newIndex = variations.length;
+    setVariations([
+      ...variations,
+      {
+        size: trimmed,
+        code: buildVariationCode(formData.code, newIndex),
+        price: formData.price,
+        promotional_price: formData.promotional_price,
+        stock: '0',
+      },
+    ]);
+  };
+
+  const updateVariation = (index: number, patch: Partial<VariationRow>) => {
+    setVariations((prev) => prev.map((v, i) => (i === index ? { ...v, ...patch } : v)));
+  };
+
+  const removeVariation = (index: number) => {
+    setVariations((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Regenera códigos automáticos quando o código do pai muda
+  useEffect(() => {
+    if (variations.length === 0) return;
+    setVariations((prev) =>
+      prev.map((v, i) => ({ ...v, code: buildVariationCode(formData.code, i) }))
+    );
+     
+  }, [formData.code]);
+
 
   const handleDelete = async (id: number) => {
     const confirmed = await confirm({
