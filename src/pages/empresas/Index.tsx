@@ -99,6 +99,8 @@ export default function EmpresasIndex() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive' | 'blocked' | 'expired'>('all');
   const [filterPrazo, setFilterPrazo] = useState<'all' | 'expired' | 'critical' | 'warning' | 'ok' | 'unlimited'>('all');
+  const [activeTab, setActiveTab] = useState<'cartzy' | 'fluxo'>('cartzy');
+  const [fluxoTenantIds, setFluxoTenantIds] = useState<Set<string>>(new Set());
 
   // Form states
   const [formName, setFormName] = useState('');
