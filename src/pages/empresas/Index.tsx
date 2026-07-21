@@ -99,6 +99,8 @@ export default function EmpresasIndex() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive' | 'blocked' | 'expired'>('all');
   const [filterPrazo, setFilterPrazo] = useState<'all' | 'expired' | 'critical' | 'warning' | 'ok' | 'unlimited'>('all');
+  const [activeTab, setActiveTab] = useState<'cartzy' | 'fluxo'>('cartzy');
+  const [fluxoTenantIds, setFluxoTenantIds] = useState<Set<string>>(new Set());
 
   // Form states
   const [formName, setFormName] = useState('');
@@ -195,6 +197,18 @@ export default function EmpresasIndex() {
 
       if (credentialsError) throw credentialsError;
       setCredentials(credentialsData || []);
+
+      // Identificar tenants "Fluxo de Envio" via profiles.access_scope
+      const { data: fluxoProfiles } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('access_scope', 'fluxo_envio');
+      const ids = new Set<string>();
+      (fluxoProfiles || []).forEach((p: any) => {
+        if (p.tenant_id) ids.add(p.tenant_id);
+      });
+      setFluxoTenantIds(ids);
+
 
     } catch (err: any) {
       console.error('Erro ao carregar empresas:', err);
@@ -630,6 +644,11 @@ export default function EmpresasIndex() {
   };
 
   const filteredTenants = tenants.filter(tenant => {
+    // Filtro por aba (Cartzy x Fluxo de Envio)
+    const isFluxo = fluxoTenantIds.has(tenant.id);
+    if (activeTab === 'fluxo' && !isFluxo) return false;
+    if (activeTab === 'cartzy' && isFluxo) return false;
+
     // Filtro de busca por texto
     if (searchTerm) {
       const search = searchTerm.toLowerCase();
@@ -1063,6 +1082,27 @@ export default function EmpresasIndex() {
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-4">
+            {/* Abas Cartzy x Fluxo de Envio */}
+            <div className="inline-flex items-center rounded-lg border border-border bg-muted p-1 self-start">
+              {([
+                { key: 'cartzy', label: 'Cartzy', count: tenants.filter(t => !fluxoTenantIds.has(t.id)).length },
+                { key: 'fluxo', label: 'Fluxo de Envio', count: tenants.filter(t => fluxoTenantIds.has(t.id)).length },
+              ] as const).map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                    activeTab === tab.key
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {tab.label}
+                  <span className="ml-2 text-xs opacity-70">({tab.count})</span>
+                </button>
+              ))}
+            </div>
+
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
                 <CardTitle>Lista de Empresas</CardTitle>
