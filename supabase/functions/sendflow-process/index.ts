@@ -156,7 +156,10 @@ function personalizeMessage(template: string, product: Product): string {
     const variationsText = activeVariations
       .map((v) => {
         const label = (v.size && v.size.trim()) ? v.size.trim() : v.code.trim();
-        return `▪️ ${label} — *${v.code.trim()}*`;
+        const priceValue = (v.promotional_price && v.promotional_price > 0)
+          ? v.promotional_price
+          : (v.price && v.price > 0 ? v.price : product.promotional_price || product.price);
+        return `(${label}) ${v.code.trim()} - ${formatPrice(priceValue as number)}`;
       })
       .join("\n");
     message = message.replace(/\{\{?\s*variacoes\s*\}?\}/gi, variationsText);
