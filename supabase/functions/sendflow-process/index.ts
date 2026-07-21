@@ -461,6 +461,25 @@ async function processTaskQueue({
     return;
   }
 
+  // Busca variações ativas (produtos filhos) para cada produto pai
+  const { data: variationsData } = await supabase
+    .from("products")
+    .select("id, code, size, stock, parent_product_id")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .in("parent_product_id", productIds);
+
+  const variationsByParent = new Map<number, ProductVariation[]>();
+  for (const v of (variationsData || []) as any[]) {
+    if (!v.parent_product_id) continue;
+    const list = variationsByParent.get(v.parent_product_id) || [];
+    list.push({ code: v.code, size: v.size, stock: v.stock });
+    variationsByParent.set(v.parent_product_id, list);
+  }
+  for (const p of products as any[]) {
+    p.variations = variationsByParent.get(p.id) || [];
+  }
+
   const productsMap = new Map(products.map((p: any) => [p.id, p]));
 
   let sentMessages = jobData.sentMessages || 0;
