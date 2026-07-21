@@ -1222,14 +1222,20 @@ const Produtos = () => {
             </Dialog>
 
             {/* New Product Dialog */}
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <Dialog open={isDialogOpen} onOpenChange={(open) => {
+              setIsDialogOpen(open);
+              if (!open) {
+                setEditingProduct(null);
+                setVariations([]);
+              }
+            }}>
               <DialogTrigger asChild>
-                <Button>
+                <Button onClick={() => { setEditingProduct(null); setVariations([]); }}>
                   <Plus className="h-4 w-4 mr-2" />
                   Novo Produto
                 </Button>
               </DialogTrigger>
-            <DialogContent className="sm:max-w-md max-h-[90vh] flex flex-col gap-0 p-0">
+            <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0">
               <DialogHeader className="p-6 pb-2 flex-shrink-0">
                 <DialogTitle>
                   {editingProduct ? 'Editar Produto' : 'Novo Produto'}
