@@ -25,6 +25,8 @@ interface ProductVariation {
   code: string;
   size?: string | null;
   stock?: number | null;
+  price?: number | null;
+  promotional_price?: number | null;
 }
 
 interface Product {
@@ -37,6 +39,7 @@ interface Product {
   promotional_price?: number | null;
   observation?: string | null;
   image_url?: string;
+  parent_product_id?: number | null;
   variations?: ProductVariation[];
 }
 
