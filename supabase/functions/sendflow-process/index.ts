@@ -21,6 +21,12 @@ const ZAPI_BASE_URL = "https://api.z-api.io";
 
 const MAX_EXECUTION_MS = 120_000;
 
+interface ProductVariation {
+  code: string;
+  size?: string | null;
+  stock?: number | null;
+}
+
 interface Product {
   id: number;
   code: string;
@@ -31,6 +37,7 @@ interface Product {
   promotional_price?: number | null;
   observation?: string | null;
   image_url?: string;
+  variations?: ProductVariation[];
 }
 
 interface SendFlowTask {
