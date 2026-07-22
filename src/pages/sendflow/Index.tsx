@@ -454,6 +454,25 @@ export default function SendFlow() {
 
       setGroups(groupsList);
 
+      // Load last-sent timestamp per group from sendflow_tasks
+      try {
+        const { data: sentTasks } = await supabaseTenant.raw
+          .from('sendflow_tasks')
+          .select('group_id, sent_at')
+          .eq('tenant_id', tenant.id)
+          .eq('status', 'sent')
+          .not('sent_at', 'is', null)
+          .order('sent_at', { ascending: false })
+          .limit(2000);
+        const map: Record<string, string> = {};
+        for (const t of (sentTasks || []) as any[]) {
+          if (t.group_id && !map[t.group_id]) map[t.group_id] = t.sent_at;
+        }
+        setLastSentByGroup(map);
+      } catch (e) {
+        console.warn('[sendflow] load last-sent failed', e);
+      }
+
       if (groupsList.length === 0) {
         toast({
           title: 'Nenhum grupo de admin encontrado',
