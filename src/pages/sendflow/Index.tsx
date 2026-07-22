@@ -809,15 +809,26 @@ export default function SendFlow() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Campo de busca de grupos */}
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar grupos..."
-              value={groupSearch}
-              onChange={(e) => setGroupSearch(e.target.value)}
-              className="pl-10"
-            />
+          {/* Campo de busca de grupos + ordenação */}
+          <div className="flex flex-col sm:flex-row gap-2 mb-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar grupos..."
+                value={groupSearch}
+                onChange={(e) => setGroupSearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <Select value={groupSortMode} onValueChange={(v: 'name' | 'recent') => setGroupSortMode(v)}>
+              <SelectTrigger className="w-full sm:w-56">
+                <SelectValue placeholder="Ordenar por" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="name">Ordenar: Nome (A-Z)</SelectItem>
+                <SelectItem value="recent">Ordenar: Últimos enviados</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           
           {loadingGroups ? (
