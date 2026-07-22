@@ -201,6 +201,8 @@ export default function SendFlow() {
   const [groupSearch, setGroupSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | 'BAZAR' | 'LIVE'>('ALL');
+  const [groupSortMode, setGroupSortMode] = useState<'name' | 'recent'>('name');
+  const [lastSentByGroup, setLastSentByGroup] = useState<Record<string, string>>({});
   
   // Debounce para buscas
   const debouncedGroupSearch = useDebounce(groupSearch, 300);
