@@ -119,7 +119,7 @@ export default function FilaEsperaPage() {
     } finally { setLoading(false); }
   }
 
-  useEffect(() => { load(); }, [tenant?.id]);
+  useEffect(() => { load(); loadEnabled(); }, [tenant?.id]);
 
   // Realtime
   useEffect(() => {
