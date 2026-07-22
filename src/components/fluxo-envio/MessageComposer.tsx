@@ -19,6 +19,7 @@ interface FeGroup {
   id: string;
   group_name: string;
   group_jid: string;
+  last_sent_at?: string | null;
 }
 
 interface FeCampaign {
@@ -47,6 +48,8 @@ export default function MessageComposer() {
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [sending, setSending] = useState(false);
   const [mentionAll, setMentionAll] = useState(false);
+  const [groupSort, setGroupSort] = useState<'name' | 'last_sent'>('name');
+
   
   const [messages, setMessages] = useState<any[]>([]);
   const [viewMessage, setViewMessage] = useState<any>(null);
@@ -54,12 +57,17 @@ export default function MessageComposer() {
   const fetchData = useCallback(async () => {
     if (!tenant) return;
     setLoading(true);
-    const [grp, cmp, msgs] = await Promise.all([
+    const [grp, cmp, msgs, sentAgg] = await Promise.all([
       supabase.from('fe_groups' as any).select('id, group_name, group_jid, is_admin').eq('tenant_id', tenant.id).eq('is_admin', true).order('group_name'),
       supabase.from('fe_campaigns' as any).select('id, name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
       supabase.from('fe_messages' as any).select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(20),
+      supabase.from('fe_messages' as any).select('group_id, sent_at').eq('tenant_id', tenant.id).not('sent_at', 'is', null).order('sent_at', { ascending: false }).limit(2000),
     ]);
-    if (grp.data) setGroups(grp.data as any);
+    const lastByGroup: Record<string, string> = {};
+    ((sentAgg as any).data || []).forEach((r: any) => {
+      if (r.group_id && !lastByGroup[r.group_id]) lastByGroup[r.group_id] = r.sent_at;
+    });
+    if (grp.data) setGroups((grp.data as any[]).map(g => ({ ...g, last_sent_at: lastByGroup[g.id] || null })));
     if (cmp.data) setCampaigns(cmp.data as any);
     if (msgs.data) setMessages(msgs.data as any);
     setLoading(false);
@@ -385,14 +393,34 @@ export default function MessageComposer() {
             </div>
 
             {targetType === 'groups' ? (
-              <div className="max-h-[200px] overflow-y-auto space-y-1">
-                {groups.map(g => (
-                  <div key={g.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-muted/50">
-                    <Checkbox checked={selectedGroupIds.includes(g.id)} onCheckedChange={() => toggleGroup(g.id)} />
-                    <span className="text-sm">{g.group_name}</span>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">Ordenar por</Label>
+                  <div className="flex gap-1">
+                    <Button type="button" size="sm" variant={groupSort === 'name' ? 'default' : 'outline'} className="h-7 text-xs" onClick={() => setGroupSort('name')}>Nome</Button>
+                    <Button type="button" size="sm" variant={groupSort === 'last_sent' ? 'default' : 'outline'} className="h-7 text-xs" onClick={() => setGroupSort('last_sent')}>Últimos enviados</Button>
                   </div>
-                ))}
+                </div>
+                <div className="max-h-[200px] overflow-y-auto space-y-1">
+                  {[...groups].sort((a, b) => {
+                    if (groupSort === 'name') return a.group_name.localeCompare(b.group_name);
+                    const ta = a.last_sent_at ? new Date(a.last_sent_at).getTime() : 0;
+                    const tb = b.last_sent_at ? new Date(b.last_sent_at).getTime() : 0;
+                    return tb - ta;
+                  }).map(g => (
+                    <div key={g.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-muted/50">
+                      <Checkbox checked={selectedGroupIds.includes(g.id)} onCheckedChange={() => toggleGroup(g.id)} />
+                      <span className="text-sm flex-1">{g.group_name}</span>
+                      {g.last_sent_at && (
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                          {new Date(g.last_sent_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
+
             ) : (
               <Select value={selectedCampaignId} onValueChange={setSelectedCampaignId}>
                 <SelectTrigger><SelectValue placeholder="Selecione campanha" /></SelectTrigger>
