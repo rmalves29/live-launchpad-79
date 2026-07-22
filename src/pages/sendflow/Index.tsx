@@ -458,15 +458,15 @@ export default function SendFlow() {
       try {
         const { data: sentTasks } = await supabaseTenant.raw
           .from('sendflow_tasks')
-          .select('group_id, sent_at')
+          .select('group_id, completed_at')
           .eq('tenant_id', tenant.id)
-          .eq('status', 'sent')
-          .not('sent_at', 'is', null)
-          .order('sent_at', { ascending: false })
+          .eq('status', 'completed')
+          .not('completed_at', 'is', null)
+          .order('completed_at', { ascending: false })
           .limit(2000);
         const map: Record<string, string> = {};
         for (const t of (sentTasks || []) as any[]) {
-          if (t.group_id && !map[t.group_id]) map[t.group_id] = t.sent_at;
+          if (t.group_id && !map[t.group_id]) map[t.group_id] = t.completed_at;
         }
         setLastSentByGroup(map);
       } catch (e) {
