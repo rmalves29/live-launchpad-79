@@ -859,6 +859,11 @@ export default function SendFlow() {
                       {group.participantCount !== undefined && group.participantCount > 0 
                         ? `${group.participantCount} participantes` 
                         : 'Grupo do WhatsApp'}
+                      {lastSentByGroup[group.id] && (
+                        <span className="ml-2 text-xs">
+                          · Último envio: {new Date(lastSentByGroup[group.id]).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
                     </p>
                   </div>
                 </div>
