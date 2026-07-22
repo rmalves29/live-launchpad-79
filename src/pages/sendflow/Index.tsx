@@ -215,9 +215,16 @@ export default function SendFlow() {
   };
   
   // Filtros
-  const filteredGroups = groups.filter(group => 
-    group.name.toLowerCase().includes(debouncedGroupSearch.toLowerCase())
-  );
+  const filteredGroups = groups
+    .filter(group => group.name.toLowerCase().includes(debouncedGroupSearch.toLowerCase()))
+    .sort((a, b) => {
+      if (groupSortMode === 'recent') {
+        const ta = lastSentByGroup[a.id] ? new Date(lastSentByGroup[a.id]).getTime() : 0;
+        const tb = lastSentByGroup[b.id] ? new Date(lastSentByGroup[b.id]).getTime() : 0;
+        if (tb !== ta) return tb - ta;
+      }
+      return a.name.localeCompare(b.name);
+    });
   
   const filteredProducts = (() => {
     const term = debouncedProductSearch.toLowerCase().trim();
