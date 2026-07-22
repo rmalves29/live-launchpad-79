@@ -57,12 +57,17 @@ export default function MessageComposer() {
   const fetchData = useCallback(async () => {
     if (!tenant) return;
     setLoading(true);
-    const [grp, cmp, msgs] = await Promise.all([
+    const [grp, cmp, msgs, sentAgg] = await Promise.all([
       supabase.from('fe_groups' as any).select('id, group_name, group_jid, is_admin').eq('tenant_id', tenant.id).eq('is_admin', true).order('group_name'),
       supabase.from('fe_campaigns' as any).select('id, name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
       supabase.from('fe_messages' as any).select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(20),
+      supabase.from('fe_messages' as any).select('group_id, sent_at').eq('tenant_id', tenant.id).not('sent_at', 'is', null).order('sent_at', { ascending: false }).limit(2000),
     ]);
-    if (grp.data) setGroups(grp.data as any);
+    const lastByGroup: Record<string, string> = {};
+    ((sentAgg as any).data || []).forEach((r: any) => {
+      if (r.group_id && !lastByGroup[r.group_id]) lastByGroup[r.group_id] = r.sent_at;
+    });
+    if (grp.data) setGroups((grp.data as any[]).map(g => ({ ...g, last_sent_at: lastByGroup[g.id] || null })));
     if (cmp.data) setCampaigns(cmp.data as any);
     if (msgs.data) setMessages(msgs.data as any);
     setLoading(false);
