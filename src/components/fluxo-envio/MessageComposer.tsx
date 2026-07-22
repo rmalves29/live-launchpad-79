@@ -19,6 +19,7 @@ interface FeGroup {
   id: string;
   group_name: string;
   group_jid: string;
+  last_sent_at?: string | null;
 }
 
 interface FeCampaign {
