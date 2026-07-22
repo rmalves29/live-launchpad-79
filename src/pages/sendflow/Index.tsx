@@ -201,6 +201,8 @@ export default function SendFlow() {
   const [groupSearch, setGroupSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | 'BAZAR' | 'LIVE'>('ALL');
+  const [groupSortMode, setGroupSortMode] = useState<'name' | 'recent'>('name');
+  const [lastSentByGroup, setLastSentByGroup] = useState<Record<string, string>>({});
   
   // Debounce para buscas
   const debouncedGroupSearch = useDebounce(groupSearch, 300);
@@ -213,9 +215,16 @@ export default function SendFlow() {
   };
   
   // Filtros
-  const filteredGroups = groups.filter(group => 
-    group.name.toLowerCase().includes(debouncedGroupSearch.toLowerCase())
-  );
+  const filteredGroups = groups
+    .filter(group => group.name.toLowerCase().includes(debouncedGroupSearch.toLowerCase()))
+    .sort((a, b) => {
+      if (groupSortMode === 'recent') {
+        const ta = lastSentByGroup[a.id] ? new Date(lastSentByGroup[a.id]).getTime() : 0;
+        const tb = lastSentByGroup[b.id] ? new Date(lastSentByGroup[b.id]).getTime() : 0;
+        if (tb !== ta) return tb - ta;
+      }
+      return a.name.localeCompare(b.name);
+    });
   
   const filteredProducts = (() => {
     const term = debouncedProductSearch.toLowerCase().trim();
@@ -444,6 +453,25 @@ export default function SendFlow() {
       }));
 
       setGroups(groupsList);
+
+      // Load last-sent timestamp per group from sendflow_tasks
+      try {
+        const { data: sentTasks } = await supabaseTenant.raw
+          .from('sendflow_tasks')
+          .select('group_id, sent_at')
+          .eq('tenant_id', tenant.id)
+          .eq('status', 'sent')
+          .not('sent_at', 'is', null)
+          .order('sent_at', { ascending: false })
+          .limit(2000);
+        const map: Record<string, string> = {};
+        for (const t of (sentTasks || []) as any[]) {
+          if (t.group_id && !map[t.group_id]) map[t.group_id] = t.sent_at;
+        }
+        setLastSentByGroup(map);
+      } catch (e) {
+        console.warn('[sendflow] load last-sent failed', e);
+      }
 
       if (groupsList.length === 0) {
         toast({
@@ -781,15 +809,26 @@ export default function SendFlow() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Campo de busca de grupos */}
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar grupos..."
-              value={groupSearch}
-              onChange={(e) => setGroupSearch(e.target.value)}
-              className="pl-10"
-            />
+          {/* Campo de busca de grupos + ordenação */}
+          <div className="flex flex-col sm:flex-row gap-2 mb-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar grupos..."
+                value={groupSearch}
+                onChange={(e) => setGroupSearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <Select value={groupSortMode} onValueChange={(v: 'name' | 'recent') => setGroupSortMode(v)}>
+              <SelectTrigger className="w-full sm:w-56">
+                <SelectValue placeholder="Ordenar por" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="name">Ordenar: Nome (A-Z)</SelectItem>
+                <SelectItem value="recent">Ordenar: Últimos enviados</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           
           {loadingGroups ? (
@@ -820,6 +859,11 @@ export default function SendFlow() {
                       {group.participantCount !== undefined && group.participantCount > 0 
                         ? `${group.participantCount} participantes` 
                         : 'Grupo do WhatsApp'}
+                      {lastSentByGroup[group.id] && (
+                        <span className="ml-2 text-xs">
+                          · Último envio: {new Date(lastSentByGroup[group.id]).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
                     </p>
                   </div>
                 </div>
