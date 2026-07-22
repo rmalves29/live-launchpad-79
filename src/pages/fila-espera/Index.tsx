@@ -51,6 +51,27 @@ export default function FilaEsperaPage() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterSource, setFilterSource] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [enabled, setEnabled] = useState<boolean>(true);
+  const [savingEnabled, setSavingEnabled] = useState(false);
+
+  async function loadEnabled() {
+    if (!tenant?.id) return;
+    const { data } = await supabase.from('tenants').select('waitlist_enabled').eq('id', tenant.id).maybeSingle();
+    setEnabled((data as any)?.waitlist_enabled !== false);
+  }
+
+  async function toggleEnabled(next: boolean) {
+    if (!tenant?.id) return;
+    setSavingEnabled(true);
+    const { error } = await supabase.from('tenants').update({ waitlist_enabled: next } as any).eq('id', tenant.id);
+    setSavingEnabled(false);
+    if (error) {
+      toast({ title: 'Erro ao salvar', description: error.message, variant: 'destructive' });
+      return;
+    }
+    setEnabled(next);
+    toast({ title: next ? 'Fila de espera habilitada' : 'Fila de espera desabilitada' });
+  }
 
   async function load() {
     if (!tenant?.id) {
