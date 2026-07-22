@@ -393,14 +393,34 @@ export default function MessageComposer() {
             </div>
 
             {targetType === 'groups' ? (
-              <div className="max-h-[200px] overflow-y-auto space-y-1">
-                {groups.map(g => (
-                  <div key={g.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-muted/50">
-                    <Checkbox checked={selectedGroupIds.includes(g.id)} onCheckedChange={() => toggleGroup(g.id)} />
-                    <span className="text-sm">{g.group_name}</span>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">Ordenar por</Label>
+                  <div className="flex gap-1">
+                    <Button type="button" size="sm" variant={groupSort === 'name' ? 'default' : 'outline'} className="h-7 text-xs" onClick={() => setGroupSort('name')}>Nome</Button>
+                    <Button type="button" size="sm" variant={groupSort === 'last_sent' ? 'default' : 'outline'} className="h-7 text-xs" onClick={() => setGroupSort('last_sent')}>Últimos enviados</Button>
                   </div>
-                ))}
+                </div>
+                <div className="max-h-[200px] overflow-y-auto space-y-1">
+                  {[...groups].sort((a, b) => {
+                    if (groupSort === 'name') return a.group_name.localeCompare(b.group_name);
+                    const ta = a.last_sent_at ? new Date(a.last_sent_at).getTime() : 0;
+                    const tb = b.last_sent_at ? new Date(b.last_sent_at).getTime() : 0;
+                    return tb - ta;
+                  }).map(g => (
+                    <div key={g.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-muted/50">
+                      <Checkbox checked={selectedGroupIds.includes(g.id)} onCheckedChange={() => toggleGroup(g.id)} />
+                      <span className="text-sm flex-1">{g.group_name}</span>
+                      {g.last_sent_at && (
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                          {new Date(g.last_sent_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
+
             ) : (
               <Select value={selectedCampaignId} onValueChange={setSelectedCampaignId}>
                 <SelectTrigger><SelectValue placeholder="Selecione campanha" /></SelectTrigger>
