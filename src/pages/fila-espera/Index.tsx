@@ -187,13 +187,27 @@ export default function FilaEsperaPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-[1600px] mx-auto">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><ListOrdered className="h-6 w-6"/> Fila de Espera</h1>
           <p className="text-sm text-muted-foreground">Clientes aguardando produtos esgotados. Quando o estoque volta, o sistema cria pedido automaticamente para a próxima e envia WhatsApp.</p>
         </div>
-        <Button variant="outline" size="sm" onClick={load}><RefreshCw className="h-4 w-4 mr-2"/>Atualizar</Button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 rounded-md border px-3 py-2 bg-card">
+            <Switch id="waitlist-enabled" checked={enabled} disabled={savingEnabled} onCheckedChange={toggleEnabled} />
+            <Label htmlFor="waitlist-enabled" className="cursor-pointer text-sm">
+              {enabled ? 'Fila habilitada' : 'Fila desabilitada'}
+            </Label>
+          </div>
+          <Button variant="outline" size="sm" onClick={load}><RefreshCw className="h-4 w-4 mr-2"/>Atualizar</Button>
+        </div>
       </div>
+
+      {!enabled && (
+        <Card className="p-3 border-amber-300 bg-amber-50 text-amber-900 text-sm">
+          A fila de espera está <strong>desabilitada</strong>. Clientes que tentarem comprar produtos esgotados receberão apenas a mensagem de "produto indisponível", sem entrar na fila.
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Card className="p-4 flex items-center gap-3"><Users className="h-8 w-8 text-blue-500"/><div><div className="text-2xl font-bold">{stats.waiting}</div><div className="text-xs text-muted-foreground">Aguardando</div></div></Card>
