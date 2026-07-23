@@ -620,6 +620,40 @@
    Tema exclusivo Amar Biquini — rosa aplicado ao checkout público
    Escopado por .theme-amar (definido apenas para o tenant amarbiquini)
    ============================================================ */
+
+/* Redefine o foreground para rosa dentro do tema Amar, fazendo
+   com que qualquer texto padrão (CardTitle, labels, spans, p) fique rosa */
+.theme-amar {
+  --foreground: 330 81% 60%;         /* pink-500 */
+  --card-foreground: 330 81% 60%;
+  --popover-foreground: 330 81% 60%;
+  --secondary-foreground: 336 74% 35%;  /* pink-800 (mais escuro p/ contraste) */
+  color: #ec4899;
+}
+
+.theme-amar h1,
+.theme-amar h2,
+.theme-amar h3,
+.theme-amar h4,
+.theme-amar h5,
+.theme-amar h6,
+.theme-amar label,
+.theme-amar p,
+.theme-amar span,
+.theme-amar div {
+  color: inherit;
+}
+
+/* Preserva texto branco em botões/badges coloridos e inputs */
+.theme-amar input,
+.theme-amar textarea,
+.theme-amar select {
+  color: #1f2937 !important; /* slate-800 para legibilidade dos campos */
+}
+.theme-amar .text-white,
+.theme-amar .text-white * { color: #ffffff !important; }
+.theme-amar .text-muted-foreground { color: #db2777 !important; opacity: 0.75; }
+
 .theme-amar h1 { color: #ec4899; }
 
 /* Indigo → Pink */
