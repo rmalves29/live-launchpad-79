@@ -619,6 +619,7 @@ const Produtos = () => {
   };
 
   const handleDuplicate = async (product: Product) => {
+    const currentTenantId = (supabaseTenant as any).getTenantId?.();
     if (!currentTenantId) {
       toast({
         title: 'Selecione uma empresa',
