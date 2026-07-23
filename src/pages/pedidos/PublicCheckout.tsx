@@ -1489,7 +1489,7 @@ const PublicCheckout = () => {
         {/* Card de busca pedidos em aberto */}
         <Card className="overflow-hidden border-0 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50 bg-white dark:bg-slate-800/50 backdrop-blur-sm">
           <CardHeader className="border-b border-slate-100 dark:border-slate-700/50 pb-5">
-            <CardTitle className="flex items-center gap-3 text-lg">
+            <CardTitle className={`flex items-center gap-3 text-lg ${isAmarTheme ? 'text-pink-500' : ''}`}>
               <Search className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
               Buscar Pedidos em Aberto
             </CardTitle>
@@ -2166,8 +2166,8 @@ const PublicCheckout = () => {
                 <History className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               </div>
               <div>
-                <CardTitle className="text-lg">Histórico de Pedidos</CardTitle>
-                <CardDescription className="mt-1">Visualize pedidos já finalizados</CardDescription>
+                <CardTitle className={`text-lg ${isAmarTheme ? 'text-pink-500' : ''}`}>Histórico de Pedidos</CardTitle>
+                <CardDescription className={`mt-1 ${isAmarTheme ? 'text-pink-500' : ''}`}>Visualize pedidos já finalizados</CardDescription>
               </div>
             </div>
           </CardHeader>
