@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags, FolderTree, Layers } from 'lucide-react';
+import { Loader2, Plus, Edit, Trash2, Upload, X, Search, Package, Download, FileSpreadsheet, Tags, FolderTree, Layers, Copy } from 'lucide-react';
 import PrintLabelsDialog from '@/components/tenant/PrintLabelsDialog';
 import CategoriasManagerDialog from '@/components/produtos/CategoriasManagerDialog';
 import { supabaseTenant } from '@/lib/supabase-tenant';
@@ -614,6 +614,68 @@ const Produtos = () => {
         title: 'Erro',
         description: error?.message || 'Erro ao excluir produto',
         variant: 'destructive'
+      });
+    }
+  };
+
+  const handleDuplicate = async (product: Product) => {
+    if (!currentTenantId) {
+      toast({
+        title: 'Selecione uma empresa',
+        description: 'Acesse pelo subdomínio ou selecione um tenant no simulador.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const match = (product.code || '').match(/^(.*?)(\d+)$/);
+      const prefix = match ? match[1] : (product.code || '');
+      const padLen = match ? match[2].length : 0;
+
+      let maxNum = 0;
+      for (const p of products) {
+        const m = (p.code || '').match(/^(.*?)(\d+)$/);
+        if (!m) continue;
+        if (m[1].toLowerCase() !== prefix.toLowerCase()) continue;
+        const n = parseInt(m[2], 10);
+        if (!isNaN(n) && n > maxNum) maxNum = n;
+      }
+      const originalNum = match ? parseInt(match[2], 10) : 0;
+      const nextNum = Math.max(maxNum, originalNum) + 1;
+      const newCode = `${prefix}${String(nextNum).padStart(padLen, '0')}`;
+
+      const newProduct: any = {
+        tenant_id: currentTenantId,
+        code: newCode,
+        name: `${product.name} (Cópia)`,
+        price: product.price,
+        promotional_price: product.promotional_price ?? null,
+        observation: product.observation ?? null,
+        sku_erp: (product as any).sku_erp ?? null,
+        stock: product.stock ?? 0,
+        color: product.color ?? null,
+        size: product.size ?? null,
+        image_url: product.image_url ?? null,
+        is_active: product.is_active,
+        sale_type: product.sale_type || 'BAZAR',
+        category_id: product.category_id ?? null,
+      };
+
+      const { error } = await supabaseTenant.from('products').insert([newProduct]);
+      if (error) throw error;
+
+      toast({
+        title: 'Produto duplicado',
+        description: `Novo código: ${newCode}`,
+      });
+      loadProducts();
+    } catch (error: any) {
+      console.error('Error duplicating product:', error);
+      toast({
+        title: 'Erro ao duplicar',
+        description: error?.message || 'Não foi possível duplicar o produto',
+        variant: 'destructive',
       });
     }
   };
@@ -1763,6 +1825,14 @@ const Produtos = () => {
                                 onClick={() => handleEdit(product)}
                               >
                                 <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDuplicate(product)}
+                                title="Duplicar produto"
+                              >
+                                <Copy className="h-4 w-4" />
                               </Button>
                               <Button
                                 variant="outline"
