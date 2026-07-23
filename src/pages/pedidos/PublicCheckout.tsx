@@ -1409,11 +1409,12 @@ const PublicCheckout = () => {
     setter(formatPhoneMask(value));
   };
 
+  const isAmarTheme = tenant.slug === 'amarbiquini';
   return (
     <div
       className={
-        tenant.slug === 'amarbiquini'
-          ? 'min-h-screen bg-gradient-to-b from-pink-100 via-pink-50 to-white'
+        isAmarTheme
+          ? 'theme-amar min-h-screen bg-gradient-to-b from-pink-100 via-pink-50 to-white'
           : 'min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950'
       }
     >
