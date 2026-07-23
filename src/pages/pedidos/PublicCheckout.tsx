@@ -1410,7 +1410,14 @@ const PublicCheckout = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+    <div
+      className={
+        tenant.slug === 'amarbiquini'
+          ? 'min-h-screen bg-gradient-to-b from-pink-100 via-pink-50 to-white'
+          : 'min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950'
+      }
+    >
+
       {/* Header compacto com logo */}
       <div className="w-full py-8 md:py-10 flex justify-center">
         {tenant.logo_url ? (
