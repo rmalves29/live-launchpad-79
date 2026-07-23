@@ -306,6 +306,28 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Se a mensagem de grupo veio SEM telefone real do remetente (só LID),
+      // persistimos o payload cru como órfão para diagnóstico e NÃO encaminhamos
+      // ao zapi-webhook (evita processar como pedido de telefone vazio).
+      if (isGroup && !participantPhone) {
+        try {
+          await supabase.from("whatsapp_webhook_orphans").insert({
+            phone: remoteJid,
+            message_id: messageId,
+            status: "uazapi_message_lid_only",
+            raw_payload: payload,
+            received_at: new Date().toISOString(),
+          });
+        } catch (e: any) {
+          console.warn("[uazapi-webhook] falha ao salvar órfão LID:", e?.message);
+        }
+        console.warn(
+          `[uazapi-webhook] ⏭️ Ignorando msg de grupo sem telefone real do remetente. ` +
+          `text="${String(text).slice(0, 80)}" tenant=${tenantId} group=${remoteJid}`
+        );
+        return json({ ok: true, skipped: "group_message_lid_only", tenantId, groupJid: remoteJid });
+      }
+
       // NÃO inserir em whatsapp_messages aqui — o zapi-webhook faz o próprio
       // controle de deduplicação/inserção. Se inserirmos antes, ele pula o
       // processamento com skipped=duplicate_message_db e nenhum item-added é
