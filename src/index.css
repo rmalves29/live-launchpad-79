@@ -615,3 +615,48 @@
   pointer-events: none;
 }
 @keyframes fxSpin { to { transform: rotate(360deg); } }
+
+/* ============================================================
+   Tema exclusivo Amar Biquini — rosa aplicado ao checkout público
+   Escopado por .theme-amar (definido apenas para o tenant amarbiquini)
+   ============================================================ */
+.theme-amar h1 { color: #ec4899; }
+
+/* Indigo → Pink */
+.theme-amar .text-indigo-600,
+.theme-amar .text-indigo-700,
+.theme-amar .dark\:text-indigo-400,
+.theme-amar .text-indigo-400 { color: #ec4899 !important; }
+.theme-amar .bg-indigo-600 { background-color: #ec4899 !important; }
+.theme-amar .hover\:bg-indigo-700:hover { background-color: #db2777 !important; }
+.theme-amar .border-indigo-200 { border-color: #fbcfe8 !important; }
+.theme-amar .hover\:bg-indigo-50:hover { background-color: #fdf2f8 !important; }
+.theme-amar .focus\:ring-indigo-500\/20:focus { --tw-ring-color: rgb(236 72 153 / 0.2) !important; }
+.theme-amar .accent-indigo-600 { accent-color: #ec4899 !important; }
+.theme-amar .border-indigo-500 { border-color: #ec4899 !important; }
+.theme-amar .bg-indigo-50\/60 { background-color: rgb(253 242 248 / 0.6) !important; }
+
+/* Violet/Purple → Pink */
+.theme-amar .text-violet-600 { color: #ec4899 !important; }
+.theme-amar .from-violet-500\/10 { --tw-gradient-from: rgb(236 72 153 / 0.12) var(--tw-gradient-from-position) !important; --tw-gradient-to: rgb(236 72 153 / 0) var(--tw-gradient-to-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+.theme-amar .to-purple-500\/10 { --tw-gradient-to: rgb(219 39 119 / 0.12) var(--tw-gradient-to-position) !important; }
+
+/* Emerald/Teal → Pink (botão principal e totais) */
+.theme-amar .text-emerald-600,
+.theme-amar .dark\:text-emerald-400,
+.theme-amar .text-emerald-400 { color: #ec4899 !important; }
+.theme-amar .text-emerald-800,
+.theme-amar .dark\:text-emerald-300 { color: #9d174d !important; }
+.theme-amar .bg-emerald-500 { background-color: #ec4899 !important; }
+.theme-amar .border-emerald-500 { border-color: #ec4899 !important; }
+.theme-amar .bg-emerald-50\/50 { background-color: rgb(253 242 248 / 0.5) !important; }
+.theme-amar .border-emerald-200 { border-color: #fbcfe8 !important; }
+.theme-amar .from-emerald-500 { --tw-gradient-from: #ec4899 var(--tw-gradient-from-position) !important; --tw-gradient-to: rgb(236 72 153 / 0) var(--tw-gradient-to-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+.theme-amar .to-teal-500 { --tw-gradient-to: #db2777 var(--tw-gradient-to-position) !important; }
+.theme-amar .hover\:from-emerald-600:hover { --tw-gradient-from: #db2777 var(--tw-gradient-from-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+.theme-amar .hover\:to-teal-600:hover { --tw-gradient-to: #be185d var(--tw-gradient-to-position) !important; }
+.theme-amar .shadow-emerald-500\/25 { --tw-shadow-color: rgb(236 72 153 / 0.35) !important; --tw-shadow: var(--tw-shadow-colored) !important; }
+.theme-amar .from-emerald-50 { --tw-gradient-from: #fdf2f8 var(--tw-gradient-from-position) !important; --tw-gradient-to: rgb(253 242 248 / 0) var(--tw-gradient-to-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+.theme-amar .to-teal-50 { --tw-gradient-to: #fce7f3 var(--tw-gradient-to-position) !important; }
+.theme-amar [data-state=checked].data-\[state\=checked\]\:bg-emerald-500 { background-color: #ec4899 !important; }
+.theme-amar [data-state=checked].data-\[state\=checked\]\:border-emerald-500 { border-color: #ec4899 !important; }
