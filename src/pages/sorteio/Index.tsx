@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loader2, CalendarIcon, Trophy, Sparkles, Gift, Users } from 'lucide-react';
 import { format } from 'date-fns';
+import type { DateRange } from 'react-day-picker';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { supabaseTenant } from '@/lib/supabase-tenant';
