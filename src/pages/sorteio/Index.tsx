@@ -86,8 +86,8 @@ const Sorteio = () => {
 
   // Carregar candidatos elegíveis
   const loadCandidates = async () => {
-    if (!eventDate) {
-      toast({ title: 'Erro', description: 'Selecione a data do evento', variant: 'destructive' });
+    if (!eventRange?.from) {
+      toast({ title: 'Erro', description: 'Selecione a data (ou intervalo) do evento', variant: 'destructive' });
       return;
     }
 
@@ -96,14 +96,16 @@ const Sorteio = () => {
     setExcludedPhones(new Set());
 
     try {
-      const selectedDate = format(eventDate, 'yyyy-MM-dd');
+      const fromDate = format(eventRange.from, 'yyyy-MM-dd');
+      const toDate = format(eventRange.to ?? eventRange.from, 'yyyy-MM-dd');
       const usePaidOnly = showEligibilityToggle ? eligibilityMode === 'paid' : true;
 
       // Buscar pedidos da data (pagos ou todos, conforme modo)
       let query = supabaseTenant
         .from('orders')
         .select('id, customer_phone, customer_name, total_amount, event_date, is_paid')
-        .eq('event_date', selectedDate);
+        .gte('event_date', fromDate)
+        .lte('event_date', toDate);
 
       if (usePaidOnly) {
         query = query.eq('is_paid', true);
@@ -114,7 +116,7 @@ const Sorteio = () => {
       if (error) throw error;
 
       if (!paidOrders || paidOrders.length === 0) {
-        toast({ title: 'Nenhum Pedido', description: usePaidOnly ? 'Não há pedidos pagos para esta data.' : 'Não há pedidos para esta data.', variant: 'destructive' });
+        toast({ title: 'Nenhum Pedido', description: usePaidOnly ? 'Não há pedidos pagos nesse período.' : 'Não há pedidos nesse período.', variant: 'destructive' });
         setCandidates([]);
         return;
       }
