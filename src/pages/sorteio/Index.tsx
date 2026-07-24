@@ -39,7 +39,7 @@ type EligibilityMode = 'paid' | 'all';
 const Sorteio = () => {
   const { toast } = useToast();
   const { tenantId } = useTenantContext();
-  const [eventDate, setEventDate] = useState<Date | undefined>();
+  const [eventRange, setEventRange] = useState<DateRange | undefined>();
   const [winner, setWinner] = useState<Winner | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
