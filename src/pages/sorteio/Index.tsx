@@ -227,11 +227,13 @@ const Sorteio = () => {
       // Buscar foto de perfil
       const profileImage = await getWhatsAppProfilePicture(selected.customer_phone);
 
-      const selectedDate = format(eventDate!, 'yyyy-MM-dd');
+      const fromDate = format(eventRange!.from!, 'yyyy-MM-dd');
+      const toDate = format(eventRange!.to ?? eventRange!.from!, 'yyyy-MM-dd');
 
       const winnerData: Winner = {
         ...selected,
-        event_date: selectedDate,
+        event_date: fromDate,
+        event_date_end: toDate !== fromDate ? toDate : undefined,
         profile_image: profileImage,
       };
 
