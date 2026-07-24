@@ -497,7 +497,9 @@ const Sorteio = () => {
                   Receita: {formatCurrency(winner.total_revenue)} · Probabilidade: {winner.probability.toFixed(1)}%
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {formatBrasiliaDate(winner.event_date)} · {winner.order_count} pedido(s)
+                  {winner.event_date_end
+                    ? `${formatBrasiliaDate(winner.event_date)} — ${formatBrasiliaDate(winner.event_date_end)}`
+                    : formatBrasiliaDate(winner.event_date)} · {winner.order_count} pedido(s)
                 </div>
               </div>
             )}
