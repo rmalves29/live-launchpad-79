@@ -208,10 +208,10 @@ serve(async (req) => {
         try {
           const resp = await fetch(`${uazUrl}/chat/details`, { method: "POST", headers: uazH, body: JSON.stringify({ number: phone }) });
           const data = await resp.json().catch(() => null);
-          const url = data?.image || data?.imagePreview || null;
-          return new Response(JSON.stringify({ link: url, profilePictureUrl: url }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          const link = data?.image || data?.imagePreview || null;
+          return new Response(JSON.stringify({ link }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } catch (e: any) {
-          return new Response(JSON.stringify({ link: null, profilePictureUrl: null }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          return new Response(JSON.stringify({ link: null }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
       }
 

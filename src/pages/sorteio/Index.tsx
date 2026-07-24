@@ -70,7 +70,7 @@ const Sorteio = () => {
       const cleanPhone = phone.replace(/\D/g, '');
       const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
 
-      const { data, error } = await supabaseTenant.raw.functions.invoke('zapi-proxy', {
+      const { data, error } = await supabaseTenant.raw.functions.invoke('zapi-proxy-v2', {
         body: { action: 'profile-picture', tenant_id: tenantId, phone: formattedPhone }
       });
 

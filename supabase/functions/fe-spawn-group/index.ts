@@ -86,16 +86,19 @@ async function createGroupOnUazapi(
   return { success: false, error: `Nenhuma variante de criação de grupo funcionou. Detalhes: ${attemptsLog.join(" | ")}`, attemptsLog };
 }
 
+// Endpoint confirmado via OpenAPI spec (docs.uazapi.com/openapi-bundled.json):
+// POST /group/info com { groupjid, getInviteLink: true } retorna o campo invite_link.
 async function fetchInviteLink(uazUrl: string, uazTok: string, groupJid: string): Promise<string | null> {
   try {
-    const res = await fetch(`${uazUrl}/group/invitecode`, {
+    const res = await fetch(`${uazUrl}/group/info`, {
       method: "POST",
       headers: { "Content-Type": "application/json", token: uazTok },
-      body: JSON.stringify({ groupjid: groupJid }),
+      body: JSON.stringify({ groupjid: groupJid, getInviteLink: true }),
     });
     if (!res.ok) return null;
     const data = await res.json().catch(() => null);
-    const code = data?.invite_link || data?.inviteLink || data?.code;
+    const grp = data?.group || data;
+    const code = grp?.invite_link;
     if (!code) return null;
     return String(code).startsWith("http") ? String(code) : `https://chat.whatsapp.com/${code}`;
   } catch {
