@@ -265,7 +265,7 @@ const Sorteio = () => {
     setWinner(null);
     setCandidates([]);
     setExcludedPhones(new Set());
-    setEventDate(undefined);
+    setEventRange(undefined);
   };
 
   const formatCurrency = (value: number) => {
