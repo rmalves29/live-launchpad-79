@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Loader2, CalendarIcon, Trophy, Sparkles, Gift, Users } from 'lucide-react';
 import { format } from 'date-fns';
+import type { DateRange } from 'react-day-picker';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { supabaseTenant } from '@/lib/supabase-tenant';
@@ -27,6 +28,7 @@ interface Candidate {
 interface Winner extends Candidate {
   order_id?: number;
   event_date: string;
+  event_date_end?: string;
   profile_image?: string;
 }
 
@@ -37,7 +39,7 @@ type EligibilityMode = 'paid' | 'all';
 const Sorteio = () => {
   const { toast } = useToast();
   const { tenantId } = useTenantContext();
-  const [eventDate, setEventDate] = useState<Date | undefined>();
+  const [eventRange, setEventRange] = useState<DateRange | undefined>();
   const [winner, setWinner] = useState<Winner | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
@@ -84,8 +86,8 @@ const Sorteio = () => {
 
   // Carregar candidatos elegíveis
   const loadCandidates = async () => {
-    if (!eventDate) {
-      toast({ title: 'Erro', description: 'Selecione a data do evento', variant: 'destructive' });
+    if (!eventRange?.from) {
+      toast({ title: 'Erro', description: 'Selecione a data (ou intervalo) do evento', variant: 'destructive' });
       return;
     }
 
@@ -94,14 +96,16 @@ const Sorteio = () => {
     setExcludedPhones(new Set());
 
     try {
-      const selectedDate = format(eventDate, 'yyyy-MM-dd');
+      const fromDate = format(eventRange.from, 'yyyy-MM-dd');
+      const toDate = format(eventRange.to ?? eventRange.from, 'yyyy-MM-dd');
       const usePaidOnly = showEligibilityToggle ? eligibilityMode === 'paid' : true;
 
       // Buscar pedidos da data (pagos ou todos, conforme modo)
       let query = supabaseTenant
         .from('orders')
         .select('id, customer_phone, customer_name, total_amount, event_date, is_paid')
-        .eq('event_date', selectedDate);
+        .gte('event_date', fromDate)
+        .lte('event_date', toDate);
 
       if (usePaidOnly) {
         query = query.eq('is_paid', true);
@@ -112,7 +116,7 @@ const Sorteio = () => {
       if (error) throw error;
 
       if (!paidOrders || paidOrders.length === 0) {
-        toast({ title: 'Nenhum Pedido', description: usePaidOnly ? 'Não há pedidos pagos para esta data.' : 'Não há pedidos para esta data.', variant: 'destructive' });
+        toast({ title: 'Nenhum Pedido', description: usePaidOnly ? 'Não há pedidos pagos nesse período.' : 'Não há pedidos nesse período.', variant: 'destructive' });
         setCandidates([]);
         return;
       }
@@ -223,11 +227,13 @@ const Sorteio = () => {
       // Buscar foto de perfil
       const profileImage = await getWhatsAppProfilePicture(selected.customer_phone);
 
-      const selectedDate = format(eventDate!, 'yyyy-MM-dd');
+      const fromDate = format(eventRange!.from!, 'yyyy-MM-dd');
+      const toDate = format(eventRange!.to ?? eventRange!.from!, 'yyyy-MM-dd');
 
       const winnerData: Winner = {
         ...selected,
-        event_date: selectedDate,
+        event_date: fromDate,
+        event_date_end: toDate !== fromDate ? toDate : undefined,
         profile_image: profileImage,
       };
 
@@ -259,7 +265,7 @@ const Sorteio = () => {
     setWinner(null);
     setCandidates([]);
     setExcludedPhones(new Set());
-    setEventDate(undefined);
+    setEventRange(undefined);
   };
 
   const formatCurrency = (value: number) => {
@@ -292,21 +298,35 @@ const Sorteio = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Data do Evento</label>
+              <label className="text-sm font-medium">Data(s) do Evento</label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
-                    className={cn("w-full justify-start text-left font-normal", !eventDate && "text-muted-foreground")}
+                    className={cn("w-full justify-start text-left font-normal", !eventRange?.from && "text-muted-foreground")}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {eventDate ? format(eventDate, "PPP", { locale: ptBR }) : "Selecionar data do evento"}
+                    {eventRange?.from ? (
+                      eventRange.to && format(eventRange.to, 'yyyy-MM-dd') !== format(eventRange.from, 'yyyy-MM-dd')
+                        ? `${format(eventRange.from, 'dd/MM/yyyy', { locale: ptBR })} — ${format(eventRange.to, 'dd/MM/yyyy', { locale: ptBR })}`
+                        : format(eventRange.from, "PPP", { locale: ptBR })
+                    ) : "Selecionar data ou intervalo"}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={eventDate} onSelect={setEventDate} initialFocus className="pointer-events-auto" />
+                  <Calendar
+                    mode="range"
+                    selected={eventRange}
+                    onSelect={setEventRange}
+                    numberOfMonths={2}
+                    initialFocus
+                    className="pointer-events-auto"
+                  />
                 </PopoverContent>
               </Popover>
+              <p className="text-xs text-muted-foreground">
+                Clique em uma data para dia único ou selecione duas datas para um intervalo.
+              </p>
             </div>
 
             {showEligibilityToggle && (
@@ -342,7 +362,7 @@ const Sorteio = () => {
 
             <Button
               onClick={loadCandidates}
-              disabled={loadingCandidates || !eventDate}
+              disabled={loadingCandidates || !eventRange?.from}
               className="w-full"
               size="lg"
             >
@@ -477,7 +497,9 @@ const Sorteio = () => {
                   Receita: {formatCurrency(winner.total_revenue)} · Probabilidade: {winner.probability.toFixed(1)}%
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {formatBrasiliaDate(winner.event_date)} · {winner.order_count} pedido(s)
+                  {winner.event_date_end
+                    ? `${formatBrasiliaDate(winner.event_date)} — ${formatBrasiliaDate(winner.event_date_end)}`
+                    : formatBrasiliaDate(winner.event_date)} · {winner.order_count} pedido(s)
                 </div>
               </div>
             )}
