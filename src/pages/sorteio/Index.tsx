@@ -28,6 +28,7 @@ interface Candidate {
 interface Winner extends Candidate {
   order_id?: number;
   event_date: string;
+  event_date_end?: string;
   profile_image?: string;
 }
 
