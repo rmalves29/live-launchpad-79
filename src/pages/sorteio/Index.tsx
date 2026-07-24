@@ -362,7 +362,7 @@ const Sorteio = () => {
 
             <Button
               onClick={loadCandidates}
-              disabled={loadingCandidates || !eventDate}
+              disabled={loadingCandidates || !eventRange?.from}
               className="w-full"
               size="lg"
             >
