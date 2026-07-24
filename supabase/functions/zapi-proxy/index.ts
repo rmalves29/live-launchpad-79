@@ -203,13 +203,35 @@ serve(async (req) => {
       }
 
       if (action === "profile-picture") {
-        try {
-          const resp = await fetch(`${uazUrl}/contact/picture`, { method: "POST", headers: uazH, body: JSON.stringify({ number: phone }) });
-          const data = await resp.json().catch(() => null);
-          return new Response(JSON.stringify({ profilePictureUrl: data?.profilePictureUrl || data?.url || data?.picture || null }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        } catch (e: any) {
-          return new Response(JSON.stringify({ profilePictureUrl: null }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        // Tenta múltiplos endpoints da uazapi (varia por versão)
+        const endpoints = [
+          { path: "/chat/GetProfileImage", body: { number: phone, preview: false } },
+          { path: "/chat/getProfile", body: { number: phone } },
+          { path: "/chat/getProfilePicture", body: { number: phone } },
+          { path: "/contact/picture", body: { number: phone } },
+        ];
+        const pickUrl = (d: any): string | null => {
+          if (!d || typeof d !== "object") return null;
+          const candidates = [
+            d.profilePictureUrl, d.imgUrl, d.image, d.url, d.picture,
+            d.result, d.profilePicUrl, d.profile_pic, d.eurl,
+            d?.data?.profilePictureUrl, d?.data?.imgUrl, d?.data?.url,
+          ];
+          const found = candidates.find((v) => typeof v === "string" && v.startsWith("http"));
+          return found || null;
+        };
+        for (const ep of endpoints) {
+          try {
+            const resp = await fetch(`${uazUrl}${ep.path}`, { method: "POST", headers: uazH, body: JSON.stringify(ep.body) });
+            if (!resp.ok) continue;
+            const data = await resp.json().catch(() => null);
+            const url = pickUrl(data);
+            if (url) {
+              return new Response(JSON.stringify({ profilePictureUrl: url, source: ep.path }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+          } catch { /* tenta próximo */ }
         }
+        return new Response(JSON.stringify({ profilePictureUrl: null }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       if (action === "qr-code" || action === "get_qr") {
