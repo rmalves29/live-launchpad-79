@@ -298,21 +298,35 @@ const Sorteio = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Data do Evento</label>
+              <label className="text-sm font-medium">Data(s) do Evento</label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
-                    className={cn("w-full justify-start text-left font-normal", !eventDate && "text-muted-foreground")}
+                    className={cn("w-full justify-start text-left font-normal", !eventRange?.from && "text-muted-foreground")}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {eventDate ? format(eventDate, "PPP", { locale: ptBR }) : "Selecionar data do evento"}
+                    {eventRange?.from ? (
+                      eventRange.to && format(eventRange.to, 'yyyy-MM-dd') !== format(eventRange.from, 'yyyy-MM-dd')
+                        ? `${format(eventRange.from, 'dd/MM/yyyy', { locale: ptBR })} — ${format(eventRange.to, 'dd/MM/yyyy', { locale: ptBR })}`
+                        : format(eventRange.from, "PPP", { locale: ptBR })
+                    ) : "Selecionar data ou intervalo"}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={eventDate} onSelect={setEventDate} initialFocus className="pointer-events-auto" />
+                  <Calendar
+                    mode="range"
+                    selected={eventRange}
+                    onSelect={setEventRange}
+                    numberOfMonths={2}
+                    initialFocus
+                    className="pointer-events-auto"
+                  />
                 </PopoverContent>
               </Popover>
+              <p className="text-xs text-muted-foreground">
+                Clique em uma data para dia único ou selecione duas datas para um intervalo.
+              </p>
             </div>
 
             {showEligibilityToggle && (
