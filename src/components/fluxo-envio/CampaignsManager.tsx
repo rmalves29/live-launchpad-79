@@ -162,7 +162,13 @@ export default function CampaignsManager() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h3 className="text-lg font-semibold text-foreground">Campanhas</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-foreground">Campanhas</h3>
+          <Badge variant="secondary" className="gap-1">
+            <Crown className="h-3 w-3" />
+            {planLabel} · {totalCount}/{Number.isFinite(maxCampaigns) ? maxCampaigns : '∞'}
+          </Badge>
+        </div>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
             <Button size="sm"><Plus className="h-4 w-4 mr-1" />Nova Campanha</Button>
