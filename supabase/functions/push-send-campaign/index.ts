@@ -118,6 +118,13 @@ serve(async (req) => {
     }
 
     // 3) Register campaign
+    const { data: tenantRow } = await supabase.from("tenants").select("name, logo_url").eq("id", tenant_id).maybeSingle();
+    const tenantName = (tenantRow as any)?.name?.trim() || "";
+    const tenantIcon = (tenantRow as any)?.logo_url || undefined;
+    const displayTitle = tenantName && !String(title).toLowerCase().startsWith(tenantName.toLowerCase())
+      ? `${tenantName} · ${title}`
+      : title;
+
     const { data: campaign } = await supabase.from("push_campaigns").insert({
       tenant_id, title, body, image_url: image_url || null, click_url: click_url || null,
       audience: aud, total_targets: subs.length,
@@ -129,9 +136,9 @@ serve(async (req) => {
     for (const s of subs) {
       const { data: logRow } = await supabase.from("push_notifications_log").insert({
         tenant_id, subscription_id: s.id, customer_id: s.customer_id, campaign_id: campaignId,
-        title, body, channel: "push", status: "pending",
+        title: displayTitle, body, channel: "push", status: "pending",
       }).select("id").single();
-      const payload = { title, body, image: image_url || undefined, url: click_url || "/", log_id: logRow?.id };
+      const payload = { title: displayTitle, body, image: image_url || undefined, icon: tenantIcon, url: click_url || "/", log_id: logRow?.id };
       const res = await sendWebPush({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload);
       if (res.ok) {
         sent++;
