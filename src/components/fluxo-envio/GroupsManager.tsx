@@ -36,7 +36,9 @@ interface FeGroup {
 export default function GroupsManager() {
   const { tenant } = useTenant();
   const { toast } = useToast();
+  const { maxGroups, planLabel } = useFluxoPlanLimits();
   const [groups, setGroups] = useState<FeGroup[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [adminOnly, setAdminOnly] = useState(true);
@@ -49,14 +51,17 @@ export default function GroupsManager() {
   const fetchGroups = useCallback(async () => {
     if (!tenant) return;
     setLoading(true);
-    const { data, error } = await supabase
+    let query = supabase
       .from('fe_groups' as any)
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('tenant_id', tenant.id)
-      .order('group_name');
+      .order('created_at', { ascending: true });
+    if (Number.isFinite(maxGroups)) query = query.limit(maxGroups);
+    const { data, error, count } = await query;
     if (!error && data) setGroups(data as any);
+    if (typeof count === 'number') setTotalCount(count);
     setLoading(false);
-  }, [tenant]);
+  }, [tenant, maxGroups]);
 
   useEffect(() => { fetchGroups(); }, [fetchGroups]);
 
