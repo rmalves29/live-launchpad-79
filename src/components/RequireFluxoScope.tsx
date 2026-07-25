@@ -24,6 +24,14 @@ export default function RequireFluxoScope({ children }: { children: ReactNode })
         setChecking(false);
         return;
       }
+
+      // Retry de provisionamento da instância uazapi (fire-and-forget)
+      const key = `fluxo_wa_ensured_${profile.tenant_id}`;
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, '1');
+        supabase.functions.invoke('fluxo-ensure-whatsapp', { body: {} }).catch(() => {});
+      }
+
       const { data } = await supabase
         .from('tenants')
         .select('plan_type, subscription_ends_at, trial_ends_at')
