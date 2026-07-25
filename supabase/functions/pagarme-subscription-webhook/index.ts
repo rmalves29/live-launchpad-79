@@ -127,9 +127,11 @@ Deno.serve(async (req) => {
       // estende subscription_ends_at
       const { data: tenant } = await supabase
         .from("tenants")
-        .select("subscription_ends_at")
+        .select("subscription_ends_at, plan_type, name")
         .eq("id", tenantId)
         .maybeSingle();
+
+      const previousPlan = (tenant as any)?.plan_type as string | undefined;
 
       const base = tenant?.subscription_ends_at && new Date(tenant.subscription_ends_at) > now
         ? new Date(tenant.subscription_ends_at)
@@ -141,6 +143,24 @@ Deno.serve(async (req) => {
         .from("tenants")
         .update({ subscription_ends_at: extended.toISOString(), plan_type: planId })
         .eq("id", tenantId);
+
+      // Alerta admins OrderZap quando sai do trial ou muda de plano
+      const planLabel = planId === "enterprise" ? "Alto Volume" : planId === "pro" ? "Profissional" : "Essencial";
+      if (previousPlan === "trial" || !previousPlan) {
+        notifyOrderZapAdmins({
+          title: '💸 Contratação Fluxo de Envio',
+          body: `${(tenant as any)?.name || 'Empresa'} saiu do trial e contratou o plano ${planLabel}.`,
+          url: '/empresas',
+          tag: `fluxo-upgrade-${tenantId}`,
+        }).catch((err) => console.error('[pagarme-webhook] notify admin failed:', err));
+      } else if (previousPlan !== planId) {
+        notifyOrderZapAdmins({
+          title: '🔄 Mudança de plano',
+          body: `${(tenant as any)?.name || 'Empresa'} mudou para o plano ${planLabel}.`,
+          url: '/empresas',
+          tag: `fluxo-planchange-${tenantId}`,
+        }).catch((err) => console.error('[pagarme-webhook] notify admin failed:', err));
+      }
 
       const nextBilling = subscription?.next_billing_at || subscription?.current_cycle?.end_at || null;
 
