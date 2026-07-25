@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
+import { useFluxoPlanLimits } from '@/hooks/useFluxoPlanLimits';
 import { fetchAllTenantGroupEvents, summarizeFlowEvents } from '@/lib/fluxo-envio-metrics';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Trash2, Users, Copy, Megaphone, MousePointerClick, ArrowRightToLine, Percent } from 'lucide-react';
+import { Plus, Trash2, Users, Copy, Megaphone, MousePointerClick, ArrowRightToLine, Percent, Crown } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
@@ -36,7 +38,9 @@ interface CampaignStats {
 export default function CampaignsManager() {
   const { tenant } = useTenant();
   const { toast } = useToast();
+  const { maxCampaigns, planLabel } = useFluxoPlanLimits();
   const [campaigns, setCampaigns] = useState<FeCampaign[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [newCampaign, setNewCampaign] = useState({ name: '', slug: '', description: '' });
@@ -46,14 +50,17 @@ export default function CampaignsManager() {
   const fetchCampaigns = useCallback(async () => {
     if (!tenant) return;
     setLoading(true);
-    const { data } = await supabase
+    let query = supabase
       .from('fe_campaigns' as any)
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('tenant_id', tenant.id)
       .order('created_at', { ascending: false });
+    if (Number.isFinite(maxCampaigns)) query = query.limit(maxCampaigns);
+    const { data, count } = await query;
     if (data) setCampaigns(data as any);
+    if (typeof count === 'number') setTotalCount(count);
     setLoading(false);
-  }, [tenant]);
+  }, [tenant, maxCampaigns]);
 
   const fetchStats = useCallback(async () => {
     if (!tenant || campaigns.length === 0) return;
@@ -105,6 +112,14 @@ export default function CampaignsManager() {
       toast({ title: 'Preencha nome e slug', variant: 'destructive' });
       return;
     }
+    if (Number.isFinite(maxCampaigns) && totalCount >= maxCampaigns) {
+      toast({
+        title: `Limite do plano ${planLabel} atingido`,
+        description: `Seu plano permite até ${maxCampaigns} campanhas. Faça upgrade para criar mais.`,
+        variant: 'destructive',
+      });
+      return;
+    }
     const { error } = await supabase
       .from('fe_campaigns' as any)
       .insert({ tenant_id: tenant.id, name: newCampaign.name, slug: newCampaign.slug, description: newCampaign.description || null } as any);
@@ -147,7 +162,13 @@ export default function CampaignsManager() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h3 className="text-lg font-semibold text-foreground">Campanhas</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-foreground">Campanhas</h3>
+          <Badge variant="secondary" className="gap-1">
+            <Crown className="h-3 w-3" />
+            {planLabel} · {totalCount}/{Number.isFinite(maxCampaigns) ? maxCampaigns : '∞'}
+          </Badge>
+        </div>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
             <Button size="sm"><Plus className="h-4 w-4 mr-1" />Nova Campanha</Button>

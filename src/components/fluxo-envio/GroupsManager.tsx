@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
 import { useAuth } from '@/hooks/useAuth';
+import { useFluxoPlanLimits } from '@/hooks/useFluxoPlanLimits';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { RefreshCw, Plus, Users, Link2, Trash2, ExternalLink, ShieldCheck, Pencil } from 'lucide-react';
+import { RefreshCw, Plus, Users, Link2, Trash2, ExternalLink, ShieldCheck, Pencil, Crown } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -35,7 +36,9 @@ interface FeGroup {
 export default function GroupsManager() {
   const { tenant } = useTenant();
   const { toast } = useToast();
+  const { maxGroups, planLabel } = useFluxoPlanLimits();
   const [groups, setGroups] = useState<FeGroup[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [adminOnly, setAdminOnly] = useState(true);
@@ -48,14 +51,17 @@ export default function GroupsManager() {
   const fetchGroups = useCallback(async () => {
     if (!tenant) return;
     setLoading(true);
-    const { data, error } = await supabase
+    let query = supabase
       .from('fe_groups' as any)
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('tenant_id', tenant.id)
-      .order('group_name');
+      .order('created_at', { ascending: true });
+    if (Number.isFinite(maxGroups)) query = query.limit(maxGroups);
+    const { data, error, count } = await query;
     if (!error && data) setGroups(data as any);
+    if (typeof count === 'number') setTotalCount(count);
     setLoading(false);
-  }, [tenant]);
+  }, [tenant, maxGroups]);
 
   useEffect(() => { fetchGroups(); }, [fetchGroups]);
 
@@ -109,6 +115,14 @@ export default function GroupsManager() {
   const addGroup = async () => {
     if (!tenant || !newGroup.group_jid || !newGroup.group_name) {
       toast({ title: 'Preencha JID e nome do grupo', variant: 'destructive' });
+      return;
+    }
+    if (Number.isFinite(maxGroups) && totalCount >= maxGroups) {
+      toast({
+        title: `Limite do plano ${planLabel} atingido`,
+        description: `Seu plano permite até ${maxGroups} grupos. Faça upgrade para adicionar mais.`,
+        variant: 'destructive',
+      });
       return;
     }
     const { error } = await supabase
@@ -165,7 +179,13 @@ export default function GroupsManager() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h3 className="text-lg font-semibold text-foreground">Grupos WhatsApp</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-foreground">Grupos WhatsApp</h3>
+          <Badge variant="secondary" className="gap-1">
+            <Crown className="h-3 w-3" />
+            {planLabel} · {totalCount}/{Number.isFinite(maxGroups) ? maxGroups : '∞'}
+          </Badge>
+        </div>
         <div className="flex items-center gap-3">
           <Input
             placeholder="Buscar grupo..."
