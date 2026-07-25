@@ -28,6 +28,19 @@ export default function FluxoSignupDialog({ open, onOpenChange, initialMode = 's
     if (open) setMode(initialMode);
   }, [open, initialMode]);
 
+  const translateError = (msg: string): string => {
+    const m = (msg || '').toLowerCase();
+    if (m.includes('already been registered') || m.includes('already registered') || m.includes('user already') || m.includes('já') && m.includes('cadastrad')) {
+      return 'Este e-mail já está cadastrado. Faça login abaixo.';
+    }
+    if (m.includes('invalid login') || m.includes('invalid_credentials')) {
+      return 'E-mail ou senha incorretos.';
+    }
+    if (m.includes('email') && m.includes('invalid')) return 'E-mail inválido.';
+    if (m.includes('password')) return 'Senha inválida (mínimo 6 caracteres).';
+    return msg || 'Tente novamente.';
+  };
+
   const handleSubmit = async () => {
     setLoading(true);
     try {
@@ -36,8 +49,19 @@ export default function FluxoSignupDialog({ open, onOpenChange, initialMode = 's
           body: { email, password, name, company },
         });
         if (error) throw error;
-        if (!data?.success) throw new Error(data?.error || 'Falha ao criar conta.');
-        // login imediato
+        if (!data?.success) {
+          const errMsg = data?.error || 'Falha ao criar conta.';
+          const isDuplicate = /already been registered|already registered|user already|já.*cadastrad/i.test(errMsg);
+          if (isDuplicate) {
+            toast({
+              title: 'E-mail já cadastrado',
+              description: 'Alternamos para o login. Informe sua senha para entrar.',
+            });
+            setMode('login');
+            return;
+          }
+          throw new Error(errMsg);
+        }
         const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
         if (signInErr) throw signInErr;
         toast({ title: 'Conta criada!', description: 'Bem-vindo ao Fluxo de Envio.' });
@@ -51,7 +75,7 @@ export default function FluxoSignupDialog({ open, onOpenChange, initialMode = 's
         navigate('/fluxo-envio/app', { replace: true });
       }
     } catch (e: any) {
-      toast({ title: 'Erro', description: e.message || 'Tente novamente.', variant: 'destructive' });
+      toast({ title: 'Erro', description: translateError(e.message), variant: 'destructive' });
     } finally {
       setLoading(false);
     }
