@@ -159,6 +159,14 @@ async function processSubscriptionPayment(
 
     console.log(`[subscription-webhook] Renewing tenant ${tenantId} with plan ${planName} for ${planDays} days until ${newEndDate.toISOString()}`);
 
+    // Fetch previous plan for alerting
+    const { data: prevTenant } = await sb
+      .from("tenants")
+      .select("plan_type, name")
+      .eq("id", tenantId)
+      .maybeSingle();
+    const previousPlan = (prevTenant as any)?.plan_type as string | undefined;
+
     // Update tenant subscription
     const { error: updateError } = await sb
       .from("tenants")
@@ -173,6 +181,22 @@ async function processSubscriptionPayment(
     if (updateError) {
       console.error(`[subscription-webhook] Error updating tenant ${tenantId}:`, updateError);
       return;
+    }
+
+    if (previousPlan === "trial") {
+      notifyOrderZapAdmins({
+        title: '💸 Contratação Fluxo de Envio',
+        body: `${(prevTenant as any)?.name || 'Empresa'} saiu do trial e contratou o plano ${planName}.`,
+        url: '/empresas',
+        tag: `fluxo-upgrade-${tenantId}`,
+      }).catch((err) => console.error('[subscription-webhook] notify admin failed:', err));
+    } else if (previousPlan && previousPlan !== planId) {
+      notifyOrderZapAdmins({
+        title: '🔄 Mudança de plano',
+        body: `${(prevTenant as any)?.name || 'Empresa'} mudou para o plano ${planName}.`,
+        url: '/empresas',
+        tag: `fluxo-planchange-${tenantId}`,
+      }).catch((err) => console.error('[subscription-webhook] notify admin failed:', err));
     }
 
     console.log(`[subscription-webhook] Tenant ${tenantId} subscription renewed successfully!`);
