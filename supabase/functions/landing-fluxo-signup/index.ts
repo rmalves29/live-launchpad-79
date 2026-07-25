@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (sample?.uazapi_url && sample?.uazapi_admin_token) {
-        const instName = `fluxo-${tenant.id.slice(0, 8)}`;
+        const instName = `${company} - FL`;
         const webhookSecret = crypto.randomUUID();
 
         // Cria a linha primeiro para não perder o vínculo caso o create falhe
