@@ -65,13 +65,18 @@ function callFunction(name: string, body: object) {
   }).then(r => r.json());
 }
 
-export default function ConexaoZAPI() {
+interface ConexaoZAPIProps {
+  /** Quando true, esconde Z-API e o seletor de provedor — usado pelo Fluxo de Envio, que só opera com uazapi. */
+  restrictToUazapi?: boolean;
+}
+
+export default function ConexaoZAPI({ restrictToUazapi = false }: ConexaoZAPIProps) {
   const { tenant } = useTenantContext();
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
-  const [provider, setProvider] = useState<Provider>('zapi');
-  const [activeProvider, setActiveProvider] = useState<Provider>('zapi');
+  const [provider, setProvider] = useState<Provider>(restrictToUazapi ? 'uazapi' : 'zapi');
+  const [activeProvider, setActiveProvider] = useState<Provider>(restrictToUazapi ? 'uazapi' : 'zapi');
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [loadingQR, setLoadingQR] = useState(false);
@@ -142,7 +147,7 @@ export default function ConexaoZAPI() {
         setUazapiUrl((data as any).uazapi_url || '');
         setUazapiToken((data as any).uazapi_token || '');
         setUazapiAdminToken((data as any).uazapi_admin_token || '');
-        const savedProvider: Provider = (data as any).provider === 'uazapi' ? 'uazapi' : 'zapi';
+        const savedProvider: Provider = restrictToUazapi ? 'uazapi' : ((data as any).provider === 'uazapi' ? 'uazapi' : 'zapi');
         setProvider(savedProvider);
         setActiveProvider(savedProvider);
       }
@@ -430,6 +435,7 @@ export default function ConexaoZAPI() {
       </div>
 
       {/* Provider selector */}
+      {!restrictToUazapi && (
       <div className="grid grid-cols-2 gap-3 max-w-md">
         <button
           onClick={() => setProvider('zapi')}
@@ -467,6 +473,7 @@ export default function ConexaoZAPI() {
           </div>
         </button>
       </div>
+      )}
 
       {/* Status + QR */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -706,7 +713,7 @@ export default function ConexaoZAPI() {
         </Card>
       )}
 
-      <ZAPIAdvancedSettings />
+      {!restrictToUazapi && <ZAPIAdvancedSettings />}
     </div>
   );
 }

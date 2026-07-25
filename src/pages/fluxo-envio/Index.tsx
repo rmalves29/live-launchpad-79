@@ -1,5 +1,6 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, Megaphone, Send, BarChart3, Bot } from 'lucide-react';
+import { Users, Megaphone, Send, BarChart3, Bot, Smartphone } from 'lucide-react';
+import ConexaoZAPI from '@/pages/whatsapp/ConexaoZAPI';
 import GroupsManager from '@/components/fluxo-envio/GroupsManager';
 import CampaignsManager from '@/components/fluxo-envio/CampaignsManager';
 import MessageComposer from '@/components/fluxo-envio/MessageComposer';
@@ -14,8 +15,12 @@ export default function FluxoEnvioIndex() {
         <p className="text-muted-foreground mt-1">Gerenciamento de grupos, campanhas e envio de mensagens no WhatsApp</p>
       </div>
 
-      <Tabs defaultValue="grupos" className="w-full">
-        <TabsList className="w-full sm:w-auto grid grid-cols-5 sm:inline-flex">
+      <Tabs defaultValue="conexao" className="w-full">
+        <TabsList className="w-full sm:w-auto grid grid-cols-6 sm:inline-flex">
+          <TabsTrigger value="conexao" className="gap-1">
+            <Smartphone className="h-4 w-4" />
+            <span className="hidden sm:inline">Conexão</span>
+          </TabsTrigger>
           <TabsTrigger value="grupos" className="gap-1">
             <Users className="h-4 w-4" />
             <span className="hidden sm:inline">Grupos</span>
@@ -38,6 +43,7 @@ export default function FluxoEnvioIndex() {
           </TabsTrigger>
         </TabsList>
 
+        <TabsContent value="conexao"><ConexaoZAPI restrictToUazapi /></TabsContent>
         <TabsContent value="grupos"><GroupsManager /></TabsContent>
         <TabsContent value="campanhas"><CampaignsManager /></TabsContent>
         <TabsContent value="envios"><MessageComposer /></TabsContent>
