@@ -27,9 +27,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           </SheetContent>
         </Sheet>
         <NavLink to="/" className="flex items-center">
-          <img src={cartzyLogo} alt="Cartzy" className="h-10 w-auto object-contain" />
+          <img src={cartzyLogo} alt="Cartzy" className="h-9 w-auto object-contain" />
         </NavLink>
-        <div className="w-9" />
+        <div className="min-w-0 max-w-[180px]">
+          <TenantSwitcher />
+        </div>
       </div>
 
       {/* Desktop sidebar */}
