@@ -38,7 +38,9 @@ interface CampaignStats {
 export default function CampaignsManager() {
   const { tenant } = useTenant();
   const { toast } = useToast();
+  const { maxCampaigns, planLabel } = useFluxoPlanLimits();
   const [campaigns, setCampaigns] = useState<FeCampaign[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [newCampaign, setNewCampaign] = useState({ name: '', slug: '', description: '' });
@@ -48,14 +50,17 @@ export default function CampaignsManager() {
   const fetchCampaigns = useCallback(async () => {
     if (!tenant) return;
     setLoading(true);
-    const { data } = await supabase
+    let query = supabase
       .from('fe_campaigns' as any)
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('tenant_id', tenant.id)
       .order('created_at', { ascending: false });
+    if (Number.isFinite(maxCampaigns)) query = query.limit(maxCampaigns);
+    const { data, count } = await query;
     if (data) setCampaigns(data as any);
+    if (typeof count === 'number') setTotalCount(count);
     setLoading(false);
-  }, [tenant]);
+  }, [tenant, maxCampaigns]);
 
   const fetchStats = useCallback(async () => {
     if (!tenant || campaigns.length === 0) return;
