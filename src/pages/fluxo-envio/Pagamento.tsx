@@ -177,7 +177,7 @@ export default function FluxoEnvioPagamento() {
                 </div>
               )}
               <CardHeader>
-                <CardTitle className="text-xl">{plan.name}</CardTitle>
+                <CardTitle className="text-xl text-white">{plan.name}</CardTitle>
                 <CardDescription className="text-white/60">
                   {plan.tagline}
                 </CardDescription>
