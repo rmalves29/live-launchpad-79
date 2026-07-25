@@ -112,6 +112,14 @@ export default function CampaignsManager() {
       toast({ title: 'Preencha nome e slug', variant: 'destructive' });
       return;
     }
+    if (Number.isFinite(maxCampaigns) && totalCount >= maxCampaigns) {
+      toast({
+        title: `Limite do plano ${planLabel} atingido`,
+        description: `Seu plano permite até ${maxCampaigns} campanhas. Faça upgrade para criar mais.`,
+        variant: 'destructive',
+      });
+      return;
+    }
     const { error } = await supabase
       .from('fe_campaigns' as any)
       .insert({ tenant_id: tenant.id, name: newCampaign.name, slug: newCampaign.slug, description: newCampaign.description || null } as any);
