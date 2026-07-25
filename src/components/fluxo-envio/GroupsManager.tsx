@@ -187,7 +187,7 @@ export default function GroupsManager() {
           <h3 className="text-lg font-semibold text-foreground">Grupos WhatsApp</h3>
           <Badge variant="secondary" className="gap-1">
             <Crown className="h-3 w-3" />
-            {planLabel} · {totalCount}/{Number.isFinite(maxGroups) ? maxGroups : '∞'}
+            {planLabel} · {groups.filter(g => g.is_active).length}/{Number.isFinite(maxGroups) ? maxGroups : '∞'} ativos
           </Badge>
         </div>
         <div className="flex items-center gap-3">
