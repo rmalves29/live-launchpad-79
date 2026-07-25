@@ -152,6 +152,17 @@ export default function GroupsManager() {
   };
 
   const toggleActive = async (group: FeGroup) => {
+    if (!group.is_active && Number.isFinite(maxGroups)) {
+      const activeCount = groups.filter(g => g.is_active).length;
+      if (activeCount >= maxGroups) {
+        toast({
+          title: 'Limite de grupos ativos atingido',
+          description: `Seu plano permite até ${maxGroups} grupos ativos simultaneamente. Desative outro grupo ou faça upgrade.`,
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
     await supabase
       .from('fe_groups' as any)
       .update({ is_active: !group.is_active } as any)
