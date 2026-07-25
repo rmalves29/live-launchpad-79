@@ -3,6 +3,8 @@
 // e já configura a integração WhatsApp/uazapi (mesma base dos tenants Cartzy).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { createInstance, setWebhook } from '../_shared/uazapi-api.ts';
+import { notifyOrderZapAdmins } from '../_shared/admin-push-notify.ts';
+
 
 
 const corsHeaders = {
