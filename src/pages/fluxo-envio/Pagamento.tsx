@@ -27,7 +27,9 @@ const PLANS: Plan[] = [
     price: 49.9,
     tagline: "Comece a lucrar com o Fluxo de Envio",
     features: [
-      "Envios em grupos e privado",
+      "Envios em Grupo",
+      "Gestão de até 5 grupos",
+      "Criação de até 15 campanhas",
       "Relatórios de entradas e saídas",
       "Automação de retorno ao grupo",
       "Suporte por e-mail",
@@ -41,7 +43,8 @@ const PLANS: Plan[] = [
     highlight: true,
     features: [
       "Tudo do Essencial",
-      "Campanhas ilimitadas",
+      "Gestão de até 10 grupos",
+      "Criação de até 30 campanhas",
       "Agendamento avançado",
       "Suporte prioritário no WhatsApp",
     ],
@@ -53,7 +56,8 @@ const PLANS: Plan[] = [
     tagline: "Para operações em escala",
     features: [
       "Tudo do Profissional",
-      "Múltiplas conexões WhatsApp",
+      "Gestão Ilimitada de Grupos",
+      "Criação Ilimitada de Grupos",
       "Fila de espera inteligente",
       "Consultoria mensal 1:1",
     ],
