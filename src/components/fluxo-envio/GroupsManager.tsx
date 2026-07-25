@@ -56,7 +56,7 @@ export default function GroupsManager() {
       .select('*', { count: 'exact' })
       .eq('tenant_id', tenant.id)
       .order('created_at', { ascending: true });
-    if (Number.isFinite(maxGroups)) query = query.limit(maxGroups);
+    // Limite do plano aplica apenas a grupos ATIVOS (não à quantidade total listada)
     const { data, error, count } = await query;
     if (!error && data) setGroups(data as any);
     if (typeof count === 'number') setTotalCount(count);
@@ -117,14 +117,7 @@ export default function GroupsManager() {
       toast({ title: 'Preencha JID e nome do grupo', variant: 'destructive' });
       return;
     }
-    if (Number.isFinite(maxGroups) && totalCount >= maxGroups) {
-      toast({
-        title: `Limite do plano ${planLabel} atingido`,
-        description: `Seu plano permite até ${maxGroups} grupos. Faça upgrade para adicionar mais.`,
-        variant: 'destructive',
-      });
-      return;
-    }
+    // Sem limite para adicionar; o limite do plano restringe apenas grupos ativos simultâneos.
     const { error } = await supabase
       .from('fe_groups' as any)
       .insert({
@@ -152,6 +145,17 @@ export default function GroupsManager() {
   };
 
   const toggleActive = async (group: FeGroup) => {
+    if (!group.is_active && Number.isFinite(maxGroups)) {
+      const activeCount = groups.filter(g => g.is_active).length;
+      if (activeCount >= maxGroups) {
+        toast({
+          title: 'Limite de grupos ativos atingido',
+          description: `Seu plano permite até ${maxGroups} grupos ativos simultaneamente. Desative outro grupo ou faça upgrade.`,
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
     await supabase
       .from('fe_groups' as any)
       .update({ is_active: !group.is_active } as any)
@@ -183,7 +187,7 @@ export default function GroupsManager() {
           <h3 className="text-lg font-semibold text-foreground">Grupos WhatsApp</h3>
           <Badge variant="secondary" className="gap-1">
             <Crown className="h-3 w-3" />
-            {planLabel} · {totalCount}/{Number.isFinite(maxGroups) ? maxGroups : '∞'}
+            {planLabel} · {groups.filter(g => g.is_active).length}/{Number.isFinite(maxGroups) ? maxGroups : '∞'} ativos
           </Badge>
         </div>
         <div className="flex items-center gap-3">
