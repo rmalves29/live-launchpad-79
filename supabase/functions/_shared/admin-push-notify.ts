@@ -30,35 +30,21 @@ export async function notifyOrderZapAdmins(args: AdminNotifyArgs): Promise<{ sen
 
     let sent = 0;
     let failed = 0;
+    const payload = {
+      title: args.title,
+      body: args.body,
+      url: args.url || "/empresas",
+      tag: args.tag,
+    };
     for (const s of subs as any[]) {
-      const { data: logRow } = await sb.from("push_notifications_log").insert({
-        tenant_id: ORDERZAP_TENANT_ID,
-        subscription_id: s.id,
-        customer_id: s.customer_id,
-        template_type: "admin_alert",
-        title: args.title,
-        body: args.body,
-        channel: "push",
-        status: "pending",
-      }).select("id").single();
-
-      const payload = {
-        title: args.title,
-        body: args.body,
-        url: args.url || "/empresas",
-        tag: args.tag,
-        log_id: logRow?.id,
-      };
       const res = await sendWebPush(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
         payload,
       );
       if (res.ok) {
         sent++;
-        if (logRow) await sb.from("push_notifications_log").update({ status: "sent" }).eq("id", logRow.id);
       } else {
         failed++;
-        if (logRow) await sb.from("push_notifications_log").update({ status: "failed", error: res.error }).eq("id", logRow.id);
         if (res.gone) await sb.from("push_subscriptions").update({ is_active: false }).eq("id", s.id);
       }
     }
