@@ -56,7 +56,7 @@ export default function GroupsManager() {
       .select('*', { count: 'exact' })
       .eq('tenant_id', tenant.id)
       .order('created_at', { ascending: true });
-    if (Number.isFinite(maxGroups)) query = query.limit(maxGroups);
+    // Limite do plano aplica apenas a grupos ATIVOS (não à quantidade total listada)
     const { data, error, count } = await query;
     if (!error && data) setGroups(data as any);
     if (typeof count === 'number') setTotalCount(count);
