@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { AlertTriangle, Check, Crown, Rocket, Building2, Loader2, Zap, RefreshCw, XCircle, CreditCard } from "lucide-react";
+import { AlertTriangle, Check, Crown, Rocket, Building2, Loader2, Zap, RefreshCw, XCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { PagarmeSubscribeDialog } from "@/components/billing/PagarmeSubscribeDialog";
 
@@ -259,29 +259,16 @@ export default function RenovarAssinatura() {
                 </ul>
               </CardContent>
               <CardFooter className="flex-col gap-2">
-                {plan.id === "basic" ? (
-                  <Button
-                    className="w-full"
-                    variant={plan.popular ? "default" : "outline"}
-                    size="lg"
-                    onClick={() => currentTenantId && setRecurringDialog(plan)}
-                    disabled={!currentTenantId}
-                  >
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    Pagar com cartão
-                  </Button>
-                ) : (
-                  <Button
-                    className="w-full"
-                    variant={plan.popular ? "default" : "outline"}
-                    size="lg"
-                    onClick={() => currentTenantId && setRecurringDialog(plan)}
-                    disabled={!currentTenantId || !!activeRecurring}
-                  >
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Assinar (renovação automática)
-                  </Button>
-                )}
+                <Button
+                  className="w-full"
+                  variant={plan.popular ? "default" : "outline"}
+                  size="lg"
+                  onClick={() => currentTenantId && setRecurringDialog(plan)}
+                  disabled={!currentTenantId || !!activeRecurring}
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Assinar (renovação automática)
+                </Button>
               </CardFooter>
             </Card>
           ))}
@@ -349,7 +336,7 @@ export default function RenovarAssinatura() {
             intervalMonths={1}
             totalCycles={recurringDialog.totalCycles}
             planDays={recurringDialog.days}
-            mode={recurringDialog.id === "basic" ? "one_time" : "subscription"}
+            mode="subscription"
             userEmail={user.email}
             onSuccess={() => loadRecurring(currentTenantId)}
           />
