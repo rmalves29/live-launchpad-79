@@ -72,6 +72,43 @@ export function isInvalidCredentialsError(error: unknown) {
   );
 }
 
+async function checkRateLimit(email: string): Promise<{ blocked: boolean; retryAfterSeconds?: number }> {
+  try {
+    const { data, error } = await supabase.functions.invoke("login-rate-limit", {
+      body: { action: "check", email },
+    });
+    if (error || !data) return { blocked: false };
+    return { blocked: !!data.blocked, retryAfterSeconds: data.retryAfterSeconds };
+  } catch {
+    return { blocked: false };
+  }
+}
+
+async function recordLoginFailure(email: string): Promise<void> {
+  try {
+    await supabase.functions.invoke("login-rate-limit", { body: { action: "record_failure", email } });
+  } catch {
+    // noop — não deve impedir o fluxo de login
+  }
+}
+
+async function recordLoginSuccess(email: string): Promise<void> {
+  try {
+    await supabase.functions.invoke("login-rate-limit", { body: { action: "record_success", email } });
+  } catch {
+    // noop
+  }
+}
+
+function rateLimitedError(retryAfterSeconds?: number): AuthLikeError {
+  const minutes = retryAfterSeconds ? Math.ceil(retryAfterSeconds / 60) : 15;
+  return {
+    message: `Muitas tentativas de login com senha incorreta. Tente novamente em ${minutes} minuto${minutes > 1 ? "s" : ""}.`,
+    status: 429,
+    statusCode: 429,
+  };
+}
+
 export function isNetworkAuthError(error: unknown) {
   const message = getErrorMessage(error).toLowerCase();
 
@@ -261,6 +298,28 @@ async function signInWithDirectFetch(email: string, password: string): Promise<R
 }
 
 export async function signInWithPasswordResilient(
+  email: string,
+  password: string,
+): Promise<ResilientSignInResult> {
+  const rateLimit = await checkRateLimit(email);
+  if (rateLimit.blocked) {
+    return { data: { user: null, session: null }, error: rateLimitedError(rateLimit.retryAfterSeconds) };
+  }
+
+  const result = await attemptSignInWithFallbacks(email, password);
+
+  if (result.error) {
+    if (isInvalidCredentialsError(result.error)) {
+      await recordLoginFailure(email);
+    }
+  } else {
+    await recordLoginSuccess(email);
+  }
+
+  return result;
+}
+
+async function attemptSignInWithFallbacks(
   email: string,
   password: string,
 ): Promise<ResilientSignInResult> {

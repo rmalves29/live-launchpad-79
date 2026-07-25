@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import { signInWithPasswordResilient } from '@/lib/auth-password';
 
 interface Props {
   open: boolean;
@@ -68,7 +69,7 @@ export default function FluxoSignupDialog({ open, onOpenChange, initialMode = 's
         onOpenChange(false);
         navigate('/fluxo-envio/app', { replace: true });
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await signInWithPasswordResilient(email, password);
         if (error) throw error;
         toast({ title: 'Bem-vindo de volta!' });
         onOpenChange(false);
