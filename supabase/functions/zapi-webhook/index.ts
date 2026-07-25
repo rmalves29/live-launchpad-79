@@ -2115,7 +2115,7 @@ async function findOrCreateCustomer(
     .insert({
       tenant_id: tenantId,
       phone: phone,
-      name: name || `Cliente ${phone.substring(phone.length - 4)}`,
+      name: name || null,
     })
     .select()
     .single();
@@ -2732,7 +2732,7 @@ async function updateOrderTotal(supabase: any, orderId: number) {
           .insert({
             tenant_id: confirmation.tenant_id,
             phone: phoneForDB,
-            name: `Cliente ${phoneForDB.slice(-4)}`,
+            name: null,
             consentimento_ativo: true,
             data_permissao: new Date().toISOString()
           })
