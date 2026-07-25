@@ -39,7 +39,8 @@ export default function RequireFluxoScope({ children }: { children: ReactNode })
     })();
   }, [profile?.tenant_id, profile?.access_scope]);
 
-  if (isLoading || checking) {
+  // Enquanto sessão carrega OU usuário existe mas profile ainda não veio, aguarda
+  if (isLoading || (user && !profile) || checking) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
