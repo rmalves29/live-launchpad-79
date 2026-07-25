@@ -5,6 +5,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Menu } from 'lucide-react';
 import cartzyLogo from '@/assets/cartzy-logo.png';
+import { TenantSwitcher } from '@/components/TenantSwitcher';
 import { NavLink } from 'react-router-dom';
 import { AnnouncementPopup } from '@/components/AnnouncementPopup';
 
