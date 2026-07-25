@@ -117,6 +117,14 @@ export default function GroupsManager() {
       toast({ title: 'Preencha JID e nome do grupo', variant: 'destructive' });
       return;
     }
+    if (Number.isFinite(maxGroups) && totalCount >= maxGroups) {
+      toast({
+        title: `Limite do plano ${planLabel} atingido`,
+        description: `Seu plano permite até ${maxGroups} grupos. Faça upgrade para adicionar mais.`,
+        variant: 'destructive',
+      });
+      return;
+    }
     const { error } = await supabase
       .from('fe_groups' as any)
       .insert({
