@@ -179,7 +179,13 @@ export default function GroupsManager() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h3 className="text-lg font-semibold text-foreground">Grupos WhatsApp</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-foreground">Grupos WhatsApp</h3>
+          <Badge variant="secondary" className="gap-1">
+            <Crown className="h-3 w-3" />
+            {planLabel} · {totalCount}/{Number.isFinite(maxGroups) ? maxGroups : '∞'}
+          </Badge>
+        </div>
         <div className="flex items-center gap-3">
           <Input
             placeholder="Buscar grupo..."
