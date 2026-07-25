@@ -97,7 +97,7 @@ export const TenantSwitcher = () => {
         Preview
       </Badge>
       <Select value={selected} onValueChange={handleChange} disabled={loading || tenants.length === 0}>
-        <SelectTrigger className="w-[220px]">
+        <SelectTrigger className="w-full lg:w-[220px] h-9 text-xs lg:text-sm">
           <SelectValue placeholder={currentLabel} />
         </SelectTrigger>
         <SelectContent>
