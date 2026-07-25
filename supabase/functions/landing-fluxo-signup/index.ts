@@ -159,6 +159,14 @@ Deno.serve(async (req) => {
       console.error('[landing-fluxo-signup] whatsapp provisioning failed:', (e as Error).message);
     }
 
+    // Alerta admins OrderZap sobre novo cadastro Fluxo de Envio
+    notifyOrderZapAdmins({
+      title: '🎉 Nova empresa no Fluxo de Envio',
+      body: `${company} acabou de criar uma conta (Trial 3 dias).`,
+      url: '/empresas',
+      tag: `fluxo-signup-${tenant.id}`,
+    }).catch((err) => console.error('[landing-fluxo-signup] notify admin failed:', err));
+
     return new Response(JSON.stringify({ success: true, tenantId: tenant.id, whatsappProvisioned }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
