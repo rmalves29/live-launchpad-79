@@ -170,7 +170,7 @@ export default function FluxoEnvioPagamento() {
                   {plan.tagline}
                 </CardDescription>
                 <div className="mt-4">
-                  <span className="text-4xl font-bold">
+                  <span className="text-4xl font-bold text-white">
                     R$ {plan.price.toFixed(2).replace(".", ",")}
                   </span>
                   <span className="text-white/50 ml-1">/mês</span>
