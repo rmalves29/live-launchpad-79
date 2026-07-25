@@ -63,7 +63,10 @@ serve(async (req) => {
       return new Response(JSON.stringify({ success: true, sent_push: false, reason: "no_subscription" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const title = interpolate((tpl as any).title, vars || {});
+    const rawTitle = interpolate((tpl as any).title, vars || {});
+    const title = tenantName && !rawTitle.toLowerCase().startsWith(tenantName.toLowerCase())
+      ? `${tenantName} · ${rawTitle}`
+      : rawTitle;
     const bodyText = interpolate((tpl as any).body, vars || {});
 
     let successCount = 0;
@@ -76,7 +79,7 @@ serve(async (req) => {
 
       const payload = {
         title, body: bodyText, image: (tpl as any).image_url || undefined,
-        url: (tpl as any).click_url || "/", log_id: logRow?.id,
+        icon: tenantIcon, url: (tpl as any).click_url || "/", log_id: logRow?.id,
       };
       const res = await sendWebPush({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload);
       if (res.ok) {
