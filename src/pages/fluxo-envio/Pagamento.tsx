@@ -42,9 +42,12 @@ const PLANS: Plan[] = [
     tagline: "O favorito de quem vende todo dia",
     highlight: true,
     features: [
-      "Tudo do Essencial",
+      "Envios em Grupo",
       "Gestão de até 10 grupos",
       "Criação de até 30 campanhas",
+      "Relatórios de entradas e saídas",
+      "Automação de retorno ao grupo",
+      "Suporte por e-mail",
       "Agendamento avançado",
       "Suporte prioritário no WhatsApp",
     ],
@@ -55,9 +58,14 @@ const PLANS: Plan[] = [
     price: 89.9,
     tagline: "Para operações em escala",
     features: [
-      "Tudo do Profissional",
+      "Envios em Grupo",
       "Gestão Ilimitada de Grupos",
       "Criação Ilimitada de Grupos",
+      "Relatórios de entradas e saídas",
+      "Automação de retorno ao grupo",
+      "Suporte por e-mail",
+      "Agendamento avançado",
+      "Suporte prioritário no WhatsApp",
       "Fila de espera inteligente",
       "Consultoria mensal 1:1",
     ],
@@ -169,7 +177,7 @@ export default function FluxoEnvioPagamento() {
                 </div>
               )}
               <CardHeader>
-                <CardTitle className="text-xl">{plan.name}</CardTitle>
+                <CardTitle className="text-xl text-white">{plan.name}</CardTitle>
                 <CardDescription className="text-white/60">
                   {plan.tagline}
                 </CardDescription>
