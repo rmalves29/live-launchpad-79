@@ -46,6 +46,11 @@ serve(async (req) => {
       return new Response(JSON.stringify({ success: true, sent_push: false, reason: "template_disabled" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // Tenant branding (name prefix + logo as icon)
+    const { data: tenantRow } = await supabase.from("tenants").select("name, logo_url").eq("id", tenant_id).maybeSingle();
+    const tenantName = (tenantRow as any)?.name?.trim() || "";
+    const tenantIcon = (tenantRow as any)?.logo_url || undefined;
+
     // 2) find active subs for this customer
     const digits = normalizeDigits(customer_phone);
     let query = supabase.from("push_subscriptions").select("*").eq("tenant_id", tenant_id).eq("is_active", true);
