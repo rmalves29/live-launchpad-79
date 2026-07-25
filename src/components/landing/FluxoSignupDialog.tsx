@@ -64,7 +64,7 @@ export default function FluxoSignupDialog({ open, onOpenChange, initialMode = 's
           <DialogTitle>{mode === 'signup' ? 'Criar sua conta grátis' : 'Entrar no Fluxo de Envio'}</DialogTitle>
           <DialogDescription>
             {mode === 'signup'
-              ? 'Teste 7 dias sem cartão. Acesso ao painel do Fluxo de Envio.'
+              ? 'Teste 3 dias sem cartão. Acesso ao painel do Fluxo de Envio.'
               : 'Acesse sua conta do Fluxo de Envio.'}
           </DialogDescription>
         </DialogHeader>

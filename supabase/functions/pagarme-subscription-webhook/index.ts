@@ -16,8 +16,8 @@ function json(body: unknown, status = 200) {
 
 function parseCodeForTenant(code?: string | null): { tenant_id?: string; plan_id?: string } {
   if (!code) return {};
-  // orderzap-sub-<TENANT_UUID>-<PLAN>
-  const m = code.match(/^orderzap-sub-([0-9a-f-]{36})-(pro|enterprise)$/i);
+  // orderzap-sub-<TENANT_UUID>-<PLAN> (formato legado)
+  const m = code.match(/^orderzap-sub-([0-9a-f-]{36})-(basic|pro|enterprise)$/i);
   if (!m) return {};
   return { tenant_id: m[1], plan_id: m[2] };
 }
@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
     const parsedCode = parseCodeForTenant(code);
     let tenantId: string | undefined = metadata?.tenant_id || parsedCode.tenant_id;
     let planId: string | undefined = metadata?.plan_id || parsedCode.plan_id;
-    let intervalMonths = Number(metadata?.interval_months) || (planId === "enterprise" ? 12 : 6);
+    let intervalMonths = Number(metadata?.interval_months) || 0;
 
     // Buscar registro local
     let local: any = null;
@@ -95,8 +95,14 @@ Deno.serve(async (req) => {
       if (local) {
         tenantId = tenantId || local.tenant_id;
         planId = planId || local.plan_id;
-        intervalMonths = local.interval_months || intervalMonths;
+        intervalMonths = intervalMonths || local.interval_months || 0;
       }
+    }
+    // Só cai no fallback fixo (planos legados do Cartzy) quando nem metadata nem
+    // registro local trouxeram o intervalo real — evita assumir 6 meses para o
+    // plano "basic" (Fluxo de Envio), que é mensal.
+    if (!intervalMonths) {
+      intervalMonths = planId === "enterprise" ? 12 : planId === "pro" ? 6 : 1;
     }
 
     if (!tenantId) {

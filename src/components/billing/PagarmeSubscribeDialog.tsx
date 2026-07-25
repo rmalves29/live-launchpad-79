@@ -67,7 +67,7 @@ export function PagarmeSubscribeDialog({
 
     setLoading(true);
     try {
-      const fnName = mode === "one_time" ? "pagarme-create-order" : "pagarme-create-subscription";
+      const fnName = mode === "one_time" ? "pagarme-create-order" : "pagarme-create-subscription-v2";
       const payload: any = {
         tenant_id: tenantId,
         plan_id: planId,
@@ -92,8 +92,8 @@ export function PagarmeSubscribeDialog({
           country: "BR",
         },
       };
+      payload.plan_name = planName;
       if (mode === "one_time") {
-        payload.plan_name = planName;
         payload.plan_days = planDays;
       } else {
         payload.interval_months = intervalMonths;
