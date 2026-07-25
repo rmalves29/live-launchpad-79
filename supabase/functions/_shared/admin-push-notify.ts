@@ -30,11 +30,19 @@ export async function notifyOrderZapAdmins(args: AdminNotifyArgs): Promise<{ sen
 
     let sent = 0;
     let failed = 0;
+    // Fetch OrderZap branding (logo as icon)
+    const { data: tenantRow } = await sb.from("tenants").select("name, logo_url").eq("id", ORDERZAP_TENANT_ID).maybeSingle();
+    const tenantName = (tenantRow as any)?.name?.trim() || "OrderZap";
+    const tenantIcon = (tenantRow as any)?.logo_url || undefined;
+    const displayTitle = args.title.toLowerCase().startsWith(tenantName.toLowerCase())
+      ? args.title
+      : `${tenantName} · ${args.title}`;
     const payload = {
-      title: args.title,
+      title: displayTitle,
       body: args.body,
       url: args.url || "/empresas",
       tag: args.tag,
+      icon: tenantIcon,
     };
     for (const s of subs as any[]) {
       const res = await sendWebPush(
