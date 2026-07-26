@@ -25,6 +25,24 @@ export default function FluxoSignupDialog({ open, onOpenChange, initialMode = 's
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const redirectToFluxoApp = async () => {
+    const target = `${window.location.origin}/fluxo-envio/app`;
+
+    // Garante que a sessão foi persistida no storage antes de trocar de rota.
+    await supabase.auth.getSession().catch(() => null);
+
+    onOpenChange(false);
+    navigate('/fluxo-envio/app', { replace: true });
+
+    // Fallback forte para produção/mobile caso o router não processe a navegação
+    // imediatamente após o login.
+    window.setTimeout(() => {
+      if (window.location.pathname !== '/fluxo-envio/app') {
+        window.location.replace(target);
+      }
+    }, 150);
+  };
+
   useEffect(() => {
     if (open) setMode(initialMode);
   }, [open, initialMode]);
@@ -66,14 +84,12 @@ export default function FluxoSignupDialog({ open, onOpenChange, initialMode = 's
         const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
         if (signInErr) throw signInErr;
         toast({ title: 'Conta criada!', description: 'Bem-vindo ao Fluxo de Envio.' });
-        onOpenChange(false);
-        navigate('/fluxo-envio/app', { replace: true });
+        await redirectToFluxoApp();
       } else {
         const { error } = await signInWithPasswordResilient(email, password);
         if (error) throw error;
         toast({ title: 'Bem-vindo de volta!' });
-        onOpenChange(false);
-        navigate('/fluxo-envio/app', { replace: true });
+        await redirectToFluxoApp();
       }
     } catch (e: any) {
       toast({ title: 'Erro', description: translateError(e.message), variant: 'destructive' });
