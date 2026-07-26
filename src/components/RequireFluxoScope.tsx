@@ -14,7 +14,7 @@ export default function RequireFluxoScope({ children }: { children: ReactNode })
   const [needsPayment, setNeedsPayment] = useState(false);
   // Fallback: sessão lida diretamente do Supabase (evita corrida com o contexto)
   const [directSession, setDirectSession] = useState<'unknown' | 'yes' | 'no'>('unknown');
-  const [directProfile, setDirectProfile] = useState<{ tenant_id: string | null; access_scope?: string | null } | null>(null);
+  const [directProfile, setDirectProfile] = useState<{ tenant_id: string | null; access_scope?: string | null; role?: string | null } | null>(null);
 
   // Confere sessão/perfil direto no Supabase quando o contexto ainda não tem usuário
   useEffect(() => {
@@ -31,7 +31,7 @@ export default function RequireFluxoScope({ children }: { children: ReactNode })
         if (data.session?.user) {
           const { data: prof } = await supabase
             .from('profiles')
-            .select('tenant_id, access_scope')
+            .select('tenant_id, access_scope, role')
             .eq('id', data.session.user.id)
             .maybeSingle();
           if (!active) return;
@@ -85,6 +85,7 @@ export default function RequireFluxoScope({ children }: { children: ReactNode })
   }, [effectiveProfile?.tenant_id, effectiveProfile?.access_scope]);
 
   const hasUser = !!user || directSession === 'yes';
+  const isSuperAdmin = effectiveProfile?.role === 'super_admin';
 
   // Enquanto sessão carrega OU usuário existe mas profile ainda não veio, aguarda
   if (isLoading || directSession === 'unknown' || (hasUser && !effectiveProfile) || checking) {
@@ -95,7 +96,8 @@ export default function RequireFluxoScope({ children }: { children: ReactNode })
     );
   }
   if (!hasUser) return <Navigate to="/fluxo-envio" replace />;
-  if (!effectiveProfile?.tenant_id) return <Navigate to="/fluxo-envio" replace />;
+  // super_admin não tem tenant_id fixo (usa "preview tenant" dinâmico) — não exigir aqui.
+  if (!isSuperAdmin && !effectiveProfile?.tenant_id) return <Navigate to="/fluxo-envio" replace />;
   if (needsPayment) return <Navigate to="/fluxo-envio/pagamento" replace />;
   return <>{children}</>;
 }
