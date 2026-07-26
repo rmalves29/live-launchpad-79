@@ -35,7 +35,7 @@ export default function RequireFluxoScope({ children }: { children: ReactNode })
             .eq('id', data.session.user.id)
             .maybeSingle();
           if (!active) return;
-          setDirectProfile(prof ?? null);
+          setDirectProfile(prof ?? { tenant_id: null });
           setDirectSession('yes');
           return;
         }
