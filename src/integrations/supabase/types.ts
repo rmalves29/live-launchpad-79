@@ -2513,6 +2513,30 @@ export type Database = {
           },
         ]
       }
+      login_rate_limits: {
+        Row: {
+          blocked_until: string | null
+          email: string
+          failed_attempts: number
+          first_failed_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          blocked_until?: string | null
+          email: string
+          failed_attempts?: number
+          first_failed_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          blocked_until?: string | null
+          email?: string
+          failed_attempts?: number
+          first_failed_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       mkt_mm: {
         Row: {
           created_at: string | null
