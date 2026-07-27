@@ -117,8 +117,10 @@ export default function AppmaxIntegration({ tenantId }: AppmaxIntegrationProps) 
       }
       console.log('[AppmaxIntegration] Salvando para tenant:', tenantId);
       
-      // Desativar outros provedores antes de ativar App Max
-      await deactivateOtherProviders();
+      // Desativar outros provedores apenas se o App Max for/estiver ativo
+      if (!integration || integration.is_active) {
+        await deactivateOtherProviders();
+      }
       
       const dataToSave = {
         tenant_id: tenantId,
