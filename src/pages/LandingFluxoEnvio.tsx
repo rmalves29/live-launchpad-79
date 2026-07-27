@@ -22,6 +22,9 @@ import {
   Sparkles,
   Link2,
   ShieldCheck,
+  AtSign,
+  Video,
+  Image,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
