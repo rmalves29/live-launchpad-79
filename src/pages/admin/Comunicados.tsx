@@ -37,12 +37,57 @@ const empty: Partial<Announcement> = {
   ends_at: null,
 };
 
+type ViewRow = {
+  tenant_id: string | null;
+  tenant_name: string | null;
+  user_id: string;
+  seconds_watched: number;
+  last_viewed_at: string;
+};
+
+function formatDuration(seconds: number) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}min ${String(s).padStart(2, '0')}s`;
+}
+
 export default function Comunicados() {
   const [items, setItems] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Partial<Announcement>>(empty);
   const [saving, setSaving] = useState(false);
+  const [reportFor, setReportFor] = useState<Announcement | null>(null);
+  const [reportRows, setReportRows] = useState<ViewRow[]>([]);
+  const [reportLoading, setReportLoading] = useState(false);
+
+  const openReport = async (a: Announcement) => {
+    setReportFor(a);
+    setReportLoading(true);
+    setReportRows([]);
+    const { data, error } = await supabase
+      .from('announcement_views' as any)
+      .select('tenant_id, tenant_name, user_id, seconds_watched, last_viewed_at')
+      .eq('announcement_id', a.id)
+      .order('seconds_watched', { ascending: false });
+    if (error) toast.error(error.message);
+    setReportRows(((data || []) as unknown) as ViewRow[]);
+    setReportLoading(false);
+  };
+
+  const reportByTenant = (() => {
+    const map = new Map<string, { name: string; seconds: number; viewers: number; last: string }>();
+    for (const r of reportRows) {
+      const key = r.tenant_id || r.tenant_name || 'sem-empresa';
+      const cur = map.get(key) || { name: r.tenant_name || 'Sem empresa', seconds: 0, viewers: 0, last: r.last_viewed_at };
+      cur.seconds += r.seconds_watched || 0;
+      cur.viewers += 1;
+      if (r.last_viewed_at > cur.last) cur.last = r.last_viewed_at;
+      map.set(key, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => b.seconds - a.seconds);
+  })();
+
 
   const load = async () => {
     setLoading(true);
