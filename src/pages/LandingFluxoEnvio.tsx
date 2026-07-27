@@ -129,7 +129,7 @@ export default function LandingFluxoEnvio() {
   const openSignup = (mode: 'signup' | 'login' = 'signup') => { setSignupMode(mode); setSignupOpen(true); };
 
   useEffect(() => {
-    document.title = "Fluxo de Envio — Escale seus grupos de WhatsApp sem tomar bloqueio";
+    document.title = "Fluxo de Envio — Escale seus grupos de WhatsApp";
     const meta = document.querySelector('meta[name="description"]');
     if (meta) meta.setAttribute("content", "Dispare campanhas em todos os seus grupos de WhatsApp com ritmo humano, proteção anti-bloqueio e relatórios em tempo real. Sem custo por mensagem, sem API oficial.");
   }, []);
@@ -151,7 +151,7 @@ export default function LandingFluxoEnvio() {
   ];
 
   const features = [
-    { icon: Send, title: "Disparo em massa com ritmo humano", description: "Envia para 200+ grupos em sequência, com intervalos randômicos e mensagens variadas — o WhatsApp lê como comportamento humano, não como bot." },
+    { icon: Send, title: "Disparo em massa com ritmo humano", description: "Envia para diversos grupos em sequência, com intervalos randômicos e mensagens variadas — o WhatsApp lê como comportamento humano, não como bot." },
     { icon: Calendar, title: "Agendamento inteligente", description: "Programe campanhas para o horário exato do seu lançamento. Áudio, foto, vídeo, texto e enquetes — tudo agendado com um clique." },
     { icon: Repeat, title: "Fluxo de Retorno automático", description: "Cliente saiu do grupo? O sistema envia mensagem privada convidando ela de volta e libera um cupom só quando ela realmente retornar. Recupera audiência no automático." },
     { icon: UserX, title: "Bloqueio inteligente de clientes", description: "Cliente bloqueado não entra mais em nenhum grupo seu, mesmo criando conta nova — o sistema barra na porta antes de você perder tempo moderando." },
@@ -261,15 +261,12 @@ export default function LandingFluxoEnvio() {
             <Reveal delay={80}>
               <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6 leading-[1.05]">
                 Escale seus grupos de <br className="hidden md:block" />
-                WhatsApp{" "}
-                <span className="lp-shimmer-text bg-gradient-to-r from-sky-400 via-cyan-300 to-indigo-400 bg-clip-text text-transparent">
-                  sem tomar bloqueio
-                </span>
+                WhatsApp
               </h1>
             </Reveal>
             <Reveal delay={160}>
               <p className="text-lg md:text-xl text-slate-400 mb-10 max-w-2xl mx-auto leading-relaxed">
-                Dispare campanhas para <strong className="text-white">200+ grupos ao mesmo tempo</strong>, com ritmo humano, proteção anti-ban e relatórios em tempo real. Sem custo por mensagem, sem API oficial da Meta.
+                Dispare campanhas para <strong className="text-white">diversos grupos ao mesmo tempo</strong>, com ritmo humano, proteção anti-ban e relatórios em tempo real. Sem custo por mensagem, sem API oficial da Meta.
               </p>
             </Reveal>
             <Reveal delay={240}>
