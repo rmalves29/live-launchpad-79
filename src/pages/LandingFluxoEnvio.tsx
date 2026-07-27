@@ -163,6 +163,9 @@ export default function LandingFluxoEnvio() {
     { icon: BarChart3, title: "Relatórios em tempo real", description: "Entradas, saídas, cliques por campanha, retenção por grupo e taxa de retorno — tudo atualizando sozinho no dashboard." },
     { icon: ShieldCheck, title: "Proteção anti-bloqueio", description: "Ritmo humano, mensagens com variação, controle de consentimento e injeção de caracteres invisíveis. Seu chip protegido a cada disparo." },
     { icon: Bot, title: "Suporte humano no WhatsApp", description: "Quando algo der ruim no meio do lançamento, você fala com gente de verdade — nada de ticket que responde daqui a 4 dias." },
+    { icon: AtSign, title: "Menções com @", description: "Chame a atenção de participantes específicos dentro dos grupos usando menções. Ideal para avisos VIP, avisos de pagamento e interações direcionadas." },
+    { icon: Video, title: "Vídeos instantâneos", description: "Dispare vídeos direto nos grupos como se tivesse gravado na hora. Perfeito para demonstrações rápidas, provas sociais e conteúdo que gera mais engajamento." },
+    { icon: Image, title: "Imagens e áudios", description: "Envie fotos de produtos, áudios personalizados e catálogos visuais em massa. Multimídia que converte sem depender de API oficial." },
   ];
 
 
