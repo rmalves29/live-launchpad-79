@@ -244,6 +244,39 @@ export default function Comunicados() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!reportFor} onOpenChange={(o) => { if (!o) setReportFor(null); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Relatório · {reportFor?.title}</DialogTitle></DialogHeader>
+          {reportLoading ? (
+            <p className="text-muted-foreground text-sm">Carregando...</p>
+          ) : reportByTenant.length === 0 ? (
+            <p className="text-muted-foreground text-sm">Nenhuma visualização registrada ainda.</p>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                {reportByTenant.length} empresa(s) · {reportRows.length} usuário(s) ·
+                {' '}{formatDuration(reportRows.reduce((s, r) => s + (r.seconds_watched || 0), 0))} no total
+              </p>
+              <div className="border rounded-lg divide-y">
+                <div className="grid grid-cols-4 gap-2 px-3 py-2 text-xs font-medium text-muted-foreground">
+                  <span className="col-span-2">Empresa</span>
+                  <span>Tempo assistido</span>
+                  <span>Última vez</span>
+                </div>
+                {reportByTenant.map((r) => (
+                  <div key={r.name + r.last} className="grid grid-cols-4 gap-2 px-3 py-2 text-sm items-center">
+                    <span className="col-span-2 font-medium">{r.name} <span className="text-xs text-muted-foreground">({r.viewers} usuário{r.viewers > 1 ? 's' : ''})</span></span>
+                    <span>{formatDuration(r.seconds)}</span>
+                    <span className="text-xs text-muted-foreground">{new Date(r.last).toLocaleString('pt-BR')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
+
   );
 }
