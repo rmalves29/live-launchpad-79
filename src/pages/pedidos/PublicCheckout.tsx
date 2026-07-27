@@ -1946,7 +1946,10 @@ const PublicCheckout = () => {
                             <label htmlFor={option.id} className="flex-1 min-w-0 cursor-pointer">
                               <span className="block font-medium leading-snug break-words">{option.name}</span>
                               <p className="mt-1 text-sm text-muted-foreground leading-relaxed break-words">
-                                {option.company} · {formatDeliveryTime(option.delivery_time, option.company, option.id)}
+                                {option.id !== 'retirada' && !String(option.id).startsWith('custom_') && option.company && option.company !== 'Envio'
+                                  ? `${option.company} · `
+                                  : ''}
+                                {formatDeliveryTime(option.delivery_time, option.company, option.id)}
                               </p>
                             </label>
                             <span className={`shrink-0 self-start font-bold whitespace-nowrap ${isFree ? 'text-emerald-600' : ''}`}>
