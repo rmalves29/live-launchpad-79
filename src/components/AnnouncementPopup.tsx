@@ -27,7 +27,39 @@ function extractYouTubeId(url: string): string | null {
 
 export function AnnouncementPopup() {
   const { user } = useAuth();
+  const { tenant } = useTenantContext();
   const [current, setCurrent] = useState<Announcement | null>(null);
+  const secondsRef = useRef(0);
+  const tenantRef = useRef(tenant);
+  tenantRef.current = tenant;
+
+  // Contabiliza tempo assistido enquanto o comunicado de vídeo está aberto
+  useEffect(() => {
+    if (!current || current.type !== 'video' || !user) return;
+    secondsRef.current = 0;
+
+    const flush = async () => {
+      if (secondsRef.current <= 0) return;
+      await supabase.rpc('track_announcement_view' as any, {
+        p_announcement_id: current.id,
+        p_tenant_id: tenantRef.current?.id ?? null,
+        p_tenant_name: tenantRef.current?.name ?? null,
+        p_seconds: secondsRef.current,
+      });
+    };
+
+    const tick = setInterval(() => {
+      if (document.visibilityState === 'visible') secondsRef.current += 1;
+    }, 1000);
+    const flushTimer = setInterval(flush, 15000);
+
+    return () => {
+      clearInterval(tick);
+      clearInterval(flushTimer);
+      flush();
+    };
+  }, [current, user]);
+
 
   useEffect(() => {
     if (!user) return;
