@@ -105,7 +105,8 @@ export default function PaymentIntegrations({ tenantId }: PaymentIntegrationsPro
         client_secret: formData.client_secret || null,
         webhook_secret: formData.webhook_secret || null,
         environment: formData.environment,
-        is_active: true,
+        // Preserva o estado atual: salvar credenciais não reativa uma integração desativada
+        is_active: integration ? integration.is_active : true,
         pix_discount_percent: formData.pix_discount_percent || 0,
         enable_pix: formData.enable_pix,
         enable_credit_card: formData.enable_credit_card,
