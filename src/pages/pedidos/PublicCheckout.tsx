@@ -938,6 +938,10 @@ const PublicCheckout = () => {
     // Validação dos outros campos obrigatórios
     const missingFields: string[] = [];
     if (!customerData.name) missingFields.push('Nome');
+    else if (/^[\d\s\-.\/()+]+$/.test(customerData.name.trim())) {
+      toast({ title: 'Nome inválido', description: 'Digite seu nome completo no campo Nome (não use números ou CEP).', variant: 'destructive' });
+      return;
+    }
     if (!customerData.cep) missingFields.push('CEP');
     if (!customerData.street) missingFields.push('Rua');
     if (!customerData.number) missingFields.push('Número');

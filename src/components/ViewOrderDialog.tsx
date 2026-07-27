@@ -269,7 +269,11 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
     }
   };
 
-  const customerName = order.customer?.name || 'Cliente não identificado';
+  // Ignora nomes inválidos (CEP/telefone salvos por engano no campo nome)
+  const isInvalidName = (n?: string | null) => !n || !n.trim() || /^[\d\s\-.\/()+]+$/.test(n.trim());
+  const customerName = !isInvalidName(order.customer?.name)
+    ? (order.customer!.name as string)
+    : (!isInvalidName((order as any).customer_name) ? (order as any).customer_name : 'Cliente não identificado');
   const customerAddress = order.customer ? 
     `${order.customer.street || ''}, ${order.customer.number || ''}${order.customer.complement ? `, ${order.customer.complement}` : ''}, ${order.customer.neighborhood || ''} - ${order.customer.city || ''} - ${order.customer.state || ''}, CEP: ${order.customer.cep || ''}` 
     : 'Endereço não cadastrado';

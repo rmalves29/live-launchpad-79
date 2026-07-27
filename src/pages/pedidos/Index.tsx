@@ -27,6 +27,15 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useAuth } from '@/hooks/useAuth';
 import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
 import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
+
+// Nome inválido = vazio ou só números (CEP/telefone salvos por engano no campo nome)
+const isInvalidCustomerName = (n?: string | null) => !n || !n.trim() || /^[\d\s\-.\/()+]+$/.test(n.trim());
+const displayCustomerName = (order: { customer_name?: string | null; customer?: { name?: string | null } | null }) => {
+  if (!isInvalidCustomerName(order.customer?.name)) return order.customer!.name as string;
+  if (!isInvalidCustomerName(order.customer_name)) return order.customer_name as string;
+  return '';
+};
+
   interface Order {
     id: number;
     tenant_order_number?: number;
@@ -1859,6 +1868,9 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                             <span className="text-sm font-bold text-[#111827]">{formatCurrency(order.total_amount)}</span>
                           </div>
                           <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                            {displayCustomerName(order) && (
+                              <span className="text-[12px] text-[#111827] font-semibold">{displayCustomerName(order)}</span>
+                            )}
                             <span className="text-[12px] text-[#374151] font-medium">{formatPhoneForDisplay(order.customer_phone)}</span>
                             {order.customer?.instagram && (
                               <span className="text-[11px] text-muted-foreground">@{order.customer.instagram.replace(/^@/, '')}</span>
@@ -2020,6 +2032,10 @@ import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
                       {/* Telefone + Badge múltiplos pedidos */}
                       <TableCell className="px-3 py-3">
                         <div className="flex flex-col gap-0.5">
+                          {(() => {
+                            const nm = displayCustomerName(order);
+                            return nm ? <span className="text-xs font-semibold text-[#111827]">{nm}</span> : null;
+                          })()}
                           <span className="text-xs font-medium">{formatPhoneForDisplay(order.customer_phone)}</span>
                           {order.customer?.instagram && (
                             <span className="text-[10px] text-muted-foreground">@{order.customer.instagram.replace(/^@/, '')}</span>
