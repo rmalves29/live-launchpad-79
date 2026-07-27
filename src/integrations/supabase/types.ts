@@ -43,6 +43,47 @@ export type Database = {
           },
         ]
       }
+      announcement_views: {
+        Row: {
+          announcement_id: string
+          first_viewed_at: string
+          id: string
+          last_viewed_at: string
+          seconds_watched: number
+          tenant_id: string | null
+          tenant_name: string | null
+          user_id: string
+        }
+        Insert: {
+          announcement_id: string
+          first_viewed_at?: string
+          id?: string
+          last_viewed_at?: string
+          seconds_watched?: number
+          tenant_id?: string | null
+          tenant_name?: string | null
+          user_id: string
+        }
+        Update: {
+          announcement_id?: string
+          first_viewed_at?: string
+          id?: string
+          last_viewed_at?: string
+          seconds_watched?: number
+          tenant_id?: string | null
+          tenant_name?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "announcement_views_announcement_id_fkey"
+            columns: ["announcement_id"]
+            isOneToOne: false
+            referencedRelation: "announcements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       announcements: {
         Row: {
           body: string | null
@@ -5282,6 +5323,15 @@ export type Database = {
       }
       tenant_has_access: { Args: { tenant_uuid: string }; Returns: boolean }
       text_to_bytea: { Args: { data: string }; Returns: string }
+      track_announcement_view: {
+        Args: {
+          p_announcement_id: string
+          p_seconds: number
+          p_tenant_id: string
+          p_tenant_name: string
+        }
+        Returns: undefined
+      }
       urlencode:
         | { Args: { data: Json }; Returns: string }
         | {

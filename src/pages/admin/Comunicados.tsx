@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Plus, Trash2, Pencil, Megaphone } from 'lucide-react';
+import { Plus, Trash2, Pencil, Megaphone, BarChart3 } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -37,12 +37,57 @@ const empty: Partial<Announcement> = {
   ends_at: null,
 };
 
+type ViewRow = {
+  tenant_id: string | null;
+  tenant_name: string | null;
+  user_id: string;
+  seconds_watched: number;
+  last_viewed_at: string;
+};
+
+function formatDuration(seconds: number) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}min ${String(s).padStart(2, '0')}s`;
+}
+
 export default function Comunicados() {
   const [items, setItems] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<Partial<Announcement>>(empty);
   const [saving, setSaving] = useState(false);
+  const [reportFor, setReportFor] = useState<Announcement | null>(null);
+  const [reportRows, setReportRows] = useState<ViewRow[]>([]);
+  const [reportLoading, setReportLoading] = useState(false);
+
+  const openReport = async (a: Announcement) => {
+    setReportFor(a);
+    setReportLoading(true);
+    setReportRows([]);
+    const { data, error } = await supabase
+      .from('announcement_views' as any)
+      .select('tenant_id, tenant_name, user_id, seconds_watched, last_viewed_at')
+      .eq('announcement_id', a.id)
+      .order('seconds_watched', { ascending: false });
+    if (error) toast.error(error.message);
+    setReportRows(((data || []) as unknown) as ViewRow[]);
+    setReportLoading(false);
+  };
+
+  const reportByTenant = (() => {
+    const map = new Map<string, { name: string; seconds: number; viewers: number; last: string }>();
+    for (const r of reportRows) {
+      const key = r.tenant_id || r.tenant_name || 'sem-empresa';
+      const cur = map.get(key) || { name: r.tenant_name || 'Sem empresa', seconds: 0, viewers: 0, last: r.last_viewed_at };
+      cur.seconds += r.seconds_watched || 0;
+      cur.viewers += 1;
+      if (r.last_viewed_at > cur.last) cur.last = r.last_viewed_at;
+      map.set(key, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => b.seconds - a.seconds);
+  })();
+
 
   const load = async () => {
     setLoading(true);
@@ -131,8 +176,10 @@ export default function Comunicados() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Switch checked={a.is_active} onCheckedChange={() => toggleActive(a)} />
+                  <Button variant="ghost" size="icon" title="Relatório de visualizações" onClick={() => openReport(a)}><BarChart3 className="w-4 h-4" /></Button>
                   <Button variant="ghost" size="icon" onClick={() => openEdit(a)}><Pencil className="w-4 h-4" /></Button>
                   <Button variant="ghost" size="icon" onClick={() => remove(a.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+
                 </div>
               </CardHeader>
               {a.body && <CardContent className="text-sm text-muted-foreground whitespace-pre-wrap">{a.body}</CardContent>}
@@ -197,6 +244,39 @@ export default function Comunicados() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!reportFor} onOpenChange={(o) => { if (!o) setReportFor(null); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Relatório · {reportFor?.title}</DialogTitle></DialogHeader>
+          {reportLoading ? (
+            <p className="text-muted-foreground text-sm">Carregando...</p>
+          ) : reportByTenant.length === 0 ? (
+            <p className="text-muted-foreground text-sm">Nenhuma visualização registrada ainda.</p>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-muted-foreground">
+                {reportByTenant.length} empresa(s) · {reportRows.length} usuário(s) ·
+                {' '}{formatDuration(reportRows.reduce((s, r) => s + (r.seconds_watched || 0), 0))} no total
+              </p>
+              <div className="border rounded-lg divide-y">
+                <div className="grid grid-cols-4 gap-2 px-3 py-2 text-xs font-medium text-muted-foreground">
+                  <span className="col-span-2">Empresa</span>
+                  <span>Tempo assistido</span>
+                  <span>Última vez</span>
+                </div>
+                {reportByTenant.map((r) => (
+                  <div key={r.name + r.last} className="grid grid-cols-4 gap-2 px-3 py-2 text-sm items-center">
+                    <span className="col-span-2 font-medium">{r.name} <span className="text-xs text-muted-foreground">({r.viewers} usuário{r.viewers > 1 ? 's' : ''})</span></span>
+                    <span>{formatDuration(r.seconds)}</span>
+                    <span className="text-xs text-muted-foreground">{new Date(r.last).toLocaleString('pt-BR')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
+
   );
 }
