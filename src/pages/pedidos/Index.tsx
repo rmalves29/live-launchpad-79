@@ -27,6 +27,15 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useAuth } from '@/hooks/useAuth';
 import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
 import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
+
+// Nome inválido = vazio ou só números (CEP/telefone salvos por engano no campo nome)
+const isInvalidCustomerName = (n?: string | null) => !n || !n.trim() || /^[\d\s\-.\/()+]+$/.test(n.trim());
+const displayCustomerName = (order: { customer_name?: string | null; customer?: { name?: string | null } | null }) => {
+  if (!isInvalidCustomerName(order.customer?.name)) return order.customer!.name as string;
+  if (!isInvalidCustomerName(order.customer_name)) return order.customer_name as string;
+  return '';
+};
+
   interface Order {
     id: number;
     tenant_order_number?: number;
