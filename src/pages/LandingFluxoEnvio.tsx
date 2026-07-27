@@ -135,7 +135,7 @@ export default function LandingFluxoEnvio() {
   }, []);
 
   const pains = [
-    { icon: Clock, title: "3 horas da noite copiando e colando em 30 grupos", description: "Você abre grupo por grupo, cola a mesma mensagem, espera carregar, roda o cursor. Enquanto isso, seu concorrente já disparou em 200 grupos e foi dormir." },
+    { icon: Clock, title: "passa horas e horas copiando e colando em grupos", description: "Você abre grupo por grupo, cola a mesma mensagem, espera carregar, roda o cursor. Enquanto isso, seu concorrente já disparou em 200 grupos e foi dormir." },
     { icon: UserX, title: "As pessoas saem do grupo e você nem fica sabendo", description: "Todo dia sua audiência encolhe silenciosamente. Você só percebe no dia da oferta — quando abre a live e vê metade da galera que sumiu." },
     { icon: AlertCircle, title: "Membros bloqueados voltam entrando de novo", description: "Você bloqueou aquela pessoa problemática, e ela cria outra conta e volta pro mesmo grupo. Vira uma peneira furada consumindo seu tempo de moderação." },
     { icon: Moon, title: "Você virou refém da rotina de disparo", description: "Toda campanha nova é uma noite mal dormida. Você quer escalar o negócio, mas o gargalo é você — teclando manualmente enquanto o mercado corre." },
