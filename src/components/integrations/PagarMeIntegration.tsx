@@ -120,7 +120,8 @@ export default function PagarMeIntegration({ tenantId }: PagarMeIntegrationProps
         encryption_key: formData.encryption_key || null,
         webhook_secret: formData.webhook_secret || null,
         environment: formData.environment,
-        is_active: true,
+        // Preserva o estado atual: salvar credenciais não reativa uma integração desativada
+        is_active: integration ? integration.is_active : true,
         min_installment_value: formData.min_installment_value || 0,
         max_installments_without_interest: formData.max_installments_without_interest || 1,
         max_installments: Math.min(12, Math.max(1, formData.max_installments || 12)),

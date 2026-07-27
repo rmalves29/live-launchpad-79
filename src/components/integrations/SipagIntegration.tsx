@@ -83,7 +83,8 @@ export default function SipagIntegration({ tenantId }: SipagIntegrationProps) {
       const payload = {
         tenant_id: tenantId,
         ...formData,
-        is_active: true,
+        // Preserva o estado atual: salvar credenciais não reativa uma integração desativada
+        is_active: integration ? integration.is_active : true,
         updated_at: new Date().toISOString(),
       };
       if (integration) {

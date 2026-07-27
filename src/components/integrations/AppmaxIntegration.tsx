@@ -124,7 +124,8 @@ export default function AppmaxIntegration({ tenantId }: AppmaxIntegrationProps) 
         tenant_id: tenantId,
         access_token: formData.access_token || null,
         environment: formData.environment,
-        is_active: true,
+        // Preserva o estado atual: salvar credenciais não reativa uma integração desativada
+        is_active: integration ? integration.is_active : true,
         pix_discount_percent: formData.pix_discount_percent || 0,
         enable_pix: formData.enable_pix,
         enable_credit_card: formData.enable_credit_card,
