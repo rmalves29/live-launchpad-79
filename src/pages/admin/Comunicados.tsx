@@ -176,8 +176,10 @@ export default function Comunicados() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Switch checked={a.is_active} onCheckedChange={() => toggleActive(a)} />
+                  <Button variant="ghost" size="icon" title="Relatório de visualizações" onClick={() => openReport(a)}><BarChart3 className="w-4 h-4" /></Button>
                   <Button variant="ghost" size="icon" onClick={() => openEdit(a)}><Pencil className="w-4 h-4" /></Button>
                   <Button variant="ghost" size="icon" onClick={() => remove(a.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+
                 </div>
               </CardHeader>
               {a.body && <CardContent className="text-sm text-muted-foreground whitespace-pre-wrap">{a.body}</CardContent>}
