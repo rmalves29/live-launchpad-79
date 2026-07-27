@@ -1928,33 +1928,32 @@ const PublicCheckout = () => {
                           <div
                             key={option.id}
                             onClick={() => handleShippingChange(option.id)}
-                            className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                            className={`flex items-start gap-3 p-3 sm:p-4 border-2 rounded-lg cursor-pointer transition-all ${
                               isSelected
                                 ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/20'
                                 : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
                             }`}
                           >
-                            <div className="flex items-center gap-3">
-                              <input
-                                type="radio"
-                                id={option.id}
-                                name="frete"
-                                value={option.id}
-                                checked={isSelected}
-                                onChange={(e) => handleShippingChange(e.target.value)}
-                                className="w-4 h-4 accent-indigo-600"
-                              />
-                              <label htmlFor={option.id} className="cursor-pointer">
-                                <span className="font-medium">{option.name}</span>
-                                <p className="text-sm text-muted-foreground">
-                                  {option.company} · {formatDeliveryTime(option.delivery_time, option.company, option.id)}
-                                </p>
-                              </label>
-                            </div>
-                            <span className={`font-bold ${isFree ? 'text-emerald-600' : ''}`}>
+                            <input
+                              type="radio"
+                              id={option.id}
+                              name="frete"
+                              value={option.id}
+                              checked={isSelected}
+                              onChange={(e) => handleShippingChange(e.target.value)}
+                              className="w-4 h-4 mt-1 shrink-0 accent-indigo-600"
+                            />
+                            <label htmlFor={option.id} className="flex-1 min-w-0 cursor-pointer">
+                              <span className="block font-medium leading-snug break-words">{option.name}</span>
+                              <p className="mt-1 text-sm text-muted-foreground leading-relaxed break-words">
+                                {option.company} · {formatDeliveryTime(option.delivery_time, option.company, option.id)}
+                              </p>
+                            </label>
+                            <span className={`shrink-0 self-start font-bold whitespace-nowrap ${isFree ? 'text-emerald-600' : ''}`}>
                               {isFree ? 'Grátis' : formatCurrency(price)}
                             </span>
                           </div>
+
                         );
                       })}
                     </div>
