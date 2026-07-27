@@ -731,7 +731,7 @@ export type Database = {
           id: number
           instagram: string | null
           is_blocked: boolean | null
-          name: string
+          name: string | null
           neighborhood: string | null
           number: string | null
           phone: string
@@ -755,7 +755,7 @@ export type Database = {
           id?: number
           instagram?: string | null
           is_blocked?: boolean | null
-          name: string
+          name?: string | null
           neighborhood?: string | null
           number?: string | null
           phone: string
@@ -779,7 +779,7 @@ export type Database = {
           id?: number
           instagram?: string | null
           is_blocked?: boolean | null
-          name?: string
+          name?: string | null
           neighborhood?: string | null
           number?: string | null
           phone?: string
