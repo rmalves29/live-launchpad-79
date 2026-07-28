@@ -41,16 +41,17 @@ serve(async (req) => {
 
   try {
     console.log('[Instagram Callback] Exchanging code for token...');
-    const tokenFormData = new FormData();
-    tokenFormData.append('client_id', FB_APP_ID);
-    tokenFormData.append('client_secret', FB_APP_SECRET);
-    tokenFormData.append('grant_type', 'authorization_code');
-    tokenFormData.append('redirect_uri', REDIRECT_URI);
-    tokenFormData.append('code', code);
+    const tokenBody = new URLSearchParams();
+    tokenBody.append('client_id', FB_APP_ID);
+    tokenBody.append('client_secret', FB_APP_SECRET);
+    tokenBody.append('grant_type', 'authorization_code');
+    tokenBody.append('redirect_uri', REDIRECT_URI);
+    tokenBody.append('code', code);
 
     const tokenResponse = await fetch('https://api.instagram.com/oauth/access_token', {
       method: 'POST',
-      body: tokenFormData,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: tokenBody.toString(),
     });
 
     const tokenData = await tokenResponse.json();
