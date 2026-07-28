@@ -28,10 +28,13 @@ function extractYouTubeId(url: string): string | null {
 export function AnnouncementPopup() {
   const { user } = useAuth();
   const { tenant } = useTenantContext();
-  const [current, setCurrent] = useState<Announcement | null>(null);
+  const [queue, setQueue] = useState<Announcement[]>([]);
+  const [saving, setSaving] = useState(false);
+  const current = queue[0] ?? null;
   const secondsRef = useRef(0);
   const tenantRef = useRef(tenant);
   tenantRef.current = tenant;
+
 
   // Contabiliza tempo assistido enquanto o comunicado de vídeo está aberto
   useEffect(() => {
