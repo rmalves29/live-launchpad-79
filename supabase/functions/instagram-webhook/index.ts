@@ -657,25 +657,50 @@ async function updateLiveCommentStatus(
   }
 }
 
+function pickBestIntegration(
+  rows: any[],
+  sourceId: string,
+): InstagramIntegrationRecord | null {
+  if (!rows || rows.length === 0) return null;
+  const score = (r: any) => {
+    let s = 0;
+    if (r.page_id === sourceId) s += 8;
+    if (r.page_access_token) s += 4;
+    if (r.access_token) s += 2;
+    return s;
+  };
+  const sorted = [...rows].sort((a, b) => {
+    const diff = score(b) - score(a);
+    if (diff !== 0) return diff;
+    return new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime();
+  });
+  return sorted[0] as InstagramIntegrationRecord;
+}
+
 async function findIntegrationForEntry(
   supabase: ReturnType<typeof createClient>,
   entry: InstagramWebhookEntry,
   timestamp: string,
 ): Promise<InstagramIntegrationRecord | null> {
-  const { data: integration, error } = await supabase
+  // NOTE: the same instagram_account_id can be linked to more than one tenant,
+  // so we must NOT use maybeSingle() here (it errors with multiple rows).
+  const { data: rows, error } = await supabase
     .from('integration_instagram')
     .select('*, tenants!inner(id, slug, name)')
     .or(`page_id.eq.${entry.id},instagram_account_id.eq.${entry.id}`)
-    .eq('is_active', true)
-    .maybeSingle();
+    .eq('is_active', true);
 
   if (error) {
     console.error(`[${timestamp}] [instagram-webhook] Error fetching integration by source id:`, error);
     return null;
   }
 
+  const integration = pickBestIntegration(rows || [], entry.id);
   if (integration) {
-    return integration as InstagramIntegrationRecord;
+    if ((rows || []).length > 1) {
+      console.warn(`[${timestamp}] [instagram-webhook] ⚠️ ${rows!.length} integrations match source ${entry.id}; selected tenant ${integration.tenant_id}`);
+    }
+    return integration;
   }
 
   const ownerComment = (entry.changes || []).find((change) => {
@@ -688,25 +713,26 @@ async function findIntegrationForEntry(
     return null;
   }
 
-  const { data: fallbackIntegration, error: fallbackError } = await supabase
+  const { data: fallbackRows, error: fallbackError } = await supabase
     .from('integration_instagram')
     .select('*, tenants!inner(id, slug, name)')
     .eq('instagram_username', ownerUsername)
-    .eq('is_active', true)
-    .maybeSingle();
+    .eq('is_active', true);
 
   if (fallbackError) {
     console.error(`[${timestamp}] [instagram-webhook] Error fetching integration by username fallback:`, fallbackError);
     return null;
   }
 
+  const fallbackIntegration = pickBestIntegration(fallbackRows || [], entry.id);
   if (fallbackIntegration) {
-    console.log(`[${timestamp}] [instagram-webhook] Fallback match by username @${ownerUsername}`);
-    return fallbackIntegration as InstagramIntegrationRecord;
+    console.log(`[${timestamp}] [instagram-webhook] Fallback match by username @${ownerUsername} → tenant ${fallbackIntegration.tenant_id}`);
+    return fallbackIntegration;
   }
 
   return null;
 }
+
 
 async function syncWebhookSourceId(
   supabase: ReturnType<typeof createClient>,
