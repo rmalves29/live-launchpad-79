@@ -852,3 +852,41 @@ async function triggerWhatsAppItemAdded(
     console.error(`[${timestamp}] [instagram-webhook] WhatsApp item-added error:`, e.message);
   }
 }
+
+function renderItemAddedTemplate(
+  template: string,
+  data: {
+    productName: string;
+    productCode: string;
+    quantity: number;
+    unitPrice: number;
+    cartTotal: number;
+    checkoutUrl: string;
+  },
+): string {
+  const money = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`;
+  const v = (name: string) => new RegExp(`\\{\\{\\s*${name}\\s*\\}\\}|\\{\\s*${name}\\s*\\}`, 'g');
+  const lineTotal = data.unitPrice * data.quantity;
+
+  let result = template
+    .replace(v('produto'), `${data.productName} (${data.productCode})`)
+    .replace(v('nome_produto'), data.productName)
+    .replace(v('codigo'), data.productCode)
+    .replace(v('quantidade'), String(data.quantity))
+    .replace(v('qtd_aleatoria'), String(data.quantity))
+    .replace(v('qtd'), String(data.quantity))
+    .replace(v('valor_unitario'), money(data.unitPrice))
+    .replace(v('valor'), money(data.unitPrice))
+    .replace(v('preco'), money(data.unitPrice))
+    .replace(v('subtotal'), money(lineTotal))
+    .replace(v('total'), money(data.cartTotal))
+    .replace(v('total_pedido'), money(data.cartTotal))
+    .replace(v('link_checkout'), data.checkoutUrl)
+    .replace(v('checkout_url'), data.checkoutUrl)
+    .replace(v('link_cadastro'), data.checkoutUrl);
+
+  // Remove variáveis não suportadas remanescentes
+  result = result.replace(/\{\{\s*[a-zA-Z0-9_]+\s*\}\}/g, '').trim();
+
+  return result;
+}
