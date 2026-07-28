@@ -28,10 +28,13 @@ function extractYouTubeId(url: string): string | null {
 export function AnnouncementPopup() {
   const { user } = useAuth();
   const { tenant } = useTenantContext();
-  const [current, setCurrent] = useState<Announcement | null>(null);
+  const [queue, setQueue] = useState<Announcement[]>([]);
+  const [saving, setSaving] = useState(false);
+  const current = queue[0] ?? null;
   const secondsRef = useRef(0);
   const tenantRef = useRef(tenant);
   tenantRef.current = tenant;
+
 
   // Contabiliza tempo assistido enquanto o comunicado de vídeo está aberto
   useEffect(() => {
@@ -86,31 +89,42 @@ export function AnnouncementPopup() {
         .eq('user_id', user.id)
         .in('announcement_id', ids);
       const dismissedSet = new Set((dismissed || []).map((d: any) => d.announcement_id));
-      const next = valid.find((a: any) => !dismissedSet.has(a.id));
-      if (next && !cancelled) setCurrent(next as Announcement);
+      const pending = valid.filter((a: any) => !dismissedSet.has(a.id));
+      if (pending.length > 0 && !cancelled) setQueue(pending as Announcement[]);
     })();
     return () => { cancelled = true; };
   }, [user]);
 
   const dismiss = async () => {
-    if (!current || !user) return;
-    await supabase.from('announcement_dismissals').insert({
+    if (!current || !user || saving) return;
+    setSaving(true);
+    const { error } = await supabase.from('announcement_dismissals').insert({
       announcement_id: current.id,
       user_id: user.id,
     });
-    setCurrent(null);
+    setSaving(false);
+    // Só remove o comunicado da fila se a marcação de leitura foi registrada
+    if (error && (error as any).code !== '23505') return;
+    setQueue((q) => q.slice(1));
   };
 
   if (!current) return null;
 
+
   const ytId = current.type === 'video' && current.youtube_url ? extractYouTubeId(current.youtube_url) : null;
 
   return (
-    <Dialog open={!!current} onOpenChange={(o) => { if (!o) dismiss(); }}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+    <Dialog open={!!current}>
+      <DialogContent
+        className="max-w-2xl max-h-[90vh] overflow-y-auto [&>button]:hidden"
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>{current.title}</DialogTitle>
         </DialogHeader>
+
         <div className="space-y-4">
           {current.body && (
             <p className="text-sm text-foreground whitespace-pre-wrap">{current.body}</p>
@@ -134,8 +148,11 @@ export function AnnouncementPopup() {
           )}
         </div>
         <DialogFooter>
-          <Button onClick={dismiss}>Entendi</Button>
+          <Button onClick={dismiss} disabled={saving}>
+            {saving ? 'Salvando...' : 'Marcar como lido'}
+          </Button>
         </DialogFooter>
+
       </DialogContent>
     </Dialog>
   );
