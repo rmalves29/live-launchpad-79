@@ -114,11 +114,17 @@ export function AnnouncementPopup() {
   const ytId = current.type === 'video' && current.youtube_url ? extractYouTubeId(current.youtube_url) : null;
 
   return (
-    <Dialog open={!!current} onOpenChange={(o) => { if (!o) dismiss(); }}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+    <Dialog open={!!current}>
+      <DialogContent
+        className="max-w-2xl max-h-[90vh] overflow-y-auto [&>button]:hidden"
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>{current.title}</DialogTitle>
         </DialogHeader>
+
         <div className="space-y-4">
           {current.body && (
             <p className="text-sm text-foreground whitespace-pre-wrap">{current.body}</p>
