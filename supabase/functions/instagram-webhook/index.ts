@@ -510,13 +510,36 @@ Deno.serve(async (req) => {
               } else {
                 console.error(`[${timestamp}] [instagram-webhook] DM Cadastro failed:`, dmResult.error);
               }
-            } else if (!hasPhone) {
-              const dmMessage =
-                `✅ *${product.name}*${qtyLabel} adicionado!\n\n` +
-                `💰 Valor unitário: ${priceFormatted}\n` +
-                `🛒 Total do carrinho: ${totalFormatted}\n\n` +
-                `Para finalizar seu pedido, acesse:\n${checkoutUrl}`;
+            } else {
+              // Sempre envia DM de "item adicionado" usando o template ITEM_ADDED do tenant
+              const { data: itemAddedTemplate } = await supabase
+                .from('whatsapp_templates')
+                .select('content')
+                .eq('tenant_id', tenantId)
+                .eq('type', 'ITEM_ADDED')
+                .order('updated_at', { ascending: false, nullsFirst: false })
+                .limit(1)
+                .maybeSingle();
 
+              const effectivePrice = (product.promotional_price && product.promotional_price > 0)
+                ? product.promotional_price
+                : product.price;
+
+              const dmMessage = itemAddedTemplate?.content
+                ? renderItemAddedTemplate(itemAddedTemplate.content, {
+                    productName: product.name,
+                    productCode: product.code,
+                    quantity: requestedQty,
+                    unitPrice: effectivePrice,
+                    cartTotal: total,
+                    checkoutUrl,
+                  })
+                : `✅ *${product.name}*${qtyLabel} adicionado!\n\n` +
+                  `💰 Valor unitário: ${priceFormatted}\n` +
+                  `🛒 Total do carrinho: ${totalFormatted}\n\n` +
+                  `Para finalizar seu pedido, acesse:\n${checkoutUrl}`;
+
+              console.log(`[${timestamp}] [instagram-webhook] Sending DM ITEM_ADDED to ${dmRecipientId}, template found: ${!!itemAddedTemplate?.content}`);
               const dmResult = await sendInstagramDM(dmRecipientId, pageAccessToken, dmMessage, useInstagramApi);
               if (dmResult.success) {
                 console.log(`[${timestamp}] [instagram-webhook] DM sent successfully to ${dmRecipientId}`);
@@ -525,7 +548,7 @@ Deno.serve(async (req) => {
               }
             }
           }
-          // Se tem cadastro COM telefone → não envia DM nenhuma
+          // DM é sempre enviada (cadastro ou item adicionado)
         } else {
           console.log(`[${timestamp}] [instagram-webhook] No page_access_token, skipping DM`);
         }
@@ -828,4 +851,42 @@ async function triggerWhatsAppItemAdded(
   } catch (e: any) {
     console.error(`[${timestamp}] [instagram-webhook] WhatsApp item-added error:`, e.message);
   }
+}
+
+function renderItemAddedTemplate(
+  template: string,
+  data: {
+    productName: string;
+    productCode: string;
+    quantity: number;
+    unitPrice: number;
+    cartTotal: number;
+    checkoutUrl: string;
+  },
+): string {
+  const money = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`;
+  const v = (name: string) => new RegExp(`\\{\\{\\s*${name}\\s*\\}\\}|\\{\\s*${name}\\s*\\}`, 'g');
+  const lineTotal = data.unitPrice * data.quantity;
+
+  let result = template
+    .replace(v('produto'), `${data.productName} (${data.productCode})`)
+    .replace(v('nome_produto'), data.productName)
+    .replace(v('codigo'), data.productCode)
+    .replace(v('quantidade'), String(data.quantity))
+    .replace(v('qtd_aleatoria'), String(data.quantity))
+    .replace(v('qtd'), String(data.quantity))
+    .replace(v('valor_unitario'), money(data.unitPrice))
+    .replace(v('valor'), money(data.unitPrice))
+    .replace(v('preco'), money(data.unitPrice))
+    .replace(v('subtotal'), money(lineTotal))
+    .replace(v('total'), money(data.cartTotal))
+    .replace(v('total_pedido'), money(data.cartTotal))
+    .replace(v('link_checkout'), data.checkoutUrl)
+    .replace(v('checkout_url'), data.checkoutUrl)
+    .replace(v('link_cadastro'), data.checkoutUrl);
+
+  // Remove variáveis não suportadas remanescentes
+  result = result.replace(/\{\{\s*[a-zA-Z0-9_]+\s*\}\}/g, '').trim();
+
+  return result;
 }
