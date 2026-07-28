@@ -510,13 +510,36 @@ Deno.serve(async (req) => {
               } else {
                 console.error(`[${timestamp}] [instagram-webhook] DM Cadastro failed:`, dmResult.error);
               }
-            } else if (!hasPhone) {
-              const dmMessage =
-                `✅ *${product.name}*${qtyLabel} adicionado!\n\n` +
-                `💰 Valor unitário: ${priceFormatted}\n` +
-                `🛒 Total do carrinho: ${totalFormatted}\n\n` +
-                `Para finalizar seu pedido, acesse:\n${checkoutUrl}`;
+            } else {
+              // Sempre envia DM de "item adicionado" usando o template ITEM_ADDED do tenant
+              const { data: itemAddedTemplate } = await supabase
+                .from('whatsapp_templates')
+                .select('content')
+                .eq('tenant_id', tenantId)
+                .eq('type', 'ITEM_ADDED')
+                .order('updated_at', { ascending: false, nullsFirst: false })
+                .limit(1)
+                .maybeSingle();
 
+              const effectivePrice = (product.promotional_price && product.promotional_price > 0)
+                ? product.promotional_price
+                : product.price;
+
+              const dmMessage = itemAddedTemplate?.content
+                ? renderItemAddedTemplate(itemAddedTemplate.content, {
+                    productName: product.name,
+                    productCode: product.code,
+                    quantity: requestedQty,
+                    unitPrice: effectivePrice,
+                    cartTotal: total,
+                    checkoutUrl,
+                  })
+                : `✅ *${product.name}*${qtyLabel} adicionado!\n\n` +
+                  `💰 Valor unitário: ${priceFormatted}\n` +
+                  `🛒 Total do carrinho: ${totalFormatted}\n\n` +
+                  `Para finalizar seu pedido, acesse:\n${checkoutUrl}`;
+
+              console.log(`[${timestamp}] [instagram-webhook] Sending DM ITEM_ADDED to ${dmRecipientId}, template found: ${!!itemAddedTemplate?.content}`);
               const dmResult = await sendInstagramDM(dmRecipientId, pageAccessToken, dmMessage, useInstagramApi);
               if (dmResult.success) {
                 console.log(`[${timestamp}] [instagram-webhook] DM sent successfully to ${dmRecipientId}`);
