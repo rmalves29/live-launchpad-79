@@ -148,8 +148,11 @@ export function AnnouncementPopup() {
           )}
         </div>
         <DialogFooter>
-          <Button onClick={dismiss}>Entendi</Button>
+          <Button onClick={dismiss} disabled={saving}>
+            {saving ? 'Salvando...' : 'Marcar como lido'}
+          </Button>
         </DialogFooter>
+
       </DialogContent>
     </Dialog>
   );
