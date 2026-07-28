@@ -548,7 +548,7 @@ Deno.serve(async (req) => {
               }
             }
           }
-          // Se tem cadastro COM telefone → não envia DM nenhuma
+          // DM é sempre enviada (cadastro ou item adicionado)
         } else {
           console.log(`[${timestamp}] [instagram-webhook] No page_access_token, skipping DM`);
         }
