@@ -89,22 +89,27 @@ export function AnnouncementPopup() {
         .eq('user_id', user.id)
         .in('announcement_id', ids);
       const dismissedSet = new Set((dismissed || []).map((d: any) => d.announcement_id));
-      const next = valid.find((a: any) => !dismissedSet.has(a.id));
-      if (next && !cancelled) setCurrent(next as Announcement);
+      const pending = valid.filter((a: any) => !dismissedSet.has(a.id));
+      if (pending.length > 0 && !cancelled) setQueue(pending as Announcement[]);
     })();
     return () => { cancelled = true; };
   }, [user]);
 
   const dismiss = async () => {
-    if (!current || !user) return;
-    await supabase.from('announcement_dismissals').insert({
+    if (!current || !user || saving) return;
+    setSaving(true);
+    const { error } = await supabase.from('announcement_dismissals').insert({
       announcement_id: current.id,
       user_id: user.id,
     });
-    setCurrent(null);
+    setSaving(false);
+    // Só remove o comunicado da fila se a marcação de leitura foi registrada
+    if (error && (error as any).code !== '23505') return;
+    setQueue((q) => q.slice(1));
   };
 
   if (!current) return null;
+
 
   const ytId = current.type === 'video' && current.youtube_url ? extractYouTubeId(current.youtube_url) : null;
 
