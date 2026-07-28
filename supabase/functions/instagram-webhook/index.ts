@@ -509,6 +509,7 @@ Deno.serve(async (req) => {
                 console.log(`[${timestamp}] [instagram-webhook] DM Cadastro sent to ${dmRecipientId}`);
               } else {
                 console.error(`[${timestamp}] [instagram-webhook] DM Cadastro failed:`, dmResult.error);
+              }
             }
 
             // Sempre envia DM de "item adicionado" (mesmo se o cliente já tem telefone cadastrado)
