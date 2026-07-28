@@ -520,7 +520,7 @@ Deno.serve(async (req) => {
               }
 
               console.log(`[${timestamp}] [instagram-webhook] Sending DM Cadastro to ${dmRecipientId}, template found: ${!!dmTemplate?.content}`);
-              const dmResult = await sendInstagramDM(dmRecipientId, pageAccessToken, cadastroDmMessage, useInstagramApi);
+              const dmResult = await sendInstagramDM(dmRecipientId, pageAccessToken, cadastroDmMessage, useInstagramApi, commentId);
               if (dmResult.success) {
                 console.log(`[${timestamp}] [instagram-webhook] DM Cadastro sent to ${dmRecipientId}`);
               } else {
@@ -558,7 +558,7 @@ Deno.serve(async (req) => {
                   `Para finalizar seu pedido, acesse:\n${checkoutUrl}`;
 
               console.log(`[${timestamp}] [instagram-webhook] Sending DM ITEM_ADDED to ${dmRecipientId}, template found: ${!!itemAddedTemplate?.content}`);
-              const dmResult = await sendInstagramDM(dmRecipientId, pageAccessToken, dmMessage, useInstagramApi);
+              const dmResult = await sendInstagramDM(dmRecipientId, pageAccessToken, dmMessage, useInstagramApi, commentId);
               if (dmResult.success) {
                 console.log(`[${timestamp}] [instagram-webhook] DM sent successfully to ${dmRecipientId}`);
               } else {
