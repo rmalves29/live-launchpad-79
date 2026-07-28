@@ -135,8 +135,23 @@ serve(async (req) => {
       return Response.redirect(`${APP_URL}/integracoes?instagram_error=${encodeURIComponent(upsertError.message)}`);
     }
 
+    // Assina os webhooks (comentários de live, comentários e DMs) para esta conta.
+    // Sem isso a Meta não entrega eventos e os pedidos não são criados.
+    try {
+      const subFields = 'comments,live_comments,messages,message_reactions';
+      const subRes = await fetch(
+        `https://graph.instagram.com/v21.0/me/subscribed_apps?subscribed_fields=${subFields}&access_token=${finalToken}`,
+        { method: 'POST' }
+      );
+      const subData = await subRes.json();
+      console.log('[Instagram Callback] subscribed_apps:', subRes.status, JSON.stringify(subData));
+    } catch (subErr) {
+      console.error('[Instagram Callback] Erro ao assinar webhooks:', subErr);
+    }
+
     console.log('[Instagram Callback] Success! Redirecting...');
     return Response.redirect(`${APP_URL}/integracoes?instagram_success=true`);
+
 
   } catch (err) {
     console.error('[Instagram Callback] Unexpected error:', err);
