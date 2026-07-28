@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
-import { Trash2, Radio, Download, MessageCircle } from 'lucide-react';
+import { Trash2, Radio, Download, MessageCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import InstagramPostComments from './InstagramPostComments';
@@ -64,6 +64,7 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
   const [comments, setComments] = useState<LiveComment[]>([]);
   const [listening, setListening] = useState(false);
   const [activeTab, setActiveTab] = useState('live');
+  const [syncing, setSyncing] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const isManiadeMulher = tenantId === MANIA_DE_MULHER_TENANT_ID;
@@ -81,6 +82,42 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
     };
     fetchRecent();
   }, [tenantId]);
+
+  const reloadRecent = async () => {
+    const { data } = await supabase
+      .from('instagram_live_comments')
+      .select('id, username, comment_text, product_code, product_found, comment_status, is_live, created_at')
+      .eq('tenant_id', tenantId)
+      .eq('is_live', true)
+      .order('created_at', { ascending: true })
+      .limit(50);
+    if (data) setComments(data as LiveComment[]);
+  };
+
+  const handleSyncLiveComments = async () => {
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('instagram-sync-live-comments', {
+        body: { tenant_id: tenantId, limit: 100 },
+      });
+
+      if (error || data?.success === false) {
+        console.error('instagram-sync-live-comments failed:', error || data);
+        toast.error(data?.error || 'Não foi possível sincronizar os comentários da Live');
+        return;
+      }
+
+      await reloadRecent();
+      const processed = data?.summary?.comments_processed || 0;
+      const skipped = data?.summary?.comments_skipped || 0;
+      toast.success(`Live sincronizada: ${processed} novo(s), ${skipped} já existente(s).`);
+    } catch (error) {
+      console.error('Erro ao sincronizar comentários da Live:', error);
+      toast.error('Erro ao sincronizar comentários da Live');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   useEffect(() => {
     const channel = supabase
@@ -219,8 +256,13 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
               <span className="text-xs text-muted-foreground">{listening ? 'Ouvindo' : 'Conectando...'}</span>
             </div>
           </div>
-          {comments.length > 0 && (
-            <div className="flex gap-2">
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleSyncLiveComments} disabled={syncing}>
+              <RefreshCw className={`mr-1 h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+              Sincronizar Live
+            </Button>
+            {comments.length > 0 && (
+              <>
               <Button variant="outline" size="sm" onClick={handleSave}>
                 <Download className="mr-1 h-4 w-4" />
                 Salvar
@@ -229,8 +271,9 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
                 <Trash2 className="mr-1 h-4 w-4" />
                 Limpar
               </Button>
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {renderLegend()}
@@ -250,6 +293,10 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
             <span className="text-xs text-muted-foreground">{listening ? 'Conectado' : 'Conectando...'}</span>
           </div>
         </div>
+        <Button variant="outline" size="sm" onClick={handleSyncLiveComments} disabled={syncing}>
+          <RefreshCw className={`mr-1 h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+          Sincronizar Live
+        </Button>
       </CardHeader>
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
