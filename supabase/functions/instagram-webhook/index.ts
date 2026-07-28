@@ -774,12 +774,51 @@ async function syncWebhookSourceId(
   console.log(`[${timestamp}] [instagram-webhook] Synced webhook source id ${sourceId} to integration ${integration.id}`);
 }
 
-async function sendInstagramDM(
-  recipientId: string,
+async function sendInstagramPrivateReply(
+  commentId: string,
   accessToken: string,
   message: string,
   useInstagramApi: boolean = false
 ): Promise<{ success: boolean; error?: string }> {
+  try {
+    const base = useInstagramApi
+      ? `https://graph.instagram.com/v21.0/me/messages`
+      : `https://graph.facebook.com/v19.0/me/messages`;
+
+    const response = await fetch(`${base}?access_token=${accessToken}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        recipient: { comment_id: commentId },
+        message: { text: message },
+      }),
+    });
+
+    if (response.ok) return { success: true };
+
+    const errorData = await response.json().catch(() => ({}));
+    console.error('[instagram-webhook] Private reply error:', JSON.stringify(errorData));
+    return { success: false, error: errorData?.error?.message || `HTTP ${response.status}` };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function sendInstagramDM(
+  recipientId: string,
+  accessToken: string,
+  message: string,
+  useInstagramApi: boolean = false,
+  commentId?: string | null
+): Promise<{ success: boolean; error?: string }> {
+  // Comentários de live/post: a private reply é o canal permitido (janela de 7 dias),
+  // enquanto /messages exige janela de 24h de interação prévia.
+  if (commentId) {
+    const reply = await sendInstagramPrivateReply(commentId, accessToken, message, useInstagramApi);
+    if (reply.success) return reply;
+    console.warn('[instagram-webhook] Private reply falhou, tentando DM padrão:', reply.error);
+  }
+
   try {
     // If using Instagram access_token (not Facebook Page token), use Instagram Graph API
     const apiUrl = useInstagramApi
@@ -816,6 +855,7 @@ async function sendInstagramDM(
     return { success: false, error: error.message };
   }
 }
+
 
 interface ResolvedCustomer {
   phone: string;
