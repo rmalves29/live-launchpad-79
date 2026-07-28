@@ -125,3 +125,18 @@ verify_jwt = false
 
 [functions.push-send-campaign]
 verify_jwt = false
+
+[functions.instagram-webhook]
+verify_jwt = false
+
+[functions.instagram-auth-callback]
+verify_jwt = false
+
+[functions.instagram-oauth-url]
+verify_jwt = false
+
+[functions.instagram-post-comments]
+verify_jwt = false
+
+[functions.instagram-sync-live-comments]
+verify_jwt = false

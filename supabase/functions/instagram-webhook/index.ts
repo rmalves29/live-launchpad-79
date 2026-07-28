@@ -159,6 +159,22 @@ Deno.serve(async (req) => {
 
         console.log(`[${timestamp}] [instagram-webhook] Comment from @${buyerUsername} (${buyerId}) [${change.field}]: "${commentText}"`);
 
+        if (commentId) {
+          const { data: existingComment, error: existingCommentError } = await supabase
+            .from('instagram_live_comments')
+            .select('id, comment_status')
+            .eq('tenant_id', tenantId)
+            .eq('comment_id', commentId)
+            .maybeSingle();
+
+          if (existingCommentError) {
+            console.warn(`[${timestamp}] [instagram-webhook] Could not check duplicate comment ${commentId}:`, existingCommentError.message);
+          } else if (existingComment) {
+            console.log(`[${timestamp}] [instagram-webhook] Duplicate comment ignored: ${commentId} (${existingComment.comment_status})`);
+            continue;
+          }
+        }
+
         // Insert comment initially with no_code status
         const initialStatus = extractedCode ? 'not_found' : 'no_code';
 
