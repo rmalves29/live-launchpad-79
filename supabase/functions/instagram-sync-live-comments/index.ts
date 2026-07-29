@@ -132,6 +132,9 @@ async function syncIntegration(
   const mediaItems = Array.isArray(mediaJson?.data) ? mediaJson.data as GraphMedia[] : [];
   result.media = mediaItems.length;
 
+  await trackLives(supabase, integration.tenant_id, mediaItems, timestamp);
+
+
   for (const media of mediaItems) {
     const commentsUrl = `https://graph.instagram.com/v21.0/${media.id}/comments?fields=id,text,username,timestamp,from{id,username}&limit=${limit}&access_token=${encodeURIComponent(token)}`;
     const commentsResponse = await fetch(commentsUrl);
