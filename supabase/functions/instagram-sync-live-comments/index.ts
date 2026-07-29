@@ -276,15 +276,7 @@ async function trackLives(
   }
 
   // Encerra lives que não aparecem mais na listagem ativa
-  let closeQuery = supabase
-    .from('instagram_lives')
-    .update({ status: 'ENDED' })
-    .eq('tenant_id', tenantId)
-    .is('ended_at', null);
 
-  if (activeIds.length > 0) {
-    closeQuery = closeQuery.not('media_id', 'in', `(${activeIds.map((id) => `"${id}"`).join(',')})`);
-  }
 
   const { data: toClose } = await supabase
     .from('instagram_lives')
