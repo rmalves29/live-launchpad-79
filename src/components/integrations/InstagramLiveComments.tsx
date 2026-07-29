@@ -332,7 +332,12 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
                 <MessageCircle className="h-3.5 w-3.5" />
                 Todos os Comentários
               </TabsTrigger>
+              <TabsTrigger value="report" className="flex items-center gap-1.5">
+                <BarChart3 className="h-3.5 w-3.5" />
+                Relatório de Lives
+              </TabsTrigger>
             </TabsList>
+
 
             {activeTab === 'live' && comments.length > 0 && (
               <div className="flex gap-2">
