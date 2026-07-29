@@ -53,11 +53,54 @@ export default function FilaEsperaPage() {
   const [search, setSearch] = useState('');
   const [enabled, setEnabled] = useState<boolean>(true);
   const [savingEnabled, setSavingEnabled] = useState(false);
+  const [autoCancelEnabled, setAutoCancelEnabled] = useState(false);
+  const [autoCancelHours, setAutoCancelHours] = useState<number>(24);
+  const [savingAutoCancel, setSavingAutoCancel] = useState(false);
+  const [runningAutoCancel, setRunningAutoCancel] = useState(false);
 
   async function loadEnabled() {
     if (!tenant?.id) return;
-    const { data } = await supabase.from('tenants').select('waitlist_enabled').eq('id', tenant.id).maybeSingle();
+    const { data } = await supabase
+      .from('tenants')
+      .select('waitlist_enabled, auto_cancel_unpaid_enabled, auto_cancel_unpaid_hours')
+      .eq('id', tenant.id)
+      .maybeSingle();
     setEnabled((data as any)?.waitlist_enabled !== false);
+    setAutoCancelEnabled((data as any)?.auto_cancel_unpaid_enabled === true);
+    setAutoCancelHours(Number((data as any)?.auto_cancel_unpaid_hours) || 24);
+  }
+
+  async function saveAutoCancel(next: { enabled?: boolean; hours?: number }) {
+    if (!tenant?.id) return;
+    const payload = {
+      auto_cancel_unpaid_enabled: next.enabled ?? autoCancelEnabled,
+      auto_cancel_unpaid_hours: Math.max(1, Math.min(720, next.hours ?? autoCancelHours)),
+    };
+    setSavingAutoCancel(true);
+    const { error } = await supabase.from('tenants').update(payload as any).eq('id', tenant.id);
+    setSavingAutoCancel(false);
+    if (error) {
+      toast({ title: 'Erro ao salvar', description: error.message, variant: 'destructive' });
+      return;
+    }
+    setAutoCancelEnabled(payload.auto_cancel_unpaid_enabled);
+    setAutoCancelHours(payload.auto_cancel_unpaid_hours);
+    toast({ title: 'Regra de cancelamento salva' });
+  }
+
+  async function runAutoCancelNow() {
+    if (!tenant?.id) return;
+    setRunningAutoCancel(true);
+    const { data, error } = await supabase.functions.invoke('orders-auto-cancel', {
+      body: { tenant_id: tenant.id },
+    });
+    setRunningAutoCancel(false);
+    if (error) {
+      toast({ title: 'Erro', description: error.message, variant: 'destructive' });
+      return;
+    }
+    const total = (data as any)?.total_cancelled ?? 0;
+    toast({ title: `${total} pedido(s) cancelado(s)` });
   }
 
   async function toggleEnabled(next: boolean) {
