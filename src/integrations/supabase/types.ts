@@ -1191,6 +1191,60 @@ export type Database = {
           },
         ]
       }
+      fe_message_replies: {
+        Row: {
+          created_at: string
+          fe_message_id: string
+          group_id: string | null
+          id: string
+          participant_name: string | null
+          participant_phone: string
+          quoted_message_id: string
+          replied_at: string
+          reply_text: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          fe_message_id: string
+          group_id?: string | null
+          id?: string
+          participant_name?: string | null
+          participant_phone: string
+          quoted_message_id: string
+          replied_at?: string
+          reply_text?: string | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          fe_message_id?: string
+          group_id?: string | null
+          id?: string
+          participant_name?: string | null
+          participant_phone?: string
+          quoted_message_id?: string
+          replied_at?: string
+          reply_text?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fe_message_replies_fe_message_id_fkey"
+            columns: ["fe_message_id"]
+            isOneToOne: false
+            referencedRelation: "fe_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fe_message_replies_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "fe_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fe_messages: {
         Row: {
           campaign_id: string | null
@@ -1205,6 +1259,7 @@ export type Database = {
           status: string
           tenant_id: string
           updated_at: string | null
+          wa_message_id: string | null
         }
         Insert: {
           campaign_id?: string | null
@@ -1219,6 +1274,7 @@ export type Database = {
           status?: string
           tenant_id: string
           updated_at?: string | null
+          wa_message_id?: string | null
         }
         Update: {
           campaign_id?: string | null
@@ -1233,6 +1289,7 @@ export type Database = {
           status?: string
           tenant_id?: string
           updated_at?: string | null
+          wa_message_id?: string | null
         }
         Relationships: [
           {
