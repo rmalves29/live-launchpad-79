@@ -43,8 +43,12 @@ Deno.serve(async (req) => {
     const results: Array<{ tenant_id: string; tenant: string; cancelled: number; orders: number[] }> = [];
 
     for (const t of tenants || []) {
-      const hours = Number((t as any).auto_cancel_unpaid_hours) || 24;
-      const cutoff = new Date(Date.now() - hours * 3600_000).toISOString();
+      const rawMinutes = Number((t as any).auto_cancel_unpaid_minutes);
+      const minutes = Number.isFinite(rawMinutes) && rawMinutes > 0
+        ? rawMinutes
+        : (Number((t as any).auto_cancel_unpaid_hours) || 24) * 60;
+      const cutoff = new Date(Date.now() - minutes * 60_000).toISOString();
+      const deadlineLabel = minutes % 60 === 0 ? `${minutes / 60}h` : `${minutes} min`;
 
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
