@@ -543,6 +543,10 @@ Deno.serve(async (req) => {
                 ? product.promotional_price
                 : product.price;
 
+              const itensPedidoLines = (cartItems || [])
+                .map((item) => `${item.qty}x ${item.product_name} — R$ ${(item.unit_price * item.qty).toFixed(2).replace('.', ',')}`)
+                .join('\n');
+
               const dmMessage = itemAddedTemplate?.content
                 ? renderItemAddedTemplate(itemAddedTemplate.content, {
                     productName: product.name,
@@ -551,6 +555,8 @@ Deno.serve(async (req) => {
                     unitPrice: effectivePrice,
                     cartTotal: total,
                     checkoutUrl,
+                    orderNumber: order?.id ? String(order.id) : '',
+                    itemsList: itensPedidoLines,
                   })
                 : `✅ *${product.name}*${qtyLabel} adicionado!\n\n` +
                   `💰 Valor unitário: ${priceFormatted}\n` +
@@ -946,6 +952,8 @@ function renderItemAddedTemplate(
     unitPrice: number;
     cartTotal: number;
     checkoutUrl: string;
+    orderNumber: string;
+    itemsList: string;
   },
 ): string {
   const money = (v: number) => `R$ ${v.toFixed(2).replace('.', ',')}`;
@@ -965,12 +973,14 @@ function renderItemAddedTemplate(
     .replace(v('subtotal'), money(lineTotal))
     .replace(v('total'), money(data.cartTotal))
     .replace(v('total_pedido'), money(data.cartTotal))
+    .replace(v('numero_pedido'), data.orderNumber)
+    .replace(v('itens_pedido'), data.itemsList)
     .replace(v('link_checkout'), data.checkoutUrl)
     .replace(v('checkout_url'), data.checkoutUrl)
     .replace(v('link_cadastro'), data.checkoutUrl);
 
-  // Remove variáveis não suportadas remanescentes
-  result = result.replace(/\{\{\s*[a-zA-Z0-9_]+\s*\}\}/g, '').trim();
+  // Remove variáveis não suportadas remanescentes (formato {{dupla}} ou {simples})
+  result = result.replace(/\{\{\s*[a-zA-Z0-9_]+\s*\}\}|\{\s*[a-zA-Z0-9_]+\s*\}/g, '').trim();
 
   return result;
 }
