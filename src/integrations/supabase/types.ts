@@ -4782,6 +4782,8 @@ export type Database = {
           group_name: string | null
           id: string
           instance_id: string | null
+          owner_phone: string | null
+          owner_source: string | null
           owner_tenant_id: string
           updated_at: string
         }
@@ -4791,6 +4793,8 @@ export type Database = {
           group_name?: string | null
           id?: string
           instance_id?: string | null
+          owner_phone?: string | null
+          owner_source?: string | null
           owner_tenant_id: string
           updated_at?: string
         }
@@ -4800,6 +4804,8 @@ export type Database = {
           group_name?: string | null
           id?: string
           instance_id?: string | null
+          owner_phone?: string | null
+          owner_source?: string | null
           owner_tenant_id?: string
           updated_at?: string
         }
