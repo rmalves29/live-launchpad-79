@@ -4371,6 +4371,7 @@ export type Database = {
           admin_user_id: string | null
           auto_cancel_unpaid_enabled: boolean
           auto_cancel_unpaid_hours: number
+          auto_cancel_unpaid_minutes: number | null
           company_address: string | null
           company_cep: string | null
           company_city: string | null
@@ -4416,6 +4417,7 @@ export type Database = {
           admin_user_id?: string | null
           auto_cancel_unpaid_enabled?: boolean
           auto_cancel_unpaid_hours?: number
+          auto_cancel_unpaid_minutes?: number | null
           company_address?: string | null
           company_cep?: string | null
           company_city?: string | null
@@ -4461,6 +4463,7 @@ export type Database = {
           admin_user_id?: string | null
           auto_cancel_unpaid_enabled?: boolean
           auto_cancel_unpaid_hours?: number
+          auto_cancel_unpaid_minutes?: number | null
           company_address?: string | null
           company_cep?: string | null
           company_city?: string | null
