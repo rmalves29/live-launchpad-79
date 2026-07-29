@@ -107,6 +107,32 @@ function extractText(data: any): string {
   ).toString().trim();
 }
 
+// Extrai o ID da mensagem citada (reply), quando a mensagem recebida é uma
+// resposta a outra. O nome do campo varia bastante entre versões da uazapi
+// (algumas expõem direto o payload cru do whatsmeow, outras normalizam), por
+// isso checamos vários caminhos possíveis defensivamente.
+function extractQuotedMessageId(data: any): string {
+  if (!data) return "";
+  const candidates = [
+    data?.quoted?.id,
+    data?.quotedMsg?.id,
+    data?.quotedMessage?.id,
+    data?.contextInfo?.stanzaId,
+    data?.contextInfo?.stanzaID,
+    data?.context_info?.stanza_id,
+    data?.message?.extendedTextMessage?.contextInfo?.stanzaId,
+    data?.message?.extendedTextMessage?.contextInfo?.stanzaID,
+    data?.ExtendedTextMessage?.ContextInfo?.StanzaId,
+    data?.Message?.ExtendedTextMessage?.ContextInfo?.StanzaId,
+    data?.stanzaId,
+    data?.stanzaID,
+  ];
+  for (const c of candidates) {
+    if (c && typeof c === "string") return c;
+  }
+  return "";
+}
+
 function pickEventKind(payload: any): string {
   // uazapi emite eventos como `messages`, `messages_update`, `connection`, `presence`, `groups`
   // mas também pode mandar payload com `event` (string OU objeto), `type`, ou só `data` puro.
@@ -333,6 +359,46 @@ Deno.serve(async (req) => {
       // processamento com skipped=duplicate_message_db e nenhum item-added é
       // disparado, nenhum pedido é criado.
 
+      // ─── Fluxo de Envio: detecta reply a uma mensagem de disparo ───────────
+      // Se a mensagem recebida no grupo é uma resposta (reply/citação) a uma
+      // mensagem que o próprio sistema enviou via Fluxo de Envio, registra
+      // o participante como "respondeu" naquele disparo.
+      if (isGroup && !fromMe && participantPhone) {
+        const quotedId = extractQuotedMessageId(data);
+        if (quotedId) {
+          try {
+            const { data: feMessage } = await supabase
+              .from("fe_messages")
+              .select("id, group_id")
+              .eq("tenant_id", tenantId)
+              .eq("wa_message_id", quotedId)
+              .maybeSingle();
+
+            if (feMessage) {
+              const { error: replyError } = await supabase
+                .from("fe_message_replies")
+                .upsert({
+                  tenant_id: tenantId,
+                  fe_message_id: feMessage.id,
+                  group_id: feMessage.group_id,
+                  participant_phone: participantPhone,
+                  participant_name: chatName || null,
+                  quoted_message_id: quotedId,
+                  reply_text: text || null,
+                  replied_at: new Date().toISOString(),
+                }, { onConflict: "fe_message_id,participant_phone" });
+
+              if (replyError) {
+                console.warn("[uazapi-webhook] Erro ao registrar reply do Fluxo de Envio:", replyError.message);
+              } else {
+                console.log(`[uazapi-webhook] ✅ Reply registrado: ${participantPhone} respondeu fe_message ${feMessage.id}`);
+              }
+            }
+          } catch (e: any) {
+            console.warn("[uazapi-webhook] Erro checando reply do Fluxo de Envio:", e.message);
+          }
+        }
+      }
 
       // ─── BRIDGE: re-emite o evento em formato Z-API para zapi-webhook ────
       // Assim a lógica de consentimento/SIM-NÃO/grupos/códigos de produto/sorteio

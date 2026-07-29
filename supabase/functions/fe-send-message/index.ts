@@ -137,7 +137,7 @@ async function sendToGroupEvolution(
   contentType: string,
   contentText?: string,
   mediaUrl?: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; messageId?: string }> {
   try {
     // Evolution API expects WhatsApp JID format "<id>@g.us"; convert from Z-API "<id>-group" if needed
     const evoJid = groupJid.includes("@g.us")
@@ -242,24 +242,31 @@ serve(async (req) => {
 
           let sent = false;
           let errMsg: string | undefined;
+          let waMessageId: string | undefined;
 
           if (creds.provider === "uazapi") {
             const result = await sendToGroupEvolution(creds.instanceName!, group.group_jid, content_type, content_text, media_url);
             sent = result.success;
             errMsg = result.error;
+            waMessageId = result.messageId;
             console.log("[fe-send-message] uazapi - Group " + group.group_name + " (" + group.group_jid + "): sent=" + sent + (errMsg ? " error=" + errMsg : ""));
           } else {
             const res = await sendToGroupZapi(zapiBaseUrl, creds.clientToken!, group.group_jid, content_type, content_text, media_url, mention_all);
             const resText = await res.text();
             sent = res.status >= 200 && res.status < 300;
             errMsg = sent ? undefined : resText.substring(0, 300);
+            if (sent) {
+              try { waMessageId = JSON.parse(resText)?.zaapId || JSON.parse(resText)?.messageId; } catch { /* ignore */ }
+            }
             console.log("[fe-send-message] ZAPI - Group " + group.group_name + ": status=" + res.status);
           }
 
           results.push({ group_id: group.id, group_name: group.group_name, success: sent, error: errMsg });
 
           const messageId = groupToMessageId.get(group.id);
-          let statusUpdate = supabase.from("fe_messages").update({ status: sent ? "sent" : "failed", sent_at: new Date().toISOString() });
+          const updatePayload: Record<string, unknown> = { status: sent ? "sent" : "failed", sent_at: new Date().toISOString() };
+          if (waMessageId) updatePayload.wa_message_id = waMessageId;
+          let statusUpdate = supabase.from("fe_messages").update(updatePayload);
           if (messageId) {
             statusUpdate = statusUpdate.eq("id", messageId).eq("status", "sending");
           } else {
