@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from '@/hooks/use-toast';
-import { Clock, ListOrdered, RefreshCw, Trash2, Send, ExternalLink, Users } from 'lucide-react';
+import { Clock, ListOrdered, RefreshCw, Trash2, Send, ExternalLink, Users, Timer } from 'lucide-react';
 
 type WaitlistRow = {
   id: number;
