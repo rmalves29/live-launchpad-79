@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
 
     let tenantQuery = supabase
       .from('tenants')
-      .select('id, name, auto_cancel_unpaid_enabled, auto_cancel_unpaid_hours')
+      .select('id, name, auto_cancel_unpaid_enabled, auto_cancel_unpaid_hours, auto_cancel_unpaid_minutes')
       .eq('auto_cancel_unpaid_enabled', true);
 
     if (onlyTenantId) tenantQuery = tenantQuery.eq('id', onlyTenantId);
