@@ -1609,7 +1609,9 @@ export type Database = {
           id: string
           instagram_user_id: string
           is_live: boolean | null
+          matched_qty: number | null
           media_id: string | null
+          order_id: number | null
           product_code: string | null
           product_found: boolean | null
           tenant_id: string
@@ -1623,7 +1625,9 @@ export type Database = {
           id?: string
           instagram_user_id: string
           is_live?: boolean | null
+          matched_qty?: number | null
           media_id?: string | null
+          order_id?: number | null
           product_code?: string | null
           product_found?: boolean | null
           tenant_id: string
@@ -1637,7 +1641,9 @@ export type Database = {
           id?: string
           instagram_user_id?: string
           is_live?: boolean | null
+          matched_qty?: number | null
           media_id?: string | null
+          order_id?: number | null
           product_code?: string | null
           product_found?: boolean | null
           tenant_id?: string
@@ -1659,6 +1665,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      instagram_lives: {
+        Row: {
+          comments_count_api: number | null
+          created_at: string
+          ended_at: string | null
+          id: string
+          last_seen_at: string
+          media_id: string
+          permalink: string | null
+          started_at: string
+          status: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          comments_count_api?: number | null
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          last_seen_at?: string
+          media_id: string
+          permalink?: string | null
+          started_at?: string
+          status?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          comments_count_api?: number | null
+          created_at?: string
+          ended_at?: string | null
+          id?: string
+          last_seen_at?: string
+          media_id?: string
+          permalink?: string | null
+          started_at?: string
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       integration_appmax: {
         Row: {
