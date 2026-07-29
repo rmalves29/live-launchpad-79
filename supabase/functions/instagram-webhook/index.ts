@@ -475,8 +475,20 @@ Deno.serve(async (req) => {
           }
         }
 
+        if (order?.id && commentId) {
+          const { error: linkError } = await supabase
+            .from('instagram_live_comments')
+            .update({ order_id: order.id, matched_qty: requestedQty })
+            .eq('tenant_id', tenantId)
+            .eq('comment_id', commentId);
+          if (linkError) {
+            console.warn(`[${timestamp}] [instagram-webhook] Could not link comment to order:`, linkError.message);
+          }
+        }
+
         const hasRegistration = !!customerData;
         const hasPhone = !!customerData?.phone;
+
 
         if (pageAccessToken) {
           // Determine the DM recipient ID: use IGSID for messaging, skip if commenting on own account
