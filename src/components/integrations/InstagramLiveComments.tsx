@@ -278,12 +278,32 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
           </div>
         </CardHeader>
         <CardContent>
-          {renderLegend()}
-          {renderLiveList()}
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="mb-4">
+              <TabsTrigger value="live" className="flex items-center gap-1.5">
+                <Radio className="h-3.5 w-3.5" />
+                Live
+              </TabsTrigger>
+              <TabsTrigger value="report" className="flex items-center gap-1.5">
+                <BarChart3 className="h-3.5 w-3.5" />
+                Relatório de Lives
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="live" className="mt-0">
+              {renderLegend()}
+              {renderLiveList()}
+            </TabsContent>
+
+            <TabsContent value="report" className="mt-0">
+              <InstagramLiveReport tenantId={tenantId} />
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     );
   }
+
 
   return (
     <Card>
