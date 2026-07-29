@@ -132,6 +132,9 @@ async function syncIntegration(
   const mediaItems = Array.isArray(mediaJson?.data) ? mediaJson.data as GraphMedia[] : [];
   result.media = mediaItems.length;
 
+  await trackLives(supabase, integration.tenant_id, mediaItems, timestamp);
+
+
   for (const media of mediaItems) {
     const commentsUrl = `https://graph.instagram.com/v21.0/${media.id}/comments?fields=id,text,username,timestamp,from{id,username}&limit=${limit}&access_token=${encodeURIComponent(token)}`;
     const commentsResponse = await fetch(commentsUrl);
@@ -224,7 +227,75 @@ async function syncIntegration(
   return result;
 }
 
+async function trackLives(
+  supabase: ReturnType<typeof createClient>,
+  tenantId: string,
+  mediaItems: GraphMedia[],
+  timestamp: string,
+) {
+  const nowIso = new Date().toISOString();
+  const activeIds: string[] = [];
+
+  for (const media of mediaItems) {
+    if (!media.id) continue;
+    activeIds.push(media.id);
+
+    const startedAt = media.timestamp ? new Date(media.timestamp).toISOString() : nowIso;
+
+    const { data: existing } = await supabase
+      .from('instagram_lives')
+      .select('id, started_at')
+      .eq('tenant_id', tenantId)
+      .eq('media_id', media.id)
+      .maybeSingle();
+
+    if (existing) {
+      const { error } = await supabase
+        .from('instagram_lives')
+        .update({
+          last_seen_at: nowIso,
+          status: media.status || 'LIVE',
+          permalink: media.permalink || null,
+          comments_count_api: media.comments_count ?? null,
+          ended_at: null,
+        })
+        .eq('id', existing.id);
+      if (error) console.warn(`[${timestamp}] [instagram-sync-live-comments] live update failed:`, error.message);
+    } else {
+      const { error } = await supabase.from('instagram_lives').insert({
+        tenant_id: tenantId,
+        media_id: media.id,
+        started_at: startedAt,
+        last_seen_at: nowIso,
+        status: media.status || 'LIVE',
+        permalink: media.permalink || null,
+        comments_count_api: media.comments_count ?? null,
+      });
+      if (error) console.warn(`[${timestamp}] [instagram-sync-live-comments] live insert failed:`, error.message);
+    }
+  }
+
+  // Encerra lives que não aparecem mais na listagem ativa
+
+
+  const { data: toClose } = await supabase
+    .from('instagram_lives')
+    .select('id, last_seen_at, media_id')
+    .eq('tenant_id', tenantId)
+    .is('ended_at', null);
+
+  for (const row of toClose || []) {
+    if (activeIds.includes(row.media_id as string)) continue;
+    const { error } = await supabase
+      .from('instagram_lives')
+      .update({ ended_at: row.last_seen_at, status: 'ENDED' })
+      .eq('id', row.id);
+    if (error) console.warn(`[${timestamp}] [instagram-sync-live-comments] live close failed:`, error.message);
+  }
+}
+
 async function readBody(req: Request): Promise<RequestBody> {
+
   if (req.method !== 'POST') return {};
   const text = await req.text();
   if (!text.trim()) return {};
