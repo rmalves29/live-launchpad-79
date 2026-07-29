@@ -4369,6 +4369,8 @@ export type Database = {
           address: string | null
           admin_email: string | null
           admin_user_id: string | null
+          auto_cancel_unpaid_enabled: boolean
+          auto_cancel_unpaid_hours: number
           company_address: string | null
           company_cep: string | null
           company_city: string | null
@@ -4412,6 +4414,8 @@ export type Database = {
           address?: string | null
           admin_email?: string | null
           admin_user_id?: string | null
+          auto_cancel_unpaid_enabled?: boolean
+          auto_cancel_unpaid_hours?: number
           company_address?: string | null
           company_cep?: string | null
           company_city?: string | null
@@ -4455,6 +4459,8 @@ export type Database = {
           address?: string | null
           admin_email?: string | null
           admin_user_id?: string | null
+          auto_cancel_unpaid_enabled?: boolean
+          auto_cancel_unpaid_hours?: number
           company_address?: string | null
           company_cep?: string | null
           company_city?: string | null
