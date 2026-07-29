@@ -4,10 +4,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
-import { Trash2, Radio, Download, MessageCircle, RefreshCw } from 'lucide-react';
+import { Trash2, Radio, Download, MessageCircle, RefreshCw, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import InstagramPostComments from './InstagramPostComments';
+import InstagramLiveReport from './InstagramLiveReport';
+
 
 interface LiveComment {
   id: string;
