@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
           .from('orders')
           .update({
             is_cancelled: true,
-            cancellation_reason: `Cancelamento automático: prazo de ${hours}h para pagamento expirado`,
+            cancellation_reason: `Cancelamento automático: prazo de ${deadlineLabel} para pagamento expirado`,
           })
           .eq('id', order.id)
           .eq('is_paid', false);
