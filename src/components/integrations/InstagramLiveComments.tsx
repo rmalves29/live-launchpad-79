@@ -361,6 +361,11 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
           <TabsContent value="posts" className="mt-0">
             <InstagramPostComments tenantId={tenantId} />
           </TabsContent>
+
+          <TabsContent value="report" className="mt-0">
+            <InstagramLiveReport tenantId={tenantId} />
+          </TabsContent>
+
         </Tabs>
       </CardContent>
     </Card>
