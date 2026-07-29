@@ -252,6 +252,53 @@ export default function FilaEsperaPage() {
         </Card>
       )}
 
+      <Card className="p-4 space-y-3">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="font-semibold flex items-center gap-2"><Timer className="h-4 w-4"/> Cancelamento automático de pedidos</h2>
+            <p className="text-sm text-muted-foreground">
+              Pedidos não pagos são cancelados automaticamente após o prazo definido, devolvendo o estoque. Desabilitado por padrão.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 rounded-md border px-3 py-2 bg-card">
+            <Switch
+              id="auto-cancel-enabled"
+              checked={autoCancelEnabled}
+              disabled={savingAutoCancel}
+              onCheckedChange={(v) => saveAutoCancel({ enabled: v })}
+            />
+            <Label htmlFor="auto-cancel-enabled" className="cursor-pointer text-sm">
+              {autoCancelEnabled ? 'Ativado' : 'Desativado'}
+            </Label>
+          </div>
+        </div>
+
+        {autoCancelEnabled && (
+          <div className="flex items-end gap-2 flex-wrap">
+            <div className="space-y-1">
+              <Label htmlFor="auto-cancel-hours" className="text-xs">Prazo para pagamento (horas)</Label>
+              <Input
+                id="auto-cancel-hours"
+                type="number"
+                min={1}
+                max={720}
+                className="w-32"
+                value={autoCancelHours}
+                onChange={(e) => setAutoCancelHours(Number(e.target.value))}
+              />
+            </div>
+            <Button size="sm" disabled={savingAutoCancel} onClick={() => saveAutoCancel({ hours: autoCancelHours })}>
+              Salvar prazo
+            </Button>
+            <Button size="sm" variant="outline" disabled={runningAutoCancel} onClick={runAutoCancelNow}>
+              {runningAutoCancel ? 'Processando…' : 'Executar agora'}
+            </Button>
+          </div>
+        )}
+      </Card>
+
+
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Card className="p-4 flex items-center gap-3"><Users className="h-8 w-8 text-blue-500"/><div><div className="text-2xl font-bold">{stats.waiting}</div><div className="text-xs text-muted-foreground">Aguardando</div></div></Card>
         <Card className="p-4 flex items-center gap-3"><Clock className="h-8 w-8 text-amber-500"/><div><div className="text-2xl font-bold">{stats.notified}</div><div className="text-xs text-muted-foreground">Notificadas (reserva ativa)</div></div></Card>
