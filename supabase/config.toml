@@ -140,3 +140,6 @@ verify_jwt = false
 
 [functions.instagram-sync-live-comments]
 verify_jwt = false
+
+[functions.orders-auto-cancel]
+verify_jwt = false
