@@ -19,6 +19,7 @@ import {
   sendPresenceAvailable as uazSendPresenceAvailable,
   sendPresenceComposing as uazSendPresenceComposing,
   getGroupParticipants as uazGetGroupParticipants,
+  getGroupAdmins as uazGetGroupAdmins,
   getInstanceStatus as uazGetInstanceStatus,
   connectInstance as uazConnectInstance,
   disconnectInstance as uazDisconnectInstance,
@@ -133,6 +134,12 @@ export async function getGroupParticipants(instanceName: string, groupJid: strin
   const cfg = parseCfg(instanceName);
   if (!cfg) return [];
   return uazGetGroupParticipants(cfg, groupJid);
+}
+
+export async function getGroupAdmins(instanceName: string, groupJid: string): Promise<string[]> {
+  const cfg = parseCfg(instanceName);
+  if (!cfg) return [];
+  return uazGetGroupAdmins(cfg, groupJid);
 }
 
 export async function createInstance(_instanceName: string): Promise<{ success: boolean; error?: string }> {

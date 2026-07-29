@@ -230,8 +230,17 @@ Deno.serve(async (req) => {
     if (event === "connection" || event === "connection_update" || (!["messages", "messages.upsert", "message"].includes(event) && (payload?.instance?.status || payload?.connection))) {
       const status = data?.status || payload?.status;
       const phone = data?.owner || data?.wid || data?.phoneconnected;
+      const newConnectedPhone = phone ? String(phone).replace(/@.*/, "").replace(/\D/g, "") : "";
+
+      const { data: beforeUpdate } = await supabase
+        .from("integration_whatsapp")
+        .select("connected_phone")
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      const previousPhone = beforeUpdate?.connected_phone || "";
+
       const updates: Record<string, unknown> = { last_status_check: new Date().toISOString() };
-      if (phone) updates.connected_phone = String(phone).replace(/@.*/, "").replace(/\D/g, "");
+      if (newConnectedPhone) updates.connected_phone = newConnectedPhone;
       await supabase.from("integration_whatsapp").update(updates).eq("tenant_id", tenantId);
 
       try {
@@ -241,6 +250,48 @@ Deno.serve(async (req) => {
           metadata: { event, payload: data },
         });
       } catch (_) { /* ignore */ }
+
+      // Número conectado mudou (ex: chip caiu e reconectou com outro número).
+      // Revalida a posse dos grupos que este tenant já possui: se o novo número
+      // ainda é admin, atualiza owner_phone para ele; se não for mais admin de
+      // algum grupo, apenas loga um alerta (não remove a posse automaticamente).
+      if (newConnectedPhone && newConnectedPhone !== previousPhone && status && String(status).toLowerCase().includes("connect")) {
+        EdgeRuntime.waitUntil((async () => {
+          try {
+            const { data: myGroups } = await supabase
+              .from("whatsapp_group_ownership")
+              .select("id, group_id, group_name")
+              .eq("owner_tenant_id", tenantId);
+
+            if (!myGroups?.length) return;
+
+            if (!uazapiUrl || !instanceToken) return;
+
+            const { getGroupAdmins } = await import("../_shared/uazapi-api.ts");
+
+            for (const g of myGroups) {
+              const groupJidFull = String(g.group_id).includes("@g.us")
+                ? String(g.group_id)
+                : String(g.group_id).replace(/-group$/i, "") + "@g.us";
+              const admins = await getGroupAdmins({ url: uazapiUrl, token: instanceToken }, groupJidFull);
+              const isAdmin = admins.some((a) => a.endsWith(newConnectedPhone) || newConnectedPhone.endsWith(a));
+
+              if (isAdmin) {
+                await supabase
+                  .from("whatsapp_group_ownership")
+                  .update({ owner_phone: newConnectedPhone, owner_source: "admin_match", updated_at: new Date().toISOString() })
+                  .eq("id", g.id);
+                console.log(`[uazapi-webhook] 🔁 Reconexão: número ${newConnectedPhone} confirmado admin do grupo "${g.group_name}", posse revalidada.`);
+              } else {
+                console.warn(`[uazapi-webhook] ⚠️ Reconexão: novo número ${newConnectedPhone} NÃO é admin do grupo "${g.group_name}" (${g.group_id}). Posse mantida, mas revisar manualmente.`);
+              }
+            }
+          } catch (e: any) {
+            console.warn("[uazapi-webhook] Erro revalidando posse de grupos após reconexão:", e.message);
+          }
+        })());
+      }
+
       return json({ ok: true, handled: "connection" });
     }
 

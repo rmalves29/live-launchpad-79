@@ -389,6 +389,35 @@ export async function getGroupParticipants(cfg: UazapiConfig, groupJid: string):
   }
 }
 
+// Retorna apenas os telefones (só dígitos) dos participantes marcados como
+// admin/superadmin do grupo. Usado para decidir a posse (ownership) de um
+// grupo com base em quem de fato administra ele, em vez de "quem processou
+// primeiro" — evita o caso de dois tenants com número no mesmo grupo.
+export async function getGroupAdmins(cfg: UazapiConfig, groupJid: string): Promise<string[]> {
+  try {
+    const res = await fetch(`${trimUrl(cfg.url)}/group/info`, {
+      method: "POST",
+      headers: instanceHeaders(cfg.token),
+      body: JSON.stringify({ groupjid: groupJid }),
+    });
+    const data = await res.json().catch(() => null);
+    const participants = data?.participants || data?.group?.participants || data?.Participants || [];
+    const admins: string[] = [];
+    for (const p of participants) {
+      if (typeof p !== "object" || !p) continue;
+      const isAdmin = !!(p.IsAdmin || p.isAdmin || p.admin || p.IsSuperAdmin || p.isSuperAdmin || p.superAdmin);
+      if (!isAdmin) continue;
+      const raw = p.PhoneNumber || p.phoneNumber || p.phone || p.id || p.JID || p.jid || "";
+      const digits = String(raw).split("@")[0].replace(/\D/g, "");
+      if (digits) admins.push(digits);
+    }
+    return admins;
+  } catch (e: any) {
+    console.warn(`[uazapi] getGroupAdmins error: ${e.message}`);
+    return [];
+  }
+}
+
 export async function listGroups(cfg: UazapiConfig): Promise<any[]> {
   try {
     const res = await fetch(`${trimUrl(cfg.url)}/group/list`, {

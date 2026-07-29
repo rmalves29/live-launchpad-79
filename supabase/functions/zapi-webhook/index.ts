@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getGroupAdmins as evoGetGroupAdmins } from "../_shared/evolution-api.ts";
  import { antiBlockDelay, logAntiBlockDelay, antiBlockDelayLive, addMessageVariation, getTypingDelay, simulateTyping } from "../_shared/anti-block-delay.ts";
  import { activateConsentOnReply } from "../_shared/consent-v2.ts";
 
@@ -1126,39 +1127,116 @@ serve(async (req) => {
     // ==========================================
     // AUTO-VINCULAÇÃO DE GRUPO (GROUP OWNERSHIP)
     // Previne vazamento cross-tenant automaticamente.
-    // O primeiro tenant a processar um comando válido em um grupo torna-se "dono".
-    // Mensagens de outros tenants para o mesmo grupo são descartadas.
+    //
+    // Critério principal: quem administra o grupo no WhatsApp (IsAdmin) e tem
+    // esse número conectado a um tenant é o dono. Isso evita o cenário em que
+    // dois tenants têm número no mesmo grupo e "quem processou primeiro"
+    // decide por acaso (foi o que causou o incidente do grupo "Teste Bazar").
+    // Fallback: se não for possível determinar admin (erro de API, grupo sem
+    // dados), volta para o comportamento antigo (primeiro a processar vira dono).
     // ==========================================
     if (isGroup && groupId && tenantId) {
       const { data: ownership, error: owErr } = await supabase
         .from('whatsapp_group_ownership')
-        .select('owner_tenant_id')
+        .select('owner_tenant_id, owner_phone, owner_source')
         .eq('group_id', groupId)
         .maybeSingle();
 
-      if (!owErr && ownership) {
-        // Grupo já tem dono
-        if (ownership.owner_tenant_id !== tenantId) {
-          console.log(`[zapi-webhook] ⛔ Group "${groupName}" (${groupId}) pertence ao tenant ${ownership.owner_tenant_id}, mas a instância é do tenant ${tenantId}. DESCARTANDO.`);
-          return new Response(JSON.stringify({
-            success: true,
-            skipped: 'group_owned_by_another_tenant',
-            group: groupName,
-            owner: ownership.owner_tenant_id,
-            requester: tenantId
-          }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
+      // Resolve quem é dono "de verdade" pelos admins do grupo, comparando
+      // com os números conectados de todos os tenants ativos.
+      const resolveOwnerByAdmin = async (): Promise<{ tenantId: string; phone: string } | null> => {
+        try {
+          const { data: myInteg } = await supabase
+            .from('integration_whatsapp')
+            .select('uazapi_url, uazapi_token, provider')
+            .eq('tenant_id', tenantId)
+            .eq('is_active', true)
+            .maybeSingle();
+
+          if (!myInteg || myInteg.provider !== 'uazapi' || !myInteg.uazapi_url || !myInteg.uazapi_token) return null;
+
+          const groupJidFull = groupId.includes('@g.us') ? groupId : String(groupId).replace(/-group$/i, '') + '@g.us';
+          const instanceName = `${myInteg.uazapi_url}|${myInteg.uazapi_token}`;
+          const adminPhones = await evoGetGroupAdmins(instanceName, groupJidFull);
+          if (!adminPhones.length) return null;
+
+          const { data: candidates } = await supabase
+            .from('integration_whatsapp')
+            .select('tenant_id, connected_phone')
+            .eq('is_active', true)
+            .eq('provider', 'uazapi')
+            .not('connected_phone', 'is', null);
+
+          const matches = (candidates || []).filter((c: any) =>
+            adminPhones.some((a: string) => a.endsWith(String(c.connected_phone).replace(/\D/g, '')) || String(c.connected_phone).replace(/\D/g, '').endsWith(a))
+          );
+
+          if (matches.length === 0) return null;
+
+          // Se o tenant que está processando agora é um dos admins conectados, ele vence
+          // (é a regra pedida: trava no admin que está de fato conectado à API agora).
+          const self = matches.find((m: any) => m.tenant_id === tenantId);
+          const chosen = self || matches[0];
+          return { tenantId: chosen.tenant_id, phone: String(chosen.connected_phone) };
+        } catch (e: any) {
+          console.warn(`[zapi-webhook] resolveOwnerByAdmin falhou: ${e.message}`);
+          return null;
         }
-        console.log(`[zapi-webhook] ✅ Group "${groupName}" pertence ao tenant ${tenantId} (confirmado)`);
+      };
+
+      if (!owErr && ownership) {
+        if (ownership.owner_tenant_id !== tenantId) {
+          // Antes de descartar, revalida por admin — pode ser que a posse antiga
+          // esteja errada (ex: mesmo cenário do incidente) ou o número mudou.
+          const adminOwner = await resolveOwnerByAdmin();
+
+          if (adminOwner && adminOwner.tenantId !== ownership.owner_tenant_id) {
+            console.log(`[zapi-webhook] 🔄 Reatribuindo posse do grupo "${groupName}" (${groupId}): admin real é o tenant ${adminOwner.tenantId} (número ${adminOwner.phone}), não mais ${ownership.owner_tenant_id}.`);
+            await supabase
+              .from('whatsapp_group_ownership')
+              .update({ owner_tenant_id: adminOwner.tenantId, owner_phone: adminOwner.phone, owner_source: 'admin_match', updated_at: new Date().toISOString() })
+              .eq('group_id', groupId);
+
+            if (adminOwner.tenantId !== tenantId) {
+              return new Response(JSON.stringify({
+                success: true,
+                skipped: 'group_owned_by_another_tenant',
+                group: groupName,
+                owner: adminOwner.tenantId,
+                requester: tenantId,
+                reason: 'admin_match'
+              }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+            }
+            // Senão, o próprio tenant atual é o admin real — segue processando.
+          } else {
+            console.log(`[zapi-webhook] ⛔ Group "${groupName}" (${groupId}) pertence ao tenant ${ownership.owner_tenant_id}, mas a instância é do tenant ${tenantId}. DESCARTANDO.`);
+            return new Response(JSON.stringify({
+              success: true,
+              skipped: 'group_owned_by_another_tenant',
+              group: groupName,
+              owner: ownership.owner_tenant_id,
+              requester: tenantId
+            }), {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+        } else {
+          console.log(`[zapi-webhook] ✅ Group "${groupName}" pertence ao tenant ${tenantId} (confirmado)`);
+        }
       } else if (!owErr && !ownership) {
-        // Grupo novo — registrar ownership para este tenant (first-come-first-served)
+        // Grupo novo — tenta resolver pelo admin primeiro; se não der, first-come-first-served.
+        const adminOwner = await resolveOwnerByAdmin();
+        const ownerTenantId = adminOwner?.tenantId || tenantId;
+        const ownerSource = adminOwner ? 'admin_match' : 'first_processed';
+
         const { error: insertErr } = await supabase
           .from('whatsapp_group_ownership')
           .insert({
             group_id: groupId,
             group_name: groupName || null,
-            owner_tenant_id: tenantId,
+            owner_tenant_id: ownerTenantId,
+            owner_phone: adminOwner?.phone || null,
+            owner_source: ownerSource,
             instance_id: payload.instanceId || null,
           });
 
@@ -1176,7 +1254,17 @@ serve(async (req) => {
           }
           console.warn(`[zapi-webhook] Erro ao registrar ownership do grupo: ${insertErr.message}`);
         } else {
-          console.log(`[zapi-webhook] 🆕 Group "${groupName}" (${groupId}) registrado como propriedade do tenant ${tenantId}`);
+          console.log(`[zapi-webhook] 🆕 Group "${groupName}" (${groupId}) registrado como propriedade do tenant ${ownerTenantId} (source=${ownerSource})`);
+          if (ownerTenantId !== tenantId) {
+            return new Response(JSON.stringify({
+              success: true,
+              skipped: 'group_owned_by_another_tenant',
+              group: groupName,
+              owner: ownerTenantId,
+              requester: tenantId,
+              reason: 'admin_match'
+            }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          }
         }
       }
     }
