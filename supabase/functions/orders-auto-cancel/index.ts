@@ -114,7 +114,7 @@ Deno.serve(async (req) => {
           meta: {
             order_number: order.tenant_order_number || order.id,
             source: 'auto_cancel_unpaid',
-            deadline_hours: hours,
+            deadline_minutes: minutes,
             total_amount: order.total_amount,
             customer_phone: order.customer_phone,
           },
