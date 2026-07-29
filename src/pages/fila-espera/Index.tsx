@@ -54,7 +54,8 @@ export default function FilaEsperaPage() {
   const [enabled, setEnabled] = useState<boolean>(true);
   const [savingEnabled, setSavingEnabled] = useState(false);
   const [autoCancelEnabled, setAutoCancelEnabled] = useState(false);
-  const [autoCancelHours, setAutoCancelHours] = useState<number>(24);
+  const [autoCancelValue, setAutoCancelValue] = useState<number>(24);
+  const [autoCancelUnit, setAutoCancelUnit] = useState<'hours' | 'minutes'>('hours');
   const [savingAutoCancel, setSavingAutoCancel] = useState(false);
   const [runningAutoCancel, setRunningAutoCancel] = useState(false);
 
@@ -62,19 +63,32 @@ export default function FilaEsperaPage() {
     if (!tenant?.id) return;
     const { data } = await supabase
       .from('tenants')
-      .select('waitlist_enabled, auto_cancel_unpaid_enabled, auto_cancel_unpaid_hours')
+      .select('waitlist_enabled, auto_cancel_unpaid_enabled, auto_cancel_unpaid_hours, auto_cancel_unpaid_minutes')
       .eq('id', tenant.id)
       .maybeSingle();
     setEnabled((data as any)?.waitlist_enabled !== false);
     setAutoCancelEnabled((data as any)?.auto_cancel_unpaid_enabled === true);
-    setAutoCancelHours(Number((data as any)?.auto_cancel_unpaid_hours) || 24);
+    const minutes = Number((data as any)?.auto_cancel_unpaid_minutes);
+    if (Number.isFinite(minutes) && minutes > 0) {
+      setAutoCancelUnit('minutes');
+      setAutoCancelValue(minutes);
+    } else {
+      setAutoCancelUnit('hours');
+      setAutoCancelValue(Number((data as any)?.auto_cancel_unpaid_hours) || 24);
+    }
   }
 
-  async function saveAutoCancel(next: { enabled?: boolean; hours?: number }) {
+  async function saveAutoCancel(next: { enabled?: boolean; value?: number; unit?: 'hours' | 'minutes' }) {
     if (!tenant?.id) return;
+    const unit = next.unit ?? autoCancelUnit;
+    const rawValue = next.value ?? autoCancelValue;
+    const value = unit === 'minutes'
+      ? Math.max(1, Math.min(43200, Math.round(rawValue)))
+      : Math.max(1, Math.min(720, Math.round(rawValue)));
     const payload = {
       auto_cancel_unpaid_enabled: next.enabled ?? autoCancelEnabled,
-      auto_cancel_unpaid_hours: Math.max(1, Math.min(720, next.hours ?? autoCancelHours)),
+      auto_cancel_unpaid_hours: unit === 'hours' ? value : Math.max(1, Math.ceil(value / 60)),
+      auto_cancel_unpaid_minutes: unit === 'minutes' ? value : null,
     };
     setSavingAutoCancel(true);
     const { error } = await supabase.from('tenants').update(payload as any).eq('id', tenant.id);
@@ -84,7 +98,8 @@ export default function FilaEsperaPage() {
       return;
     }
     setAutoCancelEnabled(payload.auto_cancel_unpaid_enabled);
-    setAutoCancelHours(payload.auto_cancel_unpaid_hours);
+    setAutoCancelUnit(unit);
+    setAutoCancelValue(value);
     toast({ title: 'Regra de cancelamento salva' });
   }
 
@@ -102,6 +117,7 @@ export default function FilaEsperaPage() {
     const total = (data as any)?.total_cancelled ?? 0;
     toast({ title: `${total} pedido(s) cancelado(s)` });
   }
+
 
   async function toggleEnabled(next: boolean) {
     if (!tenant?.id) return;
