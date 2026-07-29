@@ -292,25 +292,39 @@ export default function FilaEsperaPage() {
         {autoCancelEnabled && (
           <div className="flex items-end gap-2 flex-wrap">
             <div className="space-y-1">
-              <Label htmlFor="auto-cancel-hours" className="text-xs">Prazo para pagamento (horas)</Label>
+              <Label htmlFor="auto-cancel-value" className="text-xs">Prazo para pagamento</Label>
               <Input
-                id="auto-cancel-hours"
+                id="auto-cancel-value"
                 type="number"
                 min={1}
-                max={720}
+                max={autoCancelUnit === 'minutes' ? 43200 : 720}
                 className="w-32"
-                value={autoCancelHours}
-                onChange={(e) => setAutoCancelHours(Number(e.target.value))}
+                value={autoCancelValue}
+                onChange={(e) => setAutoCancelValue(Number(e.target.value))}
               />
             </div>
-            <Button size="sm" disabled={savingAutoCancel} onClick={() => saveAutoCancel({ hours: autoCancelHours })}>
+            <div className="space-y-1">
+              <Label className="text-xs">Unidade</Label>
+              <Select value={autoCancelUnit} onValueChange={(v) => setAutoCancelUnit(v as 'hours' | 'minutes')}>
+                <SelectTrigger className="w-36"><SelectValue/></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="minutes">Minutos</SelectItem>
+                  <SelectItem value="hours">Horas</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button size="sm" disabled={savingAutoCancel} onClick={() => saveAutoCancel({ value: autoCancelValue, unit: autoCancelUnit })}>
               Salvar prazo
             </Button>
             <Button size="sm" variant="outline" disabled={runningAutoCancel} onClick={runAutoCancelNow}>
               {runningAutoCancel ? 'Processando…' : 'Executar agora'}
             </Button>
+            <p className="w-full text-xs text-muted-foreground">
+              A verificação roda a cada 1 minuto, então o cancelamento ocorre em até ~1 min após o prazo vencer.
+            </p>
           </div>
         )}
+
       </Card>
 
 
