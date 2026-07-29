@@ -54,7 +54,8 @@ export default function FilaEsperaPage() {
   const [enabled, setEnabled] = useState<boolean>(true);
   const [savingEnabled, setSavingEnabled] = useState(false);
   const [autoCancelEnabled, setAutoCancelEnabled] = useState(false);
-  const [autoCancelHours, setAutoCancelHours] = useState<number>(24);
+  const [autoCancelValue, setAutoCancelValue] = useState<number>(24);
+  const [autoCancelUnit, setAutoCancelUnit] = useState<'hours' | 'minutes'>('hours');
   const [savingAutoCancel, setSavingAutoCancel] = useState(false);
   const [runningAutoCancel, setRunningAutoCancel] = useState(false);
 
@@ -62,19 +63,32 @@ export default function FilaEsperaPage() {
     if (!tenant?.id) return;
     const { data } = await supabase
       .from('tenants')
-      .select('waitlist_enabled, auto_cancel_unpaid_enabled, auto_cancel_unpaid_hours')
+      .select('waitlist_enabled, auto_cancel_unpaid_enabled, auto_cancel_unpaid_hours, auto_cancel_unpaid_minutes')
       .eq('id', tenant.id)
       .maybeSingle();
     setEnabled((data as any)?.waitlist_enabled !== false);
     setAutoCancelEnabled((data as any)?.auto_cancel_unpaid_enabled === true);
-    setAutoCancelHours(Number((data as any)?.auto_cancel_unpaid_hours) || 24);
+    const minutes = Number((data as any)?.auto_cancel_unpaid_minutes);
+    if (Number.isFinite(minutes) && minutes > 0) {
+      setAutoCancelUnit('minutes');
+      setAutoCancelValue(minutes);
+    } else {
+      setAutoCancelUnit('hours');
+      setAutoCancelValue(Number((data as any)?.auto_cancel_unpaid_hours) || 24);
+    }
   }
 
-  async function saveAutoCancel(next: { enabled?: boolean; hours?: number }) {
+  async function saveAutoCancel(next: { enabled?: boolean; value?: number; unit?: 'hours' | 'minutes' }) {
     if (!tenant?.id) return;
+    const unit = next.unit ?? autoCancelUnit;
+    const rawValue = next.value ?? autoCancelValue;
+    const value = unit === 'minutes'
+      ? Math.max(1, Math.min(43200, Math.round(rawValue)))
+      : Math.max(1, Math.min(720, Math.round(rawValue)));
     const payload = {
       auto_cancel_unpaid_enabled: next.enabled ?? autoCancelEnabled,
-      auto_cancel_unpaid_hours: Math.max(1, Math.min(720, next.hours ?? autoCancelHours)),
+      auto_cancel_unpaid_hours: unit === 'hours' ? value : Math.max(1, Math.ceil(value / 60)),
+      auto_cancel_unpaid_minutes: unit === 'minutes' ? value : null,
     };
     setSavingAutoCancel(true);
     const { error } = await supabase.from('tenants').update(payload as any).eq('id', tenant.id);
@@ -84,7 +98,8 @@ export default function FilaEsperaPage() {
       return;
     }
     setAutoCancelEnabled(payload.auto_cancel_unpaid_enabled);
-    setAutoCancelHours(payload.auto_cancel_unpaid_hours);
+    setAutoCancelUnit(unit);
+    setAutoCancelValue(value);
     toast({ title: 'Regra de cancelamento salva' });
   }
 
@@ -102,6 +117,7 @@ export default function FilaEsperaPage() {
     const total = (data as any)?.total_cancelled ?? 0;
     toast({ title: `${total} pedido(s) cancelado(s)` });
   }
+
 
   async function toggleEnabled(next: boolean) {
     if (!tenant?.id) return;
@@ -276,25 +292,39 @@ export default function FilaEsperaPage() {
         {autoCancelEnabled && (
           <div className="flex items-end gap-2 flex-wrap">
             <div className="space-y-1">
-              <Label htmlFor="auto-cancel-hours" className="text-xs">Prazo para pagamento (horas)</Label>
+              <Label htmlFor="auto-cancel-value" className="text-xs">Prazo para pagamento</Label>
               <Input
-                id="auto-cancel-hours"
+                id="auto-cancel-value"
                 type="number"
                 min={1}
-                max={720}
+                max={autoCancelUnit === 'minutes' ? 43200 : 720}
                 className="w-32"
-                value={autoCancelHours}
-                onChange={(e) => setAutoCancelHours(Number(e.target.value))}
+                value={autoCancelValue}
+                onChange={(e) => setAutoCancelValue(Number(e.target.value))}
               />
             </div>
-            <Button size="sm" disabled={savingAutoCancel} onClick={() => saveAutoCancel({ hours: autoCancelHours })}>
+            <div className="space-y-1">
+              <Label className="text-xs">Unidade</Label>
+              <Select value={autoCancelUnit} onValueChange={(v) => setAutoCancelUnit(v as 'hours' | 'minutes')}>
+                <SelectTrigger className="w-36"><SelectValue/></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="minutes">Minutos</SelectItem>
+                  <SelectItem value="hours">Horas</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button size="sm" disabled={savingAutoCancel} onClick={() => saveAutoCancel({ value: autoCancelValue, unit: autoCancelUnit })}>
               Salvar prazo
             </Button>
             <Button size="sm" variant="outline" disabled={runningAutoCancel} onClick={runAutoCancelNow}>
               {runningAutoCancel ? 'Processando…' : 'Executar agora'}
             </Button>
+            <p className="w-full text-xs text-muted-foreground">
+              A verificação roda a cada 1 minuto, então o cancelamento ocorre em até ~1 min após o prazo vencer.
+            </p>
           </div>
         )}
+
       </Card>
 
 

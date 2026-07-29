@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
 
     let tenantQuery = supabase
       .from('tenants')
-      .select('id, name, auto_cancel_unpaid_enabled, auto_cancel_unpaid_hours')
+      .select('id, name, auto_cancel_unpaid_enabled, auto_cancel_unpaid_hours, auto_cancel_unpaid_minutes')
       .eq('auto_cancel_unpaid_enabled', true);
 
     if (onlyTenantId) tenantQuery = tenantQuery.eq('id', onlyTenantId);
@@ -43,8 +43,12 @@ Deno.serve(async (req) => {
     const results: Array<{ tenant_id: string; tenant: string; cancelled: number; orders: number[] }> = [];
 
     for (const t of tenants || []) {
-      const hours = Number((t as any).auto_cancel_unpaid_hours) || 24;
-      const cutoff = new Date(Date.now() - hours * 3600_000).toISOString();
+      const rawMinutes = Number((t as any).auto_cancel_unpaid_minutes);
+      const minutes = Number.isFinite(rawMinutes) && rawMinutes > 0
+        ? rawMinutes
+        : (Number((t as any).auto_cancel_unpaid_hours) || 24) * 60;
+      const cutoff = new Date(Date.now() - minutes * 60_000).toISOString();
+      const deadlineLabel = minutes % 60 === 0 ? `${minutes / 60}h` : `${minutes} min`;
 
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
@@ -90,7 +94,7 @@ Deno.serve(async (req) => {
           .from('orders')
           .update({
             is_cancelled: true,
-            cancellation_reason: `Cancelamento automático: prazo de ${hours}h para pagamento expirado`,
+            cancellation_reason: `Cancelamento automático: prazo de ${deadlineLabel} para pagamento expirado`,
           })
           .eq('id', order.id)
           .eq('is_paid', false);
@@ -110,7 +114,7 @@ Deno.serve(async (req) => {
           meta: {
             order_number: order.tenant_order_number || order.id,
             source: 'auto_cancel_unpaid',
-            deadline_hours: hours,
+            deadline_minutes: minutes,
             total_amount: order.total_amount,
             customer_phone: order.customer_phone,
           },
