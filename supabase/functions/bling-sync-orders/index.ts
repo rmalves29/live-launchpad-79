@@ -578,6 +578,19 @@ async function updateBlingContactWithRetry(
   return { ok: second.ok, attempts: 2, forced: true };
 }
 
+// Normaliza telefone BR para o formato aceito pelo Bling: (XX) XXXXX-XXXX
+// Remove prefixo internacional 55 e zeros à esquerda (ex.: 011981543237 -> (11) 98154-3237)
+function formatBlingPhone(raw: string | null | undefined): string {
+  let d = (raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  d = d.replace(/^0+/, '');
+  if (d.length > 11 && d.startsWith('55')) d = d.slice(2);
+  d = d.replace(/^0+/, '');
+  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return ''; // inválido: melhor omitir do que quebrar a validação do Bling
+}
+
 async function getOrCreateBlingContactId(
   order: any, 
   customer: any, 
@@ -585,7 +598,8 @@ async function getOrCreateBlingContactId(
   supabase: any,
   tenantId: string
 ): Promise<number> {
-  const phone = (order.customer_phone || '').replace(/\D/g, '');
+  const phone = formatBlingPhone(order.customer_phone || customer?.phone);
+
   
   // PRIORIDADE: dados do PEDIDO (order) sempre prevalecem sobre cadastro do customer.
   const customerName = order.customer_name || customer?.name || 'Cliente';
