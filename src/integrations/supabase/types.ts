@@ -5129,6 +5129,10 @@ export type Database = {
         Args: { p_message_id: string }
         Returns: boolean
       }
+      admin_global_report: {
+        Args: { p_from: string; p_to: string }
+        Returns: Json
+      }
       admin_whatsapp_activity_metrics: {
         Args: { p_from: string; p_to: string }
         Returns: {
