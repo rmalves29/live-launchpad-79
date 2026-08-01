@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Trash2, Users, Copy, Megaphone, MousePointerClick, ArrowRightToLine, Percent, Crown } from 'lucide-react';
+import { Plus, Trash2, Users, Copy, Megaphone, MousePointerClick, ArrowRightToLine, Percent, Crown, Pencil } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
@@ -46,6 +46,9 @@ export default function CampaignsManager() {
   const [newCampaign, setNewCampaign] = useState({ name: '', slug: '', description: '' });
   const [campaignStats, setCampaignStats] = useState<Record<string, CampaignStats>>({});
   const [selectedCampaign, setSelectedCampaign] = useState<FeCampaign | null>(null);
+  const [editCampaign, setEditCampaign] = useState<FeCampaign | null>(null);
+  const [editForm, setEditForm] = useState({ name: '', description: '' });
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const fetchCampaigns = useCallback(async () => {
     if (!tenant) return;
@@ -143,6 +146,32 @@ export default function CampaignsManager() {
     fetchCampaigns();
   };
 
+  const openEdit = (c: FeCampaign) => {
+    setEditCampaign(c);
+    setEditForm({ name: c.name, description: c.description || '' });
+  };
+
+  const saveEdit = async () => {
+    if (!editCampaign) return;
+    if (!editForm.name.trim()) {
+      toast({ title: 'Informe o nome da campanha', variant: 'destructive' });
+      return;
+    }
+    setSavingEdit(true);
+    const { error } = await supabase
+      .from('fe_campaigns' as any)
+      .update({ name: editForm.name.trim(), description: editForm.description.trim() || null } as any)
+      .eq('id', editCampaign.id);
+    setSavingEdit(false);
+    if (error) {
+      toast({ title: 'Erro ao salvar', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Campanha atualizada' });
+    setEditCampaign(null);
+    fetchCampaigns();
+  };
+
   const deleteCampaign = async (id: string) => {
     if (!confirm('Excluir esta campanha?')) return;
     await supabase.from('fe_campaigns' as any).delete().eq('id', id);
@@ -196,6 +225,27 @@ export default function CampaignsManager() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Edit Campaign Dialog */}
+      <Dialog open={!!editCampaign} onOpenChange={(o) => !o && setEditCampaign(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Editar Campanha</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Nome</Label>
+              <Input value={editForm.name} onChange={(e) => setEditForm(p => ({ ...p, name: e.target.value }))} />
+            </div>
+            <div>
+              <Label>Descrição (opcional)</Label>
+              <Textarea value={editForm.description} onChange={(e) => setEditForm(p => ({ ...p, description: e.target.value }))} />
+            </div>
+            <p className="text-xs text-muted-foreground">O link (/{editCampaign?.slug}) não é alterado.</p>
+            <Button onClick={saveEdit} disabled={savingEdit} className="w-full">
+              {savingEdit ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Campaign Detail Dialog */}
       {selectedCampaign && (
@@ -269,6 +319,9 @@ export default function CampaignsManager() {
                         </label>
                       </div>
                       <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(c)} title="Editar nome">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
                         <Button variant="ghost" size="icon" onClick={() => copyLink(c.slug)} title="Copiar link">
                           <Copy className="h-4 w-4" />
                         </Button>
