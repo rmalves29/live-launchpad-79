@@ -6,7 +6,7 @@ export default function CampaignRedirect() {
 
   useEffect(() => {
     if (!campaignSlug || !tenantSlug) return;
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || `https://hxtbsieodbtzgcvvkeqx.supabase.co`;
+    const supabaseUrl = `https://hxtbsieodbtzgcvvkeqx.supabase.co`;
     const redirectUrl = `${supabaseUrl}/functions/v1/fe-campaign-redirect?slug=${encodeURIComponent(campaignSlug)}&tenant=${encodeURIComponent(tenantSlug)}`;
     window.location.replace(redirectUrl);
   }, [tenantSlug, campaignSlug]);

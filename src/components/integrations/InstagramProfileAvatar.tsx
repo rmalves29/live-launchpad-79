@@ -18,7 +18,7 @@ export default function InstagramProfileAvatar({
     const candidates: string[] = [];
 
     try {
-      const base = import.meta.env.VITE_SUPABASE_URL;
+      const base = "https://hxtbsieodbtzgcvvkeqx.supabase.co";
       if (tenantId && base) {
         candidates.push(
           `${base}/functions/v1/instagram-profile-avatar?tenant_id=${encodeURIComponent(tenantId)}&t=${Date.now()}`
