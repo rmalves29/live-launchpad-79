@@ -16,13 +16,9 @@ type ResilientSignInResult = {
   error: AuthLikeError | null;
 };
 
-const SUPABASE_URL =
-  import.meta.env.VITE_SUPABASE_URL ??
-  "https://hxtbsieodbtzgcvvkeqx.supabase.co";
+const SUPABASE_URL = "https://hxtbsieodbtzgcvvkeqx.supabase.co";
 
 const SUPABASE_ANON_KEY =
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ??
-  import.meta.env.VITE_SUPABASE_ANON_KEY ??
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4dGJzaWVvZGJ0emdjdnZrZXF4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUyMTkzMDMsImV4cCI6MjA3MDc5NTMwM30.iUYXhv6t2amvUSFsQQZm_jU-ofWD5BGNkj1X0XgCpn4";
 
 const SUPABASE_PROJECT_REF = new URL(SUPABASE_URL).hostname.split(".")[0];
