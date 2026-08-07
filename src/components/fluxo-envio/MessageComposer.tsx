@@ -49,6 +49,7 @@ export default function MessageComposer() {
   const [sending, setSending] = useState(false);
   const [mentionAll, setMentionAll] = useState(false);
   const [groupSort, setGroupSort] = useState<'name' | 'last_sent'>('name');
+  const [groupSearch, setGroupSearch] = useState('');
 
   
   const [messages, setMessages] = useState<any[]>([]);
