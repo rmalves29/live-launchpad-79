@@ -49,6 +49,7 @@ export default function MessageComposer() {
   const [sending, setSending] = useState(false);
   const [mentionAll, setMentionAll] = useState(false);
   const [groupSort, setGroupSort] = useState<'name' | 'last_sent'>('name');
+  const [groupSearch, setGroupSearch] = useState('');
 
   
   const [messages, setMessages] = useState<any[]>([]);
@@ -401,8 +402,14 @@ export default function MessageComposer() {
                     <Button type="button" size="sm" variant={groupSort === 'last_sent' ? 'default' : 'outline'} className="h-7 text-xs" onClick={() => setGroupSort('last_sent')}>Últimos enviados</Button>
                   </div>
                 </div>
+                <Input
+                  value={groupSearch}
+                  onChange={(e) => setGroupSearch(e.target.value)}
+                  placeholder="Buscar grupo pelo nome..."
+                  className="h-8 text-sm"
+                />
                 <div className="max-h-[200px] overflow-y-auto space-y-1">
-                  {[...groups].sort((a, b) => {
+                  {[...groups].filter(g => (g.group_name || '').toLowerCase().includes(groupSearch.trim().toLowerCase())).sort((a, b) => {
                     if (groupSort === 'name') return a.group_name.localeCompare(b.group_name);
                     const ta = a.last_sent_at ? new Date(a.last_sent_at).getTime() : 0;
                     const tb = b.last_sent_at ? new Date(b.last_sent_at).getTime() : 0;
