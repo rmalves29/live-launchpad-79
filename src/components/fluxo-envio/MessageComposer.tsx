@@ -304,7 +304,17 @@ export default function MessageComposer() {
 
   return (
     <div className="space-y-6">
-      <h3 className="text-lg font-semibold text-foreground">Envio de Mensagens</h3>
+      <div className="flex items-center justify-between gap-4">
+        <h3 className="text-lg font-semibold text-foreground">Envio de Mensagens</h3>
+        <div className="flex-1 max-w-sm">
+          <Input
+            placeholder="Buscar grupo pelo nome..."
+            value={groupSearch}
+            onChange={(e) => setGroupSearch(e.target.value)}
+            className="h-9"
+          />
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
@@ -402,12 +412,6 @@ export default function MessageComposer() {
                     <Button type="button" size="sm" variant={groupSort === 'last_sent' ? 'default' : 'outline'} className="h-7 text-xs" onClick={() => setGroupSort('last_sent')}>Últimos enviados</Button>
                   </div>
                 </div>
-                <Input
-                  value={groupSearch}
-                  onChange={(e) => setGroupSearch(e.target.value)}
-                  placeholder="Buscar grupo pelo nome..."
-                  className="h-8 text-sm"
-                />
                 <div className="max-h-[200px] overflow-y-auto space-y-1">
                   {[...groups].filter(g => (g.group_name || '').toLowerCase().includes(groupSearch.trim().toLowerCase())).sort((a, b) => {
                     if (groupSort === 'name') return a.group_name.localeCompare(b.group_name);
