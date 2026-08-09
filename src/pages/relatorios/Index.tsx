@@ -1298,8 +1298,8 @@ const Relatorios = () => {
           paid_products: Number(stats.paid_products || 0), 
           unpaid_products: Number(stats.pending_products || 0),
           avg_ticket: Number(stats.ticket_medio || stats.avg_ticket) || 0,
-          paid_avg_ticket: 0,
-          unpaid_avg_ticket: 0,
+          paid_avg_ticket: Number(stats.paid_avg_ticket || 0),
+          unpaid_avg_ticket: Number(stats.pending_avg_ticket || 0),
           avg_shipping_time_hours: stats.avg_shipping_time_hours !== undefined ? Number(stats.avg_shipping_time_hours) : null
         });
         return;
