@@ -1258,8 +1258,10 @@ const Relatorios = () => {
         return;
       }
 
-      // Tentamos usar a RPC admin_global_report para pegar métricas avançadas (como tempo médio e produtos por dia)
-      const { data: rpcData, error: rpcError } = await supabaseTenant.rpc('admin_global_report', {
+      console.log('📊 [Relatorios] Chamando admin_global_report para o range:', range);
+      
+      // Tentar a RPC primeiro (método otimizado)
+      const { data: rpcData, error: rpcError } = await (supabaseTenant as any).rpc('admin_global_report', {
         p_from: range.startISO,
         p_to: range.endISO
       });
@@ -1533,9 +1535,12 @@ const Relatorios = () => {
 
   useEffect(() => {
     if (tenantId) {
+      console.log('🔄 [Relatorios] Tenant detectado:', tenantId, '. Carregando relatórios...');
       // Inicializa propagando o período padrão
       propagateGlobalPeriod(globalPeriod);
       loadAllReports();
+    } else {
+      console.warn('⚠️ [Relatorios] Tenant ID ausente no carregamento inicial.');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);

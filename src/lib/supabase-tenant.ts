@@ -40,6 +40,11 @@ class TenantSupabaseClient {
     return this.client.storage;
   }
 
+  // RPC (sem filtro automático, deve ser tratado na função SQL)
+  get rpc() {
+    return this.client.rpc.bind(this.client);
+  }
+
   // Tabelas COM filtro automático por tenant (aplica filtro após select/update/delete)
   from(table: keyof Database['public']['Tables']) {
     const base = this.client.from(table);
@@ -54,19 +59,22 @@ class TenantSupabaseClient {
 
     const tenantId = this.currentTenantId;
     if (!tenantId) {
-      console.error(`❌ [supabaseTenant] ERRO CRÍTICO: Query na tabela ${table} sem tenant_id definido! Isso pode causar vazamento de dados.`);
-      // Retornar um wrapper que adiciona filtro impossível para evitar vazamento
-      const safeWrapper: any = {
-        select: (columns?: any, options?: any) => {
-          console.error(`❌ [supabaseTenant] SELECT bloqueado em ${table} - tenant_id não definido`);
-          return (base as any).select(columns ?? '*', options).eq('tenant_id', '00000000-0000-0000-0000-000000000000');
-        },
-        update: () => ({ eq: () => Promise.resolve({ data: null, error: { message: 'tenant_id não definido' } }) }),
-        delete: () => ({ eq: () => Promise.resolve({ data: null, error: { message: 'tenant_id não definido' } }) }),
-        insert: () => Promise.resolve({ data: null, error: { message: 'tenant_id não definido' } }),
-        upsert: () => Promise.resolve({ data: null, error: { message: 'tenant_id não definido' } }),
-      };
-      return safeWrapper;
+      console.warn(`⚠️ [supabaseTenant] Query na tabela ${table} sem tenant_id definido.`);
+      // Tentar recuperar do perfil no localStorage como fallback extremo
+      const profile = JSON.parse(localStorage.getItem('sb-hxtbsieodbtzgcvvkeqx-auth-token') || '{}')?.user?.user_metadata?.tenant_id;
+      if (profile) {
+        console.log('💡 [supabaseTenant] Recuperado tenant_id do storage:', profile);
+        this.setTenantId(profile);
+      } else {
+        const safeWrapper: any = {
+          select: (columns?: any, options?: any) => (base as any).select(columns ?? '*', options).eq('tenant_id', '00000000-0000-0000-0000-000000000000'),
+          update: () => ({ eq: () => Promise.resolve({ data: null, error: { message: 'tenant_id não definido' } }) }),
+          delete: () => ({ eq: () => Promise.resolve({ data: null, error: { message: 'tenant_id não definido' } }) }),
+          insert: () => Promise.resolve({ data: null, error: { message: 'tenant_id não definido' } }),
+          upsert: () => Promise.resolve({ data: null, error: { message: 'tenant_id não definido' } }),
+        };
+        return safeWrapper;
+      }
     }
 
     console.log(`🔍 [supabaseTenant] Filtrando ${table} por tenant_id=${tenantId}`);

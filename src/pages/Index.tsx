@@ -15,7 +15,7 @@ export default function Home() {
         <h1 className="text-4xl font-bold tracking-tight sm:text-6xl">
           Redirecionando...
         </h1>
-        <p className="text-muted-foreground">Relatório de Logística atualizado com novas métricas.</p>
+        <p className="text-muted-foreground">Sistema de relatórios restaurado e diagnóstico de conexão ativo.</p>
       </div>
     </div>
   );
