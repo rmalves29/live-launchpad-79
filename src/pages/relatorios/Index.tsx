@@ -1266,6 +1266,8 @@ const Relatorios = () => {
         p_to: range.endISO
       });
 
+      console.log('📊 [Relatorios] Resposta RPC:', { rpcData, rpcError });
+
       if (!rpcError && rpcData) {
         // Normaliza o retorno caso a RPC retorne dados parciais ou nulos
         const stats = rpcData.orders || {};
@@ -1282,17 +1284,20 @@ const Relatorios = () => {
         
         setDailySeries(series);
         
+        // Mapeia os campos da RPC para o state globalStats
+        // Verificamos os campos retornados pela RPC no script SQL anterior:
+        // total_value, paid_value, pending_value, count, count_paid, count_pending, total_products, ticket_medio, avg_shipping_time_hours
         setGlobalStats({
-          total_sales: Number(stats.total_value) || 0,
-          paid_sales: Number(stats.paid_value) || 0,
-          unpaid_sales: Number(stats.pending_value) || 0,
-          total_orders: Number(stats.count) || 0,
-          paid_orders: Number(stats.count_paid) || 0,
-          unpaid_orders: Number(stats.count_pending) || 0,
+          total_sales: Number(stats.total_value || stats.total_sales) || 0,
+          paid_sales: Number(stats.paid_value || stats.paid_sales) || 0,
+          unpaid_sales: Number(stats.pending_value || stats.unpaid_sales) || 0,
+          total_orders: Number(stats.count || stats.total_orders) || 0,
+          paid_orders: Number(stats.count_paid || stats.paid_orders) || 0,
+          unpaid_orders: Number(stats.count_pending || stats.unpaid_orders) || 0,
           total_products: Number(stats.total_products) || 0,
           paid_products: 0, 
           unpaid_products: 0,
-          avg_ticket: Number(stats.ticket_medio) || 0,
+          avg_ticket: Number(stats.ticket_medio || stats.avg_ticket) || 0,
           paid_avg_ticket: 0,
           unpaid_avg_ticket: 0,
           avg_shipping_time_hours: stats.avg_shipping_time_hours !== undefined ? Number(stats.avg_shipping_time_hours) : null
