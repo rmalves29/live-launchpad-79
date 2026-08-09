@@ -1545,8 +1545,7 @@ const Relatorios = () => {
 
   // Recarrega série diária quando o período global muda
   useEffect(() => {
-    if (tenantId) { 
-      console.log('🔄 [Relatorios] Recarregando devido a mudança de filtros:', { globalPeriod, saleTypeFilter });
+    if (tenantId) {
       propagateGlobalPeriod(globalPeriod);
       loadAllReports(); 
     }
