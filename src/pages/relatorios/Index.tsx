@@ -2176,3 +2176,6 @@ const Relatorios = () => {
 };
 
 export default Relatorios;
+};
+
+export default Relatorios;
