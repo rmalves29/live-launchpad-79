@@ -20,8 +20,15 @@ interface ReportData {
     count_paid: number;
     count_pending: number;
     ticket_medio: number;
+    total_products?: number;
+    avg_shipping_time_hours?: number;
   };
   messages: { total: number; grupos: number; privado: number };
+  daily_metrics?: Array<{
+    date: string;
+    orders_count: number;
+    products_count: number;
+  }>;
   customers?: { total: number; com_pedido_pago: number; sem_pedido_pago: number };
 }
 
@@ -182,15 +189,46 @@ export default function RelatorioGlobal() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
-            <ShoppingCart className="w-4 h-4" /> Pedidos
+            <ShoppingCart className="w-4 h-4" /> Pedidos e Produtos
           </CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-3">
+        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Metric label="Pedidos realizados" value={(o?.count ?? 0).toLocaleString("pt-BR")} />
+          <Metric label="Produtos enviados" value={(o?.total_products ?? 0).toLocaleString("pt-BR")} accent="text-blue-600" />
           <Metric label="Pedidos pagos" value={(o?.count_paid ?? 0).toLocaleString("pt-BR")} accent="text-emerald-600" />
-          <Metric label="Pedidos não pagos" value={(o?.count_pending ?? 0).toLocaleString("pt-BR")} accent="text-amber-600" />
+          <Metric label="Tempo médio envio" value={o?.avg_shipping_time_hours ? `${o.avg_shipping_time_hours}h` : "---"} accent="text-purple-600" />
         </CardContent>
       </Card>
+
+      {data?.daily_metrics && data.daily_metrics.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Detalhamento por Dia</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead>
+                  <tr className="border-b">
+                    <th className="py-2 font-semibold">Data</th>
+                    <th className="py-2 font-semibold text-center">Pedidos</th>
+                    <th className="py-2 font-semibold text-center">Produtos</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.daily_metrics.map((day) => (
+                    <tr key={day.date} className="border-b hover:bg-muted/50">
+                      <td className="py-2">{new Date(day.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                      <td className="py-2 text-center">{day.orders_count}</td>
+                      <td className="py-2 text-center">{day.products_count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-3">
