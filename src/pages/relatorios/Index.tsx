@@ -1529,7 +1529,6 @@ const Relatorios = () => {
   useEffect(() => {
     if (tenantId) {
       console.log('🔄 [Relatorios] Tenant detectado:', tenantId, '. Carregando relatórios...');
-      // Inicializa propagando o período padrão
       propagateGlobalPeriod(globalPeriod);
       loadAllReports();
     } else {
@@ -1538,29 +1537,8 @@ const Relatorios = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
-  useEffect(() => {
-    loadTopProducts();
-  }, [selectedPeriod, startDate, endDate]);
-
-  useEffect(() => {
-    loadTodaySales();
-  }, [salesFilter, salesStartDate, salesEndDate]);
-
-  useEffect(() => {
-    loadWhatsAppGroupStats();
-  }, [whatsappFilter, whatsappStartDate, whatsappEndDate]);
-
-  useEffect(() => {
-    loadTopCustomers();
-  }, [customersFilter, customersStartDate, customersEndDate]);
-
-  // Re-carregar quando mudar o filtro de tipo de venda
-  useEffect(() => {
-    if (tenantId) {
-      loadAllReports();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saleTypeFilter]);
+  // Os useEffects individuais (topProducts, todaySales, etc) foram unificados 
+  // no useEffect do globalPeriod abaixo para evitar múltiplas chamadas concorrentes.
 
   // Recarrega série diária quando o período global muda
   useEffect(() => {
