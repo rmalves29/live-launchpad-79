@@ -2021,9 +2021,7 @@ const Relatorios = () => {
                      : '---'}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {globalStats?.avg_shipping_time_hours 
-                    ? 'Média entre confirmação de pagamento e inserção do rastreio.' 
-                    : 'Requer execução do SQL de Logística no backend.'}
+                  Média entre confirmação de pagamento e inserção do rastreio.
                 </p>
               </div>
             </div>
