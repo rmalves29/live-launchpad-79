@@ -1414,6 +1414,7 @@ const Relatorios = () => {
 
   // Propaga mudança do período global para os filtros internos por aba
   const propagateGlobalPeriod = (period: GlobalPeriod) => {
+    console.log('📢 [Relatorios] Propagando período:', period);
     if (period === '7d' || period === '30d' || period === 'today' || period === 'yesterday' || period === 'month' || period === 'year' || period === 'custom') {
       const range = computeGlobalRange();
       if (!range) return;
