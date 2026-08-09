@@ -1267,6 +1267,7 @@ const Relatorios = () => {
       });
 
       console.log('📊 [Relatorios] Resposta RPC:', { rpcData, rpcError });
+      console.log('📊 [Relatorios] Tenant ID usado na RPC:', tenantId);
 
       if (!rpcError && rpcData) {
         // Normaliza o retorno caso a RPC retorne dados parciais ou nulos
