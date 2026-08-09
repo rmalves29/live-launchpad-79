@@ -1273,6 +1273,7 @@ const Relatorios = () => {
       if (!rpcError && rpcData) {
         // Normaliza o retorno caso a RPC retorne dados parciais ou nulos
         const stats = rpcData.orders || {};
+        console.log('📊 [Relatorios] Stats da RPC:', stats);
         const dailyMetrics = Array.isArray(rpcData.daily_metrics) ? rpcData.daily_metrics : [];
         
         const series = dailyMetrics.map((d: any) => ({
