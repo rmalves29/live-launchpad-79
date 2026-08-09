@@ -148,7 +148,7 @@ const Relatorios = () => {
     orders: number;
     products: number;
   }>>([]);
-  const [globalStats, setGlobalStats] = useState<PeriodStats & { avg_shipping_time_hours?: number | null }> (null);
+  const [globalStats, setGlobalStats] = useState<PeriodStats & { avg_shipping_time_days?: number | null }> (null);
   const [prodSort, setProdSort] = useState<'qty' | 'revenue'>('qty');
   const [couponStats, setCouponStats] = useState<Array<{
     code: string;
@@ -1302,7 +1302,7 @@ const Relatorios = () => {
           avg_ticket: Number(stats.ticket_medio || 0),
           paid_avg_ticket: Number(stats.paid_avg_ticket || 0),
           unpaid_avg_ticket: Number(stats.pending_avg_ticket || 0),
-          avg_shipping_time_hours: stats.avg_shipping_time_hours !== undefined && stats.avg_shipping_time_hours !== null ? Number(stats.avg_shipping_time_hours) : null
+          avg_shipping_time_days: stats.avg_shipping_time_days !== undefined && stats.avg_shipping_time_days !== null ? Number(stats.avg_shipping_time_days) : null
         });
         return;
       }
@@ -1406,7 +1406,7 @@ const Relatorios = () => {
         avg_ticket: totalOrdersCount > 0 ? totalSales / totalOrdersCount : 0,
         paid_avg_ticket: paidOrdersCount > 0 ? paidSales / paidOrdersCount : 0,
         unpaid_avg_ticket: unpaidOrdersCount > 0 ? unpaidSales / unpaidOrdersCount : 0,
-        avg_shipping_time_hours: null
+        avg_shipping_time_days: null
       });
     } catch (err) {
       console.error('Error loading daily series:', err);
@@ -2016,9 +2016,9 @@ const Relatorios = () => {
             <div className="bg-muted/30 border border-border/60 rounded-xl p-4">
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Tempo Médio de Envio</div>
                 <div className="text-2xl font-bold text-purple-600" style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>
-                   {globalStats?.avg_shipping_time_hours !== null && globalStats?.avg_shipping_time_hours !== undefined
-                     ? `${Number(globalStats.avg_shipping_time_hours).toFixed(1)}h` 
-                     : '0.0h'}
+                   {globalStats?.avg_shipping_time_days !== null && globalStats?.avg_shipping_time_days !== undefined
+                     ? `${Number(globalStats.avg_shipping_time_days).toFixed(1)} dias` 
+                     : '0.0 dias'}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Média entre confirmação de pagamento e inserção do rastreio.
