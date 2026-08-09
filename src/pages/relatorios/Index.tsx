@@ -1257,6 +1257,45 @@ const Relatorios = () => {
         setGlobalStats(null);
         return;
       }
+
+      // Tentamos usar a RPC admin_global_report para pegar métricas avançadas (como tempo médio e produtos por dia)
+      const { data: rpcData, error: rpcError } = await supabaseTenant.rpc('admin_global_report', {
+        p_from: range.startISO,
+        p_to: range.endISO
+      });
+
+      if (!rpcError && rpcData) {
+        // Se a RPC funcionou (o usuário já rodou o SQL), usamos os dados dela
+        const series = (rpcData.daily_metrics || []).map((d: any) => ({
+          date: d.day,
+          paid: 0, // A RPC atual não separa pago/pendente por dia ainda, mas poderíamos ajustar
+          unpaid: 0,
+          total: 0,
+          orders: d.orders_count,
+          products: d.products_count
+        }));
+        
+        setDailySeries(series);
+        
+        setGlobalStats({
+          total_sales: rpcData.orders.total_value,
+          paid_sales: rpcData.orders.paid_value,
+          unpaid_sales: rpcData.orders.pending_value,
+          total_orders: rpcData.orders.count,
+          paid_orders: rpcData.orders.count_paid,
+          unpaid_orders: rpcData.orders.count_pending,
+          total_products: rpcData.orders.total_products,
+          paid_products: 0, // RPC não separa por status ainda
+          unpaid_products: 0,
+          avg_ticket: rpcData.orders.ticket_medio,
+          paid_avg_ticket: 0,
+          unpaid_avg_ticket: 0,
+          avg_shipping_time_hours: rpcData.orders.avg_shipping_time_hours
+        });
+        return;
+      }
+
+      // Fallback para quando a RPC falha (SQL não rodado)
       let orders = await fetchAllPaginated<any>(() =>
         supabaseTenant
           .from('orders')
@@ -1292,42 +1331,54 @@ const Relatorios = () => {
         }
       }
 
-      const byDay = new Map<string, { paid: number; unpaid: number; total: number; orders: number }>();
+      const byDay = new Map<string, { paid: number; unpaid: number; total: number; orders: number; products: number }>();
       let totalSales = 0, paidSales = 0, unpaidSales = 0;
       let paidOrdersCount = 0, unpaidOrdersCount = 0;
-      orders.forEach((o) => {
-        const day = o.created_at.slice(0, 10);
-        const cur = byDay.get(day) || { paid: 0, unpaid: 0, total: 0, orders: 0 };
-        const amt = Number(o.total_amount) || 0;
-        if (o.is_paid) { cur.paid += amt; paidSales += amt; paidOrdersCount += 1; }
-        else { cur.unpaid += amt; unpaidSales += amt; unpaidOrdersCount += 1; }
-        cur.total += amt;
-        cur.orders += 1;
-        totalSales += amt;
-        byDay.set(day, cur);
-      });
-      const arr = Array.from(byDay.entries())
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([date, v]) => ({ date, ...v }));
-      setDailySeries(arr);
-
-      // Conta produtos vendidos no período (qty em cart_items dos pedidos filtrados)
+      
+      // Mapeamento de cart_id para qty para cálculo de produtos diário no fallback
       const allCartIds = orders.map((o) => o.cart_id).filter(Boolean);
-      const paidCartIds = orders.filter((o) => o.is_paid).map((o) => o.cart_id).filter(Boolean);
-      let totalProducts = 0, paidProducts = 0, unpaidProducts = 0;
+      const cartQtyMap = new Map<number, number>();
       if (allCartIds.length > 0) {
         const { data: ci } = await supabaseTenant
           .from('cart_items')
           .select('cart_id, qty')
           .in('cart_id', allCartIds);
-        const paidSet = new Set(paidCartIds);
         (ci || []).forEach((it: any) => {
-          const q = Number(it.qty) || 0;
-          totalProducts += q;
-          if (paidSet.has(it.cart_id)) paidProducts += q;
-          else unpaidProducts += q;
+          const q = cartQtyMap.get(it.cart_id) || 0;
+          cartQtyMap.set(it.cart_id, q + (Number(it.qty) || 0));
         });
       }
+
+      orders.forEach((o) => {
+        const day = o.created_at.slice(0, 10);
+        const cur = byDay.get(day) || { paid: 0, unpaid: 0, total: 0, orders: 0, products: 0 };
+        const amt = Number(o.total_amount) || 0;
+        const prodQty = cartQtyMap.get(o.cart_id) || 0;
+        
+        if (o.is_paid) { cur.paid += amt; paidSales += amt; paidOrdersCount += 1; }
+        else { cur.unpaid += amt; unpaidSales += amt; unpaidOrdersCount += 1; }
+        
+        cur.total += amt;
+        cur.orders += 1;
+        cur.products += prodQty;
+        totalSales += amt;
+        byDay.set(day, cur);
+      });
+
+      const arr = Array.from(byDay.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, v]) => ({ date, ...v }));
+      setDailySeries(arr);
+
+      const paidCartIds = orders.filter((o) => o.is_paid).map((o) => o.cart_id).filter(Boolean);
+      let totalProducts = 0, paidProducts = 0, unpaidProducts = 0;
+      const paidSet = new Set(paidCartIds);
+      
+      cartQtyMap.forEach((qty, cartId) => {
+        totalProducts += qty;
+        if (paidSet.has(cartId)) paidProducts += qty;
+        else unpaidProducts += qty;
+      });
 
       const totalOrdersCount = orders.length;
       setGlobalStats({
@@ -1343,6 +1394,7 @@ const Relatorios = () => {
         avg_ticket: totalOrdersCount > 0 ? totalSales / totalOrdersCount : 0,
         paid_avg_ticket: paidOrdersCount > 0 ? paidSales / paidOrdersCount : 0,
         unpaid_avg_ticket: unpaidOrdersCount > 0 ? unpaidSales / unpaidOrdersCount : 0,
+        avg_shipping_time_hours: null
       });
     } catch (err) {
       console.error('Error loading daily series:', err);
