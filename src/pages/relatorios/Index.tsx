@@ -1263,7 +1263,8 @@ const Relatorios = () => {
       // Tentar a RPC primeiro (método otimizado)
       const { data: rpcData, error: rpcError } = await (supabaseTenant as any).rpc('admin_global_report', {
         p_from: range.startISO,
-        p_to: range.endISO
+        p_to: range.endISO,
+        p_tenant_id: tenantId // Passando tenant explicitamente para a RPC
       });
 
       console.log('📊 [Relatorios] Resposta RPC:', { rpcData, rpcError });
