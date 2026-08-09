@@ -1263,7 +1263,8 @@ const Relatorios = () => {
       // Tentar a RPC primeiro (método otimizado)
       const { data: rpcData, error: rpcError } = await (supabaseTenant as any).rpc('admin_global_report', {
         p_from: range.startISO,
-        p_to: range.endISO
+        p_to: range.endISO,
+        p_tenant_id: tenantId // Passando tenant explicitamente para a RPC
       });
 
       console.log('📊 [Relatorios] Resposta RPC:', { rpcData, rpcError });
@@ -1272,6 +1273,7 @@ const Relatorios = () => {
       if (!rpcError && rpcData) {
         // Normaliza o retorno caso a RPC retorne dados parciais ou nulos
         const stats = rpcData.orders || {};
+        console.log('📊 [Relatorios] Stats da RPC:', stats);
         const dailyMetrics = Array.isArray(rpcData.daily_metrics) ? rpcData.daily_metrics : [];
         
         const series = dailyMetrics.map((d: any) => ({
@@ -1546,6 +1548,7 @@ const Relatorios = () => {
   // Recarrega série diária quando o período global muda
   useEffect(() => {
     if (tenantId) { 
+      console.log('🔄 [Relatorios] Recarregando devido a mudança de filtros:', { globalPeriod, saleTypeFilter });
       propagateGlobalPeriod(globalPeriod);
       loadAllReports(); 
     }
