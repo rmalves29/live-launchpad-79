@@ -1273,7 +1273,6 @@ const Relatorios = () => {
       if (!rpcError && rpcData) {
         // Normaliza o retorno caso a RPC retorne dados parciais ou nulos
         const stats = rpcData.orders || {};
-        console.log('📊 [Relatorios] Stats da RPC:', stats);
         const dailyMetrics = Array.isArray(rpcData.daily_metrics) ? rpcData.daily_metrics : [];
         
         const series = dailyMetrics.map((d: any) => ({
@@ -1533,7 +1532,6 @@ const Relatorios = () => {
   useEffect(() => {
     if (tenantId) {
       console.log('🔄 [Relatorios] Tenant detectado:', tenantId, '. Carregando relatórios...');
-      console.log('🔄 [Relatorios] LocalStorage tenant_id:', localStorage.getItem('sb-hxtbsieodbtzgcvvkeqx-auth-token') ? JSON.parse(localStorage.getItem('sb-hxtbsieodbtzgcvvkeqx-auth-token') || '{}')?.user?.user_metadata?.tenant_id : 'não encontrado');
       propagateGlobalPeriod(globalPeriod);
       loadAllReports();
     } else {
@@ -1547,8 +1545,7 @@ const Relatorios = () => {
 
   // Recarrega série diária quando o período global muda
   useEffect(() => {
-    if (tenantId) { 
-      console.log('🔄 [Relatorios] Recarregando devido a mudança de filtros:', { globalPeriod, saleTypeFilter });
+    if (tenantId) {
       propagateGlobalPeriod(globalPeriod);
       loadAllReports(); 
     }
