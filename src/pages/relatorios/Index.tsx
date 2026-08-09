@@ -1275,9 +1275,9 @@ const Relatorios = () => {
         
         const series = dailyMetrics.map((d: any) => ({
           date: d.day,
-          paid: 0, 
-          unpaid: 0,
-          total: 0,
+          paid: Number(d.paid_value) || 0, 
+          unpaid: Number(d.pending_value) || 0,
+          total: Number(d.total_value) || 0,
           orders: Number(d.orders_count) || 0,
           products: Number(d.products_count) || 0
         }));
