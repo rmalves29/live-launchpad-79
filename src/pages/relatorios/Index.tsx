@@ -140,8 +140,15 @@ const Relatorios = () => {
   const [globalEnd, setGlobalEnd] = useState('');
   const [metricMode, setMetricMode] = useState<'value' | 'qty'>('value');
   const [tableTab, setTableTab] = useState<'produtos' | 'clientes' | 'grupos' | 'cupons' | 'logistica'>('produtos');
-  const [dailySeries, setDailySeries] = useState<Array<{ date: string; paid: number; unpaid: number; total: number; orders: number }>>([]);
-  const [globalStats, setGlobalStats] = useState<PeriodStats | null>(null);
+  const [dailySeries, setDailySeries] = useState<Array<{ 
+    date: string; 
+    paid: number; 
+    unpaid: number; 
+    total: number; 
+    orders: number;
+    products: number;
+  }>>([]);
+  const [globalStats, setGlobalStats] = useState<PeriodStats & { avg_shipping_time_hours?: number | null }> (null);
   const [prodSort, setProdSort] = useState<'qty' | 'revenue'>('qty');
   const [couponStats, setCouponStats] = useState<Array<{
     code: string;
