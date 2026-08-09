@@ -139,7 +139,7 @@ const Relatorios = () => {
   const [globalStart, setGlobalStart] = useState('');
   const [globalEnd, setGlobalEnd] = useState('');
   const [metricMode, setMetricMode] = useState<'value' | 'qty'>('value');
-  const [tableTab, setTableTab] = useState<'produtos' | 'clientes' | 'grupos' | 'cupons'>('produtos');
+  const [tableTab, setTableTab] = useState<'produtos' | 'clientes' | 'grupos' | 'cupons' | 'logistica'>('produtos');
   const [dailySeries, setDailySeries] = useState<Array<{ date: string; paid: number; unpaid: number; total: number; orders: number }>>([]);
   const [globalStats, setGlobalStats] = useState<PeriodStats | null>(null);
   const [prodSort, setProdSort] = useState<'qty' | 'revenue'>('qty');
@@ -1808,13 +1808,14 @@ const Relatorios = () => {
         </div>
       </div>
 
-      {/* ================= TABLE SECTION COM 3 ABAS ================= */}
+      {/* ================= TABLE SECTION COM ABAS ================= */}
       <div className="bg-card border border-border/60 rounded-2xl overflow-hidden">
         <div className="flex border-b-2 border-border/60 px-3">
           {([
             { id: 'produtos', label: '🏆 Produtos' },
             { id: 'clientes', label: '👥 Clientes' },
             { id: 'grupos', label: '💬 Grupos' },
+            { id: 'logistica', label: '🚚 Logística' },
             { id: 'cupons', label: '🎟️ Cupons' },
           ] as const).map((t) => (
             <button
@@ -1955,6 +1956,60 @@ const Relatorios = () => {
                 })}
               </TableBody>
             </Table>
+          </div>
+        )}
+
+        {tableTab === 'logistica' && (
+          <div className="overflow-x-auto max-h-[420px] overflow-y-auto p-4 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-muted/30 border border-border/60 rounded-xl p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Produtos Enviados (Consolidado)</div>
+                <div className="text-2xl font-bold text-blue-600" style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>
+                  {formatNumber(stats?.total_products ?? 0)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Total de unidades em pedidos não cancelados no período.</p>
+              </div>
+              <div className="bg-muted/30 border border-border/60 rounded-xl p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Tempo Médio de Envio</div>
+                <div className="text-2xl font-bold text-purple-600" style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>
+                   ---
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Média entre pagamento e atualização para 'Enviado' (requer logs).</p>
+              </div>
+            </div>
+            
+            <div className="border border-border/60 rounded-xl overflow-hidden">
+              <div className="bg-muted/50 px-4 py-2 text-xs font-semibold border-b border-border/60">
+                Detalhamento Diário
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Data</TableHead>
+                    <TableHead className="text-center">Pedidos</TableHead>
+                    <TableHead className="text-center">Produtos</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {dailySeries.length === 0 ? (
+                    <TableRow><TableCell colSpan={3} className="text-center py-4 text-muted-foreground">Sem dados</TableCell></TableRow>
+                  ) : [...dailySeries].reverse().map((day) => {
+                    // Calculamos produtos por dia (somando cart_items desse dia)
+                    // Como não temos a soma diária exata de produtos no state dailySeries (apenas pedidos),
+                    // vamos usar uma proporção ou indicar que o dado detalhado de produtos diários
+                    // viria de uma query mais complexa se necessário.
+                    // Para simplificar, exibimos a data e os pedidos.
+                    return (
+                      <TableRow key={day.date}>
+                        <TableCell>{formatShortDate(day.date)}</TableCell>
+                        <TableCell className="text-center">{day.orders}</TableCell>
+                        <TableCell className="text-center text-muted-foreground italic">Consultar total consolidado</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         )}
 
