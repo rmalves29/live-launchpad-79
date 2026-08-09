@@ -2016,9 +2016,9 @@ const Relatorios = () => {
             <div className="bg-muted/30 border border-border/60 rounded-xl p-4">
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Tempo Médio de Envio</div>
                 <div className="text-2xl font-bold text-purple-600" style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>
-                   {globalStats?.avg_shipping_time_hours 
-                     ? `${globalStats.avg_shipping_time_hours}h` 
-                     : '---'}
+                   {globalStats?.avg_shipping_time_hours !== null && globalStats?.avg_shipping_time_hours !== undefined
+                     ? `${Number(globalStats.avg_shipping_time_hours).toFixed(1)}h` 
+                     : '0.0h'}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Média entre confirmação de pagamento e inserção do rastreio.
