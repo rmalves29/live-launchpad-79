@@ -1267,17 +1267,18 @@ const Relatorios = () => {
       });
 
       console.log('📊 [Relatorios] Resposta RPC:', { rpcData, rpcError });
+      console.log('📊 [Relatorios] Tenant ID usado na RPC:', tenantId);
 
       if (!rpcError && rpcData) {
         // Normaliza o retorno caso a RPC retorne dados parciais ou nulos
         const stats = rpcData.orders || {};
-        const dailyMetrics = rpcData.daily_metrics || [];
+        const dailyMetrics = Array.isArray(rpcData.daily_metrics) ? rpcData.daily_metrics : [];
         
         const series = dailyMetrics.map((d: any) => ({
           date: d.day,
-          paid: 0, 
-          unpaid: 0,
-          total: 0,
+          paid: Number(d.paid_value) || 0, 
+          unpaid: Number(d.pending_value) || 0,
+          total: Number(d.total_value) || 0,
           orders: Number(d.orders_count) || 0,
           products: Number(d.products_count) || 0
         }));
@@ -1288,19 +1289,19 @@ const Relatorios = () => {
         // Verificamos os campos retornados pela RPC no script SQL anterior:
         // total_value, paid_value, pending_value, count, count_paid, count_pending, total_products, ticket_medio, avg_shipping_time_hours
         setGlobalStats({
-          total_sales: Number(stats.total_value || stats.total_sales) || 0,
-          paid_sales: Number(stats.paid_value || stats.paid_sales) || 0,
-          unpaid_sales: Number(stats.pending_value || stats.unpaid_sales) || 0,
-          total_orders: Number(stats.count || stats.total_orders) || 0,
-          paid_orders: Number(stats.count_paid || stats.paid_orders) || 0,
-          unpaid_orders: Number(stats.count_pending || stats.unpaid_orders) || 0,
-          total_products: Number(stats.total_products) || 0,
-          paid_products: 0, 
-          unpaid_products: 0,
-          avg_ticket: Number(stats.ticket_medio || stats.avg_ticket) || 0,
-          paid_avg_ticket: 0,
-          unpaid_avg_ticket: 0,
-          avg_shipping_time_hours: stats.avg_shipping_time_hours !== undefined ? Number(stats.avg_shipping_time_hours) : null
+          total_sales: Number(stats.total_value || 0),
+          paid_sales: Number(stats.paid_value || 0),
+          unpaid_sales: Number(stats.pending_value || 0),
+          total_orders: Number(stats.count || 0),
+          paid_orders: Number(stats.count_paid || 0),
+          unpaid_orders: Number(stats.count_pending || 0),
+          total_products: Number(stats.total_products || 0),
+          paid_products: Number(stats.paid_products || 0),
+          unpaid_products: Number(stats.pending_products || 0),
+          avg_ticket: Number(stats.ticket_medio || 0),
+          paid_avg_ticket: Number(stats.paid_avg_ticket || 0),
+          unpaid_avg_ticket: Number(stats.pending_avg_ticket || 0),
+          avg_shipping_time_hours: stats.avg_shipping_time_hours !== undefined && stats.avg_shipping_time_hours !== null ? Number(stats.avg_shipping_time_hours) : null
         });
         return;
       }
@@ -1413,29 +1414,18 @@ const Relatorios = () => {
 
   // Propaga mudança do período global para os filtros internos por aba
   const propagateGlobalPeriod = (period: GlobalPeriod) => {
-    if (period === '7d' || period === '30d') {
-      const today = getBrasiliaDate();
-      const days = period === '7d' ? 6 : 29;
-      const s = new Date(today);
-      s.setDate(s.getDate() - days);
-      const startStr = toBrasiliaDateISO(s);
-      const endStr = toBrasiliaDateISO(today);
+    console.log('📢 [Relatorios] Propagando período:', period);
+    if (period === '7d' || period === '30d' || period === 'today' || period === 'yesterday' || period === 'month' || period === 'year' || period === 'custom') {
+      const range = computeGlobalRange();
+      if (!range) return;
+      
+      const startStr = range.startISO.split('T')[0];
+      const endStr = range.endISO.split('T')[0];
+      
       setSalesFilter('custom'); setSalesStartDate(startStr); setSalesEndDate(endStr);
       setSelectedPeriod('custom'); setStartDate(startStr); setEndDate(endStr);
       setWhatsappFilter('custom'); setWhatsappStartDate(startStr); setWhatsappEndDate(endStr);
       setCustomersFilter('custom'); setCustomersStartDate(startStr); setCustomersEndDate(endStr);
-    } else if (period === 'custom') {
-      if (globalStart && globalEnd) {
-        setSalesFilter('custom'); setSalesStartDate(globalStart); setSalesEndDate(globalEnd);
-        setSelectedPeriod('custom'); setStartDate(globalStart); setEndDate(globalEnd);
-        setWhatsappFilter('custom'); setWhatsappStartDate(globalStart); setWhatsappEndDate(globalEnd);
-        setCustomersFilter('custom'); setCustomersStartDate(globalStart); setCustomersEndDate(globalEnd);
-      }
-    } else {
-      setSalesFilter(period as any);
-      setSelectedPeriod(period as any);
-      setWhatsappFilter(period as any);
-      setCustomersFilter(period as any);
     }
   };
 
@@ -1541,7 +1531,7 @@ const Relatorios = () => {
   useEffect(() => {
     if (tenantId) {
       console.log('🔄 [Relatorios] Tenant detectado:', tenantId, '. Carregando relatórios...');
-      // Inicializa propagando o período padrão
+      console.log('🔄 [Relatorios] LocalStorage tenant_id:', localStorage.getItem('sb-hxtbsieodbtzgcvvkeqx-auth-token') ? JSON.parse(localStorage.getItem('sb-hxtbsieodbtzgcvvkeqx-auth-token') || '{}')?.user?.user_metadata?.tenant_id : 'não encontrado');
       propagateGlobalPeriod(globalPeriod);
       loadAllReports();
     } else {
@@ -1550,33 +1540,15 @@ const Relatorios = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
 
-  useEffect(() => {
-    loadTopProducts();
-  }, [selectedPeriod, startDate, endDate]);
-
-  useEffect(() => {
-    loadTodaySales();
-  }, [salesFilter, salesStartDate, salesEndDate]);
-
-  useEffect(() => {
-    loadWhatsAppGroupStats();
-  }, [whatsappFilter, whatsappStartDate, whatsappEndDate]);
-
-  useEffect(() => {
-    loadTopCustomers();
-  }, [customersFilter, customersStartDate, customersEndDate]);
-
-  // Re-carregar quando mudar o filtro de tipo de venda
-  useEffect(() => {
-    if (tenantId) {
-      loadAllReports();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saleTypeFilter]);
+  // Os useEffects individuais (topProducts, todaySales, etc) foram unificados 
+  // no useEffect do globalPeriod abaixo para evitar múltiplas chamadas concorrentes.
 
   // Recarrega série diária quando o período global muda
   useEffect(() => {
-    if (tenantId) { loadDailySeries(); loadCouponStats(); }
+    if (tenantId) { 
+      propagateGlobalPeriod(globalPeriod);
+      loadAllReports(); 
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [globalPeriod, globalStart, globalEnd, saleTypeFilter, tenantId]);
 
