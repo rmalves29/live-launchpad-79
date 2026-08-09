@@ -1264,33 +1264,36 @@ const Relatorios = () => {
         p_to: range.endISO
       });
 
-      if (!rpcError && rpcData && rpcData.orders) {
-        // Se a RPC funcionou (o usuário já rodou o SQL), usamos os dados dela
-        const series = (rpcData.daily_metrics || []).map((d: any) => ({
+      if (!rpcError && rpcData) {
+        // Normaliza o retorno caso a RPC retorne dados parciais ou nulos
+        const stats = rpcData.orders || {};
+        const dailyMetrics = rpcData.daily_metrics || [];
+        
+        const series = dailyMetrics.map((d: any) => ({
           date: d.day,
-          paid: 0, // A RPC atual não separa pago/pendente por dia ainda, mas poderíamos ajustar
+          paid: 0, 
           unpaid: 0,
           total: 0,
-          orders: d.orders_count,
-          products: d.products_count
+          orders: Number(d.orders_count) || 0,
+          products: Number(d.products_count) || 0
         }));
         
         setDailySeries(series);
         
         setGlobalStats({
-          total_sales: rpcData.orders.total_value,
-          paid_sales: rpcData.orders.paid_value,
-          unpaid_sales: rpcData.orders.pending_value,
-          total_orders: rpcData.orders.count,
-          paid_orders: rpcData.orders.count_paid,
-          unpaid_orders: rpcData.orders.count_pending,
-          total_products: rpcData.orders.total_products,
-          paid_products: 0, // RPC não separa por status ainda
+          total_sales: Number(stats.total_value) || 0,
+          paid_sales: Number(stats.paid_value) || 0,
+          unpaid_sales: Number(stats.pending_value) || 0,
+          total_orders: Number(stats.count) || 0,
+          paid_orders: Number(stats.count_paid) || 0,
+          unpaid_orders: Number(stats.count_pending) || 0,
+          total_products: Number(stats.total_products) || 0,
+          paid_products: 0, 
           unpaid_products: 0,
-          avg_ticket: rpcData.orders.ticket_medio,
+          avg_ticket: Number(stats.ticket_medio) || 0,
           paid_avg_ticket: 0,
           unpaid_avg_ticket: 0,
-          avg_shipping_time_hours: rpcData.orders.avg_shipping_time_hours
+          avg_shipping_time_hours: stats.avg_shipping_time_hours !== undefined ? Number(stats.avg_shipping_time_hours) : null
         });
         return;
       }
