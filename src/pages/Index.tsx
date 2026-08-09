@@ -15,6 +15,7 @@ export default function Home() {
         <h1 className="text-4xl font-bold tracking-tight sm:text-6xl">
           Redirecionando...
         </h1>
+        <p className="text-muted-foreground">nao achei as informações</p>
       </div>
     </div>
   );
