@@ -52,7 +52,7 @@ import SaudeSistema from "./pages/admin/SaudeSistema";
 import Comunicados from "./pages/admin/Comunicados";
 import Tutoriais from "./pages/admin/Tutoriais";
 import AdminLinks from "./pages/admin/Links";
-import RelatorioGlobal from "./pages/admin/RelatorioGlobal";
+// import RelatorioGlobal from "./pages/admin/RelatorioGlobal";
 import Ajuda from "./pages/ajuda/Index";
 import { AnnouncementPopup } from "./components/AnnouncementPopup";
 import LandingPage from "./pages/LandingPage";
@@ -351,13 +351,14 @@ const AppContent = () => {
             </SuperAdminOnly>
           </RequireAuth>
         } />
-        <Route path="/admin/relatorio-global" element={
+        {/* Rota removida conforme solicitado pelo usuário */}
+        {/* <Route path="/admin/relatorio-global" element={
           <RequireAuth>
             <SuperAdminOnly>
               <RelatorioGlobal />
             </SuperAdminOnly>
           </RequireAuth>
-        } />
+        } /> */}
         <Route path="/admin/links" element={
           <RequireAuth>
             <SuperAdminOnly>
