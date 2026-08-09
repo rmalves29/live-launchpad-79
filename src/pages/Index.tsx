@@ -15,7 +15,7 @@ export default function Home() {
         <h1 className="text-4xl font-bold tracking-tight sm:text-6xl">
           Redirecionando...
         </h1>
-        <p className="text-muted-foreground">coloque essas informações dentro de relatórios, nao precisa criar essa pagina relatórios global.</p>
+        <p className="text-muted-foreground">veja o erro no SQL</p>
       </div>
     </div>
   );
