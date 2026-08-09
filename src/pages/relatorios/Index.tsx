@@ -1530,6 +1530,7 @@ const Relatorios = () => {
   useEffect(() => {
     if (tenantId) {
       console.log('🔄 [Relatorios] Tenant detectado:', tenantId, '. Carregando relatórios...');
+      console.log('🔄 [Relatorios] LocalStorage tenant_id:', localStorage.getItem('sb-hxtbsieodbtzgcvvkeqx-auth-token') ? JSON.parse(localStorage.getItem('sb-hxtbsieodbtzgcvvkeqx-auth-token') || '{}')?.user?.user_metadata?.tenant_id : 'não encontrado');
       propagateGlobalPeriod(globalPeriod);
       loadAllReports();
     } else {
