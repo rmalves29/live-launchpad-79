@@ -1264,7 +1264,7 @@ const Relatorios = () => {
         p_to: range.endISO
       });
 
-      if (!rpcError && rpcData) {
+      if (!rpcError && rpcData && rpcData.orders) {
         // Se a RPC funcionou (o usuário já rodou o SQL), usamos os dados dela
         const series = (rpcData.daily_metrics || []).map((d: any) => ({
           date: d.day,
