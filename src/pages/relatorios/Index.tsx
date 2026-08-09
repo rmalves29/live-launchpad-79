@@ -2028,12 +2028,18 @@ const Relatorios = () => {
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">Total de unidades em pedidos não cancelados no período.</p>
               </div>
-              <div className="bg-muted/30 border border-border/60 rounded-xl p-4">
+            <div className="bg-muted/30 border border-border/60 rounded-xl p-4">
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Tempo Médio de Envio</div>
                 <div className="text-2xl font-bold text-purple-600" style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>
-                   ---
+                   {globalStats?.avg_shipping_time_hours 
+                     ? `${globalStats.avg_shipping_time_hours}h` 
+                     : '---'}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Média entre pagamento e atualização para 'Enviado' (requer logs).</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {globalStats?.avg_shipping_time_hours 
+                    ? 'Média entre confirmação de pagamento e inserção do rastreio.' 
+                    : 'Requer execução do SQL de Logística no backend.'}
+                </p>
               </div>
             </div>
             
@@ -2053,16 +2059,11 @@ const Relatorios = () => {
                   {dailySeries.length === 0 ? (
                     <TableRow><TableCell colSpan={3} className="text-center py-4 text-muted-foreground">Sem dados</TableCell></TableRow>
                   ) : [...dailySeries].reverse().map((day) => {
-                    // Calculamos produtos por dia (somando cart_items desse dia)
-                    // Como não temos a soma diária exata de produtos no state dailySeries (apenas pedidos),
-                    // vamos usar uma proporção ou indicar que o dado detalhado de produtos diários
-                    // viria de uma query mais complexa se necessário.
-                    // Para simplificar, exibimos a data e os pedidos.
                     return (
                       <TableRow key={day.date}>
                         <TableCell>{formatShortDate(day.date)}</TableCell>
                         <TableCell className="text-center">{day.orders}</TableCell>
-                        <TableCell className="text-center text-muted-foreground italic">Consultar total consolidado</TableCell>
+                        <TableCell className="text-center font-medium">{formatNumber(day.products)}</TableCell>
                       </TableRow>
                     );
                   })}
