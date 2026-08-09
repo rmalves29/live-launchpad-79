@@ -1259,7 +1259,7 @@ const Relatorios = () => {
       }
 
       // Tentamos usar a RPC admin_global_report para pegar métricas avançadas (como tempo médio e produtos por dia)
-      const { data: rpcData, error: rpcError } = await supabaseTenant.rpc('admin_global_report', {
+      const { data: rpcData, error: rpcError } = await (supabaseTenant as any).rpc('admin_global_report', {
         p_from: range.startISO,
         p_to: range.endISO
       });
