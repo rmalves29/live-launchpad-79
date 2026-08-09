@@ -20,7 +20,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      admin_global_report: {
+        Args: { p_from: string; p_tenant_id?: string; p_to: string }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
