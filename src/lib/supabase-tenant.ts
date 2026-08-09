@@ -40,6 +40,11 @@ class TenantSupabaseClient {
     return this.client.storage;
   }
 
+  // RPC (sem filtro automático, deve ser tratado na função SQL)
+  get rpc() {
+    return this.client.rpc.bind(this.client);
+  }
+
   // Tabelas COM filtro automático por tenant (aplica filtro após select/update/delete)
   from(table: keyof Database['public']['Tables']) {
     const base = this.client.from(table);
