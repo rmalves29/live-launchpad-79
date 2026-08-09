@@ -1413,29 +1413,17 @@ const Relatorios = () => {
 
   // Propaga mudança do período global para os filtros internos por aba
   const propagateGlobalPeriod = (period: GlobalPeriod) => {
-    if (period === '7d' || period === '30d') {
-      const today = getBrasiliaDate();
-      const days = period === '7d' ? 6 : 29;
-      const s = new Date(today);
-      s.setDate(s.getDate() - days);
-      const startStr = toBrasiliaDateISO(s);
-      const endStr = toBrasiliaDateISO(today);
+    if (period === '7d' || period === '30d' || period === 'today' || period === 'yesterday' || period === 'month' || period === 'year' || period === 'custom') {
+      const range = computeGlobalRange();
+      if (!range) return;
+      
+      const startStr = range.startISO.split('T')[0];
+      const endStr = range.endISO.split('T')[0];
+      
       setSalesFilter('custom'); setSalesStartDate(startStr); setSalesEndDate(endStr);
       setSelectedPeriod('custom'); setStartDate(startStr); setEndDate(endStr);
       setWhatsappFilter('custom'); setWhatsappStartDate(startStr); setWhatsappEndDate(endStr);
       setCustomersFilter('custom'); setCustomersStartDate(startStr); setCustomersEndDate(endStr);
-    } else if (period === 'custom') {
-      if (globalStart && globalEnd) {
-        setSalesFilter('custom'); setSalesStartDate(globalStart); setSalesEndDate(globalEnd);
-        setSelectedPeriod('custom'); setStartDate(globalStart); setEndDate(globalEnd);
-        setWhatsappFilter('custom'); setWhatsappStartDate(globalStart); setWhatsappEndDate(globalEnd);
-        setCustomersFilter('custom'); setCustomersStartDate(globalStart); setCustomersEndDate(globalEnd);
-      }
-    } else {
-      setSalesFilter(period as any);
-      setSelectedPeriod(period as any);
-      setWhatsappFilter(period as any);
-      setCustomersFilter(period as any);
     }
   };
 
