@@ -262,7 +262,7 @@ const Clientes = () => {
     }
 
     const normalizedPhone = normalizePhone(newCustomer.phone);
-    if (normalizedPhone.length < 10 || normalizedPhone.length > 11) {
+    if (normalizedPhone.length < 9 || normalizedPhone.length > 13) {
       toast({
         title: 'Erro',
         description: 'Telefone deve ter 10 ou 11 dígitos (DDD + número)',
