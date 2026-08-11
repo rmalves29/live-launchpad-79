@@ -13,7 +13,11 @@ function removeNonDigits(value: string): string {
 }
 
 function stripBrazilCountryCode(clean: string): string {
-  return clean.startsWith('55') ? clean.slice(2) : clean;
+  // Remove 55 only if the total length would result in a valid Brazilian number (10 or 11 digits)
+  if (clean.startsWith('55') && (clean.length === 12 || clean.length === 13)) {
+    return clean.slice(2);
+  }
+  return clean;
 }
 
 function applyRegionalNinthDigitRule(clean: string): string {
