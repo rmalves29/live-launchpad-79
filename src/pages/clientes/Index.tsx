@@ -841,7 +841,7 @@ const Clientes = () => {
         }
 
         const normalizedPhone = normalizeForStorage(telefone);
-        if (normalizedPhone.length < 10 || normalizedPhone.length > 11) {
+        if (normalizedPhone.length < 9 || normalizedPhone.length > 13) {
           errors.push(`Linha ${i + 2}: Telefone inválido "${telefone}"`);
           continue;
         }
