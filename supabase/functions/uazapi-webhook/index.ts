@@ -304,8 +304,12 @@ Deno.serve(async (req) => {
         try {
           const { error, count } = await supabase
             .from("whatsapp_messages")
-            .update({ delivery_status: mapped, delivered_at: new Date().toISOString() })
-            .in("zapi_message_id", ids)
+            .update({ 
+              delivery_status: mapped, 
+              delivered_at: new Date().toISOString(),
+              zapi_zaap_id: ids[0] // Armazena o ID original da UazAPI para referência
+            })
+            .or(`zapi_message_id.in.(${ids.map(id => `"${id}"`).join(',')}),zapi_zaap_id.in.(${ids.map(id => `"${id}"`).join(',')})`)
             .eq("tenant_id", tenantId)
             .select("id", { count: "exact", head: true });
           if (error) console.warn("[uazapi-webhook] update delivery_status erro:", error.message);
