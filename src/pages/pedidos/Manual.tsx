@@ -124,8 +124,9 @@ const PedidosManual = () => {
     }
 
     const normalizedPhone = normalizePhone(phone);
-    // Validar telefone brasileiro (10 ou 11 dígitos sem DDI)
-    if (normalizedPhone.length < 10 || normalizedPhone.length > 11) {
+    // Validar telefone brasileiro (9 a 13 dígitos para permitir DDI 55 e números com ou sem o nono dígito)
+    const phoneLength = normalizedPhone.length;
+    if (phoneLength < 9 || phoneLength > 13) {
       toast({
         title: 'Erro',
         description: 'Telefone inválido. Use formato com DDD (ex: 31999999999)',
