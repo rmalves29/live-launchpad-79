@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { MessageCircle, ExternalLink, RefreshCw, Instagram, Send, Loader2 } from 'lucide-react';
+import { MessageCircle, ExternalLink, RefreshCw, Instagram, Send, Loader2, EyeOff, Eye, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { useState } from 'react';
@@ -14,6 +14,7 @@ interface InstagramPostComment {
   text?: string;
   username?: string;
   timestamp?: string;
+  hidden?: boolean;
 }
 
 interface InstagramPost {
@@ -42,6 +43,7 @@ export default function InstagramPostComments({ tenantId }: InstagramPostComment
   const [replyingTo, setReplyingTo] = useState<{ commentId: string; postId: string } | null>(null);
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
+  const [moderatingId, setModeratingId] = useState<string | null>(null);
 
   const { data, isLoading, isFetching, refetch, error } = useQuery({
     queryKey: ['instagram-post-comments', tenantId],
@@ -98,6 +100,44 @@ export default function InstagramPostComments({ tenantId }: InstagramPostComment
       toast.error('Erro ao enviar resposta');
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleToggleHide = async (commentId: string, currentlyHidden: boolean) => {
+    setModeratingId(commentId);
+    try {
+      const response = await supabase.functions.invoke('instagram-post-comments', {
+        body: { tenant_id: tenantId, action: 'hide', comment_id: commentId, hide: !currentlyHidden },
+      });
+      if (response.error || response.data?.error) {
+        toast.error(response.data?.error || 'Erro ao atualizar visibilidade do comentário');
+      } else {
+        toast.success(currentlyHidden ? 'Comentário exibido novamente' : 'Comentário ocultado');
+        refetch();
+      }
+    } catch {
+      toast.error('Erro ao atualizar visibilidade do comentário');
+    } finally {
+      setModeratingId(null);
+    }
+  };
+
+  const handleDelete = async (commentId: string) => {
+    setModeratingId(commentId);
+    try {
+      const response = await supabase.functions.invoke('instagram-post-comments', {
+        body: { tenant_id: tenantId, action: 'delete', comment_id: commentId },
+      });
+      if (response.error || response.data?.error) {
+        toast.error(response.data?.error || 'Erro ao excluir comentário');
+      } else {
+        toast.success('Comentário excluído');
+        refetch();
+      }
+    } catch {
+      toast.error('Erro ao excluir comentário');
+    } finally {
+      setModeratingId(null);
     }
   };
 
@@ -215,18 +255,49 @@ export default function InstagramPostComments({ tenantId }: InstagramPostComment
                             {comment.timestamp && (
                               <span className="text-[11px] text-muted-foreground">{formatDateTime(comment.timestamp)}</span>
                             )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="ml-auto h-6 px-2 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => {
-                                setReplyingTo({ commentId: comment.id, postId: post.id });
-                                setReplyText('');
-                              }}
-                            >
-                              <Send className="mr-1 h-3 w-3" />
-                              Responder
-                            </Button>
+                            {comment.hidden && (
+                              <Badge variant="secondary" className="text-[10px]">Oculto</Badge>
+                            )}
+                            <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs"
+                                onClick={() => {
+                                  setReplyingTo({ commentId: comment.id, postId: post.id });
+                                  setReplyText('');
+                                }}
+                              >
+                                <Send className="mr-1 h-3 w-3" />
+                                Responder
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs"
+                                disabled={moderatingId === comment.id}
+                                onClick={() => handleToggleHide(comment.id, !!comment.hidden)}
+                              >
+                                {moderatingId === comment.id ? (
+                                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                                ) : comment.hidden ? (
+                                  <Eye className="mr-1 h-3 w-3" />
+                                ) : (
+                                  <EyeOff className="mr-1 h-3 w-3" />
+                                )}
+                                {comment.hidden ? 'Mostrar' : 'Ocultar'}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs text-destructive hover:text-destructive"
+                                disabled={moderatingId === comment.id}
+                                onClick={() => handleDelete(comment.id)}
+                              >
+                                <Trash2 className="mr-1 h-3 w-3" />
+                                Excluir
+                              </Button>
+                            </div>
                           </div>
                           <p className="mt-1 text-sm text-foreground/80 break-words">{comment.text || 'Comentário sem texto.'}</p>
 

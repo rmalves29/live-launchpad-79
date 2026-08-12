@@ -43,6 +43,19 @@ interface ReplyBody {
   message: string;
 }
 
+interface HideBody {
+  tenant_id: string;
+  action: 'hide';
+  comment_id: string;
+  hide: boolean;
+}
+
+interface DeleteBody {
+  tenant_id: string;
+  action: 'delete';
+  comment_id: string;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -153,6 +166,64 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: true, comment_id: replyJson?.id });
     }
 
+    // Handle hide/unhide action (equivalente a "editar" — a API do Instagram
+    // não permite alterar o texto de um comentário, só sua visibilidade)
+    if (action === 'hide') {
+      const hideBody = body as unknown as HideBody;
+      if (!hideBody.comment_id) {
+        return jsonResponse({ error: 'comment_id é obrigatório' }, 400);
+      }
+
+      const hideResponse = await fetch(
+        `https://graph.instagram.com/v21.0/${hideBody.comment_id}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            hide: !!hideBody.hide,
+            access_token: accessToken,
+          }),
+        }
+      );
+
+      const hideJson = await hideResponse.json().catch(() => ({}));
+
+      if (!hideResponse.ok) {
+        console.error(`[${timestamp}] [instagram-post-comments] Hide error:`, hideJson);
+        return jsonResponse({
+          error: hideJson?.error?.message || 'Erro ao ocultar/mostrar comentário',
+        }, hideResponse.status);
+      }
+
+      console.log(`[${timestamp}] [instagram-post-comments] Comment ${hideBody.comment_id} hide=${hideBody.hide}`);
+      return jsonResponse({ success: true });
+    }
+
+    // Handle delete action
+    if (action === 'delete') {
+      const deleteBody = body as unknown as DeleteBody;
+      if (!deleteBody.comment_id) {
+        return jsonResponse({ error: 'comment_id é obrigatório' }, 400);
+      }
+
+      const deleteResponse = await fetch(
+        `https://graph.instagram.com/v21.0/${deleteBody.comment_id}?access_token=${encodeURIComponent(accessToken)}`,
+        { method: 'DELETE' }
+      );
+
+      const deleteJson = await deleteResponse.json().catch(() => ({}));
+
+      if (!deleteResponse.ok) {
+        console.error(`[${timestamp}] [instagram-post-comments] Delete error:`, deleteJson);
+        return jsonResponse({
+          error: deleteJson?.error?.message || 'Erro ao excluir comentário',
+        }, deleteResponse.status);
+      }
+
+      console.log(`[${timestamp}] [instagram-post-comments] Comment ${deleteBody.comment_id} deleted`);
+      return jsonResponse({ success: true });
+    }
+
     let accountId = integration.instagram_account_id;
     let accountUsername = integration.instagram_username;
 
@@ -198,7 +269,7 @@ Deno.serve(async (req) => {
     const postsWithComments = await Promise.all(
       posts.map(async (post) => {
         const commentsResponse = await fetch(
-          `https://graph.instagram.com/v21.0/${post.id}/comments?fields=id,text,username,timestamp,from{id,username}&limit=50&access_token=${encodeURIComponent(accessToken)}`
+          `https://graph.instagram.com/v21.0/${post.id}/comments?fields=id,text,username,timestamp,hidden,from{id,username}&limit=50&access_token=${encodeURIComponent(accessToken)}`
         );
 
         const commentsJson = await commentsResponse.json().catch(() => ({}));
