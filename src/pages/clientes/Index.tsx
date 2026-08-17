@@ -265,7 +265,7 @@ const Clientes = () => {
     if (normalizedPhone.length < 9 || normalizedPhone.length > 13) {
       toast({
         title: 'Erro',
-        description: 'Telefone deve ter 10 ou 11 dígitos (DDD + número)',
+        description: 'Telefone deve ter entre 9 e 13 dígitos',
         variant: 'destructive'
       });
       return;
@@ -631,26 +631,36 @@ const Clientes = () => {
     const searchLower = debouncedSearchTerm.toLowerCase().trim();
     if (!searchLower) return true;
 
-    if (customer.name.toLowerCase().includes(searchLower)) return true;
+    // Search by name
+    if (customer.name && customer.name.toLowerCase().includes(searchLower)) return true;
 
+    // Search by phone
     const normalizedSearch = normalizeForStorage(debouncedSearchTerm);
-    const normalizedCustomerPhone = normalizeForStorage(customer.phone);
+    const normalizedCustomerPhone = customer.phone ? normalizeForStorage(customer.phone) : '';
+    
     if (normalizedSearch && normalizedCustomerPhone.includes(normalizedSearch)) return true;
-    if (customer.phone.includes(debouncedSearchTerm)) return true;
+    if (customer.phone && customer.phone.includes(debouncedSearchTerm)) return true;
 
+    // Search by CPF
     if (customer.cpf && customer.cpf.includes(debouncedSearchTerm)) return true;
+    
+    // Search by Instagram
     if (customer.instagram && customer.instagram.toLowerCase().includes(searchLower)) return true;
     
     return false;
   });
 
   const filteredOrders = allOrders.filter(order => {
+    if (!orderSearchTerm) return true;
+    
+    const searchLower = orderSearchTerm.toLowerCase().trim();
     const normalizedSearch = normalizeForStorage(orderSearchTerm);
-    const normalizedOrderPhone = normalizeForStorage(order.customer.phone);
-    return order.customer.name.toLowerCase().includes(orderSearchTerm.toLowerCase()) ||
-      normalizedOrderPhone.includes(normalizedSearch) ||
-      order.customer.phone.includes(orderSearchTerm) ||
-      order.id.toString().includes(orderSearchTerm);
+    const normalizedOrderPhone = order.customer?.phone ? normalizeForStorage(order.customer.phone) : '';
+    
+    return (order.customer?.name && order.customer.name.toLowerCase().includes(searchLower)) ||
+      (normalizedOrderPhone && normalizedOrderPhone.includes(normalizedSearch)) ||
+      (order.customer?.phone && order.customer.phone.includes(orderSearchTerm)) ||
+      (order.id && order.id.toString().includes(orderSearchTerm));
   });
 
   const formatDate = (dateString: string) => {
