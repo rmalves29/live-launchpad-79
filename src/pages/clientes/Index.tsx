@@ -1325,9 +1325,9 @@ const Clientes = () => {
                                    )}
                                  </div>
                                </TableCell>
-                                <TableCell className="font-mono">
-                                  {formatPhone(customer.phone)}
-                                </TableCell>
+                                 <TableCell className="font-mono">
+                                   {customer.phone ? formatPhone(customer.phone) : '-'}
+                                 </TableCell>
                                 <TableCell>
                                   {customer.instagram ? `@${customer.instagram.replace('@', '')}` : '-'}
                                 </TableCell>
