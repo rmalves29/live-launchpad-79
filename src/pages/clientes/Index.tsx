@@ -222,14 +222,16 @@ const Clientes = () => {
       }, {});
 
       const customersWithStats = (customersData || []).map(customer => {
-        const orders = ordersByPhone[customer.phone] || [];
+        const phone = customer.phone || '';
+        const orders = phone ? (ordersByPhone[phone] || []) : [];
         const paidOrders = orders.filter(o => o.is_paid);
         const lastOrderDate = orders.length > 0
-          ? orders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
+          ? [...orders].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
           : undefined;
 
         return {
           ...customer,
+          phone: phone,
           total_orders: orders.length,
           total_spent: paidOrders.reduce((sum, o) => sum + Number(o.total_amount), 0),
           paid_orders_count: paidOrders.length,
@@ -628,39 +630,49 @@ const Clientes = () => {
     if (filterBlocked === 'blocked' && !customer.is_blocked) return false;
     if (filterBlocked === 'active' && customer.is_blocked) return false;
 
-    const searchLower = debouncedSearchTerm.toLowerCase().trim();
-    if (!searchLower) return true;
+    try {
+      const searchLower = debouncedSearchTerm.toLowerCase().trim();
+      if (!searchLower) return true;
 
-    // Search by name
-    if (customer.name && customer.name.toLowerCase().includes(searchLower)) return true;
+      // Search by name
+      if (customer.name && customer.name.toLowerCase().includes(searchLower)) return true;
 
-    // Search by phone
-    const normalizedSearch = normalizeForStorage(debouncedSearchTerm);
-    const normalizedCustomerPhone = customer.phone ? normalizeForStorage(customer.phone) : '';
-    
-    if (normalizedSearch && normalizedCustomerPhone.includes(normalizedSearch)) return true;
-    if (customer.phone && customer.phone.includes(debouncedSearchTerm)) return true;
+      // Search by phone
+      const normalizedSearch = normalizeForStorage(debouncedSearchTerm);
+      const normalizedCustomerPhone = customer.phone ? normalizeForStorage(customer.phone) : '';
+      
+      if (normalizedSearch && normalizedCustomerPhone.includes(normalizedSearch)) return true;
+      if (customer.phone && customer.phone.includes(debouncedSearchTerm)) return true;
 
-    // Search by CPF
-    if (customer.cpf && customer.cpf.includes(debouncedSearchTerm)) return true;
-    
-    // Search by Instagram
-    if (customer.instagram && customer.instagram.toLowerCase().includes(searchLower)) return true;
-    
-    return false;
+      // Search by CPF
+      if (customer.cpf && customer.cpf.includes(debouncedSearchTerm)) return true;
+      
+      // Search by Instagram
+      if (customer.instagram && customer.instagram.toLowerCase().includes(searchLower)) return true;
+      
+      return false;
+    } catch (e) {
+      console.error('Error filtering customer:', e, customer);
+      return false;
+    }
   });
 
   const filteredOrders = allOrders.filter(order => {
-    if (!orderSearchTerm) return true;
-    
-    const searchLower = orderSearchTerm.toLowerCase().trim();
-    const normalizedSearch = normalizeForStorage(orderSearchTerm);
-    const normalizedOrderPhone = order.customer?.phone ? normalizeForStorage(order.customer.phone) : '';
-    
-    return (order.customer?.name && order.customer.name.toLowerCase().includes(searchLower)) ||
-      (normalizedOrderPhone && normalizedOrderPhone.includes(normalizedSearch)) ||
-      (order.customer?.phone && order.customer.phone.includes(orderSearchTerm)) ||
-      (order.id && order.id.toString().includes(orderSearchTerm));
+    try {
+      if (!orderSearchTerm) return true;
+      
+      const searchLower = orderSearchTerm.toLowerCase().trim();
+      const normalizedSearch = normalizeForStorage(orderSearchTerm);
+      const normalizedOrderPhone = order.customer?.phone ? normalizeForStorage(order.customer.phone) : '';
+      
+      return (order.customer?.name && order.customer.name.toLowerCase().includes(searchLower)) ||
+        (normalizedOrderPhone && normalizedOrderPhone.includes(normalizedSearch)) ||
+        (order.customer?.phone && order.customer.phone.includes(orderSearchTerm)) ||
+        (order.id && order.id.toString().includes(orderSearchTerm));
+    } catch (e) {
+      console.error('Error filtering order:', e, order);
+      return false;
+    }
   });
 
   const formatDate = (dateString: string) => {
@@ -1315,9 +1327,9 @@ const Clientes = () => {
                                    )}
                                  </div>
                                </TableCell>
-                                <TableCell className="font-mono">
-                                  {formatPhone(customer.phone)}
-                                </TableCell>
+                                 <TableCell className="font-mono">
+                                   {customer.phone ? formatPhone(customer.phone) : '-'}
+                                 </TableCell>
                                 <TableCell>
                                   {customer.instagram ? `@${customer.instagram.replace('@', '')}` : '-'}
                                 </TableCell>
@@ -1801,10 +1813,10 @@ const Clientes = () => {
                               #{order.id}
                             </TableCell>
                             <TableCell>
-                              {order.customer_name || order.customer.name}
+                              {order.customer_name || (order.customer && order.customer.name) || 'Cliente'}
                             </TableCell>
                             <TableCell className="font-mono">
-                              {formatPhone(order.customer_phone)}
+                              {order.customer_phone ? formatPhone(order.customer_phone) : (order.customer?.phone ? formatPhone(order.customer.phone) : '-')}
                             </TableCell>
                             <TableCell>
                               {formatDate(order.created_at)}
