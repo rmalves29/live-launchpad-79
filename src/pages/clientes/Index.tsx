@@ -651,12 +651,16 @@ const Clientes = () => {
   });
 
   const filteredOrders = allOrders.filter(order => {
+    if (!orderSearchTerm) return true;
+    
+    const searchLower = orderSearchTerm.toLowerCase().trim();
     const normalizedSearch = normalizeForStorage(orderSearchTerm);
-    const normalizedOrderPhone = normalizeForStorage(order.customer.phone);
-    return order.customer.name.toLowerCase().includes(orderSearchTerm.toLowerCase()) ||
-      normalizedOrderPhone.includes(normalizedSearch) ||
-      order.customer.phone.includes(orderSearchTerm) ||
-      order.id.toString().includes(orderSearchTerm);
+    const normalizedOrderPhone = order.customer?.phone ? normalizeForStorage(order.customer.phone) : '';
+    
+    return (order.customer?.name && order.customer.name.toLowerCase().includes(searchLower)) ||
+      (normalizedOrderPhone && normalizedOrderPhone.includes(normalizedSearch)) ||
+      (order.customer?.phone && order.customer.phone.includes(orderSearchTerm)) ||
+      (order.id && order.id.toString().includes(orderSearchTerm));
   });
 
   const formatDate = (dateString: string) => {
