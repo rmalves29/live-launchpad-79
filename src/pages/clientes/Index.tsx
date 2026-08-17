@@ -265,7 +265,7 @@ const Clientes = () => {
     if (normalizedPhone.length < 9 || normalizedPhone.length > 13) {
       toast({
         title: 'Erro',
-        description: 'Telefone deve ter 10 ou 11 dígitos (DDD + número)',
+        description: 'Telefone deve ter entre 9 e 13 dígitos',
         variant: 'destructive'
       });
       return;
