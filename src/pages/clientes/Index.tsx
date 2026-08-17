@@ -628,26 +628,31 @@ const Clientes = () => {
     if (filterBlocked === 'blocked' && !customer.is_blocked) return false;
     if (filterBlocked === 'active' && customer.is_blocked) return false;
 
-    const searchLower = debouncedSearchTerm.toLowerCase().trim();
-    if (!searchLower) return true;
+    try {
+      const searchLower = debouncedSearchTerm.toLowerCase().trim();
+      if (!searchLower) return true;
 
-    // Search by name
-    if (customer.name && customer.name.toLowerCase().includes(searchLower)) return true;
+      // Search by name
+      if (customer.name && customer.name.toLowerCase().includes(searchLower)) return true;
 
-    // Search by phone
-    const normalizedSearch = normalizeForStorage(debouncedSearchTerm);
-    const normalizedCustomerPhone = customer.phone ? normalizeForStorage(customer.phone) : '';
-    
-    if (normalizedSearch && normalizedCustomerPhone.includes(normalizedSearch)) return true;
-    if (customer.phone && customer.phone.includes(debouncedSearchTerm)) return true;
+      // Search by phone
+      const normalizedSearch = normalizeForStorage(debouncedSearchTerm);
+      const normalizedCustomerPhone = customer.phone ? normalizeForStorage(customer.phone) : '';
+      
+      if (normalizedSearch && normalizedCustomerPhone.includes(normalizedSearch)) return true;
+      if (customer.phone && customer.phone.includes(debouncedSearchTerm)) return true;
 
-    // Search by CPF
-    if (customer.cpf && customer.cpf.includes(debouncedSearchTerm)) return true;
-    
-    // Search by Instagram
-    if (customer.instagram && customer.instagram.toLowerCase().includes(searchLower)) return true;
-    
-    return false;
+      // Search by CPF
+      if (customer.cpf && customer.cpf.includes(debouncedSearchTerm)) return true;
+      
+      // Search by Instagram
+      if (customer.instagram && customer.instagram.toLowerCase().includes(searchLower)) return true;
+      
+      return false;
+    } catch (e) {
+      console.error('Error filtering customer:', e, customer);
+      return false;
+    }
   });
 
   const filteredOrders = allOrders.filter(order => {
