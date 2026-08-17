@@ -1813,10 +1813,10 @@ const Clientes = () => {
                               #{order.id}
                             </TableCell>
                             <TableCell>
-                              {order.customer_name || order.customer.name}
+                              {order.customer_name || (order.customer && order.customer.name) || 'Cliente'}
                             </TableCell>
                             <TableCell className="font-mono">
-                              {formatPhone(order.customer_phone)}
+                              {order.customer_phone ? formatPhone(order.customer_phone) : (order.customer?.phone ? formatPhone(order.customer.phone) : '-')}
                             </TableCell>
                             <TableCell>
                               {formatDate(order.created_at)}
