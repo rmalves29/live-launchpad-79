@@ -222,14 +222,16 @@ const Clientes = () => {
       }, {});
 
       const customersWithStats = (customersData || []).map(customer => {
-        const orders = ordersByPhone[customer.phone] || [];
+        const phone = customer.phone || '';
+        const orders = phone ? (ordersByPhone[phone] || []) : [];
         const paidOrders = orders.filter(o => o.is_paid);
         const lastOrderDate = orders.length > 0
-          ? orders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
+          ? [...orders].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
           : undefined;
 
         return {
           ...customer,
+          phone: phone,
           total_orders: orders.length,
           total_spent: paidOrders.reduce((sum, o) => sum + Number(o.total_amount), 0),
           paid_orders_count: paidOrders.length,
