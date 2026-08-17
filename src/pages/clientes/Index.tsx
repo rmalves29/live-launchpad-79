@@ -631,14 +631,20 @@ const Clientes = () => {
     const searchLower = debouncedSearchTerm.toLowerCase().trim();
     if (!searchLower) return true;
 
-    if (customer.name.toLowerCase().includes(searchLower)) return true;
+    // Search by name
+    if (customer.name && customer.name.toLowerCase().includes(searchLower)) return true;
 
+    // Search by phone
     const normalizedSearch = normalizeForStorage(debouncedSearchTerm);
-    const normalizedCustomerPhone = normalizeForStorage(customer.phone);
+    const normalizedCustomerPhone = customer.phone ? normalizeForStorage(customer.phone) : '';
+    
     if (normalizedSearch && normalizedCustomerPhone.includes(normalizedSearch)) return true;
-    if (customer.phone.includes(debouncedSearchTerm)) return true;
+    if (customer.phone && customer.phone.includes(debouncedSearchTerm)) return true;
 
+    // Search by CPF
     if (customer.cpf && customer.cpf.includes(debouncedSearchTerm)) return true;
+    
+    // Search by Instagram
     if (customer.instagram && customer.instagram.toLowerCase().includes(searchLower)) return true;
     
     return false;
