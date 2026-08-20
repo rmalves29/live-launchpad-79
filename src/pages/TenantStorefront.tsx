@@ -28,6 +28,7 @@ interface Product {
   promotional_price: number | null;
   image_url: string | null;
   is_active: boolean;
+  is_live: boolean;
   color: string | null;
   size: string | null;
   stock: number | null;
@@ -69,9 +70,11 @@ export default function TenantStorefront() {
     try {
       const { data } = await supabase
         .from('products')
-        .select('id, name, code, price, promotional_price, image_url, is_active, color, size, stock')
+        .select('id, name, code, price, promotional_price, image_url, is_active, is_live, color, size, stock')
         .eq('tenant_id', tenantId)
         .eq('is_active', true)
+        .eq('is_live', true)
+        .gt('stock', 0)
         .order('name');
       if (data) setProducts(data as Product[]);
     } catch (err) {
