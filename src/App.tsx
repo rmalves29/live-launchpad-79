@@ -351,14 +351,13 @@ const AppContent = () => {
             </SuperAdminOnly>
           </RequireAuth>
         } />
-        {/* Rota removida conforme solicitado pelo usuário */}
-        {/* <Route path="/admin/relatorio-global" element={
+        <Route path="/admin/relatorio-global" element={
           <RequireAuth>
             <SuperAdminOnly>
               <RelatorioGlobal />
             </SuperAdminOnly>
           </RequireAuth>
-        } /> */}
+        } />
         <Route path="/admin/links" element={
           <RequireAuth>
             <SuperAdminOnly>
