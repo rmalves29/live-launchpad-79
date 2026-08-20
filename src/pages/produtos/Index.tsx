@@ -42,6 +42,7 @@ interface Product {
   size?: string;
   image_url?: string;
   is_active: boolean;
+  is_live: boolean;
   sale_type: 'LIVE' | 'BAZAR' | 'AMBOS';
   category_id?: string | null;
   parent_product_id?: number | null;
@@ -123,6 +124,7 @@ const Produtos = () => {
     size: '',
     image_url: '',
     is_active: true,
+    is_live: false,
     sale_type_bazar: true,
     sale_type_live: false
   });
@@ -337,6 +339,7 @@ const Produtos = () => {
         image_url: imageUrl,
         // Respeita a escolha do usuário — o pai pode ficar ativo mesmo com variações
         is_active: formData.is_active,
+        is_live: formData.is_live,
         sale_type: saleType
       };
 
@@ -394,6 +397,7 @@ const Produtos = () => {
             size: v.size,
             image_url: imageUrl,
             is_active: formData.is_active,
+            is_live: formData.is_live,
             sale_type: saleType,
             category_id: (editingProduct as any)?.category_id ?? null,
           };
@@ -432,6 +436,7 @@ const Produtos = () => {
         size: '',
         image_url: '',
         is_active: true,
+        is_live: false,
         sale_type_bazar: true,
         sale_type_live: false
       });
@@ -514,6 +519,7 @@ const Produtos = () => {
         size: product.size || '',
         image_url: product.image_url || '',
         is_active: product.is_active,
+        is_live: !!product.is_live,
         sale_type_bazar: saleType === 'BAZAR' || saleType === 'AMBOS',
         sale_type_live: saleType === 'LIVE' || saleType === 'AMBOS'
     });
@@ -659,6 +665,7 @@ const Produtos = () => {
         size: product.size ?? null,
         image_url: product.image_url ?? null,
         is_active: product.is_active,
+        is_live: product.is_live,
         sale_type: product.sale_type || 'BAZAR',
         category_id: product.category_id ?? null,
       };
@@ -1589,13 +1596,24 @@ const Produtos = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="is_active"
-                    checked={formData.is_active}
-                    onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
-                  />
-                  <Label htmlFor="is_active">Produto ativo</Label>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="is_active"
+                      checked={formData.is_active}
+                      onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                    />
+                    <Label htmlFor="is_active">Produto ativo</Label>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="is_live"
+                      checked={formData.is_live}
+                      onCheckedChange={(checked) => setFormData({ ...formData, is_live: checked })}
+                    />
+                    <Label htmlFor="is_live" className="text-primary font-bold">Mostrar na Vitrine (Live)</Label>
+                  </div>
                 </div>
 
                 <div className="flex justify-end space-x-2">
