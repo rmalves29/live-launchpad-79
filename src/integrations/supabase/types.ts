@@ -3266,6 +3266,7 @@ export type Database = {
           id: number
           image_url: string | null
           is_active: boolean
+          is_live: boolean | null
           name: string
           observation: string | null
           parent_product_id: number | null
@@ -3287,6 +3288,7 @@ export type Database = {
           id?: number
           image_url?: string | null
           is_active?: boolean
+          is_live?: boolean | null
           name: string
           observation?: string | null
           parent_product_id?: number | null
@@ -3308,6 +3310,7 @@ export type Database = {
           id?: number
           image_url?: string | null
           is_active?: boolean
+          is_live?: boolean | null
           name?: string
           observation?: string | null
           parent_product_id?: number | null
