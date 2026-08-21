@@ -1,0 +1,2 @@
+REVOKE EXECUTE ON FUNCTION public.admin_global_report(timestamp with time zone, timestamp with time zone) FROM public, anon;
+GRANT EXECUTE ON FUNCTION public.admin_global_report(timestamp with time zone, timestamp with time zone) TO authenticated, service_role;
