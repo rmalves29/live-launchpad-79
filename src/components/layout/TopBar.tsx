@@ -63,8 +63,8 @@ export function TopBar() {
       
       {subInfo && (
         <div className="flex items-center px-3 border-l border-[#e5e7eb] h-8">
-          <p className="text-[11px] leading-tight">
-            Prazo: <span className={subInfo.colorClass}>{subInfo.days} {subInfo.days === 1 ? 'dia' : 'dias'}</span>
+          <p className="text-[11px] leading-tight text-[#6b7280]">
+            Faltam <span className={subInfo.colorClass}>{subInfo.days} {subInfo.days === 1 ? 'dia' : 'dias'}</span> para o plano expirar
           </p>
         </div>
       )}
