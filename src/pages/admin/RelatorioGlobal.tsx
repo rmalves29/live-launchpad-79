@@ -21,7 +21,7 @@ interface ReportData {
     count_pending: number;
     ticket_medio: number;
     total_products?: number;
-    avg_shipping_time_hours?: number;
+    avg_shipping_time_days?: number;
   };
   messages: { total: number; grupos: number; privado: number };
   daily_metrics?: Array<{
@@ -197,7 +197,7 @@ export default function RelatorioGlobal() {
           <Metric label="Pedidos realizados" value={(o?.count ?? 0).toLocaleString("pt-BR")} />
           <Metric label="Produtos enviados" value={(o?.total_products ?? 0).toLocaleString("pt-BR")} accent="text-blue-600" />
           <Metric label="Pedidos pagos" value={(o?.count_paid ?? 0).toLocaleString("pt-BR")} accent="text-emerald-600" />
-          <Metric label="Tempo médio envio" value={o?.avg_shipping_time_hours ? `${o.avg_shipping_time_hours}h` : "---"} accent="text-purple-600" />
+          <Metric label="Tempo médio envio" value={o?.avg_shipping_time_days ? `${o.avg_shipping_time_days}d` : "0.0d"} accent="text-purple-600" />
         </CardContent>
       </Card>
 
