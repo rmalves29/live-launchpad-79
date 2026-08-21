@@ -19,6 +19,7 @@ interface Tenant {
   enable_live?: boolean;
   enable_sendflow?: boolean;
   max_whatsapp_groups?: number | null;
+  subscription_ends_at?: string | null;
 }
 
 const PREVIEW_TENANT_KEY = 'previewTenantId';
