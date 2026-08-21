@@ -113,6 +113,8 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
     const [activeView, setActiveView] = useState<'dashboard' | 'management'>('dashboard');
     const [searchTerm, setSearchTerm] = useState('');
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
+    const [productSearchTerm, setProductSearchTerm] = useState('');
+    const debouncedProductSearch = useDebounce(productSearchTerm, 300);
 
     const ensureOrderCartItems = async (order: Order): Promise<Order> => {
       if (!order?.cart_id) return order;
@@ -1416,6 +1418,7 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
       setFilterDate(undefined);
       setFilterPrinted('all');
       setSearchTerm('');
+      setProductSearchTerm('');
     };
 
     // Filtrar pedidos por telefone, nome, CPF, Instagram ou número do pedido
@@ -1471,7 +1474,18 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
         );
       }
 
+      if (!search) return true;
+
       return false;
+    }).filter(order => {
+      const pSearch = debouncedProductSearch.trim().toLowerCase();
+      if (!pSearch) return true;
+
+      return (order.cart_items || []).some(item => {
+        const prodName = (item.product_name || item.product?.name || '').toLowerCase();
+        const prodCode = (item.product_code || item.product?.code || '').toLowerCase();
+        return prodName.includes(pSearch) || prodCode.includes(pSearch);
+      });
     });
 
     // Contar pedidos por telefone para identificar clientes com múltiplos pedidos
@@ -1548,7 +1562,7 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
     // Reset página quando filtros mudam
     useEffect(() => {
       setCurrentPage(1);
-    }, [filterPaid, filterEventType, filterDate, filterPrinted, debouncedSearchTerm]);
+    }, [filterPaid, filterEventType, filterDate, filterPrinted, debouncedSearchTerm, debouncedProductSearch]);
 
     const formatCurrencyLocal = (value: number) => {
       return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -1652,6 +1666,16 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
                   placeholder="Buscar por nome, telefone, CPF, @ Instagram ou nº do pedido..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
+                  className="h-11 pl-10 rounded-xl bg-[#f9fafb] border-[#e5e7eb] focus-visible:ring-1 focus-visible:ring-[#4f46e5]"
+                />
+              </div>
+
+              <div className="relative flex-1 min-w-0">
+                <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9ca3af]" />
+                <Input
+                  placeholder="Filtrar por nome ou código do produto..."
+                  value={productSearchTerm}
+                  onChange={(e) => setProductSearchTerm(e.target.value)}
                   className="h-11 pl-10 rounded-xl bg-[#f9fafb] border-[#e5e7eb] focus-visible:ring-1 focus-visible:ring-[#4f46e5]"
                 />
               </div>
