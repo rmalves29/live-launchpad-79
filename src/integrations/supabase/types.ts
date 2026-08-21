@@ -5276,6 +5276,7 @@ export type Database = {
           max_whatsapp_groups: number
           name: string
           slug: string
+          subscription_ends_at: string
         }[]
       }
       get_tenant_by_slug: {

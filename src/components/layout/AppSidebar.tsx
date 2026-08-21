@@ -225,7 +225,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
             return (
               <p className="text-[11px] text-[#6b7280]">
-                Prazo: <span className={textColor}>{diffDays} {diffDays === 1 ? 'dia' : 'dias'}</span>
+                Faltam <span className={textColor}>{diffDays} {diffDays === 1 ? 'dia' : 'dias'}</span> para o plano expirar
               </p>
             );
           })()}
