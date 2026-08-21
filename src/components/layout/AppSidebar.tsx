@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   ShoppingBag,
@@ -48,6 +48,13 @@ const SUPABASE_DASHBOARD_URL = 'https://supabase.com/dashboard/project/hxtbsieod
 const LOVABLE_CLOUD_URL = 'https://lovable.dev/projects/154035f9-093b-4aed-ac82-a01434f3c19b';
 
 export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
+  const [, forceUpdate] = useState(0);
+
+  // Update counter every minute to refresh "days remaining" display
+  useEffect(() => {
+    const timer = setInterval(() => forceUpdate(n => n + 1), 60000);
+    return () => clearInterval(timer);
+  }, []);
   const { user, profile } = useAuth();
   const { tenant } = useTenant();
   const navigate = useNavigate();
@@ -200,6 +207,30 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           <img src={cartzyLogo} alt="Cartzy" className="h-[4.3rem] w-auto object-contain" />
         </NavLink>
       </div>
+
+      {/* Subscription info (visible on mobile only) */}
+      {tenant?.subscription_ends_at && (
+        <div className="lg:hidden px-4 py-2 border-b border-[#f3f4f6] bg-[#f9fafb]">
+          {(() => {
+            const end = new Date(tenant.subscription_ends_at);
+            const now = new Date();
+            const diffTime = end.getTime() - now.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            if (diffDays < 0) return null;
+
+            let textColor = 'text-[#9ca3af]';
+            if (diffDays <= 5) textColor = 'text-red-600 font-bold';
+            else if (diffDays <= 10) textColor = 'text-yellow-500 font-bold';
+
+            return (
+              <p className="text-[11px] text-[#6b7280]">
+                Prazo: <span className={textColor}>{diffDays} {diffDays === 1 ? 'dia' : 'dias'}</span>
+              </p>
+            );
+          })()}
+        </div>
+      )}
 
       {/* Nav */}
       <nav className="flex-1 p-2 overflow-y-auto scrollbar-thin">

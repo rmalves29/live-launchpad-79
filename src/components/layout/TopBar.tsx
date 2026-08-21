@@ -23,6 +23,31 @@ export function TopBar() {
   const isSuperAdmin = profile?.role === 'super_admin';
   const helpMeta = getHelpPageMeta(location.pathname);
 
+  const getSubscriptionInfo = () => {
+    if (!tenant?.subscription_ends_at) return null;
+    
+    const end = new Date(tenant.subscription_ends_at);
+    const now = new Date();
+    const diffTime = end.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) return null;
+
+    let textColor = 'text-[#9ca3af]';
+    if (diffDays <= 5) {
+      textColor = 'text-red-600 font-bold';
+    } else if (diffDays <= 10) {
+      textColor = 'text-yellow-500 font-bold';
+    }
+
+    return {
+      days: diffDays,
+      colorClass: textColor
+    };
+  };
+
+  const subInfo = getSubscriptionInfo();
+
   return (
     <div className="hidden lg:flex sticky top-0 z-30 bg-white border-b border-[#e5e7eb] h-14 items-center justify-end gap-3 px-6">
       {isSuperAdmin && (
@@ -35,6 +60,15 @@ export function TopBar() {
           Tutoriais
         </Link>
       )}
+      
+      {subInfo && (
+        <div className="flex items-center px-3 border-l border-[#e5e7eb] h-8">
+          <p className="text-[11px] leading-tight">
+            Prazo: <span className={subInfo.colorClass}>{subInfo.days} {subInfo.days === 1 ? 'dia' : 'dias'}</span>
+          </p>
+        </div>
+      )}
+
       <TenantSwitcher />
       <div className="flex items-center gap-2 pl-3 border-l border-[#e5e7eb]">
         <div className="text-right">
