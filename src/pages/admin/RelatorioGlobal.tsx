@@ -109,6 +109,7 @@ export default function RelatorioGlobal() {
 
   const o = data?.orders;
   const m = data?.messages;
+  const c = data?.customers;
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-[1600px] mx-auto">
@@ -240,6 +241,19 @@ export default function RelatorioGlobal() {
           <Metric label="Total enviadas" value={(m?.total ?? 0).toLocaleString("pt-BR")} />
           <Metric label="No privado" value={(m?.privado ?? 0).toLocaleString("pt-BR")} />
           <Metric label="Nos grupos" value={(m?.grupos ?? 0).toLocaleString("pt-BR")} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ShoppingCart className="w-4 h-4" /> Base de Clientes
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-3">
+          <Metric label="Total de clientes" value={(c?.total ?? 0).toLocaleString("pt-BR")} />
+          <Metric label="Com pedido pago" value={(c?.com_pedido_pago ?? 0).toLocaleString("pt-BR")} accent="text-emerald-600" />
+          <Metric label="Sem pedido pago" value={(c?.sem_pedido_pago ?? 0).toLocaleString("pt-BR")} accent="text-amber-600" />
         </CardContent>
       </Card>
     </div>
