@@ -350,6 +350,8 @@ serve(async (req) => {
         `[create-payment] Cupom ${payload.coupon_code}: pedidos fora do período ignorados=[${excluded.join(",")}], ` +
           `base elegível=${eligibleSubtotal.toFixed(2)}, desconto ajustado=${totalCouponDiscount.toFixed(2)}`,
       );
+      // Mantém o payload alinhado para os cálculos dos gateways abaixo
+      payload.coupon_discount = totalCouponDiscount;
     }
 
     // PIX: cada pedido recebe % sobre o seu próprio subtotal (igual ao caso de pedido único)
