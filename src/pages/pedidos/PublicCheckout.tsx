@@ -845,7 +845,12 @@ const PublicCheckout = () => {
 
         setAppliedCoupon({ ...coupon, appliedType: 'coupon' });
         setCouponDiscount(discount);
-        toast({ title: 'Cupom Aplicado!', description: `Desconto de ${formatCurrency(discount)} aplicado` });
+        toast({
+          title: 'Cupom Aplicado!',
+          description: excludedCount > 0
+            ? `Desconto de ${formatCurrency(discount)} aplicado. ${excludedCount} pedido(s) ficaram de fora por terem sido criados fora do período do cupom.`
+            : `Desconto de ${formatCurrency(discount)} aplicado`
+        });
         return;
       }
 
