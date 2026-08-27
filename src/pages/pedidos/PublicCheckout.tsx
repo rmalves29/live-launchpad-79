@@ -54,6 +54,7 @@ interface Order {
   is_cancelled?: boolean;
   payment_link: string | null;
   cart_id: number | null;
+  created_at?: string | null;
   items: OrderItem[];
   coupon_code?: string;
   coupon_discount?: number;
@@ -771,13 +772,37 @@ const PublicCheckout = () => {
           return;
         }
 
-        const productsTotal = ordersToApply.reduce((total, order) => {
+        // O cupom só vale para pedidos criados DENTRO do período de validade
+        const startsMs = (coupon as any).starts_at ? new Date((coupon as any).starts_at).getTime() : null;
+        const expiresMs = coupon.expires_at ? new Date(coupon.expires_at).getTime() : null;
+        const isOrderEligible = (order: Order) => {
+          if (!order.created_at) return true;
+          const t = new Date(order.created_at).getTime();
+          if (Number.isNaN(t)) return true;
+          if (startsMs !== null && t < startsMs) return false;
+          if (expiresMs !== null && t > expiresMs) return false;
+          return true;
+        };
+        const eligibleOrders = ordersToApply.filter(isOrderEligible);
+        const excludedCount = ordersToApply.length - eligibleOrders.length;
+
+        if (eligibleOrders.length === 0) {
+          toast({
+            title: 'Cupom não aplicável',
+            description: 'Nenhum dos pedidos selecionados foi criado dentro do período de validade deste cupom.',
+            variant: 'destructive'
+          });
+          return;
+        }
+
+        const productsTotal = eligibleOrders.reduce((total, order) => {
           return total + order.items.reduce((sum, item) => sum + (Number(item.unit_price) * item.qty), 0);
         }, 0);
-        const itemsCount = ordersToApply.reduce(
+        const itemsCount = eligibleOrders.reduce(
           (total, order) => total + order.items.reduce((sum, item) => sum + Number(item.qty || 0), 0),
           0
         );
+
 
         // Condição mínima (não vale para progressivo) — aplica só sobre produtos
         const minAmount = (coupon as any).min_purchase_amount;
@@ -820,7 +845,12 @@ const PublicCheckout = () => {
 
         setAppliedCoupon({ ...coupon, appliedType: 'coupon' });
         setCouponDiscount(discount);
-        toast({ title: 'Cupom Aplicado!', description: `Desconto de ${formatCurrency(discount)} aplicado` });
+        toast({
+          title: 'Cupom Aplicado!',
+          description: excludedCount > 0
+            ? `Desconto de ${formatCurrency(discount)} aplicado. ${excludedCount} pedido(s) ficaram de fora por terem sido criados fora do período do cupom.`
+            : `Desconto de ${formatCurrency(discount)} aplicado`
+        });
         return;
       }
 
