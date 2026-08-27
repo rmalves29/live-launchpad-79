@@ -315,7 +315,7 @@ serve(async (req) => {
         price: Math.round(Number(it.unit_price) * 100), // centavos
       }));
 
-    const totalDiscountCents = Math.round((pixDiscountValue + couponDiscountValue) * 100);
+    const totalDiscountCents = Math.round((pixDiscountValue + effectiveCoupon) * 100);
     if (totalDiscountCents > 0 && productItems.length > 0) {
       const productsTotalCents = productItems.reduce((s, it) => s + it.price * it.quantity, 0);
       if (productsTotalCents > 0) {
