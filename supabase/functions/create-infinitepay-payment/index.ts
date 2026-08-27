@@ -203,26 +203,51 @@ serve(async (req) => {
     const combinedSubtotal = orderCtxs.reduce((s, o) => s + o.productsTotal, 0);
     const fallbackPayloadSubtotal = body.cartItems.reduce((s, it) => s + it.unit_price * it.qty, 0);
 
-    // PIX por pedido = % sobre o próprio subtotal; cupom proporcional
+    // Cupom só vale para pedidos criados DENTRO do período de validade do cupom
+    const couponWindow = couponDiscountValue > 0
+      ? await loadCouponWindow(sb, (body as any).tenant_id, body.coupon_code)
+      : null;
+    const eligibleFlags = orderCtxs.map((o) => isOrderWithinCoupon(o.created_at, couponWindow));
+    const eligibleSubtotal = orderCtxs.reduce((s, o, i) => s + (eligibleFlags[i] ? o.productsTotal : 0), 0);
+
+    let effectiveCoupon = couponDiscountValue;
+    if (couponWindow && eligibleFlags.some((f) => !f)) {
+      if (eligibleSubtotal <= 0) {
+        effectiveCoupon = 0;
+      } else if (couponWindow.discountType === "fixed") {
+        effectiveCoupon = Math.min(effectiveCoupon, eligibleSubtotal);
+      } else if (combinedSubtotal > 0) {
+        effectiveCoupon = Math.round(effectiveCoupon * (eligibleSubtotal / combinedSubtotal) * 100) / 100;
+      }
+      console.log(
+        `[create-infinitepay-payment] Cupom ${body.coupon_code}: pedidos fora do período ignorados=` +
+          `[${orderCtxs.filter((_, i) => !eligibleFlags[i]).map((o) => o.id).join(",")}], desconto ajustado=${effectiveCoupon.toFixed(2)}`,
+      );
+    }
+
+    // PIX por pedido = % sobre o próprio subtotal; cupom rateado só entre os elegíveis
     const pixShares: number[] = [];
     const couponShares: number[] = [];
-    let couponRemaining = Math.round(couponDiscountValue * 100);
+    let couponRemaining = Math.round(effectiveCoupon * 100);
+    const lastEligibleIdx = eligibleFlags.lastIndexOf(true);
     for (let i = 0; i < orderCtxs.length; i++) {
       const ctx = orderCtxs[i];
       const productsTotal = ctx.productsTotal > 0 ? ctx.productsTotal : (orderCtxs.length === 1 ? fallbackPayloadSubtotal : 0);
       const pixCents = pixDiscountPercent > 0 ? Math.round(productsTotal * pixDiscountPercent) : 0;
       pixShares.push(pixCents / 100);
 
-      const isLast = i === orderCtxs.length - 1;
-      if (combinedSubtotal <= 0 || orderCtxs.length === 1) {
-        couponShares.push(isLast ? couponRemaining / 100 : 0);
-        if (isLast) couponRemaining = 0;
-      } else if (isLast) {
-        couponShares.push(couponRemaining / 100);
-        couponRemaining = 0;
+      if (!eligibleFlags[i]) {
+        couponShares.push(0);
+        continue;
+      }
+
+      const isLastEligible = i === lastEligibleIdx;
+      if (eligibleSubtotal <= 0 || orderCtxs.length === 1 || isLastEligible) {
+        couponShares.push(isLastEligible ? couponRemaining / 100 : 0);
+        if (isLastEligible) couponRemaining = 0;
       } else {
-        const ratio = ctx.productsTotal / combinedSubtotal;
-        const couponCents = Math.round(couponDiscountValue * 100 * ratio);
+        const ratio = ctx.productsTotal / eligibleSubtotal;
+        const couponCents = Math.round(effectiveCoupon * 100 * ratio);
         couponShares.push(couponCents / 100);
         couponRemaining -= couponCents;
       }
