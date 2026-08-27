@@ -325,14 +325,38 @@ serve(async (req) => {
 
     const combinedSubtotal = orderCtxs.reduce((s, o) => s + o.productsTotal, 0);
     const fallbackPayloadSubtotal = payload.cartItems.reduce((s, it) => s + it.unit_price * it.qty, 0);
-    const totalCouponDiscount = toNumber(payload.coupon_discount, 0);
+    let totalCouponDiscount = toNumber(payload.coupon_discount, 0);
     const shippingValue = toNumber(payload.shippingCost, 0);
 
+    // Cupom só vale para pedidos criados DENTRO do período de validade do cupom
+    const couponWindow = totalCouponDiscount > 0
+      ? await loadCouponWindow(sb, payload.tenant_id, payload.coupon_code)
+      : null;
+    const eligibleFlags = orderCtxs.map((o) => isOrderWithinCoupon(o.created_at, couponWindow));
+    const eligibleSubtotal = orderCtxs.reduce((s, o, i) => s + (eligibleFlags[i] ? o.productsTotal : 0), 0);
+
+    if (couponWindow && eligibleFlags.some((f) => !f)) {
+      const excluded = orderCtxs.filter((_, i) => !eligibleFlags[i]).map((o) => o.id);
+      // Reduz o desconto para a base elegível
+      if (eligibleSubtotal <= 0) {
+        totalCouponDiscount = 0;
+      } else if (couponWindow.discountType === "fixed") {
+        totalCouponDiscount = Math.min(totalCouponDiscount, eligibleSubtotal);
+      } else if (combinedSubtotal > 0) {
+        totalCouponDiscount = Math.round(totalCouponDiscount * (eligibleSubtotal / combinedSubtotal) * 100) / 100;
+      }
+      console.log(
+        `[create-payment] Cupom ${payload.coupon_code}: pedidos fora do período ignorados=[${excluded.join(",")}], ` +
+          `base elegível=${eligibleSubtotal.toFixed(2)}, desconto ajustado=${totalCouponDiscount.toFixed(2)}`,
+      );
+    }
+
     // PIX: cada pedido recebe % sobre o seu próprio subtotal (igual ao caso de pedido único)
-    // CUPOM: rateado proporcionalmente (não há % por pedido — é valor fixo do checkout)
+    // CUPOM: rateado proporcionalmente APENAS entre os pedidos elegíveis
     const pixShares: number[] = [];
     const couponShares: number[] = [];
     let couponRemaining = Math.round(totalCouponDiscount * 100);
+    const lastEligibleIdx = eligibleFlags.lastIndexOf(true);
     for (let i = 0; i < orderCtxs.length; i++) {
       const ctx = orderCtxs[i];
       const productsTotal = ctx.productsTotal > 0 ? ctx.productsTotal : (orderCtxs.length === 1 ? fallbackPayloadSubtotal : 0);
@@ -342,20 +366,23 @@ serve(async (req) => {
         : 0;
       pixShares.push(pixCents / 100);
 
-      const isLast = i === orderCtxs.length - 1;
-      if (combinedSubtotal <= 0 || orderCtxs.length === 1) {
-        couponShares.push(isLast ? couponRemaining / 100 : 0);
-        if (isLast) couponRemaining = 0;
-      } else if (isLast) {
-        couponShares.push(couponRemaining / 100);
-        couponRemaining = 0;
+      if (!eligibleFlags[i]) {
+        couponShares.push(0);
+        continue;
+      }
+
+      const isLastEligible = i === lastEligibleIdx;
+      if (eligibleSubtotal <= 0 || orderCtxs.length === 1 || isLastEligible) {
+        couponShares.push(isLastEligible ? couponRemaining / 100 : 0);
+        if (isLastEligible) couponRemaining = 0;
       } else {
-        const ratio = ctx.productsTotal / combinedSubtotal;
+        const ratio = ctx.productsTotal / eligibleSubtotal;
         const couponCents = Math.round(totalCouponDiscount * 100 * ratio);
         couponShares.push(couponCents / 100);
         couponRemaining -= couponCents;
       }
     }
+
 
     for (let i = 0; i < orderCtxs.length; i++) {
       const ctx = orderCtxs[i];
