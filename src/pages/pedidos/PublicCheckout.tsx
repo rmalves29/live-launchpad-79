@@ -54,6 +54,7 @@ interface Order {
   is_cancelled?: boolean;
   payment_link: string | null;
   cart_id: number | null;
+  created_at?: string | null;
   items: OrderItem[];
   coupon_code?: string;
   coupon_discount?: number;
