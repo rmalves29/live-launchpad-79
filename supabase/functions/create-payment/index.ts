@@ -402,6 +402,9 @@ serve(async (req) => {
           customer_state: payload.addressData.state,
           observation: nextObs,
           total_amount: newTotal,
+          // Grava a PARCELA rateada do cupom neste pedido (evita divergência com o total)
+          coupon_discount: couponShare,
+          coupon_code: couponShare > 0 ? (payload.coupon_code ?? null) : null,
           shipping_service_id: shippingServiceId,
         })
         .eq("id", orderId);
