@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { applyPaymentMethodLock } from "../_shared/payment-method-lock.ts";
 import { resolvePixDiscount } from "../_shared/pix-discount.ts";
+import { loadCouponWindow, isOrderWithinCoupon } from "../_shared/coupon-eligibility.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
