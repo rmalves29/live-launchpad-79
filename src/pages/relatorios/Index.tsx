@@ -28,7 +28,7 @@ import { formatPhoneForDisplay } from '@/lib/phone-utils';
 import { formatBrasiliaDate, getBrasiliaDateISO, getBrasiliaDate, toBrasiliaDateISO, getBrasiliaDayBoundsISO } from '@/lib/date-utils';
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  BarChart, Bar, PieChart, Pie, Cell,
+  BarChart, Bar, PieChart, Pie, Cell, ComposedChart, Area,
 } from 'recharts';
 
 const AgenteIAContent = lazy(() => import('@/pages/agente-ia/Index'));
@@ -149,6 +149,7 @@ const Relatorios = () => {
     products: number;
   }>>([]);
   const [globalStats, setGlobalStats] = useState<PeriodStats & { avg_shipping_time_days?: number | null }> (null);
+  const [prevGlobalStats, setPrevGlobalStats] = useState<PeriodStats | null>(null);
   const [prodSort, setProdSort] = useState<'qty' | 'revenue'>('qty');
   const [couponStats, setCouponStats] = useState<Array<{
     code: string;
@@ -1249,14 +1250,61 @@ const Relatorios = () => {
     };
   };
 
+  // Período imediatamente anterior, com a mesma duração do período atual —
+  // usado pra mostrar variação (%) nos cards de KPI.
+  const computePreviousRange = (range: { startISO: string; endISO: string }): { startISO: string; endISO: string } => {
+    const start = new Date(range.startISO);
+    const end = new Date(range.endISO);
+    const durationMs = end.getTime() - start.getTime();
+    const prevEnd = new Date(start.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - durationMs);
+    return { startISO: prevStart.toISOString(), endISO: prevEnd.toISOString() };
+  };
+
+  const loadPreviousPeriodStats = async (range: { startISO: string; endISO: string }) => {
+    try {
+      const prevRange = computePreviousRange(range);
+      const { data: rpcData, error } = await (supabaseTenant as any).rpc('admin_global_report', {
+        p_from: prevRange.startISO,
+        p_to: prevRange.endISO,
+        p_tenant_id: tenantId,
+      });
+      if (error || !rpcData) {
+        setPrevGlobalStats(null);
+        return;
+      }
+      const s = rpcData.orders || {};
+      setPrevGlobalStats({
+        total_sales: Number(s.total_value || 0),
+        paid_sales: Number(s.paid_value || 0),
+        unpaid_sales: Number(s.pending_value || 0),
+        total_orders: Number(s.count || 0),
+        paid_orders: Number(s.count_paid || 0),
+        unpaid_orders: Number(s.count_pending || 0),
+        total_products: Number(s.total_products || 0),
+        paid_products: Number(s.paid_products || 0),
+        unpaid_products: Number(s.pending_products || 0),
+        avg_ticket: Number(s.ticket_medio || 0),
+        paid_avg_ticket: Number(s.paid_avg_ticket || 0),
+        unpaid_avg_ticket: Number(s.pending_avg_ticket || 0),
+      });
+    } catch (e) {
+      console.warn('Erro ao carregar estatísticas do período anterior:', e);
+      setPrevGlobalStats(null);
+    }
+  };
+
   const loadDailySeries = async () => {
     try {
       const range = computeGlobalRange();
       if (!range) {
         setDailySeries([]);
         setGlobalStats(null);
+        setPrevGlobalStats(null);
         return;
       }
+
+      loadPreviousPeriodStats(range);
 
       console.log('📊 [Relatorios] Chamando admin_global_report para o range:', range);
       
@@ -1597,6 +1645,14 @@ const Relatorios = () => {
   const totalOrdersAll = stats?.total_orders ?? 0;
   const conversionRate = totalOrdersAll > 0 ? (stats!.paid_orders / totalOrdersAll) * 100 : 0;
 
+  // Variação percentual vs período anterior (mesma duração), pros cards de KPI.
+  const calcTrend = (current: number, previous: number | undefined): { pct: number; up: boolean } | null => {
+    if (previous === undefined || previous === null) return null;
+    if (previous === 0) return current > 0 ? { pct: 100, up: true } : null;
+    const pct = ((current - previous) / previous) * 100;
+    return { pct: Math.abs(pct), up: pct >= 0 };
+  };
+
   const topProdChartData = [...topProducts]
     .sort((a, b) => (prodSort === 'qty' ? b.total_sold - a.total_sold : b.total_revenue - a.total_revenue))
     .slice(0, 8)
@@ -1704,18 +1760,25 @@ const Relatorios = () => {
       {/* ================= KPI CARDS ================= */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {[
-          { label: 'Receita Paga', value: formatCurrency(stats?.paid_sales ?? 0), sub: `${stats?.paid_orders ?? 0} pedidos`, color: 'bg-emerald-500', icon: DollarSign },
-          { label: 'Valor Vendido', value: formatCurrency(stats?.total_sales ?? 0), sub: `Pendente: ${formatCurrency(stats?.unpaid_sales ?? 0)}`, color: 'bg-cyan-500', icon: Wallet },
-          { label: 'Pedidos', value: formatNumber(stats?.total_orders ?? 0), sub: `${stats?.paid_orders ?? 0} pagos · ${stats?.unpaid_orders ?? 0} pendentes`, color: 'bg-blue-500', icon: ShoppingBag },
-          { label: 'Produtos Vendidos', value: formatNumber(stats?.total_products ?? 0), sub: `${formatNumber(stats?.paid_products ?? 0)} pagos`, color: 'bg-violet-500', icon: Package },
-          { label: 'Ticket Médio', value: formatCurrency(stats?.avg_ticket ?? 0), sub: `Pago: ${formatCurrency(stats?.paid_avg_ticket ?? 0)}`, color: 'bg-orange-500', icon: TrendingUp },
+          { label: 'Receita Paga', value: formatCurrency(stats?.paid_sales ?? 0), sub: `${stats?.paid_orders ?? 0} pedidos`, color: 'bg-emerald-500', icon: DollarSign, trend: calcTrend(stats?.paid_sales ?? 0, prevGlobalStats?.paid_sales) },
+          { label: 'Valor Vendido', value: formatCurrency(stats?.total_sales ?? 0), sub: `Pendente: ${formatCurrency(stats?.unpaid_sales ?? 0)}`, color: 'bg-cyan-500', icon: Wallet, trend: calcTrend(stats?.total_sales ?? 0, prevGlobalStats?.total_sales) },
+          { label: 'Pedidos', value: formatNumber(stats?.total_orders ?? 0), sub: `${stats?.paid_orders ?? 0} pagos · ${stats?.unpaid_orders ?? 0} pendentes`, color: 'bg-blue-500', icon: ShoppingBag, trend: calcTrend(stats?.total_orders ?? 0, prevGlobalStats?.total_orders) },
+          { label: 'Produtos Vendidos', value: formatNumber(stats?.total_products ?? 0), sub: `${formatNumber(stats?.paid_products ?? 0)} pagos`, color: 'bg-violet-500', icon: Package, trend: calcTrend(stats?.total_products ?? 0, prevGlobalStats?.total_products) },
+          { label: 'Ticket Médio', value: formatCurrency(stats?.avg_ticket ?? 0), sub: `Pago: ${formatCurrency(stats?.paid_avg_ticket ?? 0)}`, color: 'bg-orange-500', icon: TrendingUp, trend: calcTrend(stats?.avg_ticket ?? 0, prevGlobalStats?.avg_ticket) },
         ].map((kpi, i) => {
           const Icon = kpi.icon;
           return (
             <div key={i} className="relative bg-card border border-border/60 rounded-2xl p-5 overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all">
               <div className={`absolute left-0 top-0 h-full w-1 ${kpi.color}`} />
               <Icon className="absolute top-4 right-4 h-7 w-7 text-foreground/5" />
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">{kpi.label}</div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{kpi.label}</div>
+                {kpi.trend && (
+                  <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold px-1.5 py-0.5 rounded-full ${kpi.trend.up ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600'}`}>
+                    {kpi.trend.up ? '↑' : '↓'} {kpi.trend.pct.toFixed(0)}%
+                  </span>
+                )}
+              </div>
               <div className="text-2xl font-bold text-foreground leading-none mb-1.5" style={{ fontFamily: "'Space Grotesk', Inter, sans-serif" }}>{kpi.value}</div>
               <div className="text-xs text-muted-foreground">{kpi.sub}</div>
             </div>
@@ -1741,15 +1804,21 @@ const Relatorios = () => {
             <div className="h-full flex items-center justify-center text-xs text-muted-foreground">Sem dados no período selecionado</div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={lineSeries} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+              <ComposedChart data={lineSeries} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="totalGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(142, 71%, 45%)" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="hsl(142, 71%, 45%)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                 <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
                 <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(v: number) => metricMode === 'value' ? formatCompactCurrency(v) : formatNumber(v)} />
                 <Tooltip formatter={(v: any) => metricMode === 'value' ? formatCurrency(Number(v)) : formatNumber(Number(v))} contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', fontSize: 12 }} />
+                <Area type="monotone" dataKey="Total" stroke="hsl(142, 71%, 45%)" strokeWidth={2} fill="url(#totalGradient)" dot={false} activeDot={{ r: 4 }} />
                 {metricMode === 'value' && <Line type="monotone" dataKey="Pagas" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={false} />}
                 {metricMode === 'value' && <Line type="monotone" dataKey="Pendentes" stroke="hsl(24, 95%, 53%)" strokeWidth={2} dot={false} />}
-                <Line type="monotone" dataKey="Total" stroke="hsl(142, 71%, 45%)" strokeWidth={2} dot={false} />
-              </LineChart>
+              </ComposedChart>
             </ResponsiveContainer>
           )}
         </div>
