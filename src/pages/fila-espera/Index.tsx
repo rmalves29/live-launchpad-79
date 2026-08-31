@@ -9,8 +9,10 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { StatCard } from '@/components/ui/stat-card';
+import { KanbanBoard, KanbanCard } from '@/components/ui/kanban-board';
 import { toast } from '@/hooks/use-toast';
-import { Clock, ListOrdered, RefreshCw, Trash2, Send, ExternalLink, Users, Timer } from 'lucide-react';
+import { Clock, ListOrdered, RefreshCw, Trash2, Send, ExternalLink, Users, Timer, LayoutGrid, TableIcon } from 'lucide-react';
 
 type WaitlistRow = {
   id: number;
@@ -58,6 +60,7 @@ export default function FilaEsperaPage() {
   const [autoCancelUnit, setAutoCancelUnit] = useState<'hours' | 'minutes'>('hours');
   const [savingAutoCancel, setSavingAutoCancel] = useState(false);
   const [runningAutoCancel, setRunningAutoCancel] = useState(false);
+  const [view, setView] = useState<'table' | 'kanban'>('table');
 
   async function loadEnabled() {
     if (!tenant?.id) return;
@@ -330,9 +333,9 @@ export default function FilaEsperaPage() {
 
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <Card className="p-4 flex items-center gap-3"><Users className="h-8 w-8 text-blue-500"/><div><div className="text-2xl font-bold">{stats.waiting}</div><div className="text-xs text-muted-foreground">Aguardando</div></div></Card>
-        <Card className="p-4 flex items-center gap-3"><Clock className="h-8 w-8 text-amber-500"/><div><div className="text-2xl font-bold">{stats.notified}</div><div className="text-xs text-muted-foreground">Notificadas (reserva ativa)</div></div></Card>
-        <Card className="p-4 flex items-center gap-3"><ListOrdered className="h-8 w-8 text-green-500"/><div><div className="text-2xl font-bold">{stats.converted}</div><div className="text-xs text-muted-foreground">Convertidas em pedido pago</div></div></Card>
+        <StatCard label="Aguardando" value={stats.waiting} icon={Users} color="blue" />
+        <StatCard label="Notificadas (reserva ativa)" value={stats.notified} icon={Clock} color="amber" />
+        <StatCard label="Convertidas em pedido pago" value={stats.converted} icon={ListOrdered} color="green" />
       </div>
 
       <Card className="p-3 flex flex-wrap gap-2 items-center">
@@ -353,8 +356,63 @@ export default function FilaEsperaPage() {
             <SelectItem value="manual">Manual</SelectItem>
           </SelectContent>
         </Select>
+        <div className="ml-auto flex items-center gap-1 rounded-md border p-0.5">
+          <Button size="sm" variant={view === 'table' ? 'default' : 'ghost'} className="h-7 px-2" onClick={() => setView('table')}>
+            <TableIcon className="h-3.5 w-3.5 mr-1" /> Tabela
+          </Button>
+          <Button size="sm" variant={view === 'kanban' ? 'default' : 'ghost'} className="h-7 px-2" onClick={() => setView('kanban')}>
+            <LayoutGrid className="h-3.5 w-3.5 mr-1" /> Kanban
+          </Button>
+        </div>
       </Card>
 
+      {view === 'kanban' && (
+        <KanbanBoard
+          columns={(['waiting', 'notified', 'converted', 'expired', 'cancelled'] as const).map((status) => ({
+            id: status,
+            title: STATUS_LABEL[status],
+            colorClass: STATUS_COLORS[status],
+            items: filtered
+              .filter((r) => r.status === status)
+              .map((r) => (
+                <KanbanCard key={r.id}>
+                  <div className="flex items-start gap-2">
+                    {r.product?.image_url && (
+                      <img src={r.product.image_url} alt="" className="h-9 w-9 shrink-0 rounded object-cover" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate">{r.product?.name || `#${r.product_id}`}</div>
+                      <div className="text-xs text-muted-foreground">cód. {r.product?.code} · qtd {r.qty}</div>
+                      <div className="mt-1 truncate text-xs">{r.customer_name || r.customer_phone}</div>
+                      <div className="mt-1 text-[11px] text-muted-foreground">
+                        {new Date(r.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                      {r.order_id && (
+                        <a className="mt-1 inline-flex items-center gap-1 text-xs text-blue-600" href={`/pedidos?id=${r.order_id}`} target="_blank" rel="noreferrer">
+                          #{r.order_id} <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                      <div className="mt-2 flex gap-1">
+                        {r.status === 'waiting' && (r.product?.stock ?? 0) > 0 && (
+                          <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => processNow(r.product_id)}>
+                            <Send className="h-3 w-3 mr-1" /> Processar
+                          </Button>
+                        )}
+                        {(r.status === 'waiting' || r.status === 'notified') && (
+                          <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => remove(r.id)}>
+                            <Trash2 className="h-3 w-3 text-red-500" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </KanbanCard>
+              )),
+          }))}
+        />
+      )}
+
+      {view === 'table' && (
       <Card className="overflow-hidden">
         <Table>
           <TableHeader>
@@ -411,6 +469,7 @@ export default function FilaEsperaPage() {
           </TableBody>
         </Table>
       </Card>
+      )}
     </div>
   );
 }
