@@ -130,6 +130,10 @@ serve(async (req) => {
       if (trackingCode && trackingCode !== order.melhor_envio_tracking_code) {
         updates.melhor_envio_tracking_code = String(trackingCode);
       }
+      // Marcar como postado apenas quando o evento indicar postagem/trânsito/entrega
+      if (/postad|posted|shipped|embarcad|trânsito|transit|delivered|entregue|saiu/i.test(String(status || ""))) {
+        updates.tracking_posted = true;
+      }
       if (shipmentId && (!order.melhor_envio_shipment_id || order.melhor_envio_shipment_id.startsWith("frenet_manual_"))) {
         updates.melhor_envio_shipment_id = `frenet_${shipmentId}`;
       }

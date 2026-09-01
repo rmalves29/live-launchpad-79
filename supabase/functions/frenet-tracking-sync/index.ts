@@ -43,11 +43,13 @@ serve(async (req) => {
           updated++;
           // Se algum evento indica entrega, marca order_status=entregue
           const events = data.tracking?.events || [];
-          const delivered = events.some((e: any) =>
-            String(e?.EventDescription || e?.description || "").toLowerCase().includes("entregue"),
-          );
+          const haystack = JSON.stringify(events).toLowerCase();
+          const delivered = /entregue|delivered/.test(haystack);
+          const posted = /postad|posted|shipped|embarcad|trânsito|transit|entregue|delivered|saiu/.test(haystack);
           if (delivered) {
-            await supabase.from("orders").update({ order_status: "entregue" }).eq("id", order.id);
+            await supabase.from("orders").update({ order_status: "entregue", tracking_posted: true }).eq("id", order.id);
+          } else if (posted) {
+            await supabase.from("orders").update({ tracking_posted: true }).eq("id", order.id);
           }
         }
         results.push({ order_id: order.id, ok: !!data?.success });
