@@ -1905,35 +1905,21 @@ serve(async (req) => {
               if (trackingCode && trackingCode !== order.melhor_envio_tracking_code) {
                 console.log(`[bling-sync-orders] Found tracking for order ${order.id}: ${trackingCode}`);
                 
+                // Só marca como postado quando o pedido está "Atendido" (9) no Bling
+                const situacaoId = Number(blingOrder?.data?.situacao?.id ?? 0);
                 const { error: updateError } = await supabase
                   .from('orders')
-                  .update({ melhor_envio_tracking_code: trackingCode })
+                  .update({
+                    melhor_envio_tracking_code: trackingCode,
+                    ...(situacaoId === 9 ? { tracking_posted: true } : {}),
+                  })
                   .eq('id', order.id);
                 
                 if (!updateError) {
                   syncedCount++;
-                  
-                  // Enviar WhatsApp apenas se não tinha tracking antes
-                  if (!order.melhor_envio_tracking_code) {
-                    try {
-                      await fetch(`${supabaseUrl}/functions/v1/zapi-send-tracking`, {
-                        method: 'POST',
-                        headers: {
-                          'Content-Type': 'application/json',
-                          'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
-                        },
-                        body: JSON.stringify({
-                          order_id: order.id,
-                          tenant_id: order.tenant_id,
-                          tracking_code: trackingCode,
-                          shipped_at: new Date().toISOString(),
-                        }),
-                      });
-                      console.log(`[bling-sync-orders] WhatsApp tracking sent for order ${order.id}`);
-                    } catch (whatsappError) {
-                      console.log(`[bling-sync-orders] WhatsApp failed for order ${order.id}:`, whatsappError);
-                    }
-                  }
+                  // WhatsApp é enviado automaticamente pelo trigger trg_send_tracking_whatsapp
+                  // somente quando o pedido estiver postado (tracking_posted = true)
+                  console.log(`[bling-sync-orders] Tracking salvo para pedido ${order.id} (WhatsApp via trigger quando postado)`);
                 }
               }
             } catch (orderError: any) {
@@ -2653,9 +2639,14 @@ serve(async (req) => {
               console.log(`[bling-sync-orders] Found tracking code for order ${order.id}: ${trackingCode} (previous: ${existingTracking || 'none'})`);
               
               // Atualizar pedido local com código do Bling (fonte verdadeira para Correios)
+              // Só marca como postado quando o pedido está "Atendido" (9) no Bling
+              const situacaoId = Number(blingOrder?.data?.situacao?.id ?? 0);
               const { error: updateError } = await supabase
                 .from('orders')
-                .update({ melhor_envio_tracking_code: trackingCode })
+                .update({
+                  melhor_envio_tracking_code: trackingCode,
+                  ...(situacaoId === 9 ? { tracking_posted: true } : {}),
+                })
                 .eq('id', order.id);
               
               if (updateError) {
@@ -2677,29 +2668,9 @@ serve(async (req) => {
                   status: existingTracking ? 'updated' : 'new'
                 });
                 
-                // Enviar WhatsApp APENAS se não tinha código antes
-                // (evita enviar novamente se apenas atualizou o código)
-                if (!existingTracking) {
-                  try {
-                    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-                    await fetch(`${supabaseUrl}/functions/v1/zapi-send-tracking`, {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
-                      },
-                      body: JSON.stringify({
-                        order_id: order.id,
-                        tenant_id: order.tenant_id,
-                        tracking_code: trackingCode,
-                        shipped_at: new Date().toISOString(),
-                      }),
-                    });
-                    console.log(`[bling-sync-orders] WhatsApp tracking notification sent for order ${order.id}`);
-                  } catch (whatsappError) {
-                    console.log(`[bling-sync-orders] WhatsApp notification failed for order ${order.id}:`, whatsappError);
-                  }
-                }
+                // WhatsApp é enviado automaticamente pelo trigger trg_send_tracking_whatsapp
+                // somente quando o pedido estiver postado (tracking_posted = true)
+                console.log(`[bling-sync-orders] Tracking salvo para pedido ${order.id} (WhatsApp via trigger quando postado)`);
               }
             } else {
               trackingResults.push({ 
