@@ -758,12 +758,19 @@ async function getShipmentStatus(
   
   // Verificar se tem tracking e atualizar pedido
   const shipmentData = data[shipmentId];
+  const updates: Record<string, unknown> = {};
   if (shipmentData?.tracking) {
     console.log("[melhor-envio-labels] Tracking encontrado:", shipmentData.tracking);
-    
+    updates.melhor_envio_tracking_code = shipmentData.tracking;
+  }
+  // Marcar como postado apenas quando a transportadora confirmou a postagem
+  if (["posted", "delivered", "undelivered"].includes(String(shipmentData?.status || "").toLowerCase())) {
+    updates.tracking_posted = true;
+  }
+  if (Object.keys(updates).length > 0) {
     await supabase
       .from("orders")
-      .update({ melhor_envio_tracking_code: shipmentData.tracking })
+      .update(updates)
       .eq("id", order.id);
   }
 

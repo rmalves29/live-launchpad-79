@@ -182,9 +182,14 @@ serve(async (req: Request) => {
           return;
         }
 
+        // Só marca como postado quando o pedido está "Atendido" (9) no Bling
+        const situacaoId = Number(blingOrder?.data?.situacao?.id ?? blingOrder?.data?.situacao?.valor?.id ?? 0);
         const { error: updateError } = await supabase
           .from("orders")
-          .update({ melhor_envio_tracking_code: trackingCode })
+          .update({
+            melhor_envio_tracking_code: trackingCode,
+            ...(situacaoId === 9 ? { tracking_posted: true } : {}),
+          })
           .eq("id", order.id)
           .eq("tenant_id", order.tenant_id);
 

@@ -315,6 +315,9 @@ serve(async (req) => {
           }
         }
 
+        // Marcar como postado apenas quando o pedido está "Atendido" (9) no Bling
+        if (Number(situacaoId) === 9) updates.tracking_posted = true;
+
         // Apply updates
         if (Object.keys(updates).length > 0) {
           const { error: updateError } = await supabase
