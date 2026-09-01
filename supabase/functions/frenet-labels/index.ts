@@ -302,8 +302,17 @@ async function getTracking(supabase: any, integration: any, order: any, token: s
 
   // Atualizar tracking code se retornou algo diferente
   const newTracking = data.TrackingNumber || tracking;
+  const upd: Record<string, unknown> = {};
   if (newTracking && newTracking !== order.melhor_envio_tracking_code) {
-    await supabase.from("orders").update({ melhor_envio_tracking_code: newTracking }).eq("id", order.id);
+    upd.melhor_envio_tracking_code = newTracking;
+  }
+  // Marcar como postado apenas quando houver evento de postagem/trânsito/entrega
+  const hasPostedEvent = events.some((e: any) =>
+    /postad|posted|shipped|embarcad|trânsito|transit|delivered|entregue|saiu/i.test(JSON.stringify(e))
+  );
+  if (hasPostedEvent) upd.tracking_posted = true;
+  if (Object.keys(upd).length > 0) {
+    await supabase.from("orders").update(upd).eq("id", order.id);
   }
 
   return json({ success: true, tracking: { code: newTracking, events, raw: data } }, 200);

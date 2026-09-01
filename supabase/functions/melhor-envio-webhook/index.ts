@@ -113,7 +113,12 @@ serve(async (req) => {
     
     if (data.tracking && data.tracking !== order.melhor_envio_tracking_code) {
       updates.melhor_envio_tracking_code = data.tracking;
-      console.log(`[melhor-envio-webhook] Atualizando tracking code: ${data.tracking}`);
+      updates.melhor_envio_shipment_id = data.id;
+    }
+
+    // Marcar como postado apenas quando a transportadora confirmou a postagem
+    if (["posted", "delivered", "undelivered"].includes(String(data.status || "").toLowerCase())) {
+      updates.tracking_posted = true;
     }
 
     // Atualizar pedido se houver mudanças

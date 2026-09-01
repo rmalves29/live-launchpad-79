@@ -634,7 +634,11 @@ async function recreatePrepostagemFromOrder(
 
   // Salva o NOVO id no pedido
   const updateData: Record<string, unknown> = { melhor_envio_shipment_id: String(idPrePostagem) };
-  if (codigoObjeto) updateData.melhor_envio_tracking_code = String(codigoObjeto);
+  if (codigoObjeto) {
+    updateData.melhor_envio_tracking_code = String(codigoObjeto);
+    // Correios CWS não informa evento de postagem: mantém comportamento imediato
+    updateData.tracking_posted = true;
+  }
   const { error: upErr } = await supabase.from("orders").update(updateData).eq("id", orderId);
   if (upErr) log(`⚠️ Erro ao salvar novo idPrePostagem no pedido ${orderId}: ${upErr.message}`);
   else log(`✅ Pedido ${orderId} atualizado com novo idPrePostagem: ${idPrePostagem}`);
@@ -979,7 +983,11 @@ async function actionCreatePrepostagem(
     const updateData: Record<string, unknown> = {
       melhor_envio_shipment_id: String(idPrePostagem),
     };
-    if (codigoObjeto) updateData.melhor_envio_tracking_code = String(codigoObjeto);
+    if (codigoObjeto) {
+      updateData.melhor_envio_tracking_code = String(codigoObjeto);
+      // Correios CWS não informa evento de postagem: mantém comportamento imediato
+      updateData.tracking_posted = true;
+    }
 
     const { error: upErr } = await supabase
       .from("orders")

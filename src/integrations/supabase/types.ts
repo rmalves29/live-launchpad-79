@@ -2798,6 +2798,7 @@ export type Database = {
           source: string | null
           tenant_id: string
           total_amount: number
+          tracking_posted: boolean
           tracking_updated_at: string | null
           unique_order_id: string | null
           whatsapp_group_name: string | null
@@ -2847,6 +2848,7 @@ export type Database = {
           source?: string | null
           tenant_id: string
           total_amount: number
+          tracking_posted?: boolean
           tracking_updated_at?: string | null
           unique_order_id?: string | null
           whatsapp_group_name?: string | null
@@ -2896,6 +2898,7 @@ export type Database = {
           source?: string | null
           tenant_id?: string
           total_amount?: number
+          tracking_posted?: boolean
           tracking_updated_at?: string | null
           unique_order_id?: string | null
           whatsapp_group_name?: string | null

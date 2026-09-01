@@ -359,10 +359,19 @@ async function getStatus(
   }
 
   const data = JSON.parse(text);
+  const updates: Record<string, unknown> = {};
   if (data.tracking && data.tracking !== order.melhor_envio_tracking_code) {
+    updates.melhor_envio_tracking_code = data.tracking;
+  }
+  // Marcar como postado apenas quando o status indicar postagem/entrega
+  const status = String(data.status || "").toLowerCase();
+  if (["posted", "delivered", "undelivered"].includes(status) || /postad|entregue/i.test(status)) {
+    updates.tracking_posted = true;
+  }
+  if (Object.keys(updates).length > 0) {
     await supabase
       .from("orders")
-      .update({ melhor_envio_tracking_code: data.tracking })
+      .update(updates)
       .eq("id", order.id);
   }
 

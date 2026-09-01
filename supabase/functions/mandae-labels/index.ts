@@ -425,10 +425,19 @@ async function getTracking(supabase: any, integration: any, order: any, baseUrl:
   const result = JSON.parse(responseText);
 
   // Atualizar tracking code se disponível
+  const updates: Record<string, unknown> = {};
   if (result.trackingCode && result.trackingCode !== order.melhor_envio_tracking_code) {
+    updates.melhor_envio_tracking_code = result.trackingCode;
+  }
+  // Marcar como postado apenas quando houver evento de postagem/trânsito/entrega
+  const haystack = JSON.stringify(result).toLowerCase();
+  if (/postad|posted|shipped|embarcad|in_transit|delivered|entregue|coletado/.test(haystack)) {
+    updates.tracking_posted = true;
+  }
+  if (Object.keys(updates).length > 0) {
     await supabase
       .from("orders")
-      .update({ melhor_envio_tracking_code: result.trackingCode })
+      .update(updates)
       .eq("id", order.id);
   }
 
