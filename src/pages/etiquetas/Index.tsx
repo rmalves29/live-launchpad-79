@@ -928,11 +928,7 @@ const Etiquetas = () => {
     loadPaidOrders();
     
     if (updated > 0) {
-      let message = `${updated} pedido(s) atualizado(s) com código de rastreio!`;
-      if (messagesSent > 0) {
-        message += ` ${messagesSent} mensagem(ns) de WhatsApp enviada(s).`;
-      }
-      toast.success(message);
+      toast.success(`${updated} pedido(s) atualizado(s). A mensagem só será enviada após a confirmação da postagem.`);
     } else if (errors > 0) {
       toast.error(`${errors} erro(s) ao sincronizar. Verifique os logs.`);
     } else {
