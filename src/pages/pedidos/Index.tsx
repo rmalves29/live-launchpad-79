@@ -185,52 +185,69 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
       try {
         setLoading(true);
         
-        // 1. Buscar pedidos com filtros aplicados (query otimizada)
-        let query = supabaseTenant
-          .from('orders')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(500); // Limitar para performance
+        // 1. Buscar pedidos com filtros aplicados (paginado — sem limite fixo que
+        //    corta os resultados e distorce as somas/contagens exibidas na tela)
+        const buildOrdersQuery = () => {
+          let query = supabaseTenant
+            .from('orders')
+            .select('*')
+            .order('created_at', { ascending: false });
 
-        if (filterPaid === 'paid') {
-          query = query.eq('is_paid', true).eq('is_cancelled', false).is('order_status', null);
-        } else if (filterPaid === 'unpaid') {
-          query = query.eq('is_paid', false).eq('is_cancelled', false);
-        } else if (filterPaid === 'cancelled') {
-          query = query.eq('is_cancelled', true);
-        } else if (filterPaid === 'em_separacao') {
-          query = query.eq('is_cancelled', false).eq('order_status', 'em_separacao');
-        } else if (filterPaid === 'envio_pendente') {
-          query = query.eq('is_cancelled', false).eq('order_status', 'envio_pendente');
-        } else if (filterPaid === 'enviado') {
-          query = query.eq('is_cancelled', false).eq('order_status', 'enviado');
-        } else if (filterPaid === 'liberado_retirada') {
-          query = query.eq('is_cancelled', false).eq('order_status', 'liberado_retirada');
-        }
-
-        if (filterEventType && filterEventType !== 'all') {
-          query = query.eq('event_type', filterEventType);
-        }
-
-        if (filterDate?.from) {
-          const fromStr = format(filterDate.from, 'yyyy-MM-dd');
-          if (filterDate.to) {
-            const toStr = format(filterDate.to, 'yyyy-MM-dd');
-            query = query.gte('event_date', fromStr).lte('event_date', toStr);
-          } else {
-            query = query.eq('event_date', fromStr);
+          if (filterPaid === 'paid') {
+            // "Pagos" = todo pedido pago e não cancelado, independente da etapa
+            // de logística (order_status). Antes exigia order_status vazio, o
+            // que fazia pedidos pagos "sumirem" do filtro assim que avançavam
+            // para Em Separação/Enviado/etc.
+            query = query.eq('is_paid', true).eq('is_cancelled', false);
+          } else if (filterPaid === 'unpaid') {
+            query = query.eq('is_paid', false).eq('is_cancelled', false);
+          } else if (filterPaid === 'cancelled') {
+            query = query.eq('is_cancelled', true);
+          } else if (filterPaid === 'em_separacao') {
+            query = query.eq('is_paid', true).eq('is_cancelled', false).eq('order_status', 'em_separacao');
+          } else if (filterPaid === 'envio_pendente') {
+            query = query.eq('is_paid', true).eq('is_cancelled', false).eq('order_status', 'envio_pendente');
+          } else if (filterPaid === 'enviado') {
+            query = query.eq('is_paid', true).eq('is_cancelled', false).eq('order_status', 'enviado');
+          } else if (filterPaid === 'liberado_retirada') {
+            query = query.eq('is_paid', true).eq('is_cancelled', false).eq('order_status', 'liberado_retirada');
           }
+
+          if (filterEventType && filterEventType !== 'all') {
+            query = query.eq('event_type', filterEventType);
+          }
+
+          if (filterDate?.from) {
+            const fromStr = format(filterDate.from, 'yyyy-MM-dd');
+            if (filterDate.to) {
+              const toStr = format(filterDate.to, 'yyyy-MM-dd');
+              query = query.gte('event_date', fromStr).lte('event_date', toStr);
+            } else {
+              query = query.eq('event_date', fromStr);
+            }
+          }
+
+          if (filterPrinted === 'not_printed') {
+            query = query.or('printed.is.null,printed.eq.false');
+          } else if (filterPrinted === 'printed') {
+            query = query.eq('printed', true);
+          }
+
+          return query;
+        };
+
+        const ORDERS_PAGE_SIZE = 1000;
+        const ORDERS_HARD_CAP = 50000; // segurança contra loop infinito
+        let orderData: any[] = [];
+        let offset = 0;
+        while (offset < ORDERS_HARD_CAP) {
+          const { data: page, error: pageError } = await buildOrdersQuery().range(offset, offset + ORDERS_PAGE_SIZE - 1);
+          if (pageError) throw pageError;
+          if (!page || page.length === 0) break;
+          orderData = orderData.concat(page);
+          if (page.length < ORDERS_PAGE_SIZE) break;
+          offset += ORDERS_PAGE_SIZE;
         }
-
-        if (filterPrinted === 'not_printed') {
-          query = query.or('printed.is.null,printed.eq.false');
-        } else if (filterPrinted === 'printed') {
-          query = query.eq('printed', true);
-        }
-
-        const { data: orderData, error: orderError } = await query;
-
-        if (orderError) throw orderError;
         
         if (!orderData || orderData.length === 0) {
           setOrders([]);
