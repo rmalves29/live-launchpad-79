@@ -39,13 +39,36 @@ serve(async (req: Request) => {
 
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id, customer_phone, customer_name, total_amount, unique_order_id")
+      .select("id, tenant_id, customer_phone, customer_name, total_amount, unique_order_id, melhor_envio_tracking_code, tracking_posted, shipped_at")
       .eq("id", order_id)
+      .eq("tenant_id", tenant_id)
       .single();
 
     if (orderError || !order) {
       return new Response(JSON.stringify({ success: false, error: "Pedido não encontrado" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Regra central e obrigatória para qualquer integração atual ou futura:
+    // receber/gravar o código não significa que a encomenda foi postada.
+    // A mensagem só pode sair depois de a integração confirmar tracking_posted.
+    const storedTrackingCode = String(order.melhor_envio_tracking_code || "").trim();
+    if (order.tracking_posted !== true) {
+      console.log("[TRACKING] Envio bloqueado: postagem ainda não confirmada", { order_id, tenant_id });
+      return new Response(JSON.stringify({
+        success: false,
+        blocked: true,
+        error: "Mensagem bloqueada: a integração ainda não confirmou a postagem",
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    if (!storedTrackingCode || storedTrackingCode !== String(tracking_code).trim()) {
+      console.log("[TRACKING] Envio bloqueado: código não confere com o pedido", { order_id, tenant_id });
+      return new Response(JSON.stringify({
+        success: false,
+        blocked: true,
+        error: "Mensagem bloqueada: código de rastreio divergente",
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const { data: integration } = await supabase
@@ -85,7 +108,10 @@ serve(async (req: Request) => {
     const defaultTemplate = "Seu pedido *#{{order_id}}* foi enviado!\n\nCódigo de Rastreio: *{{tracking_code}}*\nData de Envio: {{shipped_at}}\n\nRastreie em: https://www.melhorrastreio.com.br/rastreio/{{tracking_code}}";
     let messageContent = template?.content || defaultTemplate;
 
-    const shippedDate = shipped_at ? new Date(shipped_at).toLocaleDateString("pt-BR") : new Date().toLocaleDateString("pt-BR");
+    const confirmedShippedAt = order.shipped_at || shipped_at;
+    const shippedDate = confirmedShippedAt
+      ? new Date(confirmedShippedAt).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })
+      : new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
     const customerName = order.customer_name ? ", " + order.customer_name : "";
     messageContent = messageContent
       .replace(/\{\{customer_name\}\}/g, customerName)
