@@ -118,43 +118,6 @@ async function fetchBlingOrderTracking(
   }
 }
 
-/**
- * Trigger WhatsApp tracking notification
- */
-async function sendTrackingWhatsApp(
-  orderId: number,
-  tenantId: string,
-  trackingCode: string
-): Promise<void> {
-  try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    
-    const res = await fetch(`${supabaseUrl}/functions/v1/zapi-send-tracking`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${anonKey}`,
-      },
-      body: JSON.stringify({
-        order_id: orderId,
-        tenant_id: tenantId,
-        tracking_code: trackingCode,
-        shipped_at: new Date().toISOString(),
-      }),
-    });
-
-    if (res.ok) {
-      console.log(`[bling-webhook] ✅ WhatsApp tracking sent for order ${orderId}`);
-    } else {
-      const errText = await res.text();
-      console.error(`[bling-webhook] ❌ WhatsApp tracking failed for order ${orderId}: ${errText}`);
-    }
-  } catch (e) {
-    console.error(`[bling-webhook] ❌ WhatsApp tracking error for order ${orderId}:`, e);
-  }
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

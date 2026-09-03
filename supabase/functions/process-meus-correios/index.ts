@@ -345,8 +345,8 @@ serve(async (req: Request) => {
         await supabase.from("orders").update({
           melhor_envio_tracking_code: trackingCode,
           tracking_updated_at: new Date().toISOString(),
-          // MeusCorreios não informa evento de postagem: mantém comportamento imediato
-          tracking_posted: true,
+          // Gerar a etiqueta não comprova postagem na transportadora.
+          tracking_posted: false,
         }).eq("id", order.id).eq("tenant_id", tenant_id);
 
         const resultEntry: any = {

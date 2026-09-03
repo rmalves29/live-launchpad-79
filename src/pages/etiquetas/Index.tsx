@@ -782,34 +782,6 @@ const Etiquetas = () => {
     }
   };
 
-  // Enviar mensagem de rastreio via WhatsApp
-  const sendTrackingMessage = async (orderId: number, trackingCode: string) => {
-    try {
-      const { data, error } = await supabaseTenant.functions.invoke('zapi-send-tracking', {
-        body: {
-          order_id: orderId,
-          tenant_id: supabaseTenant.getTenantId(),
-          tracking_code: trackingCode,
-          shipped_at: new Date().toISOString()
-        }
-      });
-
-      if (error) {
-        console.error('❌ Erro ao enviar mensagem de rastreio:', error);
-        return false;
-      }
-
-      if (data?.success) {
-        console.log('✅ Mensagem de rastreio enviada para pedido', orderId);
-        return true;
-      }
-      return false;
-    } catch (e) {
-      console.error('❌ Erro ao enviar mensagem de rastreio:', e);
-      return false;
-    }
-  };
-
   // Iniciar edição do código de rastreio
   const startEditingTracking = (orderId: number, currentCode: string) => {
     setEditingTrackingOrderId(orderId);
@@ -897,14 +869,9 @@ const Etiquetas = () => {
 
       if (error) throw error;
 
-      // Enviar mensagem de rastreio via WhatsApp
-      const messageSent = await sendTrackingMessage(orderId, trackingCode);
-      
-      if (messageSent) {
-        toast.success('Código de rastreio salvo e mensagem enviada ao cliente!');
-      } else {
-        toast.success('Código de rastreio salvo! (Erro ao enviar WhatsApp)');
-      }
+      // Salvar o código não confirma postagem. A mensagem será disparada
+      // automaticamente somente quando a integração confirmar o envio.
+      toast.success('Código de rastreio salvo! A mensagem será enviada após a confirmação da postagem.');
       
       setEditingTrackingOrderId(null);
       setEditingTrackingCode('');
@@ -934,7 +901,6 @@ const Etiquetas = () => {
     setSyncingAll(true);
     let updated = 0;
     let errors = 0;
-    let messagesSent = 0;
 
     for (const order of ordersWithShipment) {
       try {
@@ -948,12 +914,6 @@ const Etiquetas = () => {
 
         if (!error && data?.success && data?.tracking) {
           updated++;
-          
-          // Enviar mensagem de rastreio via WhatsApp
-          const sent = await sendTrackingMessage(order.id, data.tracking);
-          if (sent) {
-            messagesSent++;
-          }
         }
       } catch (e) {
         errors++;
@@ -968,11 +928,7 @@ const Etiquetas = () => {
     loadPaidOrders();
     
     if (updated > 0) {
-      let message = `${updated} pedido(s) atualizado(s) com código de rastreio!`;
-      if (messagesSent > 0) {
-        message += ` ${messagesSent} mensagem(ns) de WhatsApp enviada(s).`;
-      }
-      toast.success(message);
+      toast.success(`${updated} pedido(s) atualizado(s). A mensagem só será enviada após a confirmação da postagem.`);
     } else if (errors > 0) {
       toast.error(`${errors} erro(s) ao sincronizar. Verifique os logs.`);
     } else {
