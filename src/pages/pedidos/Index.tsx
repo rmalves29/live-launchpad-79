@@ -925,9 +925,19 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
         for (const orderId of selectedOrders) {
           const order = orders.find(o => o.id === orderId);
           if (order?.cart_id) {
+            // Confirma is_paid/is_cancelled direto no banco (não confia no estado local
+            // `orders`, que pode estar desatualizado se o pedido acabou de ser cancelado
+            // segundos antes — cancelar e excluir em sequência rápida duplicava a
+            // devolução de estoque porque a tela ainda não tinha refletido o cancelamento).
+            const { data: freshOrder } = await supabaseTenant
+              .from('orders')
+              .select('is_paid, is_cancelled')
+              .eq('id', orderId)
+              .maybeSingle();
+
             // Restaurar estoque apenas se o pedido não foi PAGO e não foi CANCELADO
             // (pedidos cancelados já tiveram o estoque devolvido no momento do cancelamento)
-            if (!order.is_paid && !order.is_cancelled) {
+            if (freshOrder && !freshOrder.is_paid && !freshOrder.is_cancelled) {
               const { data: cartItems } = await supabaseTenant
                 .from('cart_items')
                 .select('product_id, qty')
