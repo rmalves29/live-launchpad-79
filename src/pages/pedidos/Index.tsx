@@ -684,36 +684,14 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
       setProcessingIds(prev => new Set(prev).add(orderId));
       
       try {
-        // Se estamos CANCELANDO o pedido, devolver o estoque
+        // Se estamos CANCELANDO o pedido, devolver o estoque via função atômica
+        // no banco (restore_order_stock) — trava a linha do pedido e só devolve
+        // se ainda não tiver devolvido, eliminando qualquer condição de corrida
+        // com uma exclusão feita logo em seguida.
         if (!currentStatus && order?.cart_id) {
-          // Buscar itens do carrinho
-          const { data: cartItems, error: cartError } = await supabaseTenant
-            .from('cart_items')
-            .select('product_id, qty')
-            .eq('cart_id', order.cart_id);
-
-          if (!cartError && cartItems && cartItems.length > 0) {
-            // Devolver estoque de cada produto
-            for (const item of cartItems) {
-              if (item.product_id) {
-                // Buscar estoque atual
-                const { data: product } = await supabaseTenant
-                  .from('products')
-                  .select('stock')
-                  .eq('id', item.product_id)
-                  .maybeSingle();
-
-                if (product) {
-                  const newStock = (product.stock || 0) + (item.qty || 1);
-                  await supabaseTenant
-                    .from('products')
-                    .update({ stock: newStock })
-                    .eq('id', item.product_id);
-                  
-                  console.log(`Estoque devolvido: +${item.qty} para produto ${item.product_id}, novo estoque: ${newStock}`);
-                }
-              }
-            }
+          const { error: restoreError } = await supabaseTenant.rpc('restore_order_stock', { p_order_id: orderId });
+          if (restoreError) {
+            console.error('Erro ao devolver estoque:', restoreError);
           }
         }
 
@@ -816,32 +794,12 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
       if (!confirmed) return;
 
       try {
-        // Devolver estoque de cada pedido antes de cancelar
+        // Devolver estoque de cada pedido antes de cancelar, via função atômica
         for (const orderToCancel of cancelableOrders) {
           if (orderToCancel.cart_id) {
-            const { data: cartItems } = await supabaseTenant
-              .from('cart_items')
-              .select('product_id, qty')
-              .eq('cart_id', orderToCancel.cart_id);
-
-            if (cartItems && cartItems.length > 0) {
-              for (const item of cartItems) {
-                if (item.product_id) {
-                  const { data: product } = await supabaseTenant
-                    .from('products')
-                    .select('stock')
-                    .eq('id', item.product_id)
-                    .maybeSingle();
-
-                  if (product) {
-                    const newStock = (product.stock || 0) + (item.qty || 1);
-                    await supabaseTenant
-                      .from('products')
-                      .update({ stock: newStock })
-                      .eq('id', item.product_id);
-                  }
-                }
-              }
+            const { error: restoreError } = await supabaseTenant.rpc('restore_order_stock', { p_order_id: orderToCancel.id });
+            if (restoreError) {
+              console.error(`Erro ao devolver estoque do pedido ${orderToCancel.id}:`, restoreError);
             }
           }
         }
@@ -925,45 +883,13 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
         for (const orderId of selectedOrders) {
           const order = orders.find(o => o.id === orderId);
           if (order?.cart_id) {
-            // Confirma is_paid/is_cancelled direto no banco (não confia no estado local
-            // `orders`, que pode estar desatualizado se o pedido acabou de ser cancelado
-            // segundos antes — cancelar e excluir em sequência rápida duplicava a
-            // devolução de estoque porque a tela ainda não tinha refletido o cancelamento).
-            const { data: freshOrder } = await supabaseTenant
-              .from('orders')
-              .select('is_paid, is_cancelled')
-              .eq('id', orderId)
-              .maybeSingle();
-
-            // Restaurar estoque apenas se o pedido não foi PAGO e não foi CANCELADO
-            // (pedidos cancelados já tiveram o estoque devolvido no momento do cancelamento)
-            if (freshOrder && !freshOrder.is_paid && !freshOrder.is_cancelled) {
-              const { data: cartItems } = await supabaseTenant
-                .from('cart_items')
-                .select('product_id, qty')
-                .eq('cart_id', order.cart_id);
-
-              if (cartItems && cartItems.length > 0) {
-                console.log(`[deleteOrders] Restaurando estoque para pedido #${orderId} (is_cancelled: ${order.is_cancelled})`);
-                for (const item of cartItems) {
-                  if (item.product_id) {
-                    const { data: product } = await supabaseTenant
-                      .from('products')
-                      .select('stock')
-                      .eq('id', item.product_id)
-                      .maybeSingle();
-
-                    if (product) {
-                      const newStock = (product.stock || 0) + (item.qty || 1);
-                      await supabaseTenant
-                        .from('products')
-                        .update({ stock: newStock })
-                        .eq('id', item.product_id);
-                      console.log(`[deleteOrders] Estoque restaurado: +${item.qty || 1} para produto ${item.product_id}, novo estoque: ${newStock}`);
-                    }
-                  }
-                }
-              }
+            // restore_order_stock é atômica no banco: trava a linha do pedido e só
+            // devolve estoque se ele ainda não tiver sido devolvido antes (nem pago).
+            // Isso elimina qualquer condição de corrida entre cancelar e excluir,
+            // não importa a sequência ou velocidade dos cliques.
+            const { error: restoreError } = await supabaseTenant.rpc('restore_order_stock', { p_order_id: orderId });
+            if (restoreError) {
+              console.error(`[deleteOrders] Erro ao devolver estoque do pedido ${orderId}:`, restoreError);
             }
 
             // Deletar cart items e cart
