@@ -2246,6 +2246,38 @@ async function findOrCreateCart(
     }
   }
 
+  // MERGE COM CARRINHO MANUAL: se já existe um carrinho MANUAL aberto (hoje) pra esse
+  // cliente, o item automático (BAZAR/LIVE) entra NELE em vez de criar um carrinho
+  // separado — evita o caso de um pedido manual em andamento "perder" itens que o
+  // cliente adiciona depois via comentário/webhook, porque foram parar em carrinhos
+  // diferentes e só um dos dois virou pedido de fato.
+  if (eventType !== 'MANUAL') {
+    const openManualCart = (allCarts || []).find(
+      (c: any) => c.status === 'OPEN' && c.event_type === 'MANUAL' && c.event_date === today
+    );
+
+    if (openManualCart) {
+      const { data: manualLinkedOrder } = await supabase
+        .from('orders')
+        .select('id, is_cancelled, is_paid')
+        .eq('cart_id', openManualCart.id)
+        .maybeSingle();
+
+      if (!manualLinkedOrder?.is_cancelled && !manualLinkedOrder?.is_paid) {
+        const { data: fullManualCart } = await supabase
+          .from('carts')
+          .select('*')
+          .eq('id', openManualCart.id)
+          .single();
+
+        if (fullManualCart) {
+          console.log(`[zapi-webhook] 🔗 Mesclando com carrinho MANUAL aberto ${openManualCart.id} em vez de criar carrinho ${eventType} separado`);
+          return fullManualCart;
+        }
+      }
+    }
+  }
+
   // Try to find an open cart for this customer with same event type AND today's date
   // IMPORTANT: We only reuse carts from TODAY to prevent adding items to old carts
   const { data: existingCart, error: openCartError } = await supabase
