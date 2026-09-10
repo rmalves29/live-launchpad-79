@@ -446,6 +446,26 @@ serve(async (req) => {
       const throttleDelay = await getThrottleDelay(formattedPhone);
       if (throttleDelay > 0) console.log("[zapi-send-item-added] Throttle delay: " + (throttleDelay / 1000).toFixed(1) + "s");
 
+      // Espaçamento mínimo entre mensagens do MESMO template (item_added), reservado
+      // atomicamente no banco — evita rajadas quase simultâneas quando o cliente
+      // adiciona vários itens seguidos, sem atrasar outros templates (ex: pedido pago).
+      try {
+        const { data: slotAt } = await supabase.rpc("reserve_send_slot", {
+          p_tenant_id: tenant_id,
+          p_template_type: "item_added",
+          p_min_gap_seconds: 6,
+        });
+        if (slotAt) {
+          const waitMs = Math.max(0, new Date(slotAt).getTime() - Date.now());
+          if (waitMs > 0) {
+            console.log("[zapi-send-item-added] Fila item_added do tenant: aguardando " + (waitMs / 1000).toFixed(1) + "s");
+            await new Promise((resolve) => setTimeout(resolve, Math.min(waitMs, 30000)));
+          }
+        }
+      } catch (slotError: any) {
+        console.warn("[zapi-send-item-added] reserve_send_slot falhou (enviando sem espaçamento):", slotError?.message);
+      }
+
       let sendOk = false;
       let zapiMessageId: string | null = null;
 
