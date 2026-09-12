@@ -236,37 +236,78 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
           return query;
         };
 
+        // Paginação de pedidos em PARALELO: busca a 1ª página com contagem exata
+        // para saber quantas páginas existem, depois dispara todas de uma vez
+        // (em vez de esperar uma página terminar para pedir a próxima).
         const ORDERS_PAGE_SIZE = 1000;
         const ORDERS_HARD_CAP = 50000; // segurança contra loop infinito
-        let orderData: any[] = [];
-        let offset = 0;
-        while (offset < ORDERS_HARD_CAP) {
-          const { data: page, error: pageError } = await buildOrdersQuery().range(offset, offset + ORDERS_PAGE_SIZE - 1);
-          if (pageError) throw pageError;
-          if (!page || page.length === 0) break;
-          orderData = orderData.concat(page);
-          if (page.length < ORDERS_PAGE_SIZE) break;
-          offset += ORDERS_PAGE_SIZE;
+        const { data: firstOrdersPage, count: ordersTotalCount, error: firstOrdersError } = await buildOrdersQuery()
+          .select('*', { count: 'exact' })
+          .range(0, ORDERS_PAGE_SIZE - 1);
+        if (firstOrdersError) throw firstOrdersError;
+
+        let orderData: any[] = firstOrdersPage || [];
+        const ordersTotal = Math.min(ordersTotalCount ?? orderData.length, ORDERS_HARD_CAP);
+        if (ordersTotal > ORDERS_PAGE_SIZE) {
+          const remainingOffsets: number[] = [];
+          for (let off = ORDERS_PAGE_SIZE; off < ordersTotal; off += ORDERS_PAGE_SIZE) {
+            remainingOffsets.push(off);
+          }
+          const remainingPages = await Promise.all(
+            remainingOffsets.map(off => buildOrdersQuery().range(off, off + ORDERS_PAGE_SIZE - 1))
+          );
+          for (const { data: page, error: pageError } of remainingPages) {
+            if (pageError) throw pageError;
+            if (page) orderData = orderData.concat(page);
+          }
         }
-        
+
         if (!orderData || orderData.length === 0) {
           setOrders([]);
           return;
         }
 
         // 2. BATCH LOADING: Buscar todos os dados relacionados de uma vez
-        
+
         // Extrair IDs únicos para batch queries
         const uniquePhones = [...new Set(orderData.map(o => o.customer_phone))];
         const normalizedUniquePhones = [...new Set([...uniquePhones, ...uniquePhones.map(p => normalizeForStorage(p))])];
         const cartIds = orderData.filter(o => o.cart_id).map(o => o.cart_id!);
         const uniqueCartIds = [...new Set(cartIds)];
 
-        // Batch query para clientes (uma única query para todos os telefones)
-        const { data: allCustomers } = await supabaseTenant
-          .from('customers')
-          .select('phone, name, cpf, street, number, complement, neighborhood, city, state, cep, instagram, bling_contact_id')
-          .in('phone', normalizedUniquePhones);
+        const cartItemsSelect = `
+          id,
+          cart_id,
+          qty,
+          unit_price,
+          product_name,
+          product_code,
+          product_image_url,
+          product:products!cart_items_product_id_fkey (
+            name,
+            code,
+            image_url,
+            color,
+            size
+          )
+        `;
+        const CART_ITEMS_PAGE_SIZE = 1000;
+
+        // Clientes e cart_items são independentes entre si — buscados em PARALELO
+        // (a paginação de cart_items também usa contagem exata + Promise.all, igual aos pedidos)
+        const [{ data: allCustomers }, { data: firstCartItemsPage, count: cartItemsTotalCount }] = await Promise.all([
+          supabaseTenant
+            .from('customers')
+            .select('phone, name, cpf, street, number, complement, neighborhood, city, state, cep, instagram, bling_contact_id')
+            .in('phone', normalizedUniquePhones),
+          uniqueCartIds.length > 0
+            ? supabaseTenant.raw
+                .from('cart_items')
+                .select(cartItemsSelect, { count: 'exact' })
+                .in('cart_id', uniqueCartIds)
+                .range(0, CART_ITEMS_PAGE_SIZE - 1)
+            : Promise.resolve({ data: [], count: 0 } as any)
+        ]);
 
         // Criar mapa de clientes por telefone para lookup O(1)
         // Usa telefone normalizado para garantir match mesmo com diferenças de formato
@@ -276,38 +317,24 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
           customerMap.set(normalizeForStorage(c.phone), c);
         });
 
-        // Batch query para cart_items (com paginação para evitar limite de 1000 linhas do Supabase)
-        // NOTA: Usamos raw porque super_admins podem visualizar pedidos de outros tenants
-        let allCartItems: any[] = [];
-        if (uniqueCartIds.length > 0) {
-          const CART_ITEMS_PAGE_SIZE = 1000;
-          let offset = 0;
-          let hasMore = true;
-          while (hasMore) {
-            const { data: cartItemsData } = await supabaseTenant.raw
-              .from('cart_items')
-              .select(`
-                id,
-                cart_id,
-                qty,
-                unit_price,
-                product_name,
-                product_code,
-                product_image_url,
-                product:products!cart_items_product_id_fkey (
-                  name,
-                  code,
-                  image_url,
-                  color,
-                  size
-                )
-              `)
-              .in('cart_id', uniqueCartIds)
-              .range(offset, offset + CART_ITEMS_PAGE_SIZE - 1);
-            const page = cartItemsData || [];
-            allCartItems = allCartItems.concat(page);
-            hasMore = page.length === CART_ITEMS_PAGE_SIZE;
-            offset += CART_ITEMS_PAGE_SIZE;
+        let allCartItems: any[] = firstCartItemsPage || [];
+        const cartItemsTotal = cartItemsTotalCount ?? allCartItems.length;
+        if (uniqueCartIds.length > 0 && cartItemsTotal > CART_ITEMS_PAGE_SIZE) {
+          const remainingOffsets: number[] = [];
+          for (let off = CART_ITEMS_PAGE_SIZE; off < cartItemsTotal; off += CART_ITEMS_PAGE_SIZE) {
+            remainingOffsets.push(off);
+          }
+          const remainingCartPages = await Promise.all(
+            remainingOffsets.map(off =>
+              supabaseTenant.raw
+                .from('cart_items')
+                .select(cartItemsSelect)
+                .in('cart_id', uniqueCartIds)
+                .range(off, off + CART_ITEMS_PAGE_SIZE - 1)
+            )
+          );
+          for (const { data: page } of remainingCartPages) {
+            if (page) allCartItems = allCartItems.concat(page);
           }
         }
 
