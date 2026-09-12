@@ -3,82 +3,81 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
-import { ReactNode } from "react";
+import { ReactNode, Suspense, lazy } from "react";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { AppShell } from "./components/layout/AppShell";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import TenantAuth from "./pages/TenantAuth";
-import ResetPassword from "./pages/ResetPassword";
 import { usePageTitle } from "@/hooks/usePageTitle";
-
-// Callbacks
-import MercadoPagoCallback from "./pages/callbacks/MercadoPagoCallback";
-import MpReturn from "./pages/callbacks/MpReturn";
-import PagamentoRetorno from "./pages/pagamento/Retorno";
-
-// Pedidos
-import PedidosManual from "./pages/pedidos/Manual";
-import Live from "./pages/pedidos/Live";
-import Checkout from "./pages/pedidos/Checkout";
-import PublicCheckout from "./pages/pedidos/PublicCheckout";
-import Pedidos from "./pages/pedidos/Index";
-
-// Módulos
-import Sorteio from "./pages/sorteio/Index";
-import Config from "./pages/config/Index";
-import Produtos from "./pages/produtos/Index";
-import Clientes from "./pages/clientes/Index";
-import Relatorios from "./pages/relatorios/Index";
-import SendFlow from "./pages/sendflow/Index";
-import Etiquetas from "./pages/etiquetas/Index";
-import FluxoEnvio from "./pages/fluxo-envio/Index";
-import CampaignRedirect from "./pages/fluxo-envio/CampaignRedirect";
-import PushPage from "./pages/comunicacao/push/Index";
-
-import FilaEspera from "./pages/fila-espera/Index";
-import TenantIntegrationsPage from "./components/TenantIntegrationsPage";
-import TenantStorefront from "./pages/TenantStorefront";
-import PushOptInPublic from "./pages/push/PushOptIn";
-import CadastroInstagram from "./pages/tenant/CadastroInstagram";
-
-import EmpresasIndex from "./pages/empresas/Index";
-import Debug from "./pages/Debug";
-import AdminErros from "./pages/admin/Erros";
-import MonitoramentoMensagens from "./pages/admin/MonitoramentoMensagens";
-import ArquivoHistorico from "./pages/admin/ArquivoHistorico";
-import SaudeSistema from "./pages/admin/SaudeSistema";
-import Comunicados from "./pages/admin/Comunicados";
-import Tutoriais from "./pages/admin/Tutoriais";
-import AdminLinks from "./pages/admin/Links";
-import RelatorioGlobal from "./pages/admin/RelatorioGlobal";
-import Ajuda from "./pages/ajuda/Index";
-import { AnnouncementPopup } from "./components/AnnouncementPopup";
-import LandingPage from "./pages/LandingPage";
-import LandingFluxoEnvio from "./pages/LandingFluxoEnvio";
-import FluxoEnvioAppLayout from "./pages/fluxo-envio/AppLayout";
-import FluxoEnvioPagamento from "./pages/fluxo-envio/Pagamento";
-import RequireFluxoScope from "./components/RequireFluxoScope";
-import RenovarAssinatura from "./pages/RenovarAssinatura";
-
-// WhatsApp
-import WhatsappTemplates from "./pages/whatsapp/Templates";
-import Cobranca from "./pages/whatsapp/Cobranca";
-import ConexaoZAPI from "./pages/whatsapp/ConexaoZAPI";
-import WhatsAppOfficialPage from "./pages/whatsapp/Oficial";
-import EnviosAtivos from "./pages/EnviosAtivos";
-import AgenteIA from "./pages/agente-ia/Index";
-import PrivacyPolicy from "./pages/PrivacyPolicy";
-import TermsOfUse from "./pages/TermsOfUse";
-import SuporteIA from "./pages/suporte-ia/Index";
 import RequireAuth from "./components/RequireAuth";
-import DesignPreview from "./pages/design-preview/Index";
 import RequireTenantAuth from "./components/RequireTenantAuth";
 import { TenantProvider } from "@/contexts/TenantContext";
 import { TenantLoader } from "@/components/TenantLoader";
 import { useTenantContext } from "@/contexts/TenantContext";
 import { WhatsAppSupportButton } from "@/components/WhatsAppSupportButton";
+
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+
+// Callbacks
+const MercadoPagoCallback = lazy(() => import("./pages/callbacks/MercadoPagoCallback"));
+const PagamentoRetorno = lazy(() => import("./pages/pagamento/Retorno"));
+
+// Pedidos
+const PedidosManual = lazy(() => import("./pages/pedidos/Manual"));
+const Live = lazy(() => import("./pages/pedidos/Live"));
+const Checkout = lazy(() => import("./pages/pedidos/Checkout"));
+const PublicCheckout = lazy(() => import("./pages/pedidos/PublicCheckout"));
+const Pedidos = lazy(() => import("./pages/pedidos/Index"));
+
+// Módulos
+const Sorteio = lazy(() => import("./pages/sorteio/Index"));
+const Config = lazy(() => import("./pages/config/Index"));
+const Produtos = lazy(() => import("./pages/produtos/Index"));
+const Clientes = lazy(() => import("./pages/clientes/Index"));
+const Relatorios = lazy(() => import("./pages/relatorios/Index"));
+const SendFlow = lazy(() => import("./pages/sendflow/Index"));
+const Etiquetas = lazy(() => import("./pages/etiquetas/Index"));
+const FluxoEnvio = lazy(() => import("./pages/fluxo-envio/Index"));
+const CampaignRedirect = lazy(() => import("./pages/fluxo-envio/CampaignRedirect"));
+const PushPage = lazy(() => import("./pages/comunicacao/push/Index"));
+
+const FilaEspera = lazy(() => import("./pages/fila-espera/Index"));
+const TenantIntegrationsPage = lazy(() => import("./components/TenantIntegrationsPage"));
+const TenantStorefront = lazy(() => import("./pages/TenantStorefront"));
+const PushOptInPublic = lazy(() => import("./pages/push/PushOptIn"));
+const CadastroInstagram = lazy(() => import("./pages/tenant/CadastroInstagram"));
+
+const EmpresasIndex = lazy(() => import("./pages/empresas/Index"));
+const Debug = lazy(() => import("./pages/Debug"));
+const AdminErros = lazy(() => import("./pages/admin/Erros"));
+const MonitoramentoMensagens = lazy(() => import("./pages/admin/MonitoramentoMensagens"));
+const ArquivoHistorico = lazy(() => import("./pages/admin/ArquivoHistorico"));
+const SaudeSistema = lazy(() => import("./pages/admin/SaudeSistema"));
+const Comunicados = lazy(() => import("./pages/admin/Comunicados"));
+const Tutoriais = lazy(() => import("./pages/admin/Tutoriais"));
+const AdminLinks = lazy(() => import("./pages/admin/Links"));
+const RelatorioGlobal = lazy(() => import("./pages/admin/RelatorioGlobal"));
+const Ajuda = lazy(() => import("./pages/ajuda/Index"));
+const LandingPage = lazy(() => import("./pages/LandingPage"));
+const LandingFluxoEnvio = lazy(() => import("./pages/LandingFluxoEnvio"));
+const FluxoEnvioAppLayout = lazy(() => import("./pages/fluxo-envio/AppLayout"));
+const FluxoEnvioPagamento = lazy(() => import("./pages/fluxo-envio/Pagamento"));
+const RequireFluxoScope = lazy(() => import("./components/RequireFluxoScope"));
+const RenovarAssinatura = lazy(() => import("./pages/RenovarAssinatura"));
+
+// WhatsApp
+const WhatsappTemplates = lazy(() => import("./pages/whatsapp/Templates"));
+const Cobranca = lazy(() => import("./pages/whatsapp/Cobranca"));
+const ConexaoZAPI = lazy(() => import("./pages/whatsapp/ConexaoZAPI"));
+const WhatsAppOfficialPage = lazy(() => import("./pages/whatsapp/Oficial"));
+const EnviosAtivos = lazy(() => import("./pages/EnviosAtivos"));
+const AgenteIA = lazy(() => import("./pages/agente-ia/Index"));
+const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const TermsOfUse = lazy(() => import("./pages/TermsOfUse"));
+const SuporteIA = lazy(() => import("./pages/suporte-ia/Index"));
+const DesignPreview = lazy(() => import("./pages/design-preview/Index"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -142,6 +141,7 @@ const AppContent = () => {
   };
 
   const routes = (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen">Carregando...</div>}>
     <Routes>
       {/* Landing page pública institucional */}
       <Route path="/landing" element={<LandingPage />} />
@@ -396,6 +396,7 @@ const AppContent = () => {
         
         <Route path="*" element={<NotFound />} />
       </Routes>
+    </Suspense>
   );
 
   return showShell ? <AppShell>{routes}</AppShell> : routes;
