@@ -604,12 +604,17 @@ export default function SendFlow() {
     setSelectedGroups(newSelection);
   };
 
+  // Seleciona/desmarca APENAS os grupos visíveis na lista (respeitando a busca)
   const toggleAllGroups = () => {
-    if (selectedGroups.size === groups.length) {
-      setSelectedGroups(new Set());
+    const visibleIds = filteredGroups.map(g => g.id);
+    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedGroups.has(id));
+    const newSelection = new Set(selectedGroups);
+    if (allVisibleSelected) {
+      visibleIds.forEach(id => newSelection.delete(id));
     } else {
-      setSelectedGroups(new Set(groups.map(g => g.id)));
+      visibleIds.forEach(id => newSelection.add(id));
     }
+    setSelectedGroups(newSelection);
   };
 
   const formatPrice = (price: number) => {
@@ -798,9 +803,11 @@ export default function SendFlow() {
                 variant="outline"
                 size="sm"
                 onClick={toggleAllGroups}
-                disabled={groups.length === 0}
+                disabled={filteredGroups.length === 0}
               >
-                {selectedGroups.size === groups.length ? 'Desmarcar Todos' : 'Selecionar Todos'}
+                {filteredGroups.length > 0 && filteredGroups.every(g => selectedGroups.has(g.id))
+                  ? (groupSearch ? 'Desmarcar Visíveis' : 'Desmarcar Todos')
+                  : (groupSearch ? 'Selecionar Visíveis' : 'Selecionar Todos')}
               </Button>
             </div>
           </div>
@@ -809,6 +816,40 @@ export default function SendFlow() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Resumo dos grupos selecionados (inclui os que não estão visíveis na busca) */}
+          {selectedGroups.size > 0 && (
+            <div className="mb-4 rounded-lg border border-border/60 bg-muted/40 p-3">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <p className="text-sm font-medium">
+                  Vai enviar para {selectedGroups.size} grupo(s):
+                </p>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedGroups(new Set())}>
+                  Limpar seleção
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {Array.from(selectedGroups).map((gid) => {
+                  const g = groups.find(gr => gr.id === gid);
+                  return (
+                    <span
+                      key={gid}
+                      className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2.5 py-1 text-xs"
+                    >
+                      {g?.name || gid}
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground"
+                        onClick={() => toggleGroup(gid)}
+                        aria-label={`Remover ${g?.name || gid}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {/* Campo de busca de grupos + ordenação */}
           <div className="flex flex-col sm:flex-row gap-2 mb-4">
             <div className="relative flex-1">

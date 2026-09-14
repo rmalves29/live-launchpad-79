@@ -2796,6 +2796,7 @@ export type Database = {
           shipping_service_id: number | null
           skip_paid_message: boolean | null
           source: string | null
+          stock_restored: boolean
           tenant_id: string
           total_amount: number
           tracking_posted: boolean
@@ -2846,6 +2847,7 @@ export type Database = {
           shipping_service_id?: number | null
           skip_paid_message?: boolean | null
           source?: string | null
+          stock_restored?: boolean
           tenant_id: string
           total_amount: number
           tracking_posted?: boolean
@@ -2896,6 +2898,7 @@ export type Database = {
           shipping_service_id?: number | null
           skip_paid_message?: boolean | null
           source?: string | null
+          stock_restored?: boolean
           tenant_id?: string
           total_amount?: number
           tracking_posted?: boolean
@@ -4959,6 +4962,27 @@ export type Database = {
           },
         ]
       }
+      whatsapp_send_throttle: {
+        Row: {
+          next_slot_at: string
+          template_type: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          next_slot_at?: string
+          template_type: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          next_slot_at?: string
+          template_type?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       whatsapp_session_conflicts: {
         Row: {
           conflict_type: string
@@ -5481,6 +5505,21 @@ export type Database = {
           p_tenant_slug: string
         }
         Returns: Json
+      }
+      reserve_send_slot: {
+        Args: {
+          p_min_gap_seconds?: number
+          p_template_type: string
+          p_tenant_id: string
+        }
+        Returns: string
+      }
+      restore_order_stock: {
+        Args: { p_order_id: number }
+        Returns: {
+          items_restored: number
+          restored: boolean
+        }[]
       }
       tenant_has_access: { Args: { tenant_uuid: string }; Returns: boolean }
       text_to_bytea: { Args: { data: string }; Returns: string }
