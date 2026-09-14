@@ -482,7 +482,34 @@ useEffect(() => {
 
     const existing = cartItems.find(i => i.id === itemId);
     const oldQty = existing?.qty;
-    if (oldQty === newQty) return;
+    if (oldQty === undefined || oldQty === newQty) return;
+
+    const delta = newQty - oldQty;
+    const productId = existing?.product_id;
+
+    // Valida/ajusta estoque antes de alterar a quantidade
+    if (productId) {
+      const { data: freshProduct, error: prodErr } = await supabaseTenant
+        .from('products')
+        .select('stock')
+        .eq('id', productId)
+        .single();
+
+      if (prodErr || !freshProduct) {
+        toast({ title: 'Erro', description: 'Não foi possível verificar o estoque do produto', variant: 'destructive' });
+        return;
+      }
+
+      const available = freshProduct.stock ?? 0;
+      if (delta > 0 && available < delta) {
+        toast({
+          title: 'Estoque insuficiente',
+          description: `Estoque disponível: ${available}. Não é possível aumentar para ${newQty} unidade(s).`,
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
 
     const signature = await ensureSignature();
     if (signature === null) return;
@@ -494,6 +521,34 @@ useEffect(() => {
         .eq('id', itemId);
 
       if (error) throw error;
+
+      // Baixa (ou devolve) estoque conforme a variação de quantidade
+      if (productId) {
+        const { data: freshAgain } = await supabaseTenant
+          .from('products')
+          .select('stock')
+          .eq('id', productId)
+          .single();
+        const currentStock = freshAgain?.stock ?? 0;
+
+        if (delta > 0 && currentStock < delta) {
+          // Estoque acabou nesse instante: desfaz a alteração
+          await supabaseTenant.from('cart_items').update({ qty: oldQty }).eq('id', itemId);
+          toast({
+            title: 'Estoque esgotado',
+            description: 'O estoque acabou enquanto a alteração era feita. Quantidade mantida.',
+            variant: 'destructive',
+          });
+          await loadCartItems(cartId);
+          return;
+        }
+
+        await supabaseTenant
+          .from('products')
+          .update({ stock: currentStock - delta })
+          .eq('id', productId);
+      }
+
 
       await logSignedEdit(
         signature,
