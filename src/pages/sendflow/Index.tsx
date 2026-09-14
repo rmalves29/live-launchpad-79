@@ -604,12 +604,17 @@ export default function SendFlow() {
     setSelectedGroups(newSelection);
   };
 
+  // Seleciona/desmarca APENAS os grupos visíveis na lista (respeitando a busca)
   const toggleAllGroups = () => {
-    if (selectedGroups.size === groups.length) {
-      setSelectedGroups(new Set());
+    const visibleIds = filteredGroups.map(g => g.id);
+    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedGroups.has(id));
+    const newSelection = new Set(selectedGroups);
+    if (allVisibleSelected) {
+      visibleIds.forEach(id => newSelection.delete(id));
     } else {
-      setSelectedGroups(new Set(groups.map(g => g.id)));
+      visibleIds.forEach(id => newSelection.add(id));
     }
+    setSelectedGroups(newSelection);
   };
 
   const formatPrice = (price: number) => {
