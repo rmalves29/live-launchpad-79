@@ -1,6 +1,7 @@
 // Bling Sync Orders - v2.2 (with sync logging)
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { erpCanConfirmPostage } from "../_shared/postage-confirmation.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1905,13 +1906,14 @@ serve(async (req) => {
               if (trackingCode && trackingCode !== order.melhor_envio_tracking_code) {
                 console.log(`[bling-sync-orders] Found tracking for order ${order.id}: ${trackingCode}`);
                 
-                // Só marca como postado quando o pedido está "Atendido" (9) no Bling
+                // "Atendido" (9) só confirma postagem se o tenant não tiver transportadora com API
                 const situacaoId = Number(blingOrder?.data?.situacao?.id ?? 0);
+                const erpConfirms = situacaoId === 9 && await erpCanConfirmPostage(supabase, integration.tenant_id);
                 const { error: updateError } = await supabase
                   .from('orders')
                   .update({
                     melhor_envio_tracking_code: trackingCode,
-                    ...(situacaoId === 9 ? { tracking_posted: true } : {}),
+                    ...(erpConfirms ? { tracking_posted: true } : {}),
                   })
                   .eq('id', order.id);
                 
@@ -2639,13 +2641,14 @@ serve(async (req) => {
               console.log(`[bling-sync-orders] Found tracking code for order ${order.id}: ${trackingCode} (previous: ${existingTracking || 'none'})`);
               
               // Atualizar pedido local com código do Bling (fonte verdadeira para Correios)
-              // Só marca como postado quando o pedido está "Atendido" (9) no Bling
+              // "Atendido" (9) só confirma postagem se o tenant não tiver transportadora com API
               const situacaoId = Number(blingOrder?.data?.situacao?.id ?? 0);
+              const erpConfirms = situacaoId === 9 && await erpCanConfirmPostage(supabase, tenant_id);
               const { error: updateError } = await supabase
                 .from('orders')
                 .update({
                   melhor_envio_tracking_code: trackingCode,
-                  ...(situacaoId === 9 ? { tracking_posted: true } : {}),
+                  ...(erpConfirms ? { tracking_posted: true } : {}),
                 })
                 .eq('id', order.id);
               

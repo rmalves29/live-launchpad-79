@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { erpCanConfirmPostage } from "../_shared/postage-confirmation.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -278,8 +279,11 @@ serve(async (req) => {
           }
         }
 
-        // Marcar como postado apenas quando o pedido está "Atendido" (9) no Bling
-        if (Number(situacaoId) === 9) updates.tracking_posted = true;
+        // "Atendido" no Bling só confirma postagem quando o tenant não tem
+        // transportadora com API de rastreio (ela é a fonte da verdade).
+        if (Number(situacaoId) === 9 && await erpCanConfirmPostage(supabase, localOrder.tenant_id)) {
+          updates.tracking_posted = true;
+        }
 
         // Apply updates
         if (Object.keys(updates).length > 0) {
