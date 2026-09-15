@@ -427,16 +427,19 @@ useEffect(() => {
         console.error('Erro ao enviar mensagem Z-API:', zapiError);
       }
 
-      // Remover item do carrinho
+      if (item.product_id) {
+        await adjustProductStock(item.product_id, -qtyToReturn);
+      }
+
+      // Remover item do carrinho após devolver o estoque.
       const { error } = await supabaseTenant
         .from('cart_items')
         .delete()
         .eq('id', itemId);
 
-      if (error) throw error;
-
-      if (item.product_id) {
-        await adjustProductStock(item.product_id, -qtyToReturn);
+      if (error) {
+        if (item.product_id) await adjustProductStock(item.product_id, qtyToReturn);
+        throw error;
       }
 
       await loadCartItems(cartId);
