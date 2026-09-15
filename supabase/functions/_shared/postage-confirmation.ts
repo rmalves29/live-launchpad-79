@@ -53,3 +53,24 @@ export function isPostedStatus(status: unknown): boolean {
   if (!s) return false;
   return POSTED_PATTERN.test(s) && !NOT_POSTED_PATTERN.test(s);
 }
+
+const CARRIER_APIS = ["mandae", "frenet", "superfrete", "melhor_envio"];
+
+/**
+ * Quando o tenant tem uma transportadora com API de rastreio ativa, a confirmação
+ * de postagem deve vir da transportadora — o status do ERP (ex.: Bling "Atendido",
+ * marcado já na geração da etiqueta) não pode liberar a mensagem de "pedido enviado".
+ */
+export async function erpCanConfirmPostage(supabase: any, tenantId: string): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from("shipping_integrations")
+      .select("provider")
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true);
+    const providers = (data || []).map((r: any) => String(r.provider || "").toLowerCase());
+    return !providers.some((p: string) => CARRIER_APIS.includes(p));
+  } catch {
+    return false;
+  }
+}
