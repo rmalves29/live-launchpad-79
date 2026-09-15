@@ -30,13 +30,18 @@ serve(async (req: Request) => {
       filterOrderId = Number.isFinite(Number(body?.order_id)) ? Number(body.order_id) : null;
     } catch { /* sem body */ }
 
+    // Só reconcilia pedidos recentes: evita disparar "pedido enviado" para
+    // pedidos antigos que já foram entregues fora do sistema.
+    const recentCutoff = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString();
+
     let query = supabase
       .from("orders")
       .select("id, tenant_id, melhor_envio_shipment_id")
-      .not("melhor_envio_shipment_id", "is", null)
       .not("melhor_envio_tracking_code", "is", null)
+      .neq("melhor_envio_tracking_code", "")
       .eq("tracking_posted", false)
       .neq("is_cancelled", true)
+      .gte("created_at", recentCutoff)
       .order("id", { ascending: false })
       .limit(BATCH_LIMIT);
 
@@ -54,6 +59,18 @@ serve(async (req: Request) => {
     }
 
     console.log(`[tracking-posted-sync] ${orders.length} etiquetas pendentes de postagem`);
+
+    // Provedor ativo por tenant (para pedidos cujo rastreio veio do ERP e não tem shipment_id)
+    const tenantIds = [...new Set(orders.map((o: any) => o.tenant_id))];
+    const { data: integrations } = await supabase
+      .from("shipping_integrations")
+      .select("tenant_id, provider")
+      .in("tenant_id", tenantIds)
+      .eq("is_active", true);
+    const providerByTenant = new Map<string, string>();
+    for (const i of integrations || []) {
+      if (!providerByTenant.has(i.tenant_id)) providerByTenant.set(i.tenant_id, i.provider);
+    }
 
     const results: any[] = [];
 
@@ -77,9 +94,22 @@ serve(async (req: Request) => {
         fnName = "melhor-envio-labels";
         action = "get_status";
       } else {
-        // Correios CWS / MeusCorreios / outros: sem API de postagem — nada a fazer
-        results.push({ order_id: order.id, skipped: true });
-        continue;
+        // Sem shipment_id (rastreio veio do ERP): consulta a transportadora ativa do tenant
+        const provider = providerByTenant.get(order.tenant_id) || "";
+        if (provider === "mandae") {
+          fnName = "mandae-labels";
+          action = "get_tracking";
+        } else if (provider === "frenet") {
+          fnName = "frenet-labels";
+          action = "get_tracking";
+        } else if (provider === "superfrete") {
+          fnName = "superfrete-labels";
+          action = "get_status";
+        } else {
+          // Correios CWS / MeusCorreios / outros: sem API de postagem — nada a fazer
+          results.push({ order_id: order.id, skipped: true });
+          continue;
+        }
       }
 
       try {

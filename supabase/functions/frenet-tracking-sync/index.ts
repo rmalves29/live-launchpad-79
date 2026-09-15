@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isPostedFromEvents, isPostedStatus } from "../_shared/postage-confirmation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -43,9 +44,10 @@ serve(async (req) => {
           updated++;
           // Se algum evento indica entrega, marca order_status=entregue
           const events = data.tracking?.events || [];
-          const haystack = JSON.stringify(events).toLowerCase();
-          const delivered = /entregue|delivered/.test(haystack);
-          const posted = /postad|posted|shipped|embarcad|trânsito|transit|entregue|delivered|saiu/.test(haystack);
+          const delivered = isPostedFromEvents(events) && /entregue|delivered/i.test(
+            JSON.stringify(events.map((e: any) => e?.EventDescription || e?.description || e?.status || ""))
+          );
+          const posted = isPostedFromEvents(events);
           if (delivered) {
             await supabase.from("orders").update({ order_status: "entregue", tracking_posted: true }).eq("id", order.id);
           } else if (posted) {
