@@ -30,6 +30,10 @@ serve(async (req: Request) => {
       filterOrderId = Number.isFinite(Number(body?.order_id)) ? Number(body.order_id) : null;
     } catch { /* sem body */ }
 
+    // Só reconcilia pedidos recentes: evita disparar "pedido enviado" para
+    // pedidos antigos que já foram entregues fora do sistema.
+    const recentCutoff = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString();
+
     let query = supabase
       .from("orders")
       .select("id, tenant_id, melhor_envio_shipment_id")
@@ -37,6 +41,7 @@ serve(async (req: Request) => {
       .neq("melhor_envio_tracking_code", "")
       .eq("tracking_posted", false)
       .neq("is_cancelled", true)
+      .gte("created_at", recentCutoff)
       .order("id", { ascending: false })
       .limit(BATCH_LIMIT);
 
