@@ -5189,6 +5189,10 @@ export type Database = {
         Args: { p_message_id: string }
         Returns: boolean
       }
+      adjust_product_stock: {
+        Args: { p_product_id: number; p_quantity_delta: number }
+        Returns: number
+      }
       admin_global_report: {
         Args: { p_from: string; p_to: string }
         Returns: Json
