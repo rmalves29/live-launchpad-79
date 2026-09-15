@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isPostedFromEvents, isPostedStatus } from "../_shared/postage-confirmation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -365,7 +366,7 @@ async function getStatus(
   }
   // Marcar como postado apenas quando o status indicar postagem/entrega
   const status = String(data.status || "").toLowerCase();
-  if (["posted", "delivered", "undelivered"].includes(status) || /postad|entregue/i.test(status)) {
+  if (["posted", "delivered", "undelivered"].includes(status) || isPostedStatus(status)) {
     updates.tracking_posted = true;
   }
   if (Object.keys(updates).length > 0) {

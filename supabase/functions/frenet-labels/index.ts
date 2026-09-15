@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isPostedFromEvents, isPostedStatus } from "../_shared/postage-confirmation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -307,9 +308,7 @@ async function getTracking(supabase: any, integration: any, order: any, token: s
     upd.melhor_envio_tracking_code = newTracking;
   }
   // Marcar como postado apenas quando houver evento de postagem/trânsito/entrega
-  const hasPostedEvent = events.some((e: any) =>
-    /postad|posted|shipped|embarcad|trânsito|transit|delivered|entregue|saiu/i.test(JSON.stringify(e))
-  );
+  const hasPostedEvent = isPostedFromEvents(events);
   if (hasPostedEvent) upd.tracking_posted = true;
   if (Object.keys(upd).length > 0) {
     await supabase.from("orders").update(upd).eq("id", order.id);
