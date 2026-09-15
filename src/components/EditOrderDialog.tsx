@@ -138,6 +138,16 @@ export const EditOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: E
     }
   };
 
+  const adjustProductStock = async (productId: number, quantityDelta: number) => {
+    const { data, error } = await supabase.rpc('adjust_product_stock', {
+      p_product_id: productId,
+      p_quantity_delta: quantityDelta,
+    });
+
+    if (error) throw error;
+    return Number(data);
+  };
+
 useEffect(() => {
   if (open && order) {
     setCartId(order.cart_id ?? null);
@@ -270,7 +280,6 @@ useEffect(() => {
     try {
       // STOCK VALIDATION: Fresh read from DB to prevent race conditions
       const existingItem = cartItems.find(item => item.product_id === selectedProduct.id);
-      const currentQtyInCart = existingItem ? existingItem.qty : 0;
 
       const { data: freshProduct, error: freshError } = await supabaseTenant
         .from('products')
@@ -284,11 +293,10 @@ useEffect(() => {
         return;
       }
 
-      const totalRequestedQty = currentQtyInCart + quantity;
-      if (totalRequestedQty > freshProduct.stock) {
+      if (quantity > freshProduct.stock) {
         toast({
           title: 'Estoque insuficiente',
-          description: `Estoque disponível: ${freshProduct.stock}. Já no carrinho: ${currentQtyInCart}. Não é possível adicionar ${quantity} unidade(s).`,
+          description: `Estoque disponível: ${freshProduct.stock}. Não é possível adicionar ${quantity} unidade(s).`,
           variant: 'destructive'
         });
         setLoading(false);
@@ -302,43 +310,38 @@ useEffect(() => {
         ? selectedProduct.promotional_price
         : selectedProduct.price);
 
-      if (existingItem) {
-        // Update existing item
-        const { error } = await supabaseTenant
-          .from('cart_items')
-          .update({
-            qty: existingItem.qty + quantity,
-            unit_price: effectiveUnitPrice
-          })
-          .eq('id', existingItem.id);
+      // Reserva o estoque atomicamente antes de alterar o item do pedido.
+      await adjustProductStock(selectedProduct.id, quantity);
 
-        if (error) throw error;
-      } else {
-        // Add new item with product snapshot for when product is deleted
-        const { error } = await supabaseTenant
-          .from('cart_items')
-          .insert({
-            cart_id: targetCartId,
-            product_id: selectedProduct.id,
-            qty: quantity,
-            unit_price: effectiveUnitPrice,
-            product_name: selectedProduct.name,
-            product_code: selectedProduct.code,
-            product_image_url: selectedProduct.image_url
-          });
+      try {
+        if (existingItem) {
+          const { error } = await supabaseTenant
+            .from('cart_items')
+            .update({
+              qty: existingItem.qty + quantity,
+              unit_price: effectiveUnitPrice
+            })
+            .eq('id', existingItem.id);
 
-        if (error) throw error;
-      }
+          if (error) throw error;
+        } else {
+          const { error } = await supabaseTenant
+            .from('cart_items')
+            .insert({
+              cart_id: targetCartId,
+              product_id: selectedProduct.id,
+              qty: quantity,
+              unit_price: effectiveUnitPrice,
+              product_name: selectedProduct.name,
+              product_code: selectedProduct.code,
+              product_image_url: selectedProduct.image_url
+            });
 
-      // ATOMIC DECREMENT STOCK after successful cart operation
-      const { error: stockError } = await supabaseTenant
-        .from('products')
-        .update({ stock: freshProduct.stock - quantity })
-        .eq('id', selectedProduct.id)
-        .gt('stock', 0);
-      
-      if (stockError) {
-        console.error('Error updating stock:', stockError);
+          if (error) throw error;
+        }
+      } catch (cartError) {
+        await adjustProductStock(selectedProduct.id, -quantity);
+        throw cartError;
       }
 
       // Mensagem enviada automaticamente via trigger do banco
@@ -424,30 +427,6 @@ useEffect(() => {
         console.error('Erro ao enviar mensagem Z-API:', zapiError);
       }
 
-      // DEVOLVER ESTOQUE: Incrementar estoque do produto antes de remover o item
-      if (item.product_id) {
-        // Buscar estoque atual do produto
-        const { data: productData, error: fetchError } = await supabaseTenant
-          .from('products')
-          .select('stock')
-          .eq('id', item.product_id)
-          .maybeSingle();
-
-        if (!fetchError && productData) {
-          const newStock = (productData.stock || 0) + qtyToReturn;
-          const { error: stockError } = await supabaseTenant
-            .from('products')
-            .update({ stock: newStock })
-            .eq('id', item.product_id);
-
-          if (stockError) {
-            console.error('Erro ao devolver estoque:', stockError);
-          } else {
-            console.log(`Estoque devolvido: +${qtyToReturn} para produto ${item.product_id}, novo estoque: ${newStock}`);
-          }
-        }
-      }
-
       // Remover item do carrinho
       const { error } = await supabaseTenant
         .from('cart_items')
@@ -455,6 +434,10 @@ useEffect(() => {
         .eq('id', itemId);
 
       if (error) throw error;
+
+      if (item.product_id) {
+        await adjustProductStock(item.product_id, -qtyToReturn);
+      }
 
       await loadCartItems(cartId);
       await updateOrderTotal(cartId);
@@ -487,66 +470,22 @@ useEffect(() => {
     const delta = newQty - oldQty;
     const productId = existing?.product_id;
 
-    // Valida/ajusta estoque antes de alterar a quantidade
-    if (productId) {
-      const { data: freshProduct, error: prodErr } = await supabaseTenant
-        .from('products')
-        .select('stock')
-        .eq('id', productId)
-        .single();
-
-      if (prodErr || !freshProduct) {
-        toast({ title: 'Erro', description: 'Não foi possível verificar o estoque do produto', variant: 'destructive' });
-        return;
-      }
-
-      const available = freshProduct.stock ?? 0;
-      if (delta > 0 && available < delta) {
-        toast({
-          title: 'Estoque insuficiente',
-          description: `Estoque disponível: ${available}. Não é possível aumentar para ${newQty} unidade(s).`,
-          variant: 'destructive',
-        });
-        return;
-      }
-    }
-
     const signature = await ensureSignature();
     if (signature === null) return;
 
     try {
+      if (productId) {
+        await adjustProductStock(productId, delta);
+      }
+
       const { error } = await supabaseTenant
         .from('cart_items')
         .update({ qty: newQty })
         .eq('id', itemId);
 
-      if (error) throw error;
-
-      // Baixa (ou devolve) estoque conforme a variação de quantidade
-      if (productId) {
-        const { data: freshAgain } = await supabaseTenant
-          .from('products')
-          .select('stock')
-          .eq('id', productId)
-          .single();
-        const currentStock = freshAgain?.stock ?? 0;
-
-        if (delta > 0 && currentStock < delta) {
-          // Estoque acabou nesse instante: desfaz a alteração
-          await supabaseTenant.from('cart_items').update({ qty: oldQty }).eq('id', itemId);
-          toast({
-            title: 'Estoque esgotado',
-            description: 'O estoque acabou enquanto a alteração era feita. Quantidade mantida.',
-            variant: 'destructive',
-          });
-          await loadCartItems(cartId);
-          return;
-        }
-
-        await supabaseTenant
-          .from('products')
-          .update({ stock: currentStock - delta })
-          .eq('id', productId);
+      if (error) {
+        if (productId) await adjustProductStock(productId, -delta);
+        throw error;
       }
 
 
