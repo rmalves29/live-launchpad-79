@@ -389,16 +389,19 @@ async function createMandaeOrder(supabase: any, integration: any, order: any, te
 }
 
 async function getTracking(supabase: any, integration: any, order: any, baseUrl: string, authHeader: string) {
-  const shipmentId = order.melhor_envio_shipment_id;
-  
-  if (!shipmentId || !shipmentId.startsWith('mandae_')) {
+  const shipmentId: string = order.melhor_envio_shipment_id || "";
+  // Aceita tanto remessas criadas pelo sistema (mandae_<id>) quanto pedidos
+  // cujo código de rastreio veio de outra origem (ex.: ERP Bling).
+  const mandaeId = shipmentId.startsWith("mandae_")
+    ? shipmentId.replace("mandae_", "")
+    : String(order.melhor_envio_tracking_code || "").trim();
+
+  if (!mandaeId) {
     return new Response(
       JSON.stringify({ success: false, error: "Pedido não possui ID Mandae" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-
-  const mandaeId = shipmentId.replace('mandae_', '');
 
   const response = await fetch(`${baseUrl}/trackings/${mandaeId}`, {
     method: "GET",
@@ -429,9 +432,9 @@ async function getTracking(supabase: any, integration: any, order: any, baseUrl:
   if (result.trackingCode && result.trackingCode !== order.melhor_envio_tracking_code) {
     updates.melhor_envio_tracking_code = result.trackingCode;
   }
-  // Marcar como postado apenas quando houver evento de postagem/trânsito/entrega
-  const haystack = JSON.stringify(result).toLowerCase();
-  if (/postad|posted|shipped|embarcad|in_transit|delivered|entregue|coletado/.test(haystack)) {
+  // Marcar como postado SOMENTE com evento real de postagem/coleta/trânsito/entrega
+  const events = result.events || result.trackingEvents || result.history || result;
+  if (isPostedFromEvents(events)) {
     updates.tracking_posted = true;
   }
   if (Object.keys(updates).length > 0) {
