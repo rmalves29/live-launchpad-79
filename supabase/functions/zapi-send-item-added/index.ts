@@ -243,9 +243,10 @@ function getDefaultTemplateItemAdded(): string {
 }
 
 async function getTemplate(supabase: any, tenantId: string) {
-  const { data: template } = await supabase.from("whatsapp_templates").select("content").eq("tenant_id", tenantId).eq("type", "ITEM_ADDED").maybeSingle();
-  if (template?.content) return template.content;
-  return null;
+  const { data: template } = await supabase.from("whatsapp_templates").select("content, is_active").eq("tenant_id", tenantId).eq("type", "ITEM_ADDED").maybeSingle();
+  if (template && template.is_active === false) return { disabled: true, content: null };
+  if (template?.content) return { disabled: false, content: template.content };
+  return { disabled: false, content: null };
 }
 
 function buildPhoneCandidates(phone: string): string[] {
@@ -409,9 +410,14 @@ serve(async (req) => {
         markWaitingAfterSend = consent.state !== "active";
       }
 
+      const templateResult = await getTemplate(supabase, tenant_id);
+      if (templateResult.disabled) {
+        console.log("[zapi-send-item-added] SKIPPED: template ITEM_ADDED está desativado para o tenant", tenant_id);
+        return;
+      }
+
       const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
-      const templateFromTable = await getTemplate(supabase, tenant_id);
-      const template = templateFromTable || (credentials as any).templateItemAdded || getDefaultTemplateItemAdded();
+      const template = templateResult.content || (credentials as any).templateItemAdded || getDefaultTemplateItemAdded();
       const baseMessage = formatMessage(template, body, orderCtx).replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrl).replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrl);
       const message = prependGreeting(addMessageVariation(baseMessage, false));
       let useButton = false;

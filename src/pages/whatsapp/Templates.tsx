@@ -18,6 +18,7 @@ interface Template {
   type: WhatsAppTemplateType;
   title: string | null;
   content: string;
+  is_active: boolean;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -316,7 +317,7 @@ export default function WhatsappTemplates() {
       type: template.type,
       title: template.title || '',
       content: template.content,
-      isActive: true,
+      isActive: template.is_active ?? true,
     });
     setEditingId(template.id);
     setIsCreating(false);
@@ -338,6 +339,7 @@ export default function WhatsappTemplates() {
       await saveWhatsAppTemplate({
         content: formData.content,
         editingId,
+        isActive: formData.isActive,
         originalType: original?.type,
         title: formData.title,
         type: formData.type as WhatsAppTemplateType,
@@ -471,8 +473,14 @@ export default function WhatsappTemplates() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#dcfce7] text-[#16a34a]">
-                        Ativo
+                      <span
+                        className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                          template.is_active
+                            ? 'bg-[#dcfce7] text-[#16a34a]'
+                            : 'bg-[#f1f5f9] text-[#64748b]'
+                        }`}
+                      >
+                        {template.is_active ? 'Ativo' : 'Inativo'}
                       </span>
                       <button
                         type="button"

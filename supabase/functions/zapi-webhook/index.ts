@@ -1600,12 +1600,14 @@ serve(async (req) => {
           // Try to get custom template from whatsapp_templates
           const { data: blockedTemplate } = await supabase
             .from('whatsapp_templates')
-            .select('content')
+            .select('content, is_active')
             .eq('tenant_id', tenantId)
             .eq('type', 'BLOCKED_CUSTOMER')
             .maybeSingle();
 
-          if (whatsappConfig?.zapi_instance_id && whatsappConfig?.zapi_token) {
+          if (blockedTemplate && blockedTemplate.is_active === false) {
+            console.log(`[zapi-webhook] SKIPPED: template BLOCKED_CUSTOMER está desativado para o tenant ${tenantId}`);
+          } else if (whatsappConfig?.zapi_instance_id && whatsappConfig?.zapi_token) {
             const defaultBlockedMsg = 'Olá! Identificamos uma restrição em seu cadastro que impede a realização de novos pedidos no momento. ⛔\n\nPara entender melhor o motivo ou solicitar uma reavaliação, por favor, entre em contato diretamente com o suporte da loja.';
             const blockedMessage = addMessageVariation(blockedTemplate?.content || defaultBlockedMsg);
             

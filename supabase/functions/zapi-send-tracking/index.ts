@@ -100,10 +100,16 @@ serve(async (req: Request) => {
 
     const { data: template } = await supabase
       .from("whatsapp_templates")
-      .select("content")
+      .select("content, is_active")
       .eq("tenant_id", tenant_id)
       .eq("type", "TRACKING")
       .maybeSingle();
+
+    if (template && template.is_active === false) {
+      console.log("[zapi-send-tracking] SKIPPED: template TRACKING está desativado para o tenant", tenant_id);
+      return new Response(JSON.stringify({ success: true, skipped: "template_disabled" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     const defaultTemplate = "Seu pedido *#{{order_id}}* foi enviado!\n\nCódigo de Rastreio: *{{tracking_code}}*\nData de Envio: {{shipped_at}}\n\nRastreie em: https://www.melhorrastreio.com.br/rastreio/{{tracking_code}}";
     let messageContent = template?.content || defaultTemplate;

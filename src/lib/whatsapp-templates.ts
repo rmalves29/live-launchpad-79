@@ -8,6 +8,7 @@ type WhatsAppTemplateRow = Database['public']['Tables']['whatsapp_templates']['R
 type SaveWhatsAppTemplateInput = {
   content: string;
   editingId?: number | null;
+  isActive?: boolean;
   originalType?: WhatsAppTemplateType;
   tenantId?: string;
   title?: string | null;
@@ -69,6 +70,7 @@ export async function listLatestWhatsAppTemplates(explicitTenantId?: string) {
 export async function saveWhatsAppTemplate({
   content,
   editingId,
+  isActive,
   originalType,
   tenantId: explicitTenantId,
   title,
@@ -77,10 +79,11 @@ export async function saveWhatsAppTemplate({
   const { tenantId, table } = getTenantTemplateContext(explicitTenantId);
   const updatedAt = getBrasiliaDateTimeISO();
   let keptId = editingId ?? null;
+  const activeFlag = isActive ?? true;
 
   if (editingId) {
     const { error: updateError } = await table
-      .update({ content, title: title ?? null, type, updated_at: updatedAt })
+      .update({ content, title: title ?? null, type, is_active: activeFlag, updated_at: updatedAt })
       .eq('tenant_id', tenantId)
       .eq('id', editingId);
 
@@ -99,7 +102,7 @@ export async function saveWhatsAppTemplate({
       keptId = existingTemplates[0].id;
 
       const { error: updateError } = await table
-        .update({ content, title: title ?? null, updated_at: updatedAt })
+        .update({ content, title: title ?? null, is_active: activeFlag, updated_at: updatedAt })
         .eq('tenant_id', tenantId)
         .eq('id', keptId);
 
@@ -111,6 +114,7 @@ export async function saveWhatsAppTemplate({
           tenant_id: tenantId,
           title: title ?? null,
           type,
+          is_active: activeFlag,
           updated_at: updatedAt,
         })
         .select('id')

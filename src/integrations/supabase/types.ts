@@ -5021,6 +5021,7 @@ export type Database = {
           content: string
           created_at: string | null
           id: number
+          is_active: boolean
           official_category: string
           official_components: Json | null
           official_language: string
@@ -5038,6 +5039,7 @@ export type Database = {
           content: string
           created_at?: string | null
           id?: number
+          is_active?: boolean
           official_category?: string
           official_components?: Json | null
           official_language?: string
@@ -5055,6 +5057,7 @@ export type Database = {
           content?: string
           created_at?: string | null
           id?: number
+          is_active?: boolean
           official_category?: string
           official_components?: Json | null
           official_language?: string

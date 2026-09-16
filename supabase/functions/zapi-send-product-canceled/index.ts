@@ -68,15 +68,16 @@ async function getCredentials(supabase: any, tenantId: string) {
   };
 }
 
-async function getTemplate(supabase: any, tenantId: string) {
+async function getTemplate(supabase: any, tenantId: string): Promise<{ disabled: boolean; content: string | null }> {
   const { data: template } = await supabase
     .from("whatsapp_templates")
-    .select("content")
+    .select("content, is_active")
     .eq("tenant_id", tenantId)
     .eq("type", "PRODUCT_CANCELED")
     .maybeSingle();
-  if (template?.content) return template.content;
-  return "O produto \"{{produto}}\" foi cancelado do seu pedido.\n\nQualquer duvida, entre em contato conosco.";
+  if (template && template.is_active === false) return { disabled: true, content: null };
+  if (template?.content) return { disabled: false, content: template.content };
+  return { disabled: false, content: "O produto \"{{produto}}\" foi cancelado do seu pedido.\n\nQualquer duvida, entre em contato conosco." };
 }
 
 function formatPhoneNumber(phone: string): string {
@@ -143,7 +144,13 @@ serve(async (req) => {
       return new Response(JSON.stringify({ sent: false, rateLimited: true }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const template = await getTemplate(supabase, tenant_id);
+    const templateResult = await getTemplate(supabase, tenant_id);
+    if (templateResult.disabled) {
+      console.log("[zapi-send-product-canceled] SKIPPED: template PRODUCT_CANCELED está desativado para o tenant", tenant_id);
+      return new Response(JSON.stringify({ sent: false, disabled: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const template = templateResult.content!;
     const baseMessage = formatMessage(template, body);
     const message = addMessageVariation(baseMessage);
     const formattedPhone = formatPhoneNumber(customer_phone);

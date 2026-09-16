@@ -506,15 +506,16 @@ Deno.serve(async (req) => {
 
             console.log(`[${timestamp}] [instagram-webhook] DM recipient: ${dmRecipientId} (IGSID: ${buyerIgsid || 'N/A'}, IG ID: ${buyerIgId})`);
 
-            if ((!hasRegistration || !hasPhone) && integration.send_cadastro_dm) {
-              let cadastroDmMessage = '';
-              const { data: dmTemplate } = await supabase
-                .from('whatsapp_templates')
-                .select('content')
-                .eq('tenant_id', tenantId)
-                .eq('type', 'DM_INSTAGRAM_CADASTRO')
-                .maybeSingle();
+            const { data: dmTemplate } = await supabase
+              .from('whatsapp_templates')
+              .select('content, is_active')
+              .eq('tenant_id', tenantId)
+              .eq('type', 'DM_INSTAGRAM_CADASTRO')
+              .maybeSingle();
+            const dmCadastroDisabled = dmTemplate ? dmTemplate.is_active === false : false;
 
+            if ((!hasRegistration || !hasPhone) && integration.send_cadastro_dm && !dmCadastroDisabled) {
+              let cadastroDmMessage = '';
               if (dmTemplate?.content) {
                 cadastroDmMessage = dmTemplate.content
                   .replace(/\{\{produto\}\}/g, product.name)
@@ -540,17 +541,20 @@ Deno.serve(async (req) => {
               }
             }
 
-            // Sempre envia DM de "item adicionado" (mesmo se o cliente já tem telefone cadastrado)
-            {
-              const { data: itemAddedTemplate } = await supabase
-                .from('whatsapp_templates')
-                .select('content')
-                .eq('tenant_id', tenantId)
-                .eq('type', 'ITEM_ADDED')
-                .order('updated_at', { ascending: false, nullsFirst: false })
-                .limit(1)
-                .maybeSingle();
+            // Sempre envia DM de "item adicionado" (mesmo se o cliente já tem telefone cadastrado),
+            // a menos que o template ITEM_ADDED esteja desativado na tela de Templates.
+            const { data: itemAddedTemplate } = await supabase
+              .from('whatsapp_templates')
+              .select('content, is_active')
+              .eq('tenant_id', tenantId)
+              .eq('type', 'ITEM_ADDED')
+              .order('updated_at', { ascending: false, nullsFirst: false })
+              .limit(1)
+              .maybeSingle();
 
+            if (itemAddedTemplate && itemAddedTemplate.is_active === false) {
+              console.log(`[${timestamp}] [instagram-webhook] SKIPPED: template ITEM_ADDED está desativado para o tenant ${tenantId}`);
+            } else {
               const effectivePrice = (product.promotional_price && product.promotional_price > 0)
                 ? product.promotional_price
                 : product.price;

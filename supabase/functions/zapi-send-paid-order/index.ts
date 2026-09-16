@@ -64,17 +64,18 @@ async function getCredentials(supabase: any, tenantId: string) {
   };
 }
 
-async function getTemplate(supabase: any, tenantId: string) {
+async function getTemplate(supabase: any, tenantId: string): Promise<{ disabled: boolean; content: string | null }> {
   const { data: template } = await supabase
     .from("whatsapp_templates")
-    .select("content")
+    .select("content, is_active")
     .eq("tenant_id", tenantId)
     .eq("type", "PAID_ORDER")
     .maybeSingle();
 
-  if (template?.content) return template.content;
+  if (template && template.is_active === false) return { disabled: true, content: null };
+  if (template?.content) return { disabled: false, content: template.content };
 
-  return "Pagamento Confirmado - Pedido #{{order_id}}\n\nRecebemos seu pagamento!\nValor: *R$ {{total}}*\n\nSeu pedido esta sendo preparado.\n\nObrigado pela preferencia!";
+  return { disabled: false, content: "Pagamento Confirmado - Pedido #{{order_id}}\n\nRecebemos seu pagamento!\nValor: *R$ {{total}}*\n\nSeu pedido esta sendo preparado.\n\nObrigado pela preferencia!" };
 }
 
 function formatPhoneNumber(phone: string): string {
@@ -133,7 +134,13 @@ serve(async (req) => {
       return new Response(JSON.stringify({ sent: false, disabled: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const template = await getTemplate(supabase, tenant_id);
+    const templateResult = await getTemplate(supabase, tenant_id);
+    if (templateResult.disabled) {
+      console.log("[zapi-send-paid-order] SKIPPED: template PAID_ORDER está desativado para o tenant", tenant_id);
+      return new Response(JSON.stringify({ sent: false, disabled: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const template = templateResult.content!;
     const totalFormatted = order.total_amount?.toFixed(2).replace(".", ",") || "0,00";
     const baseMessage = template
       .replace(/\{\{order_id\}\}/g, String(order_id))
