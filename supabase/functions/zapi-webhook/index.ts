@@ -986,11 +986,26 @@ serve(async (req) => {
        });
     }
 
+    // GUARD: mensagens de DIVULGAÇÃO de produto (SendFlow) mencionam o código do
+    // produto dentro do próprio texto informativo (ex: "📱 Para comprar, digite
+    // apenas o código: C890"). Se essa mensagem for encaminhada/ecoada de volta
+    // para o número conectado (ex: cliente reenvia o anúncio no grupo), o parser
+    // abaixo capturava o código como se fosse um pedido real, criando itens no
+    // carrinho e disparando "Item Adicionado" sem a cliente ter pedido nada.
+    // Detecta o padrão estrutural de divulgação (emoji de loja + instrução de
+    // compra) e ignora a mensagem inteira nesse caso.
+    const isBroadcastMessage = /🛍️/.test(messageText)
+      && /(para\s+(comprar|adquirir)[^\n]{0,40}(digite|responda)|digite\s+apenas\s+o\s+c[oó]digo)/i.test(messageText);
+
     // Recognize product codes with optional quantity:
     // Formats: C76126x2, C76126 x2, 2xC76126, 2x C76126, C76126X2, etc.
     // Also plain: C76126 (qty=1)
     // Supports variants with "/" or "-": C370/24, C014-1
     const productEntries: Array<{ code: string; qty: number }> = [];
+
+    if (isBroadcastMessage) {
+      console.log(`[zapi-webhook] ⏭️ SKIPPED: mensagem parece ser uma divulgação de produto (SendFlow), não um pedido. From: ${senderPhone}`);
+    } else {
 
     // Code suffix capture: digits, optionally followed by /NN or -NN (variants like /24, -1, T002-01)
     // Accepts 1-3 letter prefix (C, T, P, SKU...) followed by digits and optional variant suffix.
@@ -1042,6 +1057,8 @@ serve(async (req) => {
         productEntries.push({ code: normalized, qty: 1 });
       }
     }
+
+    } // fim do else (!isBroadcastMessage)
 
     const productCodes = productEntries.map(e => e.code);
 
