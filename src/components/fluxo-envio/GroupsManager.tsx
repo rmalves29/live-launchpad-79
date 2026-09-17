@@ -41,6 +41,7 @@ export default function GroupsManager() {
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [refreshingLinks, setRefreshingLinks] = useState(false);
   const [adminOnly, setAdminOnly] = useState(true);
   const [showInactive, setShowInactive] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -110,6 +111,29 @@ export default function GroupsManager() {
       toast({ title: 'Erro ao sincronizar', description: err.message, variant: 'destructive' });
     }
     setSyncing(false);
+  };
+
+  const refreshGroupLinks = async () => {
+    if (!tenant) return;
+    setRefreshingLinks(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('fe-refresh-group-links', {
+        body: { tenant_id: tenant.id },
+      });
+
+      if (error) {
+        toast({ title: 'Erro ao atualizar links', description: error.message, variant: 'destructive' });
+      } else if (data?.error) {
+        toast({ title: 'Erro ao atualizar links', description: data.error, variant: 'destructive' });
+      } else {
+        const failedMsg = data.failed > 0 ? ` — ${data.failed} não puderam ser obtidos` : '';
+        toast({ title: `${data.updated} link(s) atualizado(s) de ${data.checked} grupo(s) verificado(s)${failedMsg}` });
+        fetchGroups();
+      }
+    } catch (err: any) {
+      toast({ title: 'Erro ao atualizar links', description: err.message, variant: 'destructive' });
+    }
+    setRefreshingLinks(false);
   };
 
   const addGroup = async () => {
@@ -209,6 +233,16 @@ export default function GroupsManager() {
           <Button variant="outline" size="sm" onClick={syncFromWhatsApp} disabled={syncing}>
             <RefreshCw className={`h-4 w-4 mr-1 ${syncing ? 'animate-spin' : ''}`} />
             Buscar do WhatsApp
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={refreshGroupLinks}
+            disabled={refreshingLinks}
+            title="Atualiza apenas os links de convite dos grupos onde você é admin, sem re-sincronizar nomes e participantes"
+          >
+            <Link2 className={`h-4 w-4 mr-1 ${refreshingLinks ? 'animate-pulse' : ''}`} />
+            {refreshingLinks ? 'Atualizando links...' : 'Atualizar Links'}
           </Button>
           <Dialog open={addOpen} onOpenChange={setAddOpen}>
             <DialogTrigger asChild>
