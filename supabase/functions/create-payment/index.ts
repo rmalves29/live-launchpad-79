@@ -908,9 +908,11 @@ serve(async (req) => {
               (pagarmeIntegration as any).max_installments
             ),
           },
-          // Pagar.me exige estes objetos quando boleto/pix estão em accepted_payment_methods
+          // Pagar.me exige estes objetos quando boleto/pix estão em accepted_payment_methods.
+          // due_in (dias), não due_at (data) — a API rejeita due_at combinado com o
+          // expires_in do link (erro real: "due_at must not be defined with expires_in").
           boleto_settings: {
-            due_at: boletoDueAt,
+            due_in: 3,
             instructions: "Pague até o vencimento para evitar cancelamento automático.",
           },
           pix_settings: {
