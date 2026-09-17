@@ -253,7 +253,25 @@ Deno.serve(async (req) => {
       metadata: { created_via: "pagarme-create-subscription", total_cycles },
     });
 
-    if (insertErr) console.error("[pagarme-create-subscription] erro insert:", insertErr);
+    if (insertErr) {
+      // CRÍTICO: a assinatura já foi criada (e o cartão pode já ter sido cobrado)
+      // na Pagar.me, mas não temos registro local dela. Nunca liberar acesso nem
+      // deixar essa cobrança recorrente "órfã" (sem controle e sem botão de
+      // cancelamento no painel) — cancela na Pagar.me e retorna erro.
+      console.error("[pagarme-create-subscription] erro insert (revertendo assinatura na Pagar.me):", insertErr);
+      try {
+        await fetch(`${PAGARME_API}/subscriptions/${subscriptionId}`, {
+          method: "DELETE",
+          headers: { Authorization: auth, "Content-Type": "application/json" },
+        });
+      } catch (cancelErr) {
+        console.error("[pagarme-create-subscription] falha ao cancelar assinatura órfã na Pagar.me:", subscriptionId, cancelErr);
+      }
+      return json({
+        success: false,
+        error: "Erro ao salvar a assinatura. Nenhuma cobrança recorrente foi mantida — tente novamente ou contate o suporte.",
+      }, 200);
+    }
 
     // Se a Pagar.me já retornou cobrança aprovada, estende tenant agora
     const firstCharge = result?.current_cycle?.charge || result?.charges?.[0];

@@ -42,10 +42,9 @@ Deno.serve(async (req) => {
     if (!provided || provided !== expected) {
       console.warn("[pagarme-sub-webhook] HMAC inválido");
       await supabase.from("webhook_logs").insert({
-        source: "pagarme-subscription",
-        event_type: "invalid_signature",
+        webhook_type: "pagarme_subscription:invalid_signature",
+        status_code: 401,
         payload: { headers: Object.fromEntries(req.headers) },
-        success: false,
       } as any);
       return json({ error: "invalid signature" }, 401);
     }
@@ -108,10 +107,10 @@ Deno.serve(async (req) => {
 
     if (!tenantId) {
       await supabase.from("webhook_logs").insert({
-        source: "pagarme-subscription",
-        event_type: `unmatched:${type}`,
+        webhook_type: `pagarme_subscription:unmatched:${type}`,
+        status_code: 200,
         payload: event,
-        success: false,
+        error_message: "tenant not resolved",
       } as any);
       return json({ ok: true, warning: "tenant not resolved" });
     }
@@ -204,21 +203,20 @@ Deno.serve(async (req) => {
     }
 
     await supabase.from("webhook_logs").insert({
-      source: "pagarme-subscription",
-      event_type: type,
+      webhook_type: `pagarme_subscription:${type}`,
+      status_code: 200,
       tenant_id: tenantId,
       payload: event,
-      success: true,
     } as any);
 
     return json({ ok: true });
   } catch (err) {
     console.error("[pagarme-sub-webhook] erro:", err);
     await supabase.from("webhook_logs").insert({
-      source: "pagarme-subscription",
-      event_type: `error:${type}`,
-      payload: { error: String(err), event },
-      success: false,
+      webhook_type: `pagarme_subscription:error:${type}`,
+      status_code: 500,
+      payload: event,
+      error_message: String(err),
     } as any);
     return json({ ok: false, error: String(err) });
   }
