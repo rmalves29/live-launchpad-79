@@ -881,83 +881,82 @@ serve(async (req) => {
 
       const validCpf = (cpfDigits && cpfDigits.length === 11) ? cpfDigits : "";
 
-      const pagarmeBody: Record<string, any> = {
-        items,
-        customer: {
-          // Obrigatório no Core v5
-          type: "individual",
-          name: payload.customerData.name,
-          email: payload.customerData.email || `${payload.customerData.phone}@checkout.local`,
-          document: validCpf || "00000000000",
-          phones: {
-            mobile_phone: {
-              country_code: "55",
-              area_code: payload.customerData.phone.slice(0, 2),
-              number: payload.customerData.phone.slice(2),
-            },
-          },
-        },
-        shipping: {
-          address: {
-            country: "BR",
-            state: normalizeBrState(payload.addressData.state),
-            city: payload.addressData.city,
-            neighborhood: payload.addressData.neighborhood,
-            street: payload.addressData.street,
-            street_number: payload.addressData.number,
-            complement: payload.addressData.complement || "",
-            zip_code: payload.addressData.cep.replace(/\D/g, ""),
-          },
-          amount: 0, // Frete já incluído como item na lista de items (code: FRETE)
-          description: "Envio padrão",
-        },
-        payments: [
-          {
-            payment_method: "checkout",
-            checkout: {
-              expires_in: 7200, // 2 horas
-              billing_address_editable: false,
-              customer_editable: false,
-              accepted_payment_methods: ["credit_card", "boleto", "pix"],
-              success_url: `${appBaseUrl}/pagamento/retorno?status=success${payload.tenant_slug ? `&tenant=${payload.tenant_slug}` : ""}`,
+      // API de Checkout (payment_method: "checkout" dentro de /orders) foi
+      // descontinuada pela Pagar.me em 11/09/2026 — não cria mais links novos.
+      // Migrado para o endpoint oficial de substituição: POST /paymentlinks
+      // (docs.pagar.me/reference/criar-link). customer_settings.customer permite
+      // pré-preencher os dados do comprador, preservando a UX anterior.
+      const cartLinkItems = items.map((it) => ({
+        name: it.description,
+        amount: it.amount,
+        default_quantity: it.quantity,
+      }));
 
-              // Pagar.me exige estes objetos quando boleto/pix estão em accepted_payment_methods
-              boleto: {
-                due_at: boletoDueAt,
-                instructions: "Pague até o vencimento para evitar cancelamento automático.",
-              },
-              pix: {
-                expires_in: 3600,
-                additional_information: [
-                  { name: "Pedido(s)", value: orderIds.join(",") },
-                ],
-              },
-              // Configurações de parcelamento do cartão de crédito
-              credit_card: {
-                installments: buildInstallmentsConfig(
-                  totalAmount,
-                  pagarmeIntegration.min_installment_value,
-                  pagarmeIntegration.max_installments_without_interest,
-                  (pagarmeIntegration as any).max_installments
-                ),
+      const pagarmeBody: Record<string, any> = {
+        type: "order",
+        order_code: externalReference.slice(0, 52),
+        expires_in: 120, // minutos (equivalente aos 7200s/2h usados no link antigo)
+        max_paid_sessions: 1,
+        payment_settings: {
+          accepted_payment_methods: ["credit_card", "boleto", "pix"],
+          credit_card_settings: {
+            operation_type: "auth_and_capture",
+            installments: buildInstallmentsConfig(
+              totalAmount,
+              pagarmeIntegration.min_installment_value,
+              pagarmeIntegration.max_installments_without_interest,
+              (pagarmeIntegration as any).max_installments
+            ),
+          },
+          // Pagar.me exige estes objetos quando boleto/pix estão em accepted_payment_methods
+          boleto_settings: {
+            due_at: boletoDueAt,
+            instructions: "Pague até o vencimento para evitar cancelamento automático.",
+          },
+          pix_settings: {
+            expires_in: 3600,
+          },
+        },
+        customer_settings: {
+          customer: {
+            type: "individual",
+            name: payload.customerData.name,
+            email: payload.customerData.email || `${payload.customerData.phone}@checkout.local`,
+            document: validCpf || undefined,
+            document_type: validCpf ? "CPF" : undefined,
+            address: {
+              country: "BR",
+              state: normalizeBrState(payload.addressData.state),
+              city: payload.addressData.city,
+              zip_code: payload.addressData.cep.replace(/\D/g, ""),
+              line_1: `${payload.addressData.number}, ${payload.addressData.street}, ${payload.addressData.neighborhood}`,
+              line_2: payload.addressData.complement || undefined,
+            },
+            phones: {
+              mobile_phone: {
+                country_code: "55",
+                area_code: payload.customerData.phone.slice(0, 2),
+                number: payload.customerData.phone.slice(2),
               },
             },
-            amount: totalAmount,
           },
-        ],
-        metadata: {
-          external_reference: externalReference,
+        },
+        cart_settings: {
+          items: cartLinkItems,
+        },
+        flow_settings: {
+          success_url: `${appBaseUrl}/pagamento/retorno?status=success${payload.tenant_slug ? `&tenant=${payload.tenant_slug}` : ""}`,
         },
       };
 
       // Trava método de pagamento (PIX-only ou Cartão-only) conforme escolha do cliente
       applyPaymentMethodLock("pagarme", pagarmeBody, payload.payment_method);
 
-      const baseUrl = pagarmeIntegration.environment === 'sandbox' 
-        ? "https://api.pagar.me/core/v5" 
+      const baseUrl = pagarmeIntegration.environment === 'sandbox'
+        ? "https://sdx-api.pagar.me/core/v5"
         : "https://api.pagar.me/core/v5";
 
-      const pagarmeRes = await fetch(`${baseUrl}/orders`, {
+      const pagarmeRes = await fetch(`${baseUrl}/paymentlinks`, {
         method: "POST",
         headers: {
           Authorization: `Basic ${btoa(pagarmeIntegration.api_key + ":")}`,
@@ -967,7 +966,7 @@ serve(async (req) => {
       });
 
       const pagarmeJson = await pagarmeRes.json();
-      
+
       if (!pagarmeRes.ok) {
         console.log("[create-payment] Pagar.me error", pagarmeJson);
         const rawMsg = (pagarmeJson?.message || pagarmeJson?.error || "").toString();
@@ -981,9 +980,9 @@ serve(async (req) => {
         });
       }
 
-      // Pegar URL do checkout
-      const checkoutUrl = pagarmeJson?.checkouts?.[0]?.payment_url || pagarmeJson?.checkouts?.[0]?.url;
-      
+      // Pegar URL do link de pagamento
+      const checkoutUrl = pagarmeJson?.url;
+
       if (checkoutUrl) {
         await sb
           .from("orders")

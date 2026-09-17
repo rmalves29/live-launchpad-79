@@ -129,23 +129,22 @@ export function applyPaymentMethodLock(
     }
 
     // -----------------------------------------------------------------------
-    // PAGAR.ME — Core v5 (Orders + Checkout)
-    // Docs: https://docs.pagar.me/reference/criar-pedido-2
-    // Restringe `accepted_payment_methods` e remove blocos não usados.
+    // PAGAR.ME — Core v5 (Payment Links)
+    // Docs: https://docs.pagar.me/reference/criar-link
+    // Restringe `payment_settings.accepted_payment_methods` e remove blocos
+    // não usados (a API exige *_settings só para métodos aceitos).
     // -----------------------------------------------------------------------
     case "pagarme": {
-      const payments = Array.isArray(payload.payments) ? payload.payments : [];
-      for (const p of payments) {
-        if (!p?.checkout) continue;
-        if (normalized === "pix") {
-          p.checkout.accepted_payment_methods = ["pix"];
-          delete p.checkout.boleto;
-          delete p.checkout.credit_card;
-        } else {
-          p.checkout.accepted_payment_methods = ["credit_card"];
-          delete p.checkout.boleto;
-          delete p.checkout.pix;
-        }
+      const ps = payload.payment_settings;
+      if (!ps) return;
+      if (normalized === "pix") {
+        ps.accepted_payment_methods = ["pix"];
+        delete ps.boleto_settings;
+        delete ps.credit_card_settings;
+      } else {
+        ps.accepted_payment_methods = ["credit_card"];
+        delete ps.boleto_settings;
+        delete ps.pix_settings;
       }
       return;
     }
