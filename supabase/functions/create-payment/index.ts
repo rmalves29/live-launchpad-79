@@ -892,9 +892,18 @@ serve(async (req) => {
         default_quantity: it.quantity,
       }));
 
+      // order_code tem limite de 52 caracteres na Pagar.me. O externalReference
+      // completo ("tenant:UUID;orders:...") estourava esse limite e truncava o
+      // order_id no meio (ex: "orders:13458" virava "orders:1") — o webhook de
+      // confirmação de pagamento então tentava marcar o pedido #1 como pago em
+      // vez do pedido real, e o pedido nunca era marcado como pago de fato.
+      // O tenant_id não precisa ir aqui: pagarme-webhook já resolve o tenant via
+      // query string (?tenant_id=...) configurada na URL do webhook na Pagar.me.
+      const pagarmeOrderCode = `orders:${orderIds.join(",")}`.slice(0, 52);
+
       const pagarmeBody: Record<string, any> = {
         type: "order",
-        order_code: externalReference.slice(0, 52),
+        order_code: pagarmeOrderCode,
         expires_in: 120, // minutos (equivalente aos 7200s/2h usados no link antigo)
         max_paid_sessions: 1,
         payment_settings: {
