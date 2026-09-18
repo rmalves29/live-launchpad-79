@@ -1227,8 +1227,8 @@ const Checkout = () => {
       return;
     }
 
-    // Validação completa de endereço para entregas (não retirada)
-    if (selectedShipping !== 'retirada') {
+    // Validação completa de endereço — obrigatória sempre, inclusive na retirada
+    {
       const missingFields: string[] = [];
       if (!customerData.name) missingFields.push('Nome');
       if (!customerData.cep) missingFields.push('CEP');
