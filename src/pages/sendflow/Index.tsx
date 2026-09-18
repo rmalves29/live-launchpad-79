@@ -203,6 +203,8 @@ export default function SendFlow() {
   const [saleTypeFilter, setSaleTypeFilter] = useState<'ALL' | 'BAZAR' | 'LIVE'>('ALL');
   const [groupSortMode, setGroupSortMode] = useState<'name' | 'recent'>('name');
   const [lastSentByGroup, setLastSentByGroup] = useState<Record<string, string>>({});
+  const [lastJobGroups, setLastJobGroups] = useState<{ id: string; name: string }[] | null>(null);
+  const [lastJobWasScheduled, setLastJobWasScheduled] = useState(false);
   
   // Debounce para buscas
   const debouncedGroupSearch = useDebounce(groupSearch, 300);
@@ -689,6 +691,11 @@ export default function SendFlow() {
       );
 
       if (jobId) {
+        // Guardar os grupos que entraram neste envio antes de limpar a seleção,
+        // para exibir a confirmação de "para quais grupos foi enviado" abaixo do botão.
+        setLastJobGroups(selectedGroupList);
+        setLastJobWasScheduled(!!scheduledAt);
+
         // Limpar seleções após iniciar
         setSelectedProducts(new Set());
         setSelectedGroups(new Set());
@@ -1314,6 +1321,42 @@ export default function SendFlow() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Confirmação pós-envio: quais grupos entraram neste job */}
+      {lastJobGroups && lastJobGroups.length > 0 && (
+        <Card className="rounded-2xl border-emerald-500/30 bg-emerald-500/5 shadow-sm">
+          <CardHeader>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-500/10 text-emerald-600 rounded-lg">
+                  <CheckCircle2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <CardTitle className="text-base">
+                    {lastJobWasScheduled ? 'Envio agendado para' : 'Envio iniciado para'} {lastJobGroups.length} grupo(s)
+                  </CardTitle>
+                  <CardDescription>Confirme abaixo se os grupos certos foram selecionados</CardDescription>
+                </div>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setLastJobGroups(null)}>
+                Fechar
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {lastJobGroups.map((g) => (
+                <span
+                  key={g.id}
+                  className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-background px-2.5 py-1 text-xs"
+                >
+                  {g.name}
+                </span>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <SendflowTodayHistory />
     </div>
