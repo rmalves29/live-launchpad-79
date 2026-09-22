@@ -54,7 +54,7 @@ export function isPostedStatus(status: unknown): boolean {
   return POSTED_PATTERN.test(s) && !NOT_POSTED_PATTERN.test(s);
 }
 
-const CARRIER_APIS = ["mandae", "frenet", "superfrete", "melhor_envio"];
+const CARRIER_APIS = ["mandae", "mandabem", "frenet", "superfrete", "melhor_envio"];
 
 /**
  * Quando o tenant tem uma transportadora com API de rastreio ativa, a confirmação

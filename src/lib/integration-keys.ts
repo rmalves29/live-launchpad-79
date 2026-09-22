@@ -15,6 +15,7 @@ export const INTEGRATION_KEYS = [
   { key: 'infinitepay', label: 'InfinitePay' },
   { key: 'melhorenvio', label: 'Melhor Envio' },
   { key: 'mandae', label: 'Mandaê' },
+  { key: 'mandabem', label: 'Manda Bem' },
   { key: 'superfrete', label: 'SuperFrete' },
   { key: 'correios', label: 'Correios' },
   { key: 'meuscorreios', label: 'Meus Correios' },

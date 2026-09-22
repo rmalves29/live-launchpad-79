@@ -17,6 +17,7 @@ import AppmaxIntegration from '@/components/integrations/AppmaxIntegration';
 import InfinitePayIntegration from '@/components/integrations/InfinitePayIntegration';
 import ShippingIntegrations from '@/components/integrations/ShippingIntegrations';
 import MandaeIntegration from '@/components/integrations/MandaeIntegration';
+import MandaBemIntegration from '@/components/integrations/MandaBemIntegration';
 import SuperFreteIntegration from '@/components/integrations/SuperFreteIntegration';
 import CorreiosIntegration from '@/components/integrations/CorreiosIntegration';
 import MeusCorreiosIntegration from '@/components/integrations/MeusCorreiosIntegration';
@@ -69,6 +70,15 @@ export default function TenantIntegrationsPage() {
     queryKey: ['mandae-status', tenantId],
     queryFn: async () => {
       const { data } = await supabase.from('shipping_integrations').select('is_active').eq('tenant_id', tenantId).eq('provider', 'mandae').maybeSingle();
+      return data;
+    },
+    enabled: !!tenantId,
+  });
+
+  const { data: mandaBemIntegration } = useQuery({
+    queryKey: ['mandabem-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase.from('shipping_integrations').select('is_active').eq('tenant_id', tenantId).eq('provider', 'mandabem').maybeSingle();
       return data;
     },
     enabled: !!tenantId,
@@ -335,6 +345,14 @@ export default function TenantIntegrationsPage() {
             {mandaeIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
           )}
+          {en('mandabem') && (
+          <TabsTrigger value="mandabem" className="flex items-center gap-2">
+            <Package className="h-4 w-4" />
+            <span className="hidden sm:inline">Manda Bem</span>
+            <span className="sm:hidden">MB</span>
+            {mandaBemIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
+          </TabsTrigger>
+          )}
           {en('superfrete') && (
           <TabsTrigger value="superfrete" className="flex items-center gap-2">
             <Truck className="h-4 w-4" />
@@ -427,6 +445,11 @@ export default function TenantIntegrationsPage() {
         {en('mandae') && (
         <TabsContent value="mandae" className="mt-6">
           <MandaeIntegration tenantId={tenantId} />
+        </TabsContent>
+        )}
+        {en('mandabem') && (
+        <TabsContent value="mandabem" className="mt-6">
+          <MandaBemIntegration tenantId={tenantId} />
         </TabsContent>
         )}
         {en('superfrete') && (

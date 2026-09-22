@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 
-export type ShippingProvider = 'melhor_envio' | 'mandae' | 'correios' | 'meuscorreios' | 'superfrete' | 'frenet' | null;
+export type ShippingProvider = 'melhor_envio' | 'mandae' | 'mandabem' | 'correios' | 'meuscorreios' | 'superfrete' | 'frenet' | null;
 
 export interface ActiveShippingIntegration {
   provider: ShippingProvider;
@@ -69,6 +69,17 @@ export async function getActiveShippingIntegration(tenantId: string): Promise<Ac
         provider: 'mandae',
         functionName: 'mandae-shipping',
         testFunctionName: null // Mandae não tem função de teste de token
+      };
+    }
+
+    // Verificar se Manda Bem está ativo
+    const mandaBemIntegration = integrations.find(i => i.provider === 'mandabem');
+    if (mandaBemIntegration) {
+      console.log("[shipping-utils] Integração Manda Bem ativa para tenant:", tenantId);
+      return {
+        provider: 'mandabem',
+        functionName: 'mandabem-shipping',
+        testFunctionName: null
       };
     }
 
