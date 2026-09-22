@@ -589,9 +589,15 @@ const Etiquetas = () => {
   const buyShipment = async (orderId: number) => {
     const order = orders.find(o => o.id === orderId);
     const isMandae = order?.melhor_envio_shipment_id?.startsWith('mandae_');
+    const isMandaBem = order?.melhor_envio_shipment_id?.startsWith('mandabem_');
 
     if (isMandae) {
       toast.info('A Mandae gera a etiqueta automaticamente ao criar o pedido.');
+      return;
+    }
+
+    if (isMandaBem) {
+      toast.info('O Manda Bem gera a etiqueta automaticamente ao criar o envio.');
       return;
     }
 
@@ -672,6 +678,18 @@ const Etiquetas = () => {
         return;
       }
 
+      // Manda Bem: a etiqueta fica disponível no painel/rastreio
+      if (shipId.startsWith('mandabem_')) {
+        const code = order?.melhor_envio_tracking_code;
+        if (code) {
+          window.open(`https://www.linkcorreios.com.br/${code}`, '_blank');
+          toast.success('Abrindo rastreamento do envio Manda Bem');
+        } else {
+          toast.info('Etiqueta disponível no painel do Manda Bem.');
+        }
+        return;
+      }
+
       // Decide provider e função
       let providerKey: string | null = null;
       if (shipId.startsWith('frenet_')) providerKey = 'frenet';
@@ -734,12 +752,13 @@ const Etiquetas = () => {
   const checkOrderStatus = async (orderId: number) => {
     const order = orders.find(o => o.id === orderId);
     const isMandae = order?.melhor_envio_shipment_id?.startsWith('mandae_');
+    const isMandaBem = order?.melhor_envio_shipment_id?.startsWith('mandabem_');
     
     setProcessingOrders(prev => new Set(prev).add(orderId));
     
     try {
-      const functionName = isMandae ? 'mandae-labels' : 'melhor-envio-labels';
-      const action = isMandae ? 'get_tracking' : 'get_status';
+      const functionName = isMandaBem ? 'mandabem-labels' : isMandae ? 'mandae-labels' : 'melhor-envio-labels';
+      const action = (isMandae || isMandaBem) ? 'get_tracking' : 'get_status';
       
       const { data, error } = await supabaseTenant.functions.invoke(functionName, {
         body: {
@@ -995,8 +1014,9 @@ const Etiquetas = () => {
         }
         
         // Determinar função e action baseado na integração ativa
-        const functionName = activeShippingProvider === 'mandae' ? 'mandae-labels' : 'melhor-envio-labels';
-        const action = activeShippingProvider === 'mandae' ? 'create_order' : 'create_shipment';
+        const batchCfg = SHIPPING_LABEL_PROVIDERS[activeShippingProvider || 'melhor_envio'];
+        const functionName = batchCfg?.functionName || 'melhor-envio-labels';
+        const action = batchCfg?.createAction || 'create_shipment';
         
         const { data, error } = await supabaseTenant.functions.invoke(functionName, {
           body: {

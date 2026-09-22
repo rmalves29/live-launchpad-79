@@ -522,6 +522,16 @@ const PublicCheckout = () => {
       }
 
       // SuperFrete pode retornar Correios, Mini Envios e Jadlog
+      // Manda Bem entrega via Correios (PAC, SEDEX, Mini Envios)
+      if (activeProvider === 'mandabem') {
+        return (
+          companyName.includes('correios') ||
+          serviceName.includes('pac') ||
+          serviceName.includes('sedex') ||
+          serviceName.includes('mini')
+        );
+      }
+
       if (activeProvider === 'superfrete') {
         return (
           companyName.includes('superfrete') ||
@@ -674,7 +684,8 @@ const PublicCheckout = () => {
            .filter((option: any) => option && !option.error && option.price)
            .map((option: any) => {
              // SEMPRE exibe o nome da integração ativa do tenant, não da transportadora
-             const displayCompany = activeIntegration.provider === 'mandae' ? 'Mandae' 
+             const displayCompany = activeIntegration.provider === 'mandae' ? 'Mandae'
+                : activeIntegration.provider === 'mandabem' ? 'Manda Bem' 
                 : activeIntegration.provider === 'superfrete' ? 'SuperFrete'
                 : activeIntegration.provider === 'frenet' ? 'Frenet'
                : (activeIntegration.provider === 'meuscorreios' || activeIntegration.provider === 'correios') ? 'Correios' 

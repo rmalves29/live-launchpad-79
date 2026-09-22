@@ -83,6 +83,9 @@ serve(async (req: Request) => {
       if (shipmentId.startsWith("mandae_")) {
         fnName = "mandae-labels";
         action = "get_tracking";
+      } else if (shipmentId.startsWith("mandabem_")) {
+        fnName = "mandabem-labels";
+        action = "get_tracking";
       } else if (shipmentId.startsWith("superfrete_")) {
         fnName = "superfrete-labels";
         action = "get_status";
@@ -98,6 +101,9 @@ serve(async (req: Request) => {
         const provider = providerByTenant.get(order.tenant_id) || "";
         if (provider === "mandae") {
           fnName = "mandae-labels";
+          action = "get_tracking";
+        } else if (provider === "mandabem") {
+          fnName = "mandabem-labels";
           action = "get_tracking";
         } else if (provider === "frenet") {
           fnName = "frenet-labels";
