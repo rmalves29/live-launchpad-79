@@ -48,6 +48,7 @@ interface Product {
   size?: string;
   price: number;
   image_url?: string;
+  stock?: number;
 }
 
 interface WhatsAppGroup {
@@ -248,6 +249,7 @@ export default function SendFlow() {
       }
     }
     return parents
+      .filter((product: any) => Number(product.stock ?? 0) > 0)
       .filter((product) => {
         if (!term) return true;
         return (
