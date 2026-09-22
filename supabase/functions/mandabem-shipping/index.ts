@@ -19,7 +19,11 @@ const SERVICE_LABEL: Record<string, string> = {
 
 function toNumber(value: unknown): number {
   if (typeof value === "number") return value;
-  const raw = String(value ?? "").trim().replace(/\./g, "").replace(",", ".");
+  let raw = String(value ?? "").trim();
+  if (raw.includes(",")) {
+    // formato pt-BR: 1.234,56
+    raw = raw.replace(/\./g, "").replace(",", ".");
+  }
   const n = Number(raw);
   return Number.isFinite(n) ? n : 0;
 }
