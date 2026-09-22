@@ -85,6 +85,7 @@ interface IntegrationLog {
 export const SHIPPING_LABEL_PROVIDERS: Record<string, { label: string; functionName: string; createAction: string } | undefined> = {
   melhor_envio: { label: 'Melhor Envio', functionName: 'melhor-envio-labels', createAction: 'create_shipment' },
   mandae: { label: 'Mandae', functionName: 'mandae-labels', createAction: 'create_order' },
+  mandabem: { label: 'Manda Bem', functionName: 'mandabem-labels', createAction: 'create_order' },
   frenet: { label: 'Frenet', functionName: 'frenet-labels', createAction: 'create_shipping' },
   superfrete: { label: 'SuperFrete', functionName: 'superfrete-labels', createAction: 'create_shipment' },
 };
@@ -380,7 +381,7 @@ const Etiquetas = () => {
       const { data, error } = await supabaseTenant
         .from('webhook_logs')
         .select('*')
-        .or('webhook_type.like.melhor_envio_%,webhook_type.like.mandae_%,webhook_type.like.frenet_%,webhook_type.like.superfrete_%')
+        .or('webhook_type.like.melhor_envio_%,webhook_type.like.mandae_%,webhook_type.like.mandabem_%,webhook_type.like.frenet_%,webhook_type.like.superfrete_%')
         .order('created_at', { ascending: false })
         .limit(100);
 
@@ -528,12 +529,14 @@ const Etiquetas = () => {
 
       let providerKey: string | null = null;
       if (shipId.startsWith('mandae_')) providerKey = 'mandae';
+      else if (shipId.startsWith('mandabem_')) providerKey = 'mandabem';
       else if (shipId.startsWith('frenet_')) providerKey = 'frenet';
       else if (shipId.startsWith('superfrete_')) providerKey = 'superfrete';
       else providerKey = activeShippingProvider || 'melhor_envio';
 
       const cancelActionByProvider: Record<string, string> = {
         mandae: 'cancel_order',
+        mandabem: 'cancel_order',
         frenet: 'cancel_shipping',
         superfrete: 'cancel_shipment',
         melhor_envio: 'cancel_shipment',
