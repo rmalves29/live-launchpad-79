@@ -248,8 +248,21 @@ export default function SendFlow() {
         }
       }
     }
+    // Estoque efetivo: se o produto tem variações ativas, soma o estoque delas
+    const childStockByParent = new Map<number, number>();
+    for (const p of products as any[]) {
+      if (!p.parent_product_id) continue;
+      childStockByParent.set(
+        p.parent_product_id,
+        (childStockByParent.get(p.parent_product_id) ?? 0) + Number(p.stock ?? 0)
+      );
+    }
     return parents
-      .filter((product: any) => Number(product.stock ?? 0) > 0)
+      .filter((product: any) => {
+        const childStock = childStockByParent.get(product.id);
+        const effective = childStock !== undefined ? childStock : Number(product.stock ?? 0);
+        return effective > 0;
+      })
       .filter((product) => {
         if (!term) return true;
         return (
