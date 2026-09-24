@@ -15,6 +15,27 @@ export function isPushSupported(): boolean {
   return typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 }
 
+export type DevicePlatform = 'ios' | 'android' | 'desktop';
+
+/** Identifica o aparelho da cliente (iPhone/iPad, Android ou computador) pelo navegador. */
+export function detectDevicePlatform(): DevicePlatform {
+  if (typeof navigator === 'undefined') return 'desktop';
+  const ua = navigator.userAgent;
+  if (/iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream) return 'ios';
+  // iPadOS 13+ se apresenta como Mac, mas tem tela de toque
+  if (/Macintosh/.test(ua) && typeof window !== 'undefined' && (navigator as any).maxTouchPoints > 1) return 'ios';
+  if (/Android/i.test(ua)) return 'android';
+  return 'desktop';
+}
+
+export function devicePlatformLabel(platform: DevicePlatform): string {
+  switch (platform) {
+    case 'ios': return 'iPhone (iOS)';
+    case 'android': return 'Android';
+    default: return 'Computador';
+  }
+}
+
 export function isIosSafariNotStandalone(): boolean {
   const ua = navigator.userAgent;
   const isIOS = /iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream;

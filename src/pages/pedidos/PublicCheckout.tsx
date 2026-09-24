@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -135,6 +135,34 @@ const PublicCheckout = () => {
   
   const [phone, setPhone] = useState('');
   const [pushDialogOpen, setPushDialogOpen] = useState(false);
+  const pushAutoAskedRef = useRef(false);
+
+  // Abrir o popup de notificações assim que a cliente entra no checkout,
+  // para TODAS as clientes — sem depender da busca por telefone.
+  useEffect(() => {
+    if (!tenant || pushAutoAskedRef.current) return;
+    pushAutoAskedRef.current = true;
+    (async () => {
+      let alreadySubscribed = false;
+      try {
+        if (isPushSupported() && typeof Notification !== 'undefined') {
+          const existing = await getExistingSubscription();
+          alreadySubscribed = !!existing && Notification.permission === 'granted';
+        }
+      } catch {}
+      if (alreadySubscribed) return;
+      try {
+        const deviceKey = `push_optin_done:${tenant.id}`;
+        const dismissedKey = `push_optin_dismissed:${tenant.id}`;
+        const localDone = window.localStorage.getItem(deviceKey) === '1';
+        const localDismissed = window.localStorage.getItem(dismissedKey);
+        const dismissedRecently = localDismissed && (Date.now() - Number(localDismissed)) < 24 * 60 * 60 * 1000;
+        if (!localDone && !dismissedRecently) setPushDialogOpen(true);
+      } catch {
+        setPushDialogOpen(true);
+      }
+    })();
+  }, [tenant]);
   const [pushAskedFor, setPushAskedFor] = useState<string | null>(null);
   const [historyPhone, setHistoryPhone] = useState('');
   const [orders, setOrders] = useState<Order[]>([]);

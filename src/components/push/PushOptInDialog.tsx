@@ -15,6 +15,8 @@ import {
   isIosSafariNotStandalone,
   subscribePush,
   getExistingSubscription,
+  detectDevicePlatform,
+  devicePlatformLabel,
 } from '@/lib/push-client';
 
 interface Props {
@@ -45,6 +47,7 @@ export function PushOptInDialog({
 
   const iosBlocked = isIosSafariNotStandalone();
   const unsupported = !isPushSupported() && !iosBlocked;
+  const platform = detectDevicePlatform();
 
   const handleAccept = async () => {
     if (iosBlocked) {
@@ -96,6 +99,9 @@ export function PushOptInDialog({
             <BellRing className="h-6 w-6 text-indigo-600 dark:text-indigo-300" />
           </div>
           <DialogTitle className="text-center">Ativar notificações</DialogTitle>
+          <p className="text-center text-xs text-muted-foreground">
+            Aparelho identificado: <b>{devicePlatformLabel(platform)}</b>
+          </p>
           <DialogDescription className="text-center">
             {iosBlocked ? (
               <>Para receber notificações no iPhone, toque em <b>Compartilhar</b> no Safari e escolha <b>Adicionar à Tela de Início</b>.</>
