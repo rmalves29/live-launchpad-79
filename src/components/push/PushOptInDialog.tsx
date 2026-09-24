@@ -15,6 +15,8 @@ import {
   isIosSafariNotStandalone,
   subscribePush,
   getExistingSubscription,
+  detectDevicePlatform,
+  devicePlatformLabel,
 } from '@/lib/push-client';
 
 interface Props {
@@ -45,6 +47,7 @@ export function PushOptInDialog({
 
   const iosBlocked = isIosSafariNotStandalone();
   const unsupported = !isPushSupported() && !iosBlocked;
+  const platform = detectDevicePlatform();
 
   const handleAccept = async () => {
     if (iosBlocked) {
