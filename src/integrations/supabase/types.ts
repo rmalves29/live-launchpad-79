@@ -4436,6 +4436,7 @@ export type Database = {
           max_whatsapp_groups: number | null
           name: string
           order_merge_days: number | null
+          order_merge_enabled: boolean
           phone: string | null
           plan_type: string | null
           primary_color: string | null
@@ -4482,6 +4483,7 @@ export type Database = {
           max_whatsapp_groups?: number | null
           name: string
           order_merge_days?: number | null
+          order_merge_enabled?: boolean
           phone?: string | null
           plan_type?: string | null
           primary_color?: string | null
@@ -4528,6 +4530,7 @@ export type Database = {
           max_whatsapp_groups?: number | null
           name?: string
           order_merge_days?: number | null
+          order_merge_enabled?: boolean
           phone?: string | null
           plan_type?: string | null
           primary_color?: string | null
