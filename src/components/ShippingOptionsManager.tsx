@@ -102,6 +102,8 @@ export const ShippingOptionsManager = () => {
   const [saving, setSaving] = useState(false);
   const [options, setOptions] = useState<ShippingOption[]>([]);
   const [orderMergeDays, setOrderMergeDays] = useState<number>(3);
+  const [orderMergeEnabled, setOrderMergeEnabled] = useState<boolean>(true);
+  const [savingMergeToggle, setSavingMergeToggle] = useState(false);
   const [savingMergeDays, setSavingMergeDays] = useState(false);
   const [tableExists, setTableExists] = useState(false);
   const [activeIntegration, setActiveIntegration] = useState<string | null>(null);
@@ -192,6 +194,7 @@ export const ShippingOptionsManager = () => {
         if ('order_merge_days' in tenantData) {
           setOrderMergeDays((tenantData as any).order_merge_days ?? 3);
         }
+        setOrderMergeEnabled((tenantData as any).order_merge_enabled ?? true);
       }
     } catch (error) {
       console.error('Erro ao carregar configurações de frete:', error);
@@ -408,6 +411,31 @@ export const ShippingOptionsManager = () => {
         description: error?.message || 'Erro ao atualizar status',
         variant: 'destructive'
       });
+    }
+  };
+
+  const handleToggleMerge = async (enabled: boolean) => {
+    if (!tenantId) return;
+    const previous = orderMergeEnabled;
+    setOrderMergeEnabled(enabled);
+    setSavingMergeToggle(true);
+    try {
+      const { error } = await supabase
+        .from('tenants')
+        .update({ order_merge_enabled: enabled, updated_at: new Date().toISOString() } as any)
+        .eq('id', tenantId);
+      if (error) throw error;
+      toast({
+        title: enabled ? 'Função ativada' : 'Função desativada',
+        description: enabled
+          ? 'A opção "Juntar com pedido anterior" voltará a aparecer no checkout.'
+          : 'A opção "Juntar com pedido anterior" não aparecerá mais no checkout.',
+      });
+    } catch (error: any) {
+      setOrderMergeEnabled(previous);
+      toast({ title: 'Erro', description: error?.message || 'Erro ao salvar', variant: 'destructive' });
+    } finally {
+      setSavingMergeToggle(false);
     }
   };
 
@@ -817,17 +845,30 @@ export const ShippingOptionsManager = () => {
       {/* Card: Configuração Juntar Pedidos */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            Juntar Pedidos no Mesmo Frete
-          </CardTitle>
+          <div className="flex items-start justify-between gap-4">
+            <CardTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Juntar Pedidos no Mesmo Frete
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="merge_enabled" className="text-sm">
+                {orderMergeEnabled ? 'Ativado' : 'Desativado'}
+              </Label>
+              <Switch
+                id="merge_enabled"
+                checked={orderMergeEnabled}
+                disabled={savingMergeToggle}
+                onCheckedChange={handleToggleMerge}
+              />
+            </div>
+          </div>
           <CardDescription>
             Configure o prazo máximo para que clientes possam juntar pedidos em um único frete.
             Quando um cliente já tem um pedido <strong>pago</strong> recente, ao fazer um novo pedido aparecerá a opção de enviar tudo junto (frete grátis no novo pedido).
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
+          <div className={`space-y-4 ${orderMergeEnabled ? '' : 'opacity-50 pointer-events-none'}`}>
             <Alert>
               <Info className="h-4 w-4" />
               <AlertDescription>
