@@ -100,6 +100,9 @@ Deno.serve(async (req) => {
 
     const ordersWithItems = (orders || []).map((order: any) => ({
       ...order,
+      // Só expõe o código de rastreio para a cliente quando a postagem foi confirmada
+      melhor_envio_tracking_code: order.tracking_posted ? order.melhor_envio_tracking_code : null,
+      tracking_posted: undefined,
       items: order.cart_id ? (itemsByCartId.get(order.cart_id) || []) : [],
     }));
 
