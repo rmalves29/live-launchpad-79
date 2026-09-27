@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
 
     const { data: orders, error: ordersError } = await supabase
       .from("orders")
-      .select("id, tenant_id, customer_phone, customer_name, event_type, event_date, total_amount, is_paid, is_cancelled, order_status, payment_link, cart_id, coupon_code, coupon_discount, gift_name, created_at, melhor_envio_tracking_code")
+      .select("id, tenant_id, customer_phone, customer_name, event_type, event_date, total_amount, is_paid, is_cancelled, order_status, payment_link, cart_id, coupon_code, coupon_discount, gift_name, created_at, melhor_envio_tracking_code, tracking_posted")
       .eq("tenant_id", tenant.id)
       .or(`customer_phone.eq.${normalizedPhone},customer_phone.eq.55${normalizedPhone},customer_phone.eq.0${normalizedPhone},customer_phone.eq.55${normalizedPhone},customer_phone.like.%${normalizedPhone}`);
 
@@ -100,6 +100,9 @@ Deno.serve(async (req) => {
 
     const ordersWithItems = (orders || []).map((order: any) => ({
       ...order,
+      // Só expõe o código de rastreio para a cliente quando a postagem foi confirmada
+      melhor_envio_tracking_code: order.tracking_posted ? order.melhor_envio_tracking_code : null,
+      tracking_posted: undefined,
       items: order.cart_id ? (itemsByCartId.get(order.cart_id) || []) : [],
     }));
 
