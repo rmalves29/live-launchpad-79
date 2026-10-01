@@ -161,7 +161,6 @@ useEffect(() => {
     setSignerName('');
     setSignaturePromptOpen(false);
     setSignatureInput('');
-    loadProducts();
     // Buscar cupom mais atual do banco (caso a lista tenha vindo sem esses campos)
     (async () => {
       try {
@@ -189,13 +188,15 @@ useEffect(() => {
 }, [open, cartId]);
 
 
-  const loadProducts = async () => {
+  const loadProducts = async (term: string = '') => {
     try {
-      const { data, error } = await supabaseTenant
+      let query: any = supabaseTenant
         .from('products')
         .select('*')
-        .eq('is_active', true)
-        .order('name');
+        .eq('is_active', true);
+      const t = term.trim().replace(/[%,()]/g, '');
+      if (t) query = query.or(`code.ilike.%${t}%,name.ilike.%${t}%`);
+      const { data, error } = await query.order('name').limit(200);
 
       if (error) throw error;
       setProducts((data as any) || []);
@@ -208,6 +209,13 @@ useEffect(() => {
       });
     }
   };
+
+  useEffect(() => {
+    if (!open) return;
+    const h = setTimeout(() => loadProducts(searchQuery), 300);
+    return () => clearTimeout(h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, open]);
 
   const loadCartItems = async (id?: number | null) => {
     const effectiveId = id ?? cartId;
