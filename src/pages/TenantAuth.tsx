@@ -137,6 +137,25 @@ export default function TenantAuth() {
     }
   };
 
+  const handlePasswordReset = async () => {
+    if (!email) {
+      toast({ title: "Erro", description: "Por favor, insira seu e-mail.", variant: "destructive" });
+      return;
+    }
+    try {
+      setLoading(true);
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) throw error;
+      toast({ title: "E-mail enviado", description: "Verifique sua caixa de entrada para redefinir sua senha." });
+    } catch (err: any) {
+      toast({ title: "Erro ao enviar e-mail", description: err.message || "Tente novamente.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (tenantLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted">
@@ -214,6 +233,17 @@ export default function TenantAuth() {
             <Button className="w-full" onClick={handleLogin} disabled={loading}>
               {loading ? "Entrando..." : "Entrar"}
             </Button>
+
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={handlePasswordReset}
+                className="text-xs underline text-muted-foreground"
+                disabled={loading || !email}
+              >
+                Esqueci minha senha
+              </button>
+            </div>
 
             <div className="text-center text-sm text-muted-foreground mt-4">
               <p>Acesso restrito aos usuários autorizados de {tenant.name}</p>
