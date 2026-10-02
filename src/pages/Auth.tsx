@@ -327,7 +327,7 @@ export default function Auth() {
                     type="button"
                     onClick={handlePasswordReset}
                     className="text-xs underline text-muted-foreground mt-2"
-                    disabled={loading || !email}
+                    disabled={loading}
                   >
                     Esqueci minha senha
                   </button>

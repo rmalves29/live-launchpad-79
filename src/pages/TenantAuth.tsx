@@ -239,7 +239,7 @@ export default function TenantAuth() {
                 type="button"
                 onClick={handlePasswordReset}
                 className="text-xs underline text-muted-foreground"
-                disabled={loading || !email}
+                disabled={loading}
               >
                 Esqueci minha senha
               </button>
