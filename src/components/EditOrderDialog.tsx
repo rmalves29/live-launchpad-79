@@ -963,6 +963,10 @@ useEffect(() => {
                   .update({
                     is_paid: isPaid,
                     melhor_envio_tracking_code: trimmedTracking || null,
+                    // Código digitado manualmente = lojista marcou como enviado
+                    ...(trimmedTracking && (order.melhor_envio_tracking_code || '') !== trimmedTracking && !/retir/i.test(trimmedTracking)
+                      ? { tracking_posted: true }
+                      : {}),
                     observation: observation || null,
                     printed,
                     order_status: finalStatus,

@@ -566,7 +566,12 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
         // O trigger trg_send_tracking_whatsapp dispara automaticamente o envio via WhatsApp
         const { error: updateError } = await supabase
           .from('orders')
-          .update({ melhor_envio_tracking_code: trackingText.trim(), order_status: 'enviado' })
+          .update({
+            melhor_envio_tracking_code: trackingText.trim(),
+            order_status: 'enviado',
+            // Código digitado manualmente = lojista marcou como enviado
+            ...(!/retir/i.test(trackingText) ? { tracking_posted: true } : {}),
+          } as any)
           .eq('id', orderId)
           .eq('tenant_id', order.tenant_id);
 
