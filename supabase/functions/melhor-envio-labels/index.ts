@@ -715,12 +715,30 @@ async function getShipmentStatus(
   supabase: any,
   tenant_id: string
 ) {
-  const shipmentId = order.melhor_envio_shipment_id;
-  
+  let shipmentId = order.melhor_envio_shipment_id;
+
+  // Sem shipment_id (rastreio colado manualmente/ERP): localizar a remessa pelo código
+  if (!shipmentId && order.melhor_envio_tracking_code) {
+    try {
+      const sr = await fetch(`${baseUrl}/me/orders/search?q=${encodeURIComponent(order.melhor_envio_tracking_code)}`, { headers });
+      if (sr.ok) {
+        const sd = await sr.json();
+        const list = Array.isArray(sd) ? sd : (sd?.data || []);
+        const found = list.find((s: any) => String(s?.tracking || "").toUpperCase() === String(order.melhor_envio_tracking_code).toUpperCase()) || list[0];
+        if (found?.id) {
+          shipmentId = found.id;
+          await supabase.from("orders").update({ melhor_envio_shipment_id: found.id }).eq("id", order.id);
+        }
+      }
+    } catch (e) {
+      console.error("[melhor-envio-labels] busca por rastreio falhou:", e);
+    }
+  }
+
   if (!shipmentId) {
     return new Response(
       JSON.stringify({ success: false, error: "Pedido não possui remessa no Melhor Envio" }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 

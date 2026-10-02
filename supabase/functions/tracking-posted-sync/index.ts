@@ -97,25 +97,22 @@ serve(async (req: Request) => {
         fnName = "melhor-envio-labels";
         action = "get_status";
       } else {
-        // Sem shipment_id (rastreio veio do ERP): consulta a transportadora ativa do tenant
+        // Sem shipment_id (rastreio veio do ERP ou foi colado): consulta a transportadora ativa do tenant.
+        // Novas transportadoras: basta adicionar uma linha em PROVIDER_ROUTES.
+        const PROVIDER_ROUTES: Record<string, [string, string]> = {
+          mandae: ["mandae-labels", "get_tracking"],
+          mandabem: ["mandabem-labels", "get_tracking"],
+          frenet: ["frenet-labels", "get_tracking"],
+          superfrete: ["superfrete-labels", "get_status"],
+          melhor_envio: ["melhor-envio-labels", "get_status"],
+        };
         const provider = providerByTenant.get(order.tenant_id) || "";
-        if (provider === "mandae") {
-          fnName = "mandae-labels";
-          action = "get_tracking";
-        } else if (provider === "mandabem") {
-          fnName = "mandabem-labels";
-          action = "get_tracking";
-        } else if (provider === "frenet") {
-          fnName = "frenet-labels";
-          action = "get_tracking";
-        } else if (provider === "superfrete") {
-          fnName = "superfrete-labels";
-          action = "get_status";
-        } else {
-          // Correios CWS / MeusCorreios / outros: sem API de postagem — nada a fazer
+        const route = PROVIDER_ROUTES[provider];
+        if (!route) {
           results.push({ order_id: order.id, skipped: true });
           continue;
         }
+        [fnName, action] = route;
       }
 
       try {
