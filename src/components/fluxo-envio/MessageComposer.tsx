@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { Send, Clock, Image, Music, Video, FileText, Loader2, Upload, X, Ban, Eye, Circle, Pencil, AtSign } from 'lucide-react';
+import { Send, Clock, Image, Music, Video, FileText, Loader2, Upload, X, Ban, Eye, Circle, Pencil, AtSign, BarChart3, Plus, Trash2 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -35,9 +35,11 @@ export default function MessageComposer() {
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [contentType, setContentType] = useState<'text' | 'image' | 'audio' | 'video' | 'video_note'>('text');
+  const [contentType, setContentType] = useState<'text' | 'image' | 'audio' | 'video' | 'video_note' | 'poll'>('text');
   const [editingMessage, setEditingMessage] = useState<any>(null);
   const [contentText, setContentText] = useState('');
+  const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
+  const [pollMultiple, setPollMultiple] = useState(false);
   const [mediaUrl, setMediaUrl] = useState('');
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -78,6 +80,25 @@ export default function MessageComposer() {
 
   const toggleGroup = (id: string) => {
     setSelectedGroupIds(prev => prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id]);
+  };
+
+  const cleanPollOptions = () => pollOptions.map(o => o.trim()).filter(Boolean);
+  const resetPoll = () => { setPollOptions(['', '']); setPollMultiple(false); };
+  const validatePoll = (): boolean => {
+    const opts = cleanPollOptions();
+    if (!contentText.trim()) {
+      toast({ title: 'Escreva a pergunta da enquete', variant: 'destructive' });
+      return false;
+    }
+    if (opts.length < 2) {
+      toast({ title: 'A enquete precisa de pelo menos 2 opções', variant: 'destructive' });
+      return false;
+    }
+    if (new Set(opts.map(o => o.toLowerCase())).size !== opts.length) {
+      toast({ title: 'Há opções repetidas na enquete', variant: 'destructive' });
+      return false;
+    }
+    return true;
   };
 
   const acceptMap: Record<string, string> = {
@@ -156,7 +177,9 @@ export default function MessageComposer() {
       return;
     }
 
-    if (contentType !== 'text' && !mediaUrl) {
+    if (contentType === 'poll') {
+      if (!validatePoll()) return;
+    } else if (contentType !== 'text' && !mediaUrl) {
       toast({ title: 'Anexe um arquivo para enviar', variant: 'destructive' });
       return;
     }
@@ -200,6 +223,8 @@ export default function MessageComposer() {
         content_type: contentType,
         content_text: contentText || null,
         media_url: mediaUrl || null,
+        poll_options: contentType === 'poll' ? cleanPollOptions() : null,
+        poll_selectable_count: contentType === 'poll' ? (pollMultiple ? cleanPollOptions().length : 1) : null,
         status: sendMode === 'scheduled' ? 'pending' : 'sending',
         scheduled_at: sendMode === 'scheduled' ? new Date(scheduledAt).toISOString() : null,
       }));
@@ -218,6 +243,8 @@ export default function MessageComposer() {
             content_type: contentType,
             content_text: contentText,
             media_url: mediaUrl,
+            poll_options: contentType === 'poll' ? cleanPollOptions() : undefined,
+            poll_selectable_count: contentType === 'poll' ? (pollMultiple ? cleanPollOptions().length : 1) : undefined,
             mention_all: mentionAll,
             message_ids: targetGroupIds.map(gid => (insertedMessages as any[] | null)?.find(m => m.group_id === gid)?.id),
             async: true,
@@ -240,6 +267,7 @@ export default function MessageComposer() {
 
       toast({ title: sendMode === 'instant' ? 'Mensagens enviadas!' : 'Mensagens agendadas!' });
       setContentText('');
+      resetPoll();
       setMentionAll(false);
       clearMedia();
       setSelectedGroupIds([]);
@@ -256,6 +284,7 @@ export default function MessageComposer() {
     audio: <Music className="h-4 w-4" />,
     video: <Video className="h-4 w-4" />,
     video_note: <Circle className="h-4 w-4" />,
+    poll: <BarChart3 className="h-4 w-4" />,
   };
 
   const startEditMessage = (m: any) => {
@@ -263,6 +292,13 @@ export default function MessageComposer() {
     setContentType(m.content_type);
     setContentText(m.content_text || '');
     setMediaUrl(m.media_url || '');
+    if (m.content_type === 'poll') {
+      const opts: string[] = Array.isArray(m.poll_options) ? m.poll_options : [];
+      setPollOptions(opts.length >= 2 ? opts : ['', '']);
+      setPollMultiple((m.poll_selectable_count || 1) > 1);
+    } else {
+      resetPoll();
+    }
     setSendMode(m.scheduled_at ? 'scheduled' : 'instant');
     if (m.scheduled_at) {
       const d = new Date(m.scheduled_at);
@@ -274,12 +310,15 @@ export default function MessageComposer() {
 
   const saveEditMessage = async () => {
     if (!editingMessage) return;
+    if (contentType === 'poll' && !validatePoll()) return;
     setSending(true);
     try {
       const updateData: any = {
         content_type: contentType,
         content_text: contentText || null,
         media_url: mediaUrl || null,
+        poll_options: contentType === 'poll' ? cleanPollOptions() : null,
+        poll_selectable_count: contentType === 'poll' ? (pollMultiple ? cleanPollOptions().length : 1) : null,
         scheduled_at: sendMode === 'scheduled' && scheduledAt ? new Date(scheduledAt).toISOString() : null,
       };
       const { error } = await supabase.from('fe_messages' as any).update(updateData).eq('id', editingMessage.id).eq('status', 'pending');
@@ -287,6 +326,7 @@ export default function MessageComposer() {
       toast({ title: 'Mensagem atualizada!' });
       setEditingMessage(null);
       setContentText('');
+      resetPoll();
       clearMedia();
       fetchData();
     } catch (err: any) {
@@ -329,9 +369,10 @@ export default function MessageComposer() {
                   { key: 'audio', label: 'Áudio' },
                   { key: 'video', label: 'Vídeo' },
                   { key: 'video_note', label: 'Vídeo Redondo' },
+                  { key: 'poll', label: 'Enquete' },
                 ] as const).map(t => (
                   <Button key={t.key} variant={contentType === t.key ? 'default' : 'outline'} size="sm"
-                    onClick={() => { setContentType(t.key); clearMedia(); }}>
+                    onClick={() => { setContentType(t.key); clearMedia(); setMentionAll(false); }}>
                     {contentTypeIcon[t.key]}
                     <span className="ml-1">{t.label}</span>
                   </Button>
@@ -341,12 +382,45 @@ export default function MessageComposer() {
 
             {/* Text */}
             <div>
-              <Label>Mensagem</Label>
-              <Textarea placeholder="Digite sua mensagem..." value={contentText}
-                onChange={(e) => setContentText(e.target.value)} rows={4} />
+              <Label>{contentType === 'poll' ? 'Pergunta da enquete' : 'Mensagem'}</Label>
+              <Textarea placeholder={contentType === 'poll' ? 'Ex: Qual coleção você quer ver na live?' : 'Digite sua mensagem...'} value={contentText}
+                onChange={(e) => setContentText(e.target.value)} rows={contentType === 'poll' ? 2 : 4} />
             </div>
 
+            {/* Poll options */}
+            {contentType === 'poll' && (
+              <div className="space-y-2">
+                <Label>Opções (de 2 a 12)</Label>
+                {pollOptions.map((opt, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <Input
+                      placeholder={`Opção ${idx + 1}`}
+                      value={opt}
+                      maxLength={100}
+                      onChange={(e) => setPollOptions(prev => prev.map((o, i) => i === idx ? e.target.value : o))}
+                    />
+                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0"
+                      disabled={pollOptions.length <= 2}
+                      onClick={() => setPollOptions(prev => prev.filter((_, i) => i !== idx))}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" disabled={pollOptions.length >= 12}
+                  onClick={() => setPollOptions(prev => [...prev, ''])}>
+                  <Plus className="h-4 w-4 mr-1" />Adicionar opção
+                </Button>
+                <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/30">
+                  <Checkbox checked={pollMultiple} onCheckedChange={(v) => setPollMultiple(!!v)} id="poll-multiple" />
+                  <label htmlFor="poll-multiple" className="text-sm font-medium text-foreground cursor-pointer">
+                    Permitir selecionar mais de uma opção
+                  </label>
+                </div>
+              </div>
+            )}
+
             {/* Mention toggle */}
+            {contentType !== 'poll' && (
             <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/30">
               <Checkbox checked={mentionAll} onCheckedChange={(v) => setMentionAll(!!v)} id="mention-all" />
               <label htmlFor="mention-all" className="text-sm font-medium text-foreground flex items-center gap-1.5 cursor-pointer">
@@ -355,12 +429,13 @@ export default function MessageComposer() {
               </label>
               <span className="text-xs text-muted-foreground ml-auto">Marca todos com @</span>
             </div>
+            )}
 
 
 
 
             {/* File upload for media */}
-            {contentType !== 'text' && (
+            {contentType !== 'text' && contentType !== 'poll' && (
               <div>
                 <Label>{contentType === 'image' ? 'Imagem' : contentType === 'audio' ? 'Áudio' : contentType === 'video_note' ? 'Vídeo (será enviado redondo)' : 'Vídeo'}</Label>
                 <input
@@ -470,7 +545,7 @@ export default function MessageComposer() {
                   {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Pencil className="h-4 w-4 mr-1" />}
                   Salvar Edição
                 </Button>
-                <Button variant="outline" onClick={() => { setEditingMessage(null); setContentText(''); clearMedia(); }}>
+                <Button variant="outline" onClick={() => { setEditingMessage(null); setContentText(''); resetPoll(); clearMedia(); }}>
                   Cancelar
                 </Button>
               </div>
@@ -501,6 +576,9 @@ export default function MessageComposer() {
                       </span>
                     </div>
                     {m.content_text && <p className="text-sm text-foreground line-clamp-2">{m.content_text}</p>}
+                    {m.content_type === 'poll' && Array.isArray(m.poll_options) && (
+                      <p className="text-xs text-muted-foreground line-clamp-1">Opções: {m.poll_options.join(' · ')}</p>
+                    )}
                     {m.scheduled_at && (
                       <p className="text-xs text-muted-foreground mt-1">
                         <Clock className="h-3 w-3 inline mr-1" />
@@ -554,6 +632,18 @@ export default function MessageComposer() {
                   <div>
                     <Label className="text-xs text-muted-foreground">Mensagem</Label>
                     <p className="text-sm text-foreground whitespace-pre-wrap bg-muted/30 p-3 rounded-lg mt-1">{viewMessage.content_text}</p>
+                  </div>
+                )}
+                {viewMessage.content_type === 'poll' && Array.isArray(viewMessage.poll_options) && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">
+                      Opções {(viewMessage.poll_selectable_count || 1) > 1 ? '(múltipla escolha)' : '(escolha única)'}
+                    </Label>
+                    <ul className="mt-1 space-y-1">
+                      {viewMessage.poll_options.map((o: string, i: number) => (
+                        <li key={i} className="text-sm text-foreground bg-muted/30 px-3 py-2 rounded-lg">{o}</li>
+                      ))}
+                    </ul>
                   </div>
                 )}
                 {viewMessage.media_url && (

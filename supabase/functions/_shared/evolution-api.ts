@@ -15,6 +15,7 @@ import {
   sendAudio as uazSendAudio,
   sendVideo as uazSendVideo,
   sendButton as uazSendButton,
+  sendPoll as uazSendPoll,
   sendLinkMessage as uazSendLinkMessage,
   sendPresenceAvailable as uazSendPresenceAvailable,
   sendPresenceComposing as uazSendPresenceComposing,
@@ -59,6 +60,18 @@ export async function sendButton(
   const cfg = parseCfg(instanceName);
   if (!cfg) return noCfgError("sendButton");
   return uazSendButton(cfg, phone, message, buttonLabel, buttonUrl, _footer);
+}
+
+export async function sendPoll(
+  instanceName: string,
+  phone: string,
+  question: string,
+  options: string[],
+  selectableCount = 1,
+) {
+  const cfg = parseCfg(instanceName);
+  if (!cfg) return noCfgError("sendPoll");
+  return uazSendPoll(cfg, phone, question, options, selectableCount);
 }
 
 export async function sendImage(instanceName: string, phone: string, imageUrl: string, caption?: string) {

@@ -148,6 +148,35 @@ export async function sendButton(
   }
 }
 
+export async function sendPoll(
+  cfg: UazapiConfig,
+  phone: string,
+  question: string,
+  options: string[],
+  selectableCount = 1,
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const choices = options.map((o) => (o || "").toString().trim()).filter(Boolean);
+    if (!question.trim() || choices.length < 2) {
+      return { success: false, error: "Enquete precisa de pergunta e ao menos 2 opcoes" };
+    }
+    const res = await fetchWithTimeout(`${trimUrl(cfg.url)}/send/menu`, {
+      method: "POST",
+      headers: instanceHeaders(cfg.token),
+      body: JSON.stringify({
+        number: phone,
+        type: "poll",
+        text: question,
+        choices,
+        selectableCount: Math.min(Math.max(1, selectableCount), choices.length),
+      }),
+    }, 60_000);
+    return await readResult(res);
+  } catch (e: any) {
+    return { success: false, error: e.name === "AbortError" ? "uazapi timeout sendPoll" : e.message };
+  }
+}
+
 export async function sendReaction(
   cfg: UazapiConfig,
   phone: string,

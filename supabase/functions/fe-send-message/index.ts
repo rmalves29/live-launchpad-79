@@ -6,6 +6,7 @@ import {
   sendImageByUrl as evoSendImageByUrl,
   sendAudio as evoSendAudio,
   sendVideo as evoSendVideo,
+  sendPoll as evoSendPoll,
   getGroupParticipants as evoGetGroupParticipants,
 } from "../_shared/evolution-api.ts";
 
@@ -20,9 +21,11 @@ interface SendRequest {
   tenant_id: string;
   group_ids: string[];
   message_ids?: string[];
-  content_type: "text" | "image" | "audio" | "video" | "video_note";
+  content_type: "text" | "image" | "audio" | "video" | "video_note" | "poll";
   content_text?: string;
   media_url?: string;
+  poll_options?: string[];
+  poll_selectable_count?: number;
   mention_all?: boolean;
   
   async?: boolean;
@@ -77,7 +80,9 @@ async function sendToGroupZapi(
   contentType: string,
   contentText?: string,
   mediaUrl?: string,
-  mentionAll?: boolean
+  mentionAll?: boolean,
+  pollOptions?: string[],
+  pollSelectableCount?: number
 ): Promise<Response> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (clientToken) headers["Client-Token"] = clientToken;
@@ -124,6 +129,16 @@ async function sendToGroupZapi(
       }
       return ptvRes;
     }
+    case "poll":
+      return fetch(baseUrl + "/send-poll", {
+        method: "POST", headers,
+        body: JSON.stringify({
+          phone,
+          message: contentText,
+          poll: (pollOptions || []).map((name) => ({ name })),
+          pollMaxOptions: pollSelectableCount || 1,
+        }),
+      });
     default:
       throw new Error("Tipo de conteudo nao suportado: " + contentType);
   }
@@ -136,7 +151,9 @@ async function sendToGroupEvolution(
   groupJid: string,
   contentType: string,
   contentText?: string,
-  mediaUrl?: string
+  mediaUrl?: string,
+  pollOptions?: string[],
+  pollSelectableCount?: number
 ): Promise<{ success: boolean; error?: string; messageId?: string }> {
   try {
     // Evolution API expects WhatsApp JID format "<id>@g.us"; convert from Z-API "<id>-group" if needed
@@ -157,6 +174,8 @@ async function sendToGroupEvolution(
         }
         return imgResult;
       }
+      case "poll":
+        return await evoSendPoll(instanceName, evoJid, contentText || "", pollOptions || [], pollSelectableCount || 1);
       case "audio":
         return await evoSendAudio(instanceName, evoJid, mediaUrl || "");
       case "video":
@@ -188,7 +207,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body: SendRequest = await req.json();
-    const { tenant_id, group_ids, message_ids, content_type, content_text, media_url, mention_all } = body;
+    const { tenant_id, group_ids, message_ids, content_type, content_text, media_url, mention_all, poll_options, poll_selectable_count } = body;
 
 
     if (!tenant_id || !group_ids?.length) {
@@ -197,7 +216,14 @@ serve(async (req) => {
       });
     }
 
-    if (content_type !== "text" && !media_url) {
+    if (content_type === "poll") {
+      const opts = (poll_options || []).map((o) => (o || "").trim()).filter(Boolean);
+      if (!content_text?.trim() || opts.length < 2 || opts.length > 12) {
+        return new Response(JSON.stringify({ error: "Enquete precisa de pergunta e de 2 a 12 opcoes" }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else if (content_type !== "text" && !media_url) {
       return new Response(JSON.stringify({ error: "media_url e obrigatorio para imagem, audio e video" }), {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -245,13 +271,13 @@ serve(async (req) => {
           let waMessageId: string | undefined;
 
           if (creds.provider === "uazapi") {
-            const result = await sendToGroupEvolution(creds.instanceName!, group.group_jid, content_type, content_text, media_url);
+            const result = await sendToGroupEvolution(creds.instanceName!, group.group_jid, content_type, content_text, media_url, poll_options, poll_selectable_count);
             sent = result.success;
             errMsg = result.error;
             waMessageId = result.messageId;
             console.log("[fe-send-message] uazapi - Group " + group.group_name + " (" + group.group_jid + "): sent=" + sent + (errMsg ? " error=" + errMsg : ""));
           } else {
-            const res = await sendToGroupZapi(zapiBaseUrl, creds.clientToken!, group.group_jid, content_type, content_text, media_url, mention_all);
+            const res = await sendToGroupZapi(zapiBaseUrl, creds.clientToken!, group.group_jid, content_type, content_text, media_url, mention_all, poll_options, poll_selectable_count);
             const resText = await res.text();
             sent = res.status >= 200 && res.status < 300;
             errMsg = sent ? undefined : resText.substring(0, 300);

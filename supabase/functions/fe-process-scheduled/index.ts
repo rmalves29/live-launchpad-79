@@ -20,7 +20,7 @@ serve(async (req) => {
     const now = new Date().toISOString();
     const { data: messages, error } = await supabase
       .from("fe_messages")
-      .select("id, tenant_id, group_id, content_type, content_text, media_url")
+      .select("id, tenant_id, group_id, content_type, content_text, media_url, poll_options, poll_selectable_count")
       .eq("status", "pending")
       .not("scheduled_at", "is", null)
       .lte("scheduled_at", now)
@@ -91,6 +91,8 @@ serve(async (req) => {
             content_type: msg.content_type,
             content_text: msg.content_text,
             media_url: msg.media_url,
+            poll_options: msg.poll_options,
+            poll_selectable_count: msg.poll_selectable_count,
           }),
         });
 
