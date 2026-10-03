@@ -420,6 +420,32 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
         </Card>
       )}
 
+      {/* Link da Loja da Live */}
+      {tenantSlug && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Link de compra da live</CardTitle>
+            <CardDescription>
+              Cole este link na live do Instagram. O cliente vê a vitrine, monta o carrinho e paga em poucos toques.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="rounded bg-muted px-2 py-1 text-xs break-all">{`${window.location.origin}/t/${tenantSlug}/live`}</code>
+              <Button size="sm" variant="outline" onClick={() => copyToClipboard(`${window.location.origin}/t/${tenantSlug}/live`, 'Link da Loja da Live')}>
+                <Copy className="h-4 w-4 mr-1" /> Copiar
+              </Button>
+              <Button size="sm" variant="outline" asChild>
+                <a href={`/t/${tenantSlug}/live`} target="_blank" rel="noreferrer"><ExternalLink className="h-4 w-4 mr-1" /> Abrir</a>
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Só aparecem peças de venda LIVE ou AMBOS com estoque. Reserva de estoque e prazos ficam em Fila de Espera.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Como funciona */}
       <Alert>
         <Instagram className="h-4 w-4" />

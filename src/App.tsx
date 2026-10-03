@@ -48,6 +48,7 @@ const TenantIntegrationsPage = lazy(() => import("./components/TenantIntegration
 const TenantStorefront = lazy(() => import("./pages/TenantStorefront"));
 const PushOptInPublic = lazy(() => import("./pages/push/PushOptIn"));
 const CadastroInstagram = lazy(() => import("./pages/tenant/CadastroInstagram"));
+const LiveShop = lazy(() => import("./pages/live/LiveShop"));
 
 const EmpresasIndex = lazy(() => import("./pages/empresas/Index"));
 const Debug = lazy(() => import("./pages/Debug"));
@@ -385,6 +386,7 @@ const AppContent = () => {
         
         {/* Cadastro público Instagram */}
         <Route path="/t/:slug/cadastro-instagram" element={<CadastroInstagram />} />
+        <Route path="/t/:slug/live" element={<LiveShop />} />
 
         {/* Opt-in público de notificações push */}
         <Route path="/t/:slug/push" element={<PushOptInPublic />} />

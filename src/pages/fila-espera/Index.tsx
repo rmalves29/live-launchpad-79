@@ -59,6 +59,9 @@ export default function FilaEsperaPage() {
   const [autoCancelValue, setAutoCancelValue] = useState<number>(24);
   const [autoCancelUnit, setAutoCancelUnit] = useState<'hours' | 'minutes'>('hours');
   const [liveMinutes, setLiveMinutes] = useState<string>('');
+  const [reserveMode, setReserveMode] = useState<'order' | 'cart'>('order');
+  const [cartMinutes, setCartMinutes] = useState<number>(15);
+  const [savingLiveShop, setSavingLiveShop] = useState(false);
   const [savingAutoCancel, setSavingAutoCancel] = useState(false);
   const [runningAutoCancel, setRunningAutoCancel] = useState(false);
   const [view, setView] = useState<'table' | 'kanban'>('table');
@@ -67,11 +70,13 @@ export default function FilaEsperaPage() {
     if (!tenant?.id) return;
     const { data } = await supabase
       .from('tenants')
-      .select('waitlist_enabled, auto_cancel_unpaid_enabled, auto_cancel_unpaid_hours, auto_cancel_unpaid_minutes, auto_cancel_live_minutes')
+      .select('waitlist_enabled, auto_cancel_unpaid_enabled, auto_cancel_unpaid_hours, auto_cancel_unpaid_minutes, auto_cancel_live_minutes, live_reserve_mode, live_cart_minutes')
       .eq('id', tenant.id)
       .maybeSingle();
     setEnabled((data as any)?.waitlist_enabled !== false);
     setAutoCancelEnabled((data as any)?.auto_cancel_unpaid_enabled === true);
+    setReserveMode((data as any)?.live_reserve_mode === 'cart' ? 'cart' : 'order');
+    setCartMinutes(Math.max(1, Number((data as any)?.live_cart_minutes) || 15));
     const lm = Number((data as any)?.auto_cancel_live_minutes);
     setLiveMinutes(Number.isFinite(lm) && lm > 0 ? String(lm) : '');
     const minutes = Number((data as any)?.auto_cancel_unpaid_minutes);
@@ -108,6 +113,37 @@ export default function FilaEsperaPage() {
     setAutoCancelUnit(unit);
     setAutoCancelValue(value);
     toast({ title: 'Regra de cancelamento salva' });
+  }
+
+  async function saveLiveShop(next: { mode?: 'order' | 'cart'; minutes?: number }) {
+    if (!tenant?.id) return;
+    const mode = next.mode ?? reserveMode;
+    const minutes = Math.max(1, Math.min(240, Math.round(next.minutes ?? cartMinutes)));
+    setSavingLiveShop(true);
+    const { error } = await supabase
+      .from('tenants')
+      .update({ live_reserve_mode: mode, live_cart_minutes: minutes } as any)
+      .eq('id', tenant.id);
+    setSavingLiveShop(false);
+    if (error) {
+      toast({ title: 'Erro ao salvar', description: error.message, variant: 'destructive' });
+      return;
+    }
+    setReserveMode(mode);
+    setCartMinutes(minutes);
+    toast({ title: 'Configuração da Loja da Live salva' });
+  }
+
+  async function copyLiveLink() {
+    const slug = (tenant as any)?.slug;
+    if (!slug) return;
+    const url = `${window.location.origin}/t/${slug}/live`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast({ title: 'Link copiado', description: url });
+    } catch {
+      toast({ title: 'Copie o link', description: url });
+    }
   }
 
   async function runAutoCancelNow() {
@@ -357,6 +393,54 @@ export default function FilaEsperaPage() {
         <StatCard label="Notificadas (reserva ativa)" value={stats.notified} icon={Clock} color="amber" />
         <StatCard label="Convertidas em pedido pago" value={stats.converted} icon={ListOrdered} color="green" />
       </div>
+
+      <Card className="p-4 space-y-3">
+        <div>
+          <h3 className="font-semibold">Loja da Live (link da live do Instagram)</h3>
+          <p className="text-xs text-muted-foreground">
+            Página de compra para colar no link da live: vitrine com as peças de venda LIVE ou AMBOS, carrinho e pagamento.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <code className="rounded bg-muted px-2 py-1 text-xs break-all">
+            {typeof window !== 'undefined' ? window.location.origin : ''}/t/{(tenant as any)?.slug || 'sua-loja'}/live
+          </code>
+          <Button size="sm" variant="outline" onClick={copyLiveLink}>Copiar link</Button>
+          <Button size="sm" variant="outline" asChild>
+            <a href={`/t/${(tenant as any)?.slug || ''}/live`} target="_blank" rel="noreferrer">Abrir</a>
+          </Button>
+        </div>
+        <div className="space-y-2">
+          <Label className="text-xs">Quando reservar a peça no estoque</Label>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button
+              type="button" role="radio" aria-checked={reserveMode === 'order'} disabled={savingLiveShop}
+              onClick={() => saveLiveShop({ mode: 'order' })}
+              className={`rounded-lg border p-3 text-left text-sm ${reserveMode === 'order' ? 'border-primary bg-primary/5' : ''}`}
+            >
+              <b>Só ao fazer o pedido</b>
+              <span className="block text-xs text-muted-foreground">Carrinho abandonado não trava peça. Recomendado.</span>
+            </button>
+            <button
+              type="button" role="radio" aria-checked={reserveMode === 'cart'} disabled={savingLiveShop}
+              onClick={() => saveLiveShop({ mode: 'cart' })}
+              className={`rounded-lg border p-3 text-left text-sm ${reserveMode === 'cart' ? 'border-primary bg-primary/5' : ''}`}
+            >
+              <b>Ao adicionar no carrinho</b>
+              <span className="block text-xs text-muted-foreground">Reserva na hora e devolve ao estoque se o cliente sumir.</span>
+            </button>
+          </div>
+          {reserveMode === 'cart' && (
+            <div className="flex items-end gap-2">
+              <div className="space-y-1">
+                <Label htmlFor="cart-minutes" className="text-xs">Tempo do carrinho (minutos)</Label>
+                <Input id="cart-minutes" type="number" min={1} max={240} className="w-32" value={cartMinutes} onChange={(e) => setCartMinutes(Number(e.target.value))} />
+              </div>
+              <Button size="sm" disabled={savingLiveShop} onClick={() => saveLiveShop({ minutes: cartMinutes })}>Salvar tempo</Button>
+            </div>
+          )}
+        </div>
+      </Card>
 
       <Card className="p-3 flex flex-wrap gap-2 items-center">
         <Input placeholder="Buscar cliente, telefone ou produto..." value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs"/>

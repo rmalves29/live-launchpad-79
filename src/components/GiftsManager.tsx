@@ -19,6 +19,7 @@ interface GiftItem {
   description?: string;
   minimum_purchase_amount: number;
   is_active: boolean;
+  auto_apply?: boolean;
   tenant_id?: string;
 }
 
@@ -36,7 +37,8 @@ export const GiftsManager = () => {
     name: '',
     description: '',
     minimum_purchase_amount: 0,
-    is_active: true
+    is_active: true,
+    auto_apply: true
   });
 
   useEffect(() => {
@@ -109,7 +111,8 @@ export const GiftsManager = () => {
         name: newGift.name,
         description: newGift.description || null,
         minimum_purchase_amount: newGift.minimum_purchase_amount,
-        is_active: newGift.is_active
+        is_active: newGift.is_active,
+        auto_apply: newGift.auto_apply
       };
 
       // Adicionar tenant_id se a coluna existir
@@ -181,7 +184,8 @@ export const GiftsManager = () => {
       name: '',
       description: '',
       minimum_purchase_amount: 0,
-      is_active: true
+      is_active: true,
+      auto_apply: true
     });
     setIsAddingGift(false);
     setEditingGift(null);
@@ -193,7 +197,8 @@ export const GiftsManager = () => {
       name: gift.name,
       description: gift.description || '',
       minimum_purchase_amount: gift.minimum_purchase_amount,
-      is_active: gift.is_active
+      is_active: gift.is_active,
+      auto_apply: gift.auto_apply !== false
     });
     setIsAddingGift(true);
   };
@@ -279,6 +284,15 @@ export const GiftsManager = () => {
                   onCheckedChange={(checked) => setNewGift({ ...newGift, is_active: checked })}
                 />
                 <Label htmlFor="is_active">Presente Ativo</Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="auto_apply"
+                  checked={newGift.auto_apply}
+                  onCheckedChange={(checked) => setNewGift({ ...newGift, auto_apply: checked })}
+                />
+                <Label htmlFor="auto_apply">Aplicar automaticamente na Loja da Live ao atingir o valor mínimo</Label>
               </div>
             </div>
 

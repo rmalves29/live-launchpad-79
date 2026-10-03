@@ -27,6 +27,7 @@ interface Coupon {
   tenant_id?: string;
   min_purchase_amount?: number | null;
   min_items_quantity?: number | null;
+  apply_to_promotional?: boolean;
   progressive_tiers?: Array<{
     min_value: number;
     max_value: number | null;
@@ -57,6 +58,7 @@ export const CouponsManager = () => {
     min_condition_type: 'none' as MinConditionType,
     min_purchase_amount: '' as string,
     min_items_quantity: '' as string,
+    apply_to_promotional: true,
     progressive_tiers: [{ min_value: 0, max_value: 100, discount: 5 }]
   });
 
@@ -177,6 +179,7 @@ export const CouponsManager = () => {
         is_active: newCoupon.is_active,
         min_purchase_amount: minAmount,
         min_items_quantity: minQty,
+        apply_to_promotional: newCoupon.apply_to_promotional,
         progressive_tiers: isProgressive ? newCoupon.progressive_tiers : null
       };
 
@@ -255,6 +258,7 @@ export const CouponsManager = () => {
       min_condition_type: 'none',
       min_purchase_amount: '',
       min_items_quantity: '',
+      apply_to_promotional: true,
       progressive_tiers: [{ min_value: 0, max_value: 100, discount: 5 }]
     });
     setIsAddingCoupon(false);
@@ -290,6 +294,7 @@ export const CouponsManager = () => {
       min_condition_type: minType,
       min_purchase_amount: coupon.min_purchase_amount != null ? String(coupon.min_purchase_amount) : '',
       min_items_quantity: coupon.min_items_quantity != null ? String(coupon.min_items_quantity) : '',
+      apply_to_promotional: coupon.apply_to_promotional !== false,
       progressive_tiers: coupon.progressive_tiers || [{ min_value: 0, max_value: 100, discount: 5 }]
     });
     setIsAddingCoupon(true);
@@ -497,6 +502,15 @@ export const CouponsManager = () => {
                   onCheckedChange={(checked) => setNewCoupon({ ...newCoupon, is_active: checked })}
                 />
                 <Label htmlFor="is_active">Cupom Ativo</Label>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="apply_to_promotional"
+                  checked={newCoupon.apply_to_promotional}
+                  onCheckedChange={(checked) => setNewCoupon({ ...newCoupon, apply_to_promotional: checked })}
+                />
+                <Label htmlFor="apply_to_promotional">Vale também em produtos já em promoção (Loja da Live)</Label>
               </div>
             </div>
 
