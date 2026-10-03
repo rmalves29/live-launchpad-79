@@ -14,6 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
+import SequenceSteps, { cleanStepPoll, stepDelaySeconds, validateStep, type SeqStep } from './SequenceSteps';
 
 interface FeGroup {
   id: string;
@@ -52,6 +53,7 @@ export default function MessageComposer() {
   const [mentionAll, setMentionAll] = useState(false);
   const [groupSort, setGroupSort] = useState<'name' | 'last_sent'>('name');
   const [groupSearch, setGroupSearch] = useState('');
+  const [extraSteps, setExtraSteps] = useState<SeqStep[]>([]);
 
   
   const [messages, setMessages] = useState<any[]>([]);
@@ -69,7 +71,7 @@ export default function MessageComposer() {
       supabase.from('fe_campaigns' as any).select('id, name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
       supabase.from('fe_messages' as any).select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(20),
       supabase.from('fe_messages' as any).select('group_id, sent_at').eq('tenant_id', tenant.id).not('sent_at', 'is', null).order('sent_at', { ascending: false }).limit(2000),
-      supabase.from('fe_messages' as any).select('id, group_id, campaign_id, content_type, content_text, scheduled_at, created_at').eq('tenant_id', tenant.id).eq('status', 'pending').order('scheduled_at', { ascending: true }).limit(1000),
+      supabase.from('fe_messages' as any).select('id, group_id, campaign_id, content_type, content_text, scheduled_at, created_at, sequence_step, delay_seconds').eq('tenant_id', tenant.id).eq('status', 'pending').order('scheduled_at', { ascending: true }).limit(1000),
     ]);
     const lastByGroup: Record<string, string> = {};
     ((sentAgg as any).data || []).forEach((r: any) => {
@@ -189,10 +191,10 @@ export default function MessageComposer() {
 
   // Agrupa agendados iguais (mesmo horário, texto e campanha) para cancelar um lote de uma vez.
   const scheduledBatches = (() => {
-    const map = new Map<string, { key: string; scheduled_at: string; text: string; type: string; ids: string[]; groupIds: string[] }>();
+    const map = new Map<string, { key: string; scheduled_at: string; text: string; type: string; step: number; delay: number; ids: string[]; groupIds: string[] }>();
     for (const m of scheduledMsgs) {
-      const key = [m.scheduled_at, m.campaign_id || '', m.content_type, (m.content_text || '').slice(0, 80)].join('|');
-      const b = map.get(key) || { key, scheduled_at: m.scheduled_at, text: m.content_text || '', type: m.content_type, ids: [], groupIds: [] };
+      const key = [m.scheduled_at, m.campaign_id || '', m.content_type, m.sequence_step || 1, (m.content_text || '').slice(0, 80)].join('|');
+      const b = map.get(key) || { key, scheduled_at: m.scheduled_at, text: m.content_text || '', type: m.content_type, step: m.sequence_step || 1, delay: m.delay_seconds || 0, ids: [], groupIds: [] };
       b.ids.push(m.id);
       if (m.group_id) b.groupIds.push(m.group_id);
       map.set(key, b);
@@ -231,6 +233,11 @@ export default function MessageComposer() {
       return;
     }
 
+    for (let i = 0; i < extraSteps.length; i++) {
+      const err = validateStep(extraSteps[i], i);
+      if (err) { toast({ title: err, variant: 'destructive' }); return; }
+    }
+
     let targetGroupIds: string[] = [];
 
     if (targetType === 'groups') {
@@ -263,8 +270,11 @@ export default function MessageComposer() {
     setSending(true);
 
     try {
+      const sequenceId = extraSteps.length > 0 ? crypto.randomUUID() : null;
       const messagesToInsert = targetGroupIds.map(gid => ({
         tenant_id: tenant.id,
+        sequence_id: sequenceId,
+        sequence_step: 1,
         group_id: gid,
         campaign_id: targetType === 'campaign' ? selectedCampaignId : null,
         content_type: contentType,
@@ -282,6 +292,41 @@ export default function MessageComposer() {
         .select('id, group_id');
       if (error) throw error;
 
+      // Mensagens seguintes: cada uma depende da anterior do MESMO grupo e espera o tempo definido
+      // depois que a anterior for enviada (o processador respeita a espera com precisão de segundos).
+      if (extraSteps.length > 0 && sequenceId) {
+        const baseMs = sendMode === 'scheduled' ? new Date(scheduledAt).getTime() : Date.now();
+        let prevByGroup = new Map<string, string>((insertedMessages as any[]).map((m: any) => [m.group_id, m.id]));
+        let cumulative = 0;
+        for (let i = 0; i < extraSteps.length; i++) {
+          const st = extraSteps[i];
+          const delay = stepDelaySeconds(st);
+          cumulative += delay;
+          const rows = targetGroupIds.map(gid => ({
+            tenant_id: tenant.id,
+            sequence_id: sequenceId,
+            sequence_step: i + 2,
+            depends_on: prevByGroup.get(gid) || null,
+            delay_seconds: delay,
+            group_id: gid,
+            campaign_id: targetType === 'campaign' ? selectedCampaignId : null,
+            content_type: st.contentType,
+            content_text: st.text || null,
+            media_url: st.mediaUrl || null,
+            poll_options: st.contentType === 'poll' ? cleanStepPoll(st) : null,
+            poll_selectable_count: st.contentType === 'poll' ? (st.pollMultiple ? cleanStepPoll(st).length : 1) : null,
+            status: 'pending',
+            scheduled_at: new Date(baseMs + cumulative * 1000).toISOString(),
+          }));
+          const { data: stepRows, error: stepErr } = await supabase
+            .from('fe_messages' as any)
+            .insert(rows as any)
+            .select('id, group_id');
+          if (stepErr) throw stepErr;
+          prevByGroup = new Map<string, string>((stepRows as any[]).map((m: any) => [m.group_id, m.id]));
+        }
+      }
+
       if (sendMode === 'instant') {
         const { error: fnError } = await supabase.functions.invoke('fe-send-message', {
           body: {
@@ -298,6 +343,10 @@ export default function MessageComposer() {
           },
         });
         if (fnError) throw fnError;
+        // Aciona já o processador das etapas seguintes (ele fica de plantão ~55 s, sem esperar o cron)
+        if (extraSteps.length > 0) {
+          supabase.functions.invoke('fe-process-scheduled', { body: {} }).catch((e) => console.warn('Auto-trigger fe-process-scheduled failed:', e));
+        }
       } else {
         // Trigger scheduled processor immediately so messages don't wait for cron
         const scheduledTime = new Date(scheduledAt).getTime();
@@ -312,7 +361,12 @@ export default function MessageComposer() {
         }
       }
 
-      toast({ title: sendMode === 'instant' ? 'Mensagens enviadas!' : 'Mensagens agendadas!' });
+      toast({
+        title: sendMode === 'instant'
+          ? (extraSteps.length > 0 ? 'Sequência iniciada!' : 'Mensagens enviadas!')
+          : (extraSteps.length > 0 ? 'Sequência agendada!' : 'Mensagens agendadas!'),
+      });
+      setExtraSteps([]);
       setContentText('');
       resetPoll();
       setMentionAll(false);
@@ -513,6 +567,10 @@ export default function MessageComposer() {
               </div>
             )}
 
+            {!editingMessage && tenant && (
+              <SequenceSteps steps={extraSteps} onChange={setExtraSteps} tenantId={tenant.id} />
+            )}
+
             {/* Target */}
             <div>
               <Label>Enviar para</Label>
@@ -633,6 +691,7 @@ export default function MessageComposer() {
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         {contentTypeIcon[b.type as keyof typeof contentTypeIcon]}
                         <Badge className={statusColors.pending}>pending</Badge>
+                        {b.step > 1 && <Badge variant="outline">Mensagem {b.step} · {b.delay >= 60 && b.delay % 60 === 0 ? `${b.delay / 60} min` : `${b.delay} s`} depois da anterior</Badge>}
                         <span className="text-xs text-muted-foreground">
                           <Clock className="h-3 w-3 inline mr-1" />
                           {new Date(b.scheduled_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
