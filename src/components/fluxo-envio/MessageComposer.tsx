@@ -55,16 +55,21 @@ export default function MessageComposer() {
 
   
   const [messages, setMessages] = useState<any[]>([]);
+  // Todos os agendados (sem o limite de 20 do histórico), para poder cancelar em lote
+  const [scheduledMsgs, setScheduledMsgs] = useState<any[]>([]);
+  const [confirmBatch, setConfirmBatch] = useState<string | null>(null);
+  const [cancellingBatch, setCancellingBatch] = useState(false);
   const [viewMessage, setViewMessage] = useState<any>(null);
 
   const fetchData = useCallback(async () => {
     if (!tenant) return;
     setLoading(true);
-    const [grp, cmp, msgs, sentAgg] = await Promise.all([
+    const [grp, cmp, msgs, sentAgg, sched] = await Promise.all([
       supabase.from('fe_groups' as any).select('id, group_name, group_jid, is_admin').eq('tenant_id', tenant.id).eq('is_admin', true).order('group_name'),
       supabase.from('fe_campaigns' as any).select('id, name').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
       supabase.from('fe_messages' as any).select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }).limit(20),
       supabase.from('fe_messages' as any).select('group_id, sent_at').eq('tenant_id', tenant.id).not('sent_at', 'is', null).order('sent_at', { ascending: false }).limit(2000),
+      supabase.from('fe_messages' as any).select('id, group_id, campaign_id, content_type, content_text, scheduled_at, created_at').eq('tenant_id', tenant.id).eq('status', 'pending').order('scheduled_at', { ascending: true }).limit(1000),
     ]);
     const lastByGroup: Record<string, string> = {};
     ((sentAgg as any).data || []).forEach((r: any) => {
@@ -73,6 +78,7 @@ export default function MessageComposer() {
     if (grp.data) setGroups((grp.data as any[]).map(g => ({ ...g, last_sent_at: lastByGroup[g.id] || null })));
     if (cmp.data) setCampaigns(cmp.data as any);
     if (msgs.data) setMessages(msgs.data as any);
+    if ((sched as any).data) setScheduledMsgs((sched as any).data as any[]);
     setLoading(false);
   }, [tenant]);
 
@@ -167,6 +173,36 @@ export default function MessageComposer() {
     }
 
     toast({ title: 'Envio cancelado' });
+    fetchData();
+  };
+
+  // Agrupa agendados iguais (mesmo horário, texto e campanha) para cancelar um lote de uma vez.
+  const scheduledBatches = (() => {
+    const map = new Map<string, { key: string; scheduled_at: string; text: string; type: string; ids: string[]; groupIds: string[] }>();
+    for (const m of scheduledMsgs) {
+      const key = [m.scheduled_at, m.campaign_id || '', m.content_type, (m.content_text || '').slice(0, 80)].join('|');
+      const b = map.get(key) || { key, scheduled_at: m.scheduled_at, text: m.content_text || '', type: m.content_type, ids: [], groupIds: [] };
+      b.ids.push(m.id);
+      if (m.group_id) b.groupIds.push(m.group_id);
+      map.set(key, b);
+    }
+    return Array.from(map.values()).sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime());
+  })();
+
+  const cancelBatchMessages = async (ids: string[]) => {
+    setCancellingBatch(true);
+    const { error, count } = await supabase
+      .from('fe_messages' as any)
+      .delete({ count: 'exact' } as any)
+      .in('id', ids)
+      .eq('status', 'pending');
+    setCancellingBatch(false);
+    setConfirmBatch(null);
+    if (error) {
+      toast({ title: 'Erro ao cancelar', description: error.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: `${count ?? ids.length} envio(s) cancelado(s)` });
     fetchData();
   };
 
@@ -557,6 +593,65 @@ export default function MessageComposer() {
             )}
           </CardContent>
         </Card>
+
+        {/* Agendados: todos, com cancelamento em lote */}
+        {scheduledBatches.length > 0 && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-medium text-foreground">Envios agendados ({scheduledMsgs.length})</h4>
+                {scheduledMsgs.length > 1 && (
+                  confirmBatch === '__all__' ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">Cancelar todos os {scheduledMsgs.length}?</span>
+                      <Button size="sm" variant="destructive" disabled={cancellingBatch} onClick={() => cancelBatchMessages(scheduledMsgs.map((m: any) => m.id))}>Sim, cancelar todos</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setConfirmBatch(null)}>Voltar</Button>
+                    </div>
+                  ) : (
+                    <Button size="sm" variant="outline" className="text-destructive" onClick={() => setConfirmBatch('__all__')}>
+                      <Ban className="h-3 w-3 mr-1" />Cancelar todos
+                    </Button>
+                  )
+                )}
+              </div>
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {scheduledBatches.map((b) => {
+                  const names = b.groupIds.map((gid) => groups.find((g: any) => g.id === gid)?.group_name).filter(Boolean) as string[];
+                  return (
+                    <div key={b.key} className="p-3 rounded-lg border border-border bg-card">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        {contentTypeIcon[b.type as keyof typeof contentTypeIcon]}
+                        <Badge className={statusColors.pending}>pending</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          <Clock className="h-3 w-3 inline mr-1" />
+                          {new Date(b.scheduled_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+                        </span>
+                        <Badge variant="secondary" className="ml-auto">{b.ids.length} grupo(s)</Badge>
+                      </div>
+                      {b.text && <p className="text-sm text-foreground line-clamp-2">{b.text}</p>}
+                      {names.length > 0 && (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{names.slice(0, 6).join(' · ')}{names.length > 6 ? ` e mais ${names.length - 6}` : ''}</p>
+                      )}
+                      <div className="mt-2">
+                        {confirmBatch === b.key ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">Cancelar este envio em {b.ids.length} grupo(s)?</span>
+                            <Button size="sm" variant="destructive" disabled={cancellingBatch} onClick={() => cancelBatchMessages(b.ids)}>Sim, cancelar</Button>
+                            <Button size="sm" variant="ghost" onClick={() => setConfirmBatch(null)}>Voltar</Button>
+                          </div>
+                        ) : (
+                          <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => setConfirmBatch(b.key)}>
+                            <Ban className="h-3 w-3 mr-1" />Cancelar este envio{b.ids.length > 1 ? ` (${b.ids.length} grupos)` : ''}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* History */}
         <Card>
