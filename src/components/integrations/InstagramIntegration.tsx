@@ -75,6 +75,25 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
 
   const isConnected = !!(config?.is_active && (config?.access_token || config?.page_access_token));
 
+  // Aviso de token: a renovação é automática (cron diário); só alerta se vencido, com erro ou perto de vencer.
+  const tokenWarning = (() => {
+    if (!isConnected) return null;
+    const expiresAt = (config as any)?.token_expires_at ? new Date((config as any).token_expires_at).getTime() : null;
+    const lastError = (config as any)?.token_last_error as string | null | undefined;
+    if (expiresAt) {
+      const days = Math.floor((expiresAt - Date.now()) / 86400000);
+      if (days < 0) {
+        return { critical: true, message: 'O acesso ao Instagram expirou. Reconecte para voltar a receber pedidos e enviar DMs.' };
+      }
+      if (days <= 7 && lastError) {
+        return { critical: days <= 2, message: `O acesso ao Instagram vence em ${days} dia(s) e a renovação automática falhou. Reconecte para evitar interrupções.` };
+      }
+    } else if (lastError) {
+      return { critical: false, message: 'Não foi possível renovar o acesso ao Instagram automaticamente. Se os pedidos pararem, reconecte.' };
+    }
+    return null;
+  })();
+
   // Iniciar OAuth
   const handleConnectInstagram = async () => {
     try {
@@ -183,6 +202,7 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
         </CardHeader>
         <CardContent>
           {isConnected ? (
+            <>
             <div className="flex items-center gap-4">
               <InstagramProfileAvatar
                 tenantId={tenantId}
@@ -200,13 +220,29 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
               </div>
               <Button
                 variant="outline"
-                onClick={() => disconnectMutation.mutate()}
+                onClick={() => {
+                  if (window.confirm('Desconectar o Instagram? Os comentários deixarão de virar pedidos até você reconectar.')) {
+                    disconnectMutation.mutate();
+                  }
+                }}
                 disabled={disconnectMutation.isPending}
               >
                 {disconnectMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Desconectar
               </Button>
             </div>
+            {tokenWarning && (
+              <Alert variant={tokenWarning.critical ? 'destructive' : 'default'} className="mt-4">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+                  <span>{tokenWarning.message}</span>
+                  <Button size="sm" variant="outline" onClick={handleConnectInstagram}>
+                    Reconectar agora
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+            </>
           ) : (
             <div className="space-y-4">
               <Button

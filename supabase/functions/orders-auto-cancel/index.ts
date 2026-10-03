@@ -67,27 +67,12 @@ Deno.serve(async (req) => {
       const cancelledIds: number[] = [];
 
       for (const order of orders || []) {
-        // Devolve estoque dos itens do carrinho
-        if (order.cart_id) {
-          const { data: items } = await supabase
-            .from('cart_items')
-            .select('product_id, qty')
-            .eq('cart_id', order.cart_id);
-
-          for (const item of items || []) {
-            if (!item.product_id) continue;
-            const { data: product } = await supabase
-              .from('products')
-              .select('stock')
-              .eq('id', item.product_id)
-              .maybeSingle();
-            if (product) {
-              await supabase
-                .from('products')
-                .update({ stock: (product.stock || 0) + (item.qty || 1) })
-                .eq('id', item.product_id);
-            }
-          }
+        // Devolve o estoque de forma atômica e idempotente (marca stock_restored; nunca devolve duas vezes
+        // nem em pedido pago). Se já foi restaurado por outra via, não faz nada.
+        const { error: restoreErr } = await supabase.rpc('restore_order_stock', { p_order_id: order.id });
+        if (restoreErr) {
+          console.error(`[orders-auto-cancel] falha ao devolver estoque do pedido ${order.id}:`, restoreErr);
+          continue;
         }
 
         const { error: updErr } = await supabase

@@ -68,6 +68,8 @@ serve(async (req) => {
 
     // Tentar obter long-lived token, mas usar short-lived se falhar
     let finalToken = shortLivedToken;
+    // Validade: token curto vale ~1h; o longo vale ~60 dias (expires_in em segundos).
+    let tokenExpiresInSeconds = Number(tokenData.expires_in) || 3600;
     try {
       const longLivedUrl = `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${FB_APP_SECRET}&access_token=${shortLivedToken}`;
       const longLivedResponse = await fetch(longLivedUrl);
@@ -75,6 +77,7 @@ serve(async (req) => {
 
       if (longLivedData.access_token) {
         finalToken = longLivedData.access_token;
+        tokenExpiresInSeconds = Number(longLivedData.expires_in) || 60 * 24 * 3600;
         console.log('[Instagram Callback] Got long-lived token successfully');
       } else {
         console.warn('[Instagram Callback] Long-lived token failed, using short-lived token:', longLivedData.error || longLivedData);
@@ -121,6 +124,9 @@ serve(async (req) => {
         tenant_id: state,
         instagram_account_id: instagramAccountId || (oauthUserId ? String(oauthUserId) : null),
         access_token: finalToken,
+        token_expires_at: new Date(Date.now() + tokenExpiresInSeconds * 1000).toISOString(),
+        token_refreshed_at: new Date().toISOString(),
+        token_last_error: null,
         instagram_username: instagramUsername || null,
         profile_picture_url: instagramProfilePictureUrl || null,
         is_active: true,

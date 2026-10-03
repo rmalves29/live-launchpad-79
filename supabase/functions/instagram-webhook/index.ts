@@ -529,13 +529,22 @@ Deno.serve(async (req) => {
                   .replace(/\{\{valor_unitario\}\}/g, priceFormatted)
                   .replace(/\{\{total\}\}/g, totalFormatted)
                   .replace(/\{\{link_cadastro\}\}/g, cadastroUrl);
+
+                // Como esta é a ÚNICA DM enviada nesse comentário, ela precisa confirmar o produto.
+                // Templates personalizados sem {{produto}} ganham um resumo no início.
+                if (!/\{\{\s*produto\s*\}\}/.test(dmTemplate.content)) {
+                  cadastroDmMessage =
+                    `✅ *${product.name}*${qtyLabel} foi adicionado ao seu pedido!\n` +
+                    `💰 Valor: ${priceFormatted} · 🛒 Total: ${totalFormatted}\n\n` +
+                    cadastroDmMessage;
+                }
               } else {
                 cadastroDmMessage =
                   `✅ *${product.name}*${qtyLabel} foi adicionado ao seu pedido!\n\n` +
                   `💰 Valor: ${priceFormatted}\n` +
                   `🛒 Total: ${totalFormatted}\n\n` +
-                  `📋 Para confirmar seu produto, faça seu cadastro:\n${cadastroUrl}\n\n` +
-                  `Após o cadastro, você receberá o link para finalizar o pedido. ✨`;
+                  `📋 Para continuar comprando e finalizar seu pedido, você precisa fazer seu cadastro (leva 1 minuto):\n${cadastroUrl}\n\n` +
+                  `Seu produto já está reservado no seu pedido. Depois do cadastro, é só seguir com o pagamento. ✨`;
               }
 
               console.log(`[${timestamp}] [instagram-webhook] Sending DM Cadastro to ${dmRecipientId}, template found: ${!!dmTemplate?.content}`);
