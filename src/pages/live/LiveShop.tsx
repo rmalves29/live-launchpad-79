@@ -72,6 +72,7 @@ export default function LiveShop() {
   const [busy, setBusy] = useState(false);
 
   const [customer, setCustomer] = useState<LiveCustomer | null>(null);
+  const [recognizedBy, setRecognizedBy] = useState<'device' | 'ip' | null>(null);
   const [phoneInput, setPhoneInput] = useState('');
   const [form, setForm] = useState<LiveCustomer>(EMPTY_CUSTOMER);
   const [formError, setFormError] = useState('');
@@ -152,15 +153,39 @@ export default function LiveShop() {
 
   // reconhece o aparelho: se já comprou aqui, lembra o telefone (nunca por IP)
   useEffect(() => {
-    const saved = readLS<string | null>(`live_phone_${slug}`, null);
-    if (!saved) return;
+    // 1) aparelho: telefone que o cliente já informou aqui; 2) IP: mesma lógica da vitrine antiga.
+    // "Não sou eu" desliga o reconhecimento automático nesta sessão.
+    let skip = false;
+    try { skip = sessionStorage.getItem(`live_norecognize_${slug}`) === '1'; } catch { /* ignora */ }
+    if (skip) return;
     (async () => {
       try {
-        const r: any = await liveApi('customer_lookup', slug, { phone: saved });
-        if (r?.ok && r.found && r.complete) setCustomer({ ...EMPTY_CUSTOMER, ...r.customer });
+        const saved = readLS<string | null>(`live_phone_${slug}`, null);
+        if (saved) {
+          const r: any = await liveApi('customer_lookup', slug, { phone: saved });
+          if (r?.ok && r.found && r.complete) { setCustomer({ ...EMPTY_CUSTOMER, ...r.customer }); setRecognizedBy('device'); return; }
+        }
+        const rec: any = await liveApi('recognize', slug);
+        if (rec?.ok && rec.found && rec.complete) { setCustomer({ ...EMPTY_CUSTOMER, ...rec.customer }); setRecognizedBy('ip'); }
       } catch { /* segue sem reconhecer */ }
     })();
   }, [slug]);
+
+  function notMe() {
+    try { sessionStorage.setItem(`live_norecognize_${slug}`, '1'); } catch { /* ignora */ }
+    writeLS(`live_phone_${slug}`, null);
+    setCustomer(null);
+    setRecognizedBy(null);
+    setShipOptions([]);
+    setShipId('');
+    if (screen === 'checkout') {
+      pendingNext.current = 'checkout';
+      setPhoneInput('');
+      setModal({ type: 'phone' });
+    } else {
+      toast('Tudo certo. Vamos pedir seu celular na hora de comprar.');
+    }
+  }
 
   // ------------------------------------------------ cálculos
   const lines = direct ?? cart;
@@ -473,6 +498,13 @@ export default function LiveShop() {
         </button>
       </div>
 
+      {customer && (
+        <div className="bene ship" style={{ margin: '10px 16px 0', justifyContent: 'space-between' }}>
+          <span>Olá, <b>{customer.name.split(' ')[0]}</b>! Já temos seus dados.</span>
+          <button className="link" onClick={notMe} type="button" style={{ fontSize: 13 }}>Não sou eu</button>
+        </div>
+      )}
+
       {meta && (meta.coupons.length > 0 || meta.shipping_hints.length > 0 || meta.gifts.length > 0) && (
         <div className="chips">
           {meta.shipping_hints.filter((h) => h.free_min != null).slice(0, 1).map((h) => (
@@ -676,7 +708,10 @@ export default function LiveShop() {
                   <small>{customer.city} - {customer.state} · {formatCep(customer.cep)}</small>
                 </div>
               </div>
-              <button className="link" onClick={() => { setForm({ ...EMPTY_CUSTOMER, ...customer }); setFormError(''); pendingNext.current = null; setModal({ type: 'signup' }); }} type="button">Atualizar</button>
+              <div style={{ display: 'grid', gap: 6, justifyItems: 'end' }}>
+                <button className="link" onClick={() => { setForm({ ...EMPTY_CUSTOMER, ...customer }); setFormError(''); pendingNext.current = null; setModal({ type: 'signup' }); }} type="button">Atualizar</button>
+                {recognizedBy && <button className="link" style={{ color: 'var(--muted)', fontSize: 12 }} onClick={notMe} type="button">Não sou eu</button>}
+              </div>
             </div>
           </div>
 

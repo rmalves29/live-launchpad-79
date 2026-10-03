@@ -25,6 +25,28 @@ function normPhone(v: unknown) {
   return d;
 }
 const phoneVariants = (p: string) => [p, '55' + p];
+async function sha256Hex(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+function clientIp(req: Request): string {
+  const fwd = req.headers.get('x-forwarded-for');
+  if (fwd) return fwd.split(',')[0].trim();
+  return req.headers.get('cf-connecting-ip') || req.headers.get('x-real-ip') || 'unknown';
+}
+// Mesma tabela e mesmo hash da vitrine antiga (storefront_visitors): quem for reconhecido lá é reconhecido aqui.
+async function touchVisitor(tenantId: string, ip: string, phone: string, customerId?: number | null) {
+  try {
+    if (!ip || ip === 'unknown') return;
+    const ipHash = await sha256Hex(`${tenantId}:${ip}`);
+    await sb.from('storefront_visitors').upsert(
+      { tenant_id: tenantId, ip_hash: ipHash, customer_id: customerId ?? null, customer_phone: phone, last_seen_at: new Date().toISOString() },
+      { onConflict: 'tenant_id,ip_hash' },
+    );
+  } catch (e: any) { console.warn('[live-shop] touchVisitor:', e?.message); }
+}
+const RECOGNIZE_MAX_AGE_DAYS = 60;
+
 function brtToday() { return new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10); }
 
 function isValidCPF(cpf: string) {
@@ -232,25 +254,41 @@ async function catalog(body: any, tenant: any) {
   return json(result);
 }
 
-const CUSTOMER_FIELDS = 'name, phone, cpf, email, cep, street, number, complement, neighborhood, city, state, is_blocked';
+const CUSTOMER_FIELDS = 'id, name, phone, cpf, email, cep, street, number, complement, neighborhood, city, state, is_blocked';
 
 async function findCustomer(tenantId: string, phone: string) {
   const { data } = await sb.from('customers').select(CUSTOMER_FIELDS).eq('tenant_id', tenantId).in('phone', phoneVariants(phone)).limit(1);
   return (data && data[0]) as any;
 }
 
-async function customerLookup(body: any, tenant: any) {
+// Reconhecimento automático: o aparelho (telefone salvo) é verificado no cliente; aqui o IP (vitrine antiga).
+async function recognize(tenant: any, ip: string) {
+  if (!ip || ip === 'unknown') return json({ ok: true, found: false });
+  const ipHash = await sha256Hex(`${tenant.id}:${ip}`);
+  const { data: v } = await sb.from('storefront_visitors').select('customer_phone, last_seen_at').eq('tenant_id', tenant.id).eq('ip_hash', ipHash).maybeSingle();
+  if (!v?.customer_phone) return json({ ok: true, found: false });
+  if (v.last_seen_at && Date.now() - new Date(v.last_seen_at).getTime() > RECOGNIZE_MAX_AGE_DAYS * 86400_000) return json({ ok: true, found: false });
+  const phone = normPhone(v.customer_phone);
+  const c = await findCustomer(tenant.id, phone);
+  if (!c || c.is_blocked) return json({ ok: true, found: false });
+  const { is_blocked: _b, id: _id, ...customer } = c;
+  const complete = !!(customer.cep && customer.street && customer.number && customer.neighborhood && customer.city && customer.state);
+  return json({ ok: true, found: true, complete, customer, via: 'ip' });
+}
+
+async function customerLookup(body: any, tenant: any, ip: string) {
   const phone = normPhone(body.phone);
   if (phone.length < 10 || phone.length > 11) return fail('Informe o celular com DDD.', 'INVALID_PHONE');
   const c = await findCustomer(tenant.id, phone);
   if (!c) return json({ ok: true, found: false, phone });
   if (c.is_blocked) return fail('Não foi possível continuar com este número. Fale com a loja.', 'BLOCKED');
-  const { is_blocked: _b, ...customer } = c;
+  const { is_blocked: _b, id: cid, ...customer } = c;
+  await touchVisitor(tenant.id, ip, phone, cid);
   const complete = !!(customer.cep && customer.street && customer.number && customer.neighborhood && customer.city && customer.state);
   return json({ ok: true, found: true, complete, customer });
 }
 
-async function customerSave(body: any, tenant: any) {
+async function customerSave(body: any, tenant: any, ip: string) {
   const c = body.customer || {};
   const phone = normPhone(c.phone);
   const name = String(c.name ?? '').trim().slice(0, 200);
@@ -285,6 +323,8 @@ async function customerSave(body: any, tenant: any) {
     ({ error } = await sb.from('customers').insert({ tenant_id: tenant.id, phone, ...payload }));
   }
   if (error) { console.error('[live-shop] customer_save:', error.message); return fail('Não foi possível salvar seus dados. Tente novamente.', 'SAVE_ERROR'); }
+  const saved = await findCustomer(tenant.id, phone);
+  await touchVisitor(tenant.id, ip, phone, saved?.id);
   return json({ ok: true, phone });
 }
 
@@ -353,7 +393,7 @@ async function cancelOrder(body: any, tenant: any) {
   return json({ ok: true, cancelled: ok });
 }
 
-async function createOrder(body: any, tenant: any) {
+async function createOrder(body: any, tenant: any, ip: string) {
   const phone = normPhone(body.phone);
   const sessionId = String(body.session_id ?? '').slice(0, 80);
   const items = sanitizeItems(body.items);
@@ -460,6 +500,7 @@ async function createOrder(body: any, tenant: any) {
   // a reserva do carrinho virou pedido
   if (sessionRows.length) await sb.from('live_cart_reservations').delete().eq('tenant_id', tenant.id).eq('session_id', sessionId);
   if (couponRow) await sb.from('coupons').update({ used_count: num(couponRow.used_count) + 1 }).eq('id', couponRow.id);
+  await touchVisitor(tenant.id, ip, phone, customer.id);
 
   return json({
     ok: true, order_id: order.id, cart_id: cart.id, subtotal, coupon_code: couponCode, coupon_discount: couponDiscount,
@@ -476,11 +517,12 @@ Deno.serve(async (req) => {
     if (!tenant) return fail('Loja não encontrada.', 'TENANT_NOT_FOUND');
     switch (body.action) {
       case 'catalog': return await catalog(body, tenant);
-      case 'customer_lookup': return await customerLookup(body, tenant);
-      case 'customer_save': return await customerSave(body, tenant);
+      case 'recognize': return await recognize(tenant, clientIp(req));
+      case 'customer_lookup': return await customerLookup(body, tenant, clientIp(req));
+      case 'customer_save': return await customerSave(body, tenant, clientIp(req));
       case 'coupon_check': return await couponCheck(body, tenant);
       case 'reserve': return await reserve(body, tenant);
-      case 'create_order': return await createOrder(body, tenant);
+      case 'create_order': return await createOrder(body, tenant, clientIp(req));
       case 'cancel_order': return await cancelOrder(body, tenant);
       default: return fail('Ação inválida.', 'BAD_ACTION');
     }
