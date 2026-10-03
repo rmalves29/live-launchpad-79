@@ -238,7 +238,7 @@ async function syncIntegration(
 
       const webhookResponse = await fetch(`${supabaseUrl}/functions/v1/instagram-webhook`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-internal-key': Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')! },
         body: JSON.stringify(webhookPayload),
       });
       const responseText = await webhookResponse.text();

@@ -58,6 +58,7 @@ export default function FilaEsperaPage() {
   const [autoCancelEnabled, setAutoCancelEnabled] = useState(false);
   const [autoCancelValue, setAutoCancelValue] = useState<number>(24);
   const [autoCancelUnit, setAutoCancelUnit] = useState<'hours' | 'minutes'>('hours');
+  const [liveMinutes, setLiveMinutes] = useState<string>('');
   const [savingAutoCancel, setSavingAutoCancel] = useState(false);
   const [runningAutoCancel, setRunningAutoCancel] = useState(false);
   const [view, setView] = useState<'table' | 'kanban'>('table');
@@ -66,11 +67,13 @@ export default function FilaEsperaPage() {
     if (!tenant?.id) return;
     const { data } = await supabase
       .from('tenants')
-      .select('waitlist_enabled, auto_cancel_unpaid_enabled, auto_cancel_unpaid_hours, auto_cancel_unpaid_minutes')
+      .select('waitlist_enabled, auto_cancel_unpaid_enabled, auto_cancel_unpaid_hours, auto_cancel_unpaid_minutes, auto_cancel_live_minutes')
       .eq('id', tenant.id)
       .maybeSingle();
     setEnabled((data as any)?.waitlist_enabled !== false);
     setAutoCancelEnabled((data as any)?.auto_cancel_unpaid_enabled === true);
+    const lm = Number((data as any)?.auto_cancel_live_minutes);
+    setLiveMinutes(Number.isFinite(lm) && lm > 0 ? String(lm) : '');
     const minutes = Number((data as any)?.auto_cancel_unpaid_minutes);
     if (Number.isFinite(minutes) && minutes > 0) {
       setAutoCancelUnit('minutes');
@@ -92,6 +95,7 @@ export default function FilaEsperaPage() {
       auto_cancel_unpaid_enabled: next.enabled ?? autoCancelEnabled,
       auto_cancel_unpaid_hours: unit === 'hours' ? value : Math.max(1, Math.ceil(value / 60)),
       auto_cancel_unpaid_minutes: unit === 'minutes' ? value : null,
+      auto_cancel_live_minutes: Number(liveMinutes) > 0 ? Math.min(43200, Math.round(Number(liveMinutes))) : null,
     };
     setSavingAutoCancel(true);
     const { error } = await supabase.from('tenants').update(payload as any).eq('id', tenant.id);
@@ -322,6 +326,22 @@ export default function FilaEsperaPage() {
             <Button size="sm" variant="outline" disabled={runningAutoCancel} onClick={runAutoCancelNow}>
               {runningAutoCancel ? 'Processando…' : 'Executar agora'}
             </Button>
+            <div className="space-y-1">
+              <Label htmlFor="auto-cancel-live" className="text-xs">Prazo p/ pedidos de live do Instagram (min)</Label>
+              <Input
+                id="auto-cancel-live"
+                type="number"
+                min={1}
+                max={43200}
+                placeholder="igual ao geral"
+                className="w-44"
+                value={liveMinutes}
+                onChange={(e) => setLiveMinutes(e.target.value)}
+              />
+            </div>
+            <p className="w-full text-xs text-muted-foreground">
+              Deixe o prazo da live vazio para usar o mesmo prazo dos pedidos de grupo. Clique em "Salvar prazo" para aplicar.
+            </p>
             <p className="w-full text-xs text-muted-foreground">
               A verificação roda a cada 1 minuto, então o cancelamento ocorre em até ~1 min após o prazo vencer.
             </p>

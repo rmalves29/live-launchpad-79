@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
 
     let tenantQuery = supabase
       .from('tenants')
-      .select('id, name, auto_cancel_unpaid_enabled, auto_cancel_unpaid_hours, auto_cancel_unpaid_minutes')
+      .select('id, name, auto_cancel_unpaid_enabled, auto_cancel_unpaid_hours, auto_cancel_unpaid_minutes, auto_cancel_live_minutes')
       .eq('auto_cancel_unpaid_enabled', true);
 
     if (onlyTenantId) tenantQuery = tenantQuery.eq('id', onlyTenantId);
@@ -47,12 +47,16 @@ Deno.serve(async (req) => {
       const minutes = Number.isFinite(rawMinutes) && rawMinutes > 0
         ? rawMinutes
         : (Number((t as any).auto_cancel_unpaid_hours) || 24) * 60;
-      const cutoff = new Date(Date.now() - minutes * 60_000).toISOString();
-      const deadlineLabel = minutes % 60 === 0 ? `${minutes / 60}h` : `${minutes} min`;
+      // Prazo específico para pedidos de live do Instagram (opcional). Vazio = usa o prazo geral.
+      const rawLive = Number((t as any).auto_cancel_live_minutes);
+      const liveMinutes = Number.isFinite(rawLive) && rawLive > 0 ? rawLive : null;
+      const smallest = liveMinutes ? Math.min(minutes, liveMinutes) : minutes;
+      const cutoff = new Date(Date.now() - smallest * 60_000).toISOString();
+      const labelFor = (m: number) => (m % 60 === 0 ? `${m / 60}h` : `${m} min`);
 
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
-        .select('id, cart_id, tenant_id, tenant_order_number, total_amount, customer_phone')
+        .select('id, cart_id, tenant_id, tenant_order_number, total_amount, customer_phone, event_type, created_at')
         .eq('tenant_id', t.id)
         .eq('is_paid', false)
         .or('is_cancelled.is.null,is_cancelled.eq.false')
@@ -67,6 +71,10 @@ Deno.serve(async (req) => {
       const cancelledIds: number[] = [];
 
       for (const order of orders || []) {
+        const effectiveMinutes = liveMinutes && (order as any).event_type === 'INSTAGRAM_LIVE' ? liveMinutes : minutes;
+        if (Date.now() - new Date((order as any).created_at).getTime() < effectiveMinutes * 60_000) continue;
+        const deadlineLabel = labelFor(effectiveMinutes);
+
         // Devolve o estoque de forma atômica e idempotente (marca stock_restored; nunca devolve duas vezes
         // nem em pedido pago). Se já foi restaurado por outra via, não faz nada.
         const { error: restoreErr } = await supabase.rpc('restore_order_stock', { p_order_id: order.id });
@@ -99,7 +107,7 @@ Deno.serve(async (req) => {
           meta: {
             order_number: order.tenant_order_number || order.id,
             source: 'auto_cancel_unpaid',
-            deadline_minutes: minutes,
+            deadline_minutes: effectiveMinutes,
             total_amount: order.total_amount,
             customer_phone: order.customer_phone,
           },

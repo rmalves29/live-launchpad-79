@@ -21,6 +21,34 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+// Segredos usados pela Meta para assinar o corpo do webhook (X-Hub-Signature-256).
+const SIGNATURE_SECRETS = [Deno.env.get('INSTAGRAM_APP_SECRET'), Deno.env.get('FACEBOOK_APP_SECRET')].filter(Boolean) as string[];
+// Com INSTAGRAM_WEBHOOK_ENFORCE_SIGNATURE=true, chamadas sem assinatura válida são rejeitadas (401).
+// Sem isso fica em modo "só registra" (aviso no log) para não derrubar entregas reais da Meta.
+const ENFORCE_SIGNATURE = Deno.env.get('INSTAGRAM_WEBHOOK_ENFORCE_SIGNATURE') === 'true';
+
+async function hmacHex(secret: string, payload: string): Promise<string> {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
+  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function safeEqual(a: string, b: string) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function verifyMetaSignature(rawBody: string, header: string | null): Promise<boolean> {
+  if (!header || !header.startsWith('sha256=')) return false;
+  const received = header.slice('sha256='.length).toLowerCase();
+  for (const secret of SIGNATURE_SECRETS) {
+    if (safeEqual(received, await hmacHex(secret, rawBody))) return true;
+  }
+  return false;
+}
+
 const WEBHOOK_VERIFY_TOKEN = Deno.env.get('INSTAGRAM_WEBHOOK_VERIFY_TOKEN') || 'orderzap_instagram_verify';
 
 // Regex para capturar código do produto com quantidade opcional
@@ -101,7 +129,26 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body: InstagramWebhookPayload = await req.json();
+    const rawBody = await req.text();
+
+    // Origem: chamada interna (sincronização por minuto / ensaio) ou assinatura da Meta.
+    const isInternal = req.headers.get('x-internal-key') === supabaseServiceKey;
+    if (!isInternal) {
+      const signatureOk = await verifyMetaSignature(rawBody, req.headers.get('x-hub-signature-256'));
+      if (!signatureOk) {
+        console.warn(`[${timestamp}] [instagram-webhook] ⚠️ Assinatura da Meta ausente/inválida (enforce=${ENFORCE_SIGNATURE})`);
+        if (ENFORCE_SIGNATURE) {
+          return new Response(JSON.stringify({ error: 'invalid signature' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+      } else {
+        console.log(`[${timestamp}] [instagram-webhook] ✅ Assinatura da Meta válida`);
+      }
+    }
+
+    const body: InstagramWebhookPayload = JSON.parse(rawBody);
     console.log(`[${timestamp}] [instagram-webhook] POST received:`, JSON.stringify(body, null, 2));
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -156,6 +203,39 @@ Deno.serve(async (req) => {
         const earlyProductCode = extractedCode?.normalized ?? null;
         const requestedQty = extractedCode?.qty ?? 1;
         const isLiveComment = change.field === 'live_comments' || value.media?.media_product_type === 'LIVE';
+        // Comentário de ensaio (modo simulação): cria a venda de verdade, mas não envia DM nem resposta.
+        const isSimulated = typeof commentId === 'string' && commentId.startsWith('sim_');
+
+        // Resposta pública automática (opcional, por loja). Nunca bloqueia a venda.
+        const autoReply = async (kind: 'added' | 'out_of_stock', productName?: string) => {
+          try {
+            if (isSimulated || !pageAccessToken || !commentId) return;
+            if (buyerIgId === integration.instagram_account_id || buyerIgId === integration.page_id) return;
+            const cfg = integration as any;
+            const enabled = kind === 'added' ? cfg.auto_reply_added : cfg.auto_reply_out_of_stock;
+            if (!enabled) return;
+            const template: string = (kind === 'added' ? cfg.auto_reply_added_text : cfg.auto_reply_out_of_stock_text)
+              || (kind === 'added'
+                ? '✅ {{produto}} anotado, @{{usuario}}! Te enviei os detalhes por DM.'
+                : '😕 Essa peça esgotou, @{{usuario}}. Fique de olho nas próximas!');
+            const message = template
+              .replace(/\{\{\s*produto\s*\}\}/g, productName || '')
+              .replace(/\{\{\s*usuario\s*\}\}/g, buyerUsername)
+              .slice(0, 300);
+            const base = useInstagramApi ? 'https://graph.instagram.com/v21.0' : 'https://graph.facebook.com/v19.0';
+            const res = await fetch(`${base}/${commentId}/replies`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message, access_token: pageAccessToken }),
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              console.warn(`[${timestamp}] [instagram-webhook] Public reply (${kind}) failed:`, err?.error?.message || res.status);
+            }
+          } catch (e: any) {
+            console.warn(`[${timestamp}] [instagram-webhook] Public reply (${kind}) error:`, e?.message);
+          }
+        };
 
         console.log(`[${timestamp}] [instagram-webhook] Comment from @${buyerUsername} (${buyerId}) [${change.field}]: "${commentText}"`);
 
@@ -267,6 +347,7 @@ Deno.serve(async (req) => {
         if (product.stock <= 0) {
           console.log(`[${timestamp}] [instagram-webhook] Product out of stock: ${product.code}`);
           await updateLiveCommentStatus(supabase, tenantId, commentId, 'out_of_stock', timestamp);
+          await autoReply('out_of_stock');
           // Não envia DM de estoque esgotado
           continue;
         }
@@ -281,12 +362,14 @@ Deno.serve(async (req) => {
         if (reserveError) {
           console.error(`[${timestamp}] [instagram-webhook] ❌ Stock reservation error for ${product.code}:`, reserveError.message);
           await updateLiveCommentStatus(supabase, tenantId, commentId, 'out_of_stock', timestamp);
+          await autoReply('out_of_stock');
           continue;
         }
 
         if (reservedStock === null || reservedStock === undefined) {
           console.log(`[${timestamp}] [instagram-webhook] ❌ Product ${product.code} insufficient stock for qty=${requestedQty}`);
           await updateLiveCommentStatus(supabase, tenantId, commentId, 'out_of_stock', timestamp);
+          await autoReply('out_of_stock');
           continue;
         }
 
@@ -412,6 +495,7 @@ Deno.serve(async (req) => {
         // Mark comment as product found with appropriate status
         const commentStatus = isRepeatBuyer ? 'repeat_added' : 'added';
         await updateLiveCommentStatus(supabase, tenantId, commentId, commentStatus, timestamp, true);
+        await autoReply('added', product.name);
 
         const { data: cartItems } = await supabase
           .from('cart_items')
@@ -492,7 +576,9 @@ Deno.serve(async (req) => {
         const hasPhone = !!customerData?.phone;
 
 
-        if (pageAccessToken) {
+        if (isSimulated) {
+          console.log(`[${timestamp}] [instagram-webhook] Ensaio: DM/WhatsApp não enviados para ${commentId}`);
+        } else if (pageAccessToken) {
           // Determine the DM recipient ID: use IGSID for messaging, skip if commenting on own account
           const dmRecipientId = buyerIgsid || buyerIgId;
           const isOwnerCommenting = buyerIgId === integration.instagram_account_id || buyerIgId === integration.page_id;
@@ -622,7 +708,7 @@ Deno.serve(async (req) => {
         }
 
         // WhatsApp direto se tem telefone
-        if (hasPhone && order) {
+        if (hasPhone && order && !isSimulated) {
           await triggerWhatsAppItemAdded(supabase, tenantId, customerData.phone, product, order, timestamp, requestedQty);
         }
       }

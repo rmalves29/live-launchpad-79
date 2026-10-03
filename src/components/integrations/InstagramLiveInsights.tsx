@@ -6,10 +6,14 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { formatBrasiliaDateTime } from '@/lib/date-utils';
+import { toast } from 'sonner';
 import {
   Activity,
   AlertTriangle,
   Crown,
+  FlaskConical,
+  Loader2,
+  Pin,
   PackageX,
   Radio,
   RefreshCw,
@@ -47,8 +51,22 @@ interface OrderRow {
 }
 
 interface DmRow {
+  id: string;
   comment_id: string | null;
   status: string;
+  username: string | null;
+  dm_type: string | null;
+  error: string | null;
+  created_at: string;
+}
+
+interface FeaturedProduct {
+  code: string;
+  name: string;
+  price: number | null;
+  promotional_price: number | null;
+  stock: number | null;
+  image_url: string | null;
 }
 
 const SOLD = new Set(['added', 'repeat_added']);
@@ -103,6 +121,20 @@ export default function InstagramLiveInsights({ tenantId }: { tenantId: string }
   const [selectedLive, setSelectedLive] = useState<string>('auto');
   const [search, setSearch] = useState('');
   const [now, setNow] = useState(() => Date.now());
+  const [featuredCode, setFeaturedCode] = useState<string>(() => {
+    try {
+      return localStorage.getItem('ig-featured-code') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [featured, setFeatured] = useState<FeaturedProduct | null>(null);
+  const [featuredMissing, setFeaturedMissing] = useState(false);
+  const [simCode, setSimCode] = useState('');
+  const [simUser, setSimUser] = useState('teste_ensaio');
+  const [simQty, setSimQty] = useState('1');
+  const [simulating, setSimulating] = useState(false);
+  const [resendingId, setResendingId] = useState<string | null>(null);
 
   const load = useCallback(
     async (silent = false) => {
@@ -126,7 +158,7 @@ export default function InstagramLiveInsights({ tenantId }: { tenantId: string }
             .limit(5000),
           supabase
             .from('instagram_dm_log')
-            .select('comment_id, status')
+            .select('id, comment_id, status, username, dm_type, error, created_at')
             .eq('tenant_id', tenantId)
             .order('created_at', { ascending: false })
             .limit(5000),
@@ -158,6 +190,28 @@ export default function InstagramLiveInsights({ tenantId }: { tenantId: string }
             .eq('tenant_id', tenantId)
             .in('code', codes);
           for (const p of prods || []) names[String(p.code).toUpperCase()] = p.name as string;
+        }
+
+        let wanted = '';
+        try {
+          wanted = (localStorage.getItem('ig-featured-code') || '').trim();
+        } catch {
+          wanted = '';
+        }
+        if (wanted) {
+          const { data: fp } = await supabase
+            .from('products')
+            .select('code, name, price, promotional_price, stock, image_url')
+            .eq('tenant_id', tenantId)
+            .ilike('code', wanted.replace(/[\\%_]/g, (ch) => '\\' + ch))
+            .order('id', { ascending: false })
+            .limit(1);
+          const found = (fp && fp[0]) as FeaturedProduct | undefined;
+          setFeatured(found || null);
+          setFeaturedMissing(!found);
+        } else {
+          setFeatured(null);
+          setFeaturedMissing(false);
         }
 
         setLives((liveRows || []) as LiveRow[]);
@@ -326,6 +380,73 @@ export default function InstagramLiveInsights({ tenantId }: { tenantId: string }
     missed.filter((m) => m.status === 'out_of_stock').flatMap((m) => Array.from(m.people.keys())),
   ).size;
 
+  const applyFeatured = () => {
+    const code = featuredCode.trim().toUpperCase();
+    try {
+      localStorage.setItem('ig-featured-code', code);
+    } catch {
+      /* sem armazenamento: vale só nesta sessão */
+    }
+    setFeaturedCode(code);
+    load(true);
+  };
+
+  const featuredSold = useMemo(() => {
+    if (!featured) return 0;
+    return liveComments
+      .filter((c) => SOLD.has(c.comment_status || '') && (c.product_code || '').toUpperCase() === featured.code.toUpperCase())
+      .reduce((sum, c) => sum + (c.matched_qty || 1), 0);
+  }, [featured, liveComments]);
+
+  const failedDms = useMemo(() => dms.filter((d) => d.status === 'failed').slice(0, 20), [dms]);
+
+  const runSimulation = async () => {
+    const code = simCode.trim();
+    if (!code) {
+      toast.error('Informe o código do produto');
+      return;
+    }
+    setSimulating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('instagram-simulate-comment', {
+        body: { tenant_id: tenantId, code, qty: Number(simQty) || 1, username: simUser },
+      });
+      if (error || data?.error) {
+        toast.error(data?.error || 'Falha ao simular o comentário');
+      } else {
+        const labels: Record<string, string> = {
+          added: 'Venda registrada',
+          repeat_added: 'Venda registrada (cliente recorrente)',
+          out_of_stock: 'Estoque esgotado',
+          not_found: 'Código não encontrado',
+          not_for_live: 'Produto não cadastrado para Live',
+          no_code: 'Sem código reconhecido',
+        };
+        toast.success('Ensaio: ' + (labels[data?.status] || data?.status || 'processado'));
+      }
+      await load(true);
+    } finally {
+      setSimulating(false);
+    }
+  };
+
+  const resendDm = async (id: string) => {
+    setResendingId(id);
+    try {
+      const { data, error } = await supabase.functions.invoke('instagram-resend-dm', { body: { dm_log_id: id } });
+      if (error || data?.error) {
+        toast.error(data?.error || 'Falha ao reenviar a DM');
+      } else if (data?.success) {
+        toast.success('DM reenviada!');
+      } else {
+        toast.error('A Meta recusou o reenvio: ' + (data?.error || 'erro desconhecido'));
+      }
+      await load(true);
+    } finally {
+      setResendingId(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -379,6 +500,61 @@ export default function InstagramLiveInsights({ tenantId }: { tenantId: string }
               </Badge>
             ) : (
               <Badge variant="secondary">Encerrada</Badge>
+            )}
+          </div>
+
+          {/* Produto em destaque (ideal para a tela da gravação) */}
+          <div className="rounded-lg border bg-card p-3">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <Pin className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Produto em destaque</span>
+              <Input
+                value={featuredCode}
+                onChange={(e) => setFeaturedCode(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && applyFeatured()}
+                placeholder="Código (ex: C517)"
+                className="h-8 w-40"
+              />
+              <Button size="sm" variant="outline" onClick={applyFeatured}>
+                Destacar
+              </Button>
+            </div>
+            {featured ? (
+              <div className="flex items-center gap-4">
+                {featured.image_url ? (
+                  <img src={featured.image_url} alt={featured.name} className="h-24 w-24 rounded-md object-cover" />
+                ) : (
+                  <div className="flex h-24 w-24 items-center justify-center rounded-md bg-muted text-xs text-muted-foreground">
+                    sem foto
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs text-muted-foreground">Comente o código</div>
+                  <div className="text-3xl font-bold tracking-wide">{featured.code}</div>
+                  <div className="truncate text-sm">{featured.name}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+                    <span className="font-semibold">
+                      {brl(Number(featured.promotional_price) > 0 ? Number(featured.promotional_price) : Number(featured.price) || 0)}
+                    </span>
+                    <Badge
+                      className={
+                        Number(featured.stock) > 0
+                          ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100'
+                          : 'bg-red-100 text-red-800 hover:bg-red-100'
+                      }
+                    >
+                      {Number(featured.stock) > 0 ? featured.stock + ' em estoque' : 'ESGOTADO'}
+                    </Badge>
+                    <Badge variant="secondary">{featuredSold} vendida(s) nesta live</Badge>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {featuredMissing
+                  ? 'Código não encontrado neste cadastro de produtos.'
+                  : 'Digite o código do produto que está sendo vendido agora para exibir foto, preço e estoque em tempo real.'}
+              </p>
             )}
           </div>
 
@@ -459,6 +635,58 @@ export default function InstagramLiveInsights({ tenantId }: { tenantId: string }
               </div>
             </>
           )}
+        </TabsContent>
+
+        {/* ------------------- extras do painel: falhas de DM e ensaio ------------------- */}
+        <TabsContent value="panel" className="mt-4 space-y-4">
+          {failedDms.length > 0 && (
+            <div className="rounded-lg border border-red-200 bg-red-50/50 p-3">
+              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-red-700">
+                <Send className="h-4 w-4" />
+                DMs que falharam ({failedDms.length})
+              </div>
+              <div className="space-y-1.5">
+                {failedDms.map((d) => (
+                  <div key={d.id} className="flex flex-wrap items-center justify-between gap-2 rounded border bg-card p-2 text-xs">
+                    <div className="min-w-0">
+                      <div className="font-medium">
+                        @{(d.username || 'desconhecido').replace(/^@/, '')} · {d.dm_type === 'cadastro' ? 'cadastro' : 'item adicionado'}
+                      </div>
+                      <div className="truncate text-muted-foreground" title={d.error || ''}>
+                        {formatBrasiliaDateTime(d.created_at)} · {d.error || 'erro desconhecido'}
+                      </div>
+                    </div>
+                    <Button size="sm" variant="outline" disabled={resendingId === d.id} onClick={() => resendDm(d.id)}>
+                      {resendingId === d.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Reenviar'}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                O reenvio usa a resposta ao comentário original, que a Meta permite por até 7 dias.
+              </p>
+            </div>
+          )}
+
+          <div className="rounded-lg border border-dashed bg-card p-3">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+              <FlaskConical className="h-4 w-4 text-muted-foreground" />
+              Modo ensaio
+            </div>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Simula um comentário de espectador: reconhece o código, cria o pedido e baixa o estoque de verdade,
+              mas não envia DM nem resposta. Cancele o pedido de teste depois para devolver a peça.
+            </p>
+            <div className="flex flex-wrap items-end gap-2">
+              <Input value={simCode} onChange={(e) => setSimCode(e.target.value)} placeholder="Código (ex: C517)" className="h-8 w-40" />
+              <Input value={simQty} onChange={(e) => setSimQty(e.target.value)} type="number" min={1} className="h-8 w-20" />
+              <Input value={simUser} onChange={(e) => setSimUser(e.target.value)} placeholder="@usuário de teste" className="h-8 w-44" />
+              <Button size="sm" onClick={runSimulation} disabled={simulating}>
+                {simulating ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+                Simular comentário
+              </Button>
+            </div>
+          </div>
         </TabsContent>
 
         {/* ---------------------------- COMPRADORES ---------------------------- */}

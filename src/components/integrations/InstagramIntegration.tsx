@@ -156,6 +156,22 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
     onError: () => toast.error('Erro ao atualizar configuração'),
   });
 
+  // Respostas públicas automáticas (opcionais)
+  const updateIntegrationField = useMutation({
+    mutationFn: async (patch: Record<string, unknown>) => {
+      const { error } = await supabase
+        .from('integration_instagram')
+        .update({ ...patch, updated_at: new Date().toISOString() } as any)
+        .eq('tenant_id', tenantId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['instagram-integration', tenantId] });
+      toast.success('Configuração atualizada');
+    },
+    onError: () => toast.error('Erro ao atualizar configuração'),
+  });
+
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copiado!`);
@@ -343,6 +359,62 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
                 onCheckedChange={(checked) => toggleCadastroDm.mutate(checked)}
                 disabled={toggleCadastroDm.isPending}
               />
+            </div>
+
+            <div className="mt-4 space-y-3 border-t pt-4">
+              <p className="text-sm font-medium">Respostas públicas automáticas no comentário</p>
+              <p className="text-xs text-muted-foreground">
+                Opcional. Responde publicamente ao comentário quando a venda é registrada ou quando a peça esgotou.
+                Use {'{{produto}}'} e {'{{usuario}}'} no texto. Depende do Instagram permitir resposta no tipo de comentário.
+              </p>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="auto-reply-added" className="text-sm">Responder quando a venda for registrada</Label>
+                  <Switch
+                    id="auto-reply-added"
+                    checked={!!(config as any)?.auto_reply_added}
+                    onCheckedChange={(checked) => updateIntegrationField.mutate({ auto_reply_added: checked })}
+                    disabled={updateIntegrationField.isPending}
+                  />
+                </div>
+                <Input
+                  key={`added-${(config as any)?.auto_reply_added_text ?? ''}`}
+                  defaultValue={(config as any)?.auto_reply_added_text || ''}
+                  placeholder="✅ {{produto}} anotado, @{{usuario}}! Te enviei os detalhes por DM."
+                  maxLength={300}
+                  onBlur={(e) => {
+                    const value = e.target.value.trim();
+                    if (value !== ((config as any)?.auto_reply_added_text || '')) {
+                      updateIntegrationField.mutate({ auto_reply_added_text: value || null });
+                    }
+                  }}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="auto-reply-oos" className="text-sm">Responder quando a peça esgotar</Label>
+                  <Switch
+                    id="auto-reply-oos"
+                    checked={!!(config as any)?.auto_reply_out_of_stock}
+                    onCheckedChange={(checked) => updateIntegrationField.mutate({ auto_reply_out_of_stock: checked })}
+                    disabled={updateIntegrationField.isPending}
+                  />
+                </div>
+                <Input
+                  key={`oos-${(config as any)?.auto_reply_out_of_stock_text ?? ''}`}
+                  defaultValue={(config as any)?.auto_reply_out_of_stock_text || ''}
+                  placeholder="😕 Essa peça esgotou, @{{usuario}}. Fique de olho nas próximas!"
+                  maxLength={300}
+                  onBlur={(e) => {
+                    const value = e.target.value.trim();
+                    if (value !== ((config as any)?.auto_reply_out_of_stock_text || '')) {
+                      updateIntegrationField.mutate({ auto_reply_out_of_stock_text: value || null });
+                    }
+                  }}
+                />
+              </div>
             </div>
           </CardContent>
         </Card>
