@@ -534,6 +534,11 @@ Deno.serve(async (req) => {
 
               console.log(`[${timestamp}] [instagram-webhook] Sending DM Cadastro to ${dmRecipientId}, template found: ${!!dmTemplate?.content}`);
               const dmResult = await sendInstagramDM(dmRecipientId, pageAccessToken, cadastroDmMessage, useInstagramApi, commentId);
+              await logInstagramDm(supabase, {
+                tenant_id: tenantId, comment_id: commentId, order_id: order?.id ?? null,
+                instagram_user_id: buyerIgId, username: buyerUsername || null,
+                dm_type: 'cadastro', message: cadastroDmMessage, result: dmResult,
+              });
               if (dmResult.success) {
                 console.log(`[${timestamp}] [instagram-webhook] DM Cadastro sent to ${dmRecipientId}`);
               } else {
@@ -581,6 +586,11 @@ Deno.serve(async (req) => {
 
               console.log(`[${timestamp}] [instagram-webhook] Sending DM ITEM_ADDED to ${dmRecipientId}, template found: ${!!itemAddedTemplate?.content}`);
               const dmResult = await sendInstagramDM(dmRecipientId, pageAccessToken, dmMessage, useInstagramApi, commentId);
+              await logInstagramDm(supabase, {
+                tenant_id: tenantId, comment_id: commentId, order_id: order?.id ?? null,
+                instagram_user_id: buyerIgId, username: buyerUsername || null,
+                dm_type: 'item_added', message: dmMessage, result: dmResult,
+              });
               if (dmResult.success) {
                 console.log(`[${timestamp}] [instagram-webhook] DM sent successfully to ${dmRecipientId}`);
               } else {
@@ -823,6 +833,38 @@ async function sendInstagramPrivateReply(
     return { success: false, error: errorData?.error?.message || `HTTP ${response.status}` };
   } catch (error: any) {
     return { success: false, error: error.message };
+  }
+}
+
+// Registro de auditoria das DMs (best-effort: nunca pode quebrar o fluxo da venda).
+async function logInstagramDm(
+  supabase: ReturnType<typeof createClient>,
+  entry: {
+    tenant_id: string;
+    comment_id?: string | null;
+    order_id?: number | null;
+    instagram_user_id?: string | null;
+    username?: string | null;
+    dm_type: 'cadastro' | 'item_added';
+    message: string;
+    result: { success: boolean; error?: string };
+  },
+): Promise<void> {
+  try {
+    const { error } = await supabase.from('instagram_dm_log').insert({
+      tenant_id: entry.tenant_id,
+      comment_id: entry.comment_id ?? null,
+      order_id: entry.order_id ?? null,
+      instagram_user_id: entry.instagram_user_id ?? null,
+      username: entry.username ?? null,
+      dm_type: entry.dm_type,
+      message: entry.message.slice(0, 2000),
+      status: entry.result.success ? 'sent' : 'failed',
+      error: entry.result.success ? null : (entry.result.error ?? 'unknown').slice(0, 500),
+    });
+    if (error) console.warn('[instagram-webhook] Could not log DM:', error.message);
+  } catch (e: any) {
+    console.warn('[instagram-webhook] Could not log DM:', e?.message);
   }
 }
 
