@@ -291,6 +291,7 @@ serve(async (req) => {
 
           const messageId = groupToMessageId.get(group.id);
           const updatePayload: Record<string, unknown> = { status: sent ? "sent" : "failed", sent_at: new Date().toISOString() };
+          if (!sent) updatePayload.error_message = String(errMsg || "Falha desconhecida").slice(0, 300);
           if (waMessageId) updatePayload.wa_message_id = waMessageId;
           let statusUpdate = supabase.from("fe_messages").update(updatePayload);
           if (messageId) {
@@ -304,7 +305,7 @@ serve(async (req) => {
           results.push({ group_id: group.id, group_name: group.group_name, success: false, error: err.message });
 
           const messageId = groupToMessageId.get(group.id);
-          let failUpdate = supabase.from("fe_messages").update({ status: "failed" });
+          let failUpdate = supabase.from("fe_messages").update({ status: "failed", error_message: String(err?.message || "Erro inesperado").slice(0, 300) });
           if (messageId) {
             failUpdate = failUpdate.eq("id", messageId).eq("status", "sending");
           } else {

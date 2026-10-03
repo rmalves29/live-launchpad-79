@@ -150,6 +150,17 @@ export default function MessageComposer() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // Traduz o erro do provedor de WhatsApp para algo que o lojista entende.
+  const friendlyError = (raw?: string | null) => {
+    if (!raw) return null;
+    const t = raw.toLowerCase();
+    if (t.includes('not participating')) return 'O número de WhatsApp conectado não participa mais deste grupo (saiu ou foi removido). Entre de novo no grupo ou atualize a lista de grupos.';
+    if (t.includes('not admin') || t.includes('forbidden') || t.includes('not-authorized')) return 'O número conectado não tem permissão para enviar neste grupo (precisa ser administrador).';
+    if (t.includes('rate') || t.includes('429')) return 'O WhatsApp limitou os envios por excesso de mensagens seguidas. Tente novamente mais tarde.';
+    if (t.includes('disconnected') || t.includes('not connected')) return 'O WhatsApp está desconectado. Reconecte em Integrações.';
+    return raw;
+  };
+
   const cancelPendingMessage = async (messageId: string) => {
     const { error, count } = await supabase
       .from('fe_messages' as any)
@@ -671,6 +682,11 @@ export default function MessageComposer() {
                       </span>
                     </div>
                     {m.content_text && <p className="text-sm text-foreground line-clamp-2">{m.content_text}</p>}
+                    {m.status === 'failed' && (
+                      <p className="text-xs text-destructive mt-1">
+                        {friendlyError(m.error_message) || 'Motivo não registrado (envios antigos). Os próximos mostrarão o motivo aqui.'}
+                      </p>
+                    )}
                     {m.content_type === 'poll' && Array.isArray(m.poll_options) && (
                       <p className="text-xs text-muted-foreground line-clamp-1">Opções: {m.poll_options.join(' · ')}</p>
                     )}

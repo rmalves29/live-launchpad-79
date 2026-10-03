@@ -103,9 +103,10 @@ serve(async (req) => {
           const errText = payload?.error || payload?.message || JSON.stringify(payload || {});
           console.error(`[fe-process-scheduled] Send failed for message ${msg.id}: ${errText}`);
 
+          const detail = payload?.results?.[0]?.error || errText;
           await supabase
             .from("fe_messages")
-            .update({ status: "failed" })
+            .update({ status: "failed", error_message: String(detail).slice(0, 300) })
             .eq("id", msg.id)
             .eq("status", "sending");
         } else {
@@ -117,7 +118,7 @@ serve(async (req) => {
 
         await supabase
           .from("fe_messages")
-          .update({ status: "failed" })
+          .update({ status: "failed", error_message: String(err.message || "Erro inesperado").slice(0, 300) })
           .eq("id", msg.id)
           .eq("status", "sending");
       }
