@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
 import { useAuth } from '@/hooks/useAuth';
-import { useFluxoPlanLimits } from '@/hooks/useFluxoPlanLimits';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -36,14 +35,13 @@ interface FeGroup {
 export default function GroupsManager() {
   const { tenant } = useTenant();
   const { toast } = useToast();
-  const { maxGroups, planLabel } = useFluxoPlanLimits();
   const [groups, setGroups] = useState<FeGroup[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [refreshingLinks, setRefreshingLinks] = useState(false);
   const [adminOnly, setAdminOnly] = useState(true);
-  const [showInactive, setShowInactive] = useState(false);
+  const [showInactive, setShowInactive] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
   const [newGroup, setNewGroup] = useState({ group_jid: '', group_name: '', invite_link: '' });
   const [search, setSearch] = useState('');
@@ -62,7 +60,7 @@ export default function GroupsManager() {
     if (!error && data) setGroups(data as any);
     if (typeof count === 'number') setTotalCount(count);
     setLoading(false);
-  }, [tenant, maxGroups]);
+  }, [tenant]);
 
   useEffect(() => { fetchGroups(); }, [fetchGroups]);
 
@@ -169,17 +167,6 @@ export default function GroupsManager() {
   };
 
   const toggleActive = async (group: FeGroup) => {
-    if (!group.is_active && Number.isFinite(maxGroups)) {
-      const activeCount = groups.filter(g => g.is_active).length;
-      if (activeCount >= maxGroups) {
-        toast({
-          title: 'Limite de grupos ativos atingido',
-          description: `Seu plano permite até ${maxGroups} grupos ativos simultaneamente. Desative outro grupo ou faça upgrade.`,
-          variant: 'destructive',
-        });
-        return;
-      }
-    }
     await supabase
       .from('fe_groups' as any)
       .update({ is_active: !group.is_active } as any)
@@ -211,7 +198,7 @@ export default function GroupsManager() {
           <h3 className="text-lg font-semibold text-foreground">Grupos WhatsApp</h3>
           <Badge variant="secondary" className="gap-1">
             <Crown className="h-3 w-3" />
-            {planLabel} · {groups.filter(g => g.is_active).length}/{Number.isFinite(maxGroups) ? maxGroups : '∞'} ativos
+            {groups.filter(g => g.is_active).length} ativos · {groups.filter(g => g.is_admin).length} onde sou admin
           </Badge>
         </div>
         <div className="flex items-center gap-3">
