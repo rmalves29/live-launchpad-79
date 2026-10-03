@@ -84,20 +84,34 @@ const parseCount = (source: any) => {
 async function fetchUazapiInviteLink(
   uazUrl: string, uazH: Record<string, string>, groupJid: string,
 ): Promise<string | null> {
+  const info = await fetchUazapiGroupInfo(uazUrl, uazH, groupJid);
+  return info.inviteLink;
+}
+
+// Informações atuais do grupo: link de convite, nome e número REAL de participantes.
+// (a listagem de grupos da UazAPI pode devolver nome em cache e só parte dos participantes)
+async function fetchUazapiGroupInfo(
+  uazUrl: string, uazH: Record<string, string>, groupJid: string,
+): Promise<{ inviteLink: string | null; participantCount: number; name: string | null }> {
+  const empty = { inviteLink: null, participantCount: 0, name: null };
   try {
     const res = await fetch(`${uazUrl}/group/info`, {
       method: "POST",
       headers: uazH,
       body: JSON.stringify({ groupjid: groupJid, getInviteLink: true }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return empty;
     const data = await res.json().catch(() => null);
     const grp = data?.group || data;
-    const code = grp?.invite_link;
-    if (!code) return null;
-    return String(code).startsWith("http") ? String(code) : `https://chat.whatsapp.com/${code}`;
+    const code = grp?.invite_link || grp?.InviteLink;
+    const participants = grp?.Participants || grp?.participants || data?.participants || [];
+    return {
+      inviteLink: code ? (String(code).startsWith("http") ? String(code) : `https://chat.whatsapp.com/${code}`) : null,
+      participantCount: Array.isArray(participants) ? participants.length : 0,
+      name: grp?.Name || grp?.name || grp?.subject || null,
+    };
   } catch {
-    return null;
+    return empty;
   }
 }
 
@@ -181,7 +195,7 @@ serve(async (req) => {
           const groupJid = canonicalGroupJid(rawJid);
           if (!groupJid) return null;
 
-          const groupName = g.Name || g.subject || g.name || groupJid;
+          let groupName = g.Name || g.subject || g.name || groupJid;
           const ownerRaw = g.OwnerPN || g.owner || g.OwnerJID || "";
           const ownerPhone = normalizePhone(String(ownerRaw).split("@")[0]);
 
@@ -231,7 +245,10 @@ serve(async (req) => {
 
           let inviteLink: string | null = null;
           if (isAdmin) {
-            inviteLink = await fetchUazapiInviteLink(uazUrl, uazH, groupJid);
+            const info = await fetchUazapiGroupInfo(uazUrl, uazH, groupJid);
+            inviteLink = info.inviteLink;
+            if (info.participantCount > 0) participantCount = info.participantCount; // número real
+            if (info.name) groupName = info.name;                                    // nome atual no WhatsApp
           }
 
           return {
