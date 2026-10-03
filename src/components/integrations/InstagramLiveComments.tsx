@@ -4,11 +4,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
-import { Trash2, Radio, Download, MessageCircle, RefreshCw, BarChart3 } from 'lucide-react';
+import { Trash2, Radio, Download, MessageCircle, RefreshCw, BarChart3, Activity } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import InstagramPostComments from './InstagramPostComments';
 import InstagramLiveReport from './InstagramLiveReport';
+import InstagramLiveInsights from './InstagramLiveInsights';
 
 
 interface LiveComment {
@@ -284,6 +285,10 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
                 <Radio className="h-3.5 w-3.5" />
                 Live
               </TabsTrigger>
+              <TabsTrigger value="insights" className="flex items-center gap-1.5">
+                <Activity className="h-3.5 w-3.5" />
+                Painel
+              </TabsTrigger>
               <TabsTrigger value="report" className="flex items-center gap-1.5">
                 <BarChart3 className="h-3.5 w-3.5" />
                 Relatório de Lives
@@ -293,6 +298,10 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
             <TabsContent value="live" className="mt-0">
               {renderLegend()}
               {renderLiveList()}
+            </TabsContent>
+
+            <TabsContent value="insights" className="mt-0">
+              <InstagramLiveInsights tenantId={tenantId} />
             </TabsContent>
 
             <TabsContent value="report" className="mt-0">
@@ -332,6 +341,10 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
                 <MessageCircle className="h-3.5 w-3.5" />
                 Todos os Comentários
               </TabsTrigger>
+              <TabsTrigger value="insights" className="flex items-center gap-1.5">
+                <Activity className="h-3.5 w-3.5" />
+                Painel
+              </TabsTrigger>
               <TabsTrigger value="report" className="flex items-center gap-1.5">
                 <BarChart3 className="h-3.5 w-3.5" />
                 Relatório de Lives
@@ -360,6 +373,10 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
 
           <TabsContent value="posts" className="mt-0">
             <InstagramPostComments tenantId={tenantId} />
+          </TabsContent>
+
+          <TabsContent value="insights" className="mt-0">
+            <InstagramLiveInsights tenantId={tenantId} />
           </TabsContent>
 
           <TabsContent value="report" className="mt-0">

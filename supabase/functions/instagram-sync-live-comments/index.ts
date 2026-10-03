@@ -5,6 +5,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const MAX_PAGES = 5;
+
+// Nunca grava access_token em log.
+function redactToken(text: string) {
+  return text.replace(/access_token=[^&\s"]+/g, 'access_token=[REDACTED]');
+}
+
 interface RequestBody {
   tenant_id?: string;
   limit?: number;
@@ -49,7 +56,7 @@ Deno.serve(async (req) => {
   try {
     const body = await readBody(req);
     const tenantId = body.tenant_id?.trim();
-    const limit = Math.min(Math.max(body.limit || 50, 1), 100);
+    const limit = Math.min(Math.max(body.limit || 100, 1), 100);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -124,7 +131,7 @@ async function syncIntegration(
 
   if (!mediaResponse.ok) {
     const message = mediaJson?.error?.message || `Erro ${mediaResponse.status} ao buscar live_media`;
-    console.error(`[${timestamp}] [instagram-sync-live-comments] live_media error for tenant ${integration.tenant_id}:`, mediaJson);
+    console.error(`[${timestamp}] [instagram-sync-live-comments] live_media error for tenant ${integration.tenant_id}:`, redactToken(JSON.stringify(mediaJson)));
     result.errors.push(message);
     return result;
   }
@@ -136,38 +143,62 @@ async function syncIntegration(
 
 
   for (const media of mediaItems) {
-    const commentsUrl = `https://graph.instagram.com/v21.0/${media.id}/comments?fields=id,text,username,timestamp,from{id,username}&limit=${limit}&access_token=${encodeURIComponent(token)}`;
-    const commentsResponse = await fetch(commentsUrl);
-    const commentsJson = await commentsResponse.json().catch(() => ({}));
-
-    if (!commentsResponse.ok) {
-      const message = commentsJson?.error?.message || `Erro ${commentsResponse.status} ao buscar comentários da mídia ${media.id}`;
-      console.error(`[${timestamp}] [instagram-sync-live-comments] comments error for media ${media.id}:`, commentsJson);
-      result.errors.push(message);
-      continue;
-    }
-
-    const comments = Array.isArray(commentsJson?.data) ? commentsJson.data as GraphComment[] : [];
-    comments.sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
-    result.comments_seen += comments.length;
-
-    const commentIds = comments.map((comment) => comment.id).filter(Boolean);
+    // Busca paginada (até MAX_PAGES x 100): em lives movimentadas, mais de 100 comentários novos
+    // por minuto não ficam de fora. Para quando uma página inteira já foi processada.
+    let nextUrl: string | null = `https://graph.instagram.com/v21.0/${media.id}/comments?fields=id,text,username,timestamp,from{id,username}&limit=${limit}&access_token=${encodeURIComponent(token)}`;
+    const comments: GraphComment[] = [];
     const existingIds = new Set<string>();
-    if (commentIds.length > 0) {
-      const { data: existingRows, error: existingError } = await supabase
-        .from('instagram_live_comments')
-        .select('comment_id')
-        .eq('tenant_id', integration.tenant_id)
-        .in('comment_id', commentIds);
+    let pages = 0;
+    let fetchFailed = false;
 
-      if (existingError) {
-        console.warn(`[${timestamp}] [instagram-sync-live-comments] duplicate check failed:`, existingError.message);
-      } else {
-        for (const row of existingRows || []) {
-          if (row.comment_id) existingIds.add(row.comment_id);
+    while (nextUrl && pages < MAX_PAGES) {
+      pages += 1;
+      const commentsResponse = await fetch(nextUrl);
+      const commentsJson = await commentsResponse.json().catch(() => ({}));
+
+      if (!commentsResponse.ok) {
+        const message = commentsJson?.error?.message || `Erro ${commentsResponse.status} ao buscar comentários da mídia ${media.id}`;
+        console.error(`[${timestamp}] [instagram-sync-live-comments] comments error for media ${media.id}:`, redactToken(JSON.stringify(commentsJson)));
+        result.errors.push(message);
+        fetchFailed = true;
+        break;
+      }
+
+      const pageComments = Array.isArray(commentsJson?.data) ? commentsJson.data as GraphComment[] : [];
+      result.comments_seen += pageComments.length;
+
+      const pageIds = pageComments.map((comment) => comment.id).filter(Boolean);
+      const pageExisting = new Set<string>();
+      if (pageIds.length > 0) {
+        const { data: existingRows, error: existingError } = await supabase
+          .from('instagram_live_comments')
+          .select('comment_id')
+          .eq('tenant_id', integration.tenant_id)
+          .in('comment_id', pageIds);
+
+        if (existingError) {
+          console.warn(`[${timestamp}] [instagram-sync-live-comments] duplicate check failed:`, existingError.message);
+        } else {
+          for (const row of existingRows || []) {
+            if (row.comment_id) {
+              pageExisting.add(row.comment_id);
+              existingIds.add(row.comment_id);
+            }
+          }
         }
       }
+
+      comments.push(...pageComments.filter((c) => c.id && !pageExisting.has(c.id)));
+
+      // Página sem nenhum comentário novo => o resto é histórico já processado.
+      if (pageComments.length === 0 || pageExisting.size === pageIds.length) break;
+      nextUrl = commentsJson?.paging?.next || null;
     }
+
+    if (fetchFailed && comments.length === 0) continue;
+
+    // Processa do mais antigo para o mais novo: quem comentou primeiro leva a peça.
+    comments.sort((a, b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
 
     for (const comment of comments) {
       if (!comment.id || existingIds.has(comment.id)) {

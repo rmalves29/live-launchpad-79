@@ -178,7 +178,9 @@ Deno.serve(async (req) => {
         // Insert comment initially with no_code status
         const initialStatus = extractedCode ? 'not_found' : 'no_code';
 
-        await insertLiveComment(supabase, {
+        // O INSERT é o "lock" de idempotência: o índice único (tenant_id, comment_id) garante
+        // que, mesmo com webhook + sincronização rodando juntos, só um processa o comentário.
+        const insertResult = await insertLiveComment(supabase, {
           tenant_id: tenantId,
           instagram_user_id: buyerId,
           username: buyerUsername || null,
@@ -190,6 +192,11 @@ Deno.serve(async (req) => {
           product_found: false,
           comment_status: initialStatus,
         }, timestamp);
+
+        if (insertResult === 'duplicate') {
+          console.log(`[${timestamp}] [instagram-webhook] Duplicate comment ignored (unique index): ${commentId}`);
+          continue;
+        }
 
         if (!extractedCode) {
           console.log(`[${timestamp}] [instagram-webhook] No product code found in comment`);
@@ -204,49 +211,43 @@ Deno.serve(async (req) => {
         // Para comentários de live, filtrar apenas produtos com sale_type LIVE ou AMBOS
         const saleTypeFilter = isLiveComment ? ['LIVE', 'AMBOS'] : undefined;
 
+        // Somente código EXATO (sem busca aproximada): "C51" nunca pode virar "C517".
+        // Se houver mais de um produto com o mesmo código, prefere o que tem estoque (e o mais recente).
         let exactQuery = supabase
           .from('products')
           .select('*')
           .eq('tenant_id', tenantId)
           .eq('is_active', true)
-          .ilike('code', productCode);
+          .ilike('code', escapeLikeExact(productCode))
+          .order('id', { ascending: false })
+          .limit(10);
 
         if (saleTypeFilter) {
           exactQuery = exactQuery.in('sale_type', saleTypeFilter);
         }
 
-        const { data: exactProduct, error: exactError } = await exactQuery.maybeSingle();
+        const { data: exactProducts, error: exactError } = await exactQuery;
 
-        if (!exactError && exactProduct) {
-          product = exactProduct;
-        } else {
-          let fuzzyQuery = supabase
-            .from('products')
-            .select('*')
-            .eq('tenant_id', tenantId)
-            .eq('is_active', true)
-            .ilike('code', `%${productCode}%`)
-            .order('id', { ascending: false })
-            .limit(1);
-
-          if (saleTypeFilter) {
-            fuzzyQuery = fuzzyQuery.in('sale_type', saleTypeFilter);
+        if (exactError) {
+          console.error(`[${timestamp}] [instagram-webhook] Product lookup error:`, exactError.message);
+        } else if (exactProducts && exactProducts.length > 0) {
+          if (exactProducts.length > 1) {
+            console.warn(`[${timestamp}] [instagram-webhook] ⚠️ ${exactProducts.length} produtos com o código ${productCode}; escolhendo o com estoque`);
           }
-
-          const { data: fuzzyProduct } = await fuzzyQuery.maybeSingle();
-          product = fuzzyProduct;
+          product = exactProducts.find((p: any) => Number(p.stock) > 0) || exactProducts[0];
         }
 
         if (!product) {
           // Check if product exists but is not for LIVE (sale_type mismatch)
           if (isLiveComment) {
-            const { data: anyProduct } = await supabase
+            const { data: anyProducts } = await supabase
               .from('products')
               .select('id')
               .eq('tenant_id', tenantId)
               .eq('is_active', true)
-              .ilike('code', productCode)
-              .maybeSingle();
+              .ilike('code', escapeLikeExact(productCode))
+              .limit(1);
+            const anyProduct = anyProducts && anyProducts.length > 0 ? anyProducts[0] : null;
 
             if (anyProduct) {
               // Product exists but not registered for LIVE → lilás
@@ -269,6 +270,34 @@ Deno.serve(async (req) => {
           // Não envia DM de estoque esgotado
           continue;
         }
+
+        // Reserva ATÔMICA do estoque: o primeiro comentário a chegar leva a peça.
+        // Se dois comentários disputam a última unidade, o banco serializa e só um recebe sucesso.
+        const { data: reservedStock, error: reserveError } = await supabase.rpc('reserve_product_stock', {
+          p_product_id: product.id,
+          p_qty: requestedQty,
+        });
+
+        if (reserveError) {
+          console.error(`[${timestamp}] [instagram-webhook] ❌ Stock reservation error for ${product.code}:`, reserveError.message);
+          await updateLiveCommentStatus(supabase, tenantId, commentId, 'out_of_stock', timestamp);
+          continue;
+        }
+
+        if (reservedStock === null || reservedStock === undefined) {
+          console.log(`[${timestamp}] [instagram-webhook] ❌ Product ${product.code} insufficient stock for qty=${requestedQty}`);
+          await updateLiveCommentStatus(supabase, tenantId, commentId, 'out_of_stock', timestamp);
+          continue;
+        }
+
+        console.log(`[${timestamp}] [instagram-webhook] Stock reserved: ${product.code} -${requestedQty} (restante=${reservedStock})`);
+        const releaseReservedStock = async (reason: string) => {
+          const { error: releaseError } = await supabase.rpc('release_product_stock', {
+            p_product_id: product.id,
+            p_qty: requestedQty,
+          });
+          console.warn(`[${timestamp}] [instagram-webhook] Stock released (${reason}): ${product.code} +${requestedQty}${releaseError ? ` — ERRO: ${releaseError.message}` : ''}`);
+        };
 
         // Usar horário de Brasília (UTC-3) para a data do evento
         const brasiliaOffset = -3;
@@ -311,6 +340,7 @@ Deno.serve(async (req) => {
 
           if (cartError) {
             console.error(`[${timestamp}] [instagram-webhook] Cart creation error:`, cartError);
+            await releaseReservedStock('cart_error');
             continue;
           }
 
@@ -328,18 +358,6 @@ Deno.serve(async (req) => {
           }
         }
 
-        const { data: freshProduct } = await supabase
-          .from('products')
-          .select('stock')
-          .eq('id', product.id)
-          .single();
-
-        if (!freshProduct || freshProduct.stock < 1) {
-          console.log(`[${timestamp}] [instagram-webhook] ❌ Product ${product.code} out of stock (stock=${freshProduct?.stock || 0})`);
-          await updateLiveCommentStatus(supabase, tenantId, commentId, 'out_of_stock', timestamp);
-          continue;
-        }
-
         const { data: existingItem } = await supabase
           .from('cart_items')
           .select('*')
@@ -347,7 +365,6 @@ Deno.serve(async (req) => {
           .eq('product_id', product.id)
           .maybeSingle();
 
-        let itemQty = requestedQty;
         const effectiveUnitPrice = (product.promotional_price && product.promotional_price > 0)
           ? product.promotional_price
           : product.price;
@@ -355,27 +372,22 @@ Deno.serve(async (req) => {
         if (existingItem) {
           // Already has this specific product → also repeat
           isRepeatBuyer = true;
-          itemQty = existingItem.qty + requestedQty;
-          if (itemQty > freshProduct.stock) {
-            console.log(`[${timestamp}] [instagram-webhook] ❌ Product ${product.code} insufficient stock for qty=${itemQty} (stock=${freshProduct.stock})`);
-            await updateLiveCommentStatus(supabase, tenantId, commentId, 'out_of_stock', timestamp);
-            continue;
-          }
+          const itemQty = existingItem.qty + requestedQty;
 
-          await supabase
+          const { error: updateItemError } = await supabase
             .from('cart_items')
             .update({ qty: itemQty, unit_price: effectiveUnitPrice })
             .eq('id', existingItem.id);
 
-          console.log(`[${timestamp}] [instagram-webhook] Item quantity updated: ${product.code} qty=${itemQty}`);
-        } else {
-          if (requestedQty > freshProduct.stock) {
-            console.log(`[${timestamp}] [instagram-webhook] ❌ Product ${product.code} insufficient stock for qty=${requestedQty} (stock=${freshProduct.stock})`);
-            await updateLiveCommentStatus(supabase, tenantId, commentId, 'out_of_stock', timestamp);
+          if (updateItemError) {
+            console.error(`[${timestamp}] [instagram-webhook] ❌ Cart item update failed for ${product.code}:`, updateItemError.message);
+            await releaseReservedStock('cart_item_update_error');
             continue;
           }
 
-          await supabase
+          console.log(`[${timestamp}] [instagram-webhook] Item quantity updated: ${product.code} qty=${itemQty}`);
+        } else {
+          const { error: insertItemError } = await supabase
             .from('cart_items')
             .insert({
               tenant_id: tenantId,
@@ -388,23 +400,13 @@ Deno.serve(async (req) => {
               qty: requestedQty,
             });
 
-          console.log(`[${timestamp}] [instagram-webhook] New item added: ${product.code} qty=${requestedQty}`);
-        }
-
-        const { error: stockDecErr } = await supabase
-          .from('products')
-          .update({ stock: freshProduct.stock - itemQty + (existingItem ? existingItem.qty : 0) })
-          .eq('id', product.id)
-          .gt('stock', 0);
-
-        if (stockDecErr) {
-          console.log(`[${timestamp}] [instagram-webhook] ❌ Stock decrement failed for ${product.code}:`, stockDecErr);
-          if (existingItem) {
-            await supabase.from('cart_items').update({ qty: existingItem.qty }).eq('id', existingItem.id);
-          } else {
-            await supabase.from('cart_items').delete().eq('cart_id', cart.id).eq('product_id', product.id);
+          if (insertItemError) {
+            console.error(`[${timestamp}] [instagram-webhook] ❌ Cart item insert failed for ${product.code}:`, insertItemError.message);
+            await releaseReservedStock('cart_item_insert_error');
+            continue;
           }
-          continue;
+
+          console.log(`[${timestamp}] [instagram-webhook] New item added: ${product.code} qty=${requestedQty}`);
         }
 
         // Mark comment as product found with appropriate status
@@ -514,6 +516,10 @@ Deno.serve(async (req) => {
               .maybeSingle();
             const dmCadastroDisabled = dmTemplate ? dmTemplate.is_active === false : false;
 
+            // A Meta permite UMA private reply por comentário. Se a DM de cadastro (que já traz produto,
+            // valor e total) sair com sucesso, não enviamos a de "item adicionado" para o mesmo comentário.
+            let cadastroDmSent = false;
+
             if ((!hasRegistration || !hasPhone) && integration.send_cadastro_dm && !dmCadastroDisabled) {
               let cadastroDmMessage = '';
               if (dmTemplate?.content) {
@@ -540,6 +546,7 @@ Deno.serve(async (req) => {
                 dm_type: 'cadastro', message: cadastroDmMessage, result: dmResult,
               });
               if (dmResult.success) {
+                cadastroDmSent = true;
                 console.log(`[${timestamp}] [instagram-webhook] DM Cadastro sent to ${dmRecipientId}`);
               } else {
                 console.error(`[${timestamp}] [instagram-webhook] DM Cadastro failed:`, dmResult.error);
@@ -557,7 +564,9 @@ Deno.serve(async (req) => {
               .limit(1)
               .maybeSingle();
 
-            if (itemAddedTemplate && itemAddedTemplate.is_active === false) {
+            if (cadastroDmSent) {
+              console.log(`[${timestamp}] [instagram-webhook] SKIPPED: DM de cadastro já enviada para o comentário ${commentId} (limite de 1 private reply)`);
+            } else if (itemAddedTemplate && itemAddedTemplate.is_active === false) {
               console.log(`[${timestamp}] [instagram-webhook] SKIPPED: template ITEM_ADDED está desativado para o tenant ${tenantId}`);
             } else {
               const effectivePrice = (product.promotional_price && product.promotional_price > 0)
@@ -624,6 +633,11 @@ Deno.serve(async (req) => {
   }
 });
 
+// Escapa curingas do LIKE/ILIKE para que a busca seja por igualdade exata (sem %, _ ou \ interpretados).
+function escapeLikeExact(value: string) {
+  return value.replace(/[\\%_]/g, (ch) => '\\' + ch);
+}
+
 function extractProductCode(commentText: string) {
   const match = commentText.match(PRODUCT_WITH_QTY_REGEX);
   if (!match) return null;
@@ -678,12 +692,15 @@ async function insertLiveComment(
     comment_status: string;
   },
   timestamp: string,
-) {
+): Promise<'inserted' | 'duplicate' | 'error'> {
   const { error } = await supabase.from('instagram_live_comments').insert(payload);
 
   if (error) {
+    if (error.code === '23505') return 'duplicate';
     console.error(`[${timestamp}] [instagram-webhook] Error saving live comment:`, error);
+    return 'error';
   }
+  return 'inserted';
 }
 
 async function updateLiveCommentStatus(
@@ -811,7 +828,7 @@ async function sendInstagramPrivateReply(
   accessToken: string,
   message: string,
   useInstagramApi: boolean = false
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; channel?: string }> {
   try {
     const base = useInstagramApi
       ? `https://graph.instagram.com/v21.0/me/messages`
@@ -826,7 +843,7 @@ async function sendInstagramPrivateReply(
       }),
     });
 
-    if (response.ok) return { success: true };
+    if (response.ok) return { success: true, channel: 'private_reply' };
 
     const errorData = await response.json().catch(() => ({}));
     console.error('[instagram-webhook] Private reply error:', JSON.stringify(errorData));
@@ -847,7 +864,7 @@ async function logInstagramDm(
     username?: string | null;
     dm_type: 'cadastro' | 'item_added';
     message: string;
-    result: { success: boolean; error?: string };
+    result: { success: boolean; error?: string; channel?: string };
   },
 ): Promise<void> {
   try {
@@ -860,6 +877,7 @@ async function logInstagramDm(
       dm_type: entry.dm_type,
       message: entry.message.slice(0, 2000),
       status: entry.result.success ? 'sent' : 'failed',
+      channel: entry.result.channel ?? null,
       error: entry.result.success ? null : (entry.result.error ?? 'unknown').slice(0, 500),
     });
     if (error) console.warn('[instagram-webhook] Could not log DM:', error.message);
@@ -874,12 +892,14 @@ async function sendInstagramDM(
   message: string,
   useInstagramApi: boolean = false,
   commentId?: string | null
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; channel?: string }> {
   // Comentários de live/post: a private reply é o canal permitido (janela de 7 dias),
   // enquanto /messages exige janela de 24h de interação prévia.
+  let privateReplyError: string | undefined;
   if (commentId) {
     const reply = await sendInstagramPrivateReply(commentId, accessToken, message, useInstagramApi);
     if (reply.success) return reply;
+    privateReplyError = reply.error;
     console.warn('[instagram-webhook] Private reply falhou, tentando DM padrão:', reply.error);
   }
 
@@ -902,7 +922,7 @@ async function sendInstagramDM(
     );
 
     if (response.ok) {
-      return { success: true };
+      return { success: true, channel: 'dm' };
     }
 
     const errorData = await response.json().catch(() => ({}));
@@ -911,12 +931,14 @@ async function sendInstagramDM(
 
     if (errorData?.error?.code === 190) {
       console.error('[instagram-webhook] Token expired or invalid');
-      return { success: false, error: 'Token expirado ou inválido' };
+      return { success: false, error: 'Token expirado ou inválido', channel: 'dm' };
     }
 
-    return { success: false, error: errorMsg };
+    // Registra as duas falhas (private reply + DM padrão) para o log mostrar o motivo real.
+    const combined = privateReplyError ? `private_reply: ${privateReplyError} | dm: ${errorMsg}` : errorMsg;
+    return { success: false, error: combined, channel: 'dm' };
   } catch (error: any) {
-    return { success: false, error: error.message };
+    return { success: false, error: error.message, channel: 'dm' };
   }
 }
 

@@ -21,6 +21,8 @@ async function fetchProfileData(token: string, accountId: string | null) {
   ].filter(Boolean) as string[];
 
   for (const requestUrl of attempts) {
+    // Nunca logar o access_token da URL.
+    const safeUrl = requestUrl.replace(/access_token=[^&]+/, "access_token=[REDACTED]");
     const response = await fetch(requestUrl, {
       headers: { Accept: "application/json" },
     });
@@ -30,7 +32,7 @@ async function fetchProfileData(token: string, accountId: string | null) {
     if (!response.ok) {
       console.warn("[instagram-profile-avatar] Instagram API error", {
         status: response.status,
-        requestUrl,
+        requestUrl: safeUrl,
         bodyText,
       });
       continue;
@@ -43,7 +45,7 @@ async function fetchProfileData(token: string, accountId: string | null) {
       }
     } catch (error) {
       console.warn("[instagram-profile-avatar] Failed to parse profile response", {
-        requestUrl,
+        requestUrl: safeUrl,
         error: String(error),
       });
     }
