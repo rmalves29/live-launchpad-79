@@ -69,7 +69,7 @@ async function getTenant(slugRaw: unknown) {
   if (!slug) return null;
   const { data } = await sb
     .from('tenants')
-    .select('id, name, slug, logo_url, primary_color, is_active, live_reserve_mode, live_cart_minutes')
+    .select('id, name, slug, logo_url, primary_color, is_active, live_reserve_mode, live_cart_minutes, live_shop_enabled')
     .eq('slug', slug)
     .eq('is_active', true)
     .maybeSingle();
@@ -515,6 +515,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({} as any));
     const tenant = await getTenant(body.tenant_slug);
     if (!tenant) return fail('Loja não encontrada.', 'TENANT_NOT_FOUND');
+    if (tenant.live_shop_enabled === false) return fail('A vitrine da live está indisponível no momento.', 'LIVE_DISABLED');
     switch (body.action) {
       case 'catalog': return await catalog(body, tenant);
       case 'recognize': return await recognize(tenant, clientIp(req));

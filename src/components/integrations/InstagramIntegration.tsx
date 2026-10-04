@@ -17,6 +17,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useSearchParams } from 'react-router-dom';
 import InstagramLiveComments from './InstagramLiveComments';
+import { liveShopUrl } from '@/lib/live-shop';
 import InstagramProfileAvatar from './InstagramProfileAvatar';
 
 interface InstagramIntegrationProps {
@@ -431,8 +432,8 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
           </CardHeader>
           <CardContent className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <code className="rounded bg-muted px-2 py-1 text-xs break-all">{`${window.location.origin}/t/${tenantSlug}/live`}</code>
-              <Button size="sm" variant="outline" onClick={() => copyToClipboard(`${window.location.origin}/t/${tenantSlug}/live`, 'Link da Loja da Live')}>
+              <code className="rounded bg-muted px-2 py-1 text-xs break-all">{liveShopUrl(tenantSlug)}</code>
+              <Button size="sm" variant="outline" onClick={() => copyToClipboard(liveShopUrl(tenantSlug), 'Link da Loja da Live')}>
                 <Copy className="h-4 w-4 mr-1" /> Copiar
               </Button>
               <Button size="sm" variant="outline" asChild>
@@ -440,7 +441,7 @@ export default function InstagramIntegration({ tenantId, tenantSlug }: Instagram
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Só aparecem peças de venda LIVE ou AMBOS com estoque. Reserva de estoque e prazos ficam em Fila de Espera.
+              Só aparecem peças de venda LIVE ou AMBOS com estoque. Cupons, brindes, frete e reserva de estoque ficam na página Loja da Live.
             </p>
           </CardContent>
         </Card>

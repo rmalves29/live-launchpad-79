@@ -81,6 +81,10 @@ export interface ShippingOption {
   delivery_time: string;
 }
 
+// Endereço público que o cliente usa (independe do domínio em que o lojista está logado).
+export const LIVE_SHOP_PUBLIC_BASE = 'https://app.orderzaps.com';
+export const liveShopUrl = (slug: string) => `${LIVE_SHOP_PUBLIC_BASE}/t/${slug}/live`;
+
 // ---------------------------------------------------------------- utilidades
 export const brl = (v: number) => 'R$ ' + (Number(v) || 0).toFixed(2).replace('.', ',');
 

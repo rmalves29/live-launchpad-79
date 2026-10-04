@@ -49,6 +49,7 @@ const TenantStorefront = lazy(() => import("./pages/TenantStorefront"));
 const PushOptInPublic = lazy(() => import("./pages/push/PushOptIn"));
 const CadastroInstagram = lazy(() => import("./pages/tenant/CadastroInstagram"));
 const LiveShop = lazy(() => import("./pages/live/LiveShop"));
+const LojaDaLive = lazy(() => import("./pages/loja-live/Index"));
 
 const EmpresasIndex = lazy(() => import("./pages/empresas/Index"));
 const Debug = lazy(() => import("./pages/Debug"));
@@ -214,6 +215,9 @@ const AppContent = () => {
         } />
         <Route path="/fila-espera" element={
           <RequireTenantAuth><FilaEspera /></RequireTenantAuth>
+        } />
+        <Route path="/loja-da-live" element={
+          <RequireTenantAuth><LojaDaLive /></RequireTenantAuth>
         } />
         <Route path="/sendflow" element={
           <RequireTenantAuth><SendFlow /></RequireTenantAuth>

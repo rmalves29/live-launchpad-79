@@ -31,6 +31,8 @@ const groups: Group[] = [
       { path: "/pedidos", label: "Pedidos", description: "Listagem e gestão de todos os pedidos do tenant." },
       { path: "/pedidos-manual", label: "Pedido Manual", description: "Criação manual de pedido no admin." },
       { path: "/live", label: "Live", description: "Lançador de vendas em live (Instagram / WhatsApp)." },
+      { path: "/loja-da-live", label: "Loja da Live", description: "Link de compra da live do Instagram + cupons, brindes, frete e reserva de estoque." },
+      { path: "/t/:slug/live", label: "Loja da Live (pública)", description: "Página pública que o cliente abre pelo link da live. Um endereço por empresa." },
       { path: "/sorteio", label: "Sorteio", description: "Sorteio ponderado por faturamento entre clientes." },
       { path: "/fila-espera", label: "Fila de Espera", description: "Fila para produtos esgotados; consolida em pedido aberto do dia." },
       { path: "/checkout", label: "Checkout (interno)", description: "Checkout usado pelo fluxo administrativo." },

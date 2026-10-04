@@ -27,10 +27,7 @@ import {
   Activity,
   Bell,
   PlayCircle,
-  Link as LinkIcon,
-
-
-} from 'lucide-react';
+  Link as LinkIcon, Store } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
@@ -80,6 +77,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           ? [{ type: 'item' as const, item: { path: `/t/${tenant.slug}/checkout`, label: 'Checkout', icon: ShoppingCart } }]
           : []),
         ...(enableLive ? [{ type: 'item' as const, item: { path: '/live', label: 'Live', icon: Radio } }] : []),
+        { type: 'item', item: { path: '/loja-da-live', label: 'Loja da Live', icon: Store } },
         { type: 'item', item: { path: '/sorteio', label: 'Sorteio', icon: Trophy } },
       ],
     },
