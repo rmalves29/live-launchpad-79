@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { liveTemplateOverride } from "../_shared/live-whatsapp.ts";
 import {
   antiBlockDelayLive,
   logAntiBlockDelay,
@@ -64,7 +65,13 @@ async function getCredentials(supabase: any, tenantId: string) {
   };
 }
 
-async function getTemplate(supabase: any, tenantId: string): Promise<{ disabled: boolean; content: string | null }> {
+async function getTemplate(supabase: any, tenantId: string, orderId?: number | string | null): Promise<{ disabled: boolean; content: string | null }> {
+  // Pedido da Loja da Live: o lojista pode desligar a mensagem ou trocar o texto (Loja da Live > WhatsApp).
+  const live = await liveTemplateOverride(supabase, tenantId, orderId, "PAID_ORDER");
+  if (live.isLive) {
+    if (live.disabled) return { disabled: true, content: null };
+    if (live.content) return { disabled: false, content: live.content };
+  }
   const { data: template } = await supabase
     .from("whatsapp_templates")
     .select("content, is_active")
@@ -134,7 +141,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ sent: false, disabled: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const templateResult = await getTemplate(supabase, tenant_id);
+    const templateResult = await getTemplate(supabase, tenant_id, order_id);
     if (templateResult.disabled) {
       console.log("[zapi-send-paid-order] SKIPPED: template PAID_ORDER está desativado para o tenant", tenant_id);
       return new Response(JSON.stringify({ sent: false, disabled: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });

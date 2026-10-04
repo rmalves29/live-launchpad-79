@@ -28,6 +28,8 @@ interface Coupon {
   min_purchase_amount?: number | null;
   min_items_quantity?: number | null;
   apply_to_promotional?: boolean;
+  auto_apply?: boolean;
+  description?: string | null;
   progressive_tiers?: Array<{
     min_value: number;
     max_value: number | null;
@@ -59,6 +61,8 @@ export const CouponsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'liv
     min_purchase_amount: '' as string,
     min_items_quantity: '' as string,
     apply_to_promotional: true,
+    auto_apply: false,
+    description: '',
     progressive_tiers: [{ min_value: 0, max_value: 100, discount: 5 }]
   });
 
@@ -182,6 +186,8 @@ export const CouponsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'liv
         min_purchase_amount: minAmount,
         min_items_quantity: minQty,
         apply_to_promotional: newCoupon.apply_to_promotional,
+        auto_apply: channel === 'live' ? newCoupon.auto_apply : false,
+        description: channel === 'live' ? (newCoupon.description.trim() || null) : null,
         channel,
         progressive_tiers: isProgressive ? newCoupon.progressive_tiers : null
       };
@@ -262,6 +268,8 @@ export const CouponsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'liv
       min_purchase_amount: '',
       min_items_quantity: '',
       apply_to_promotional: true,
+      auto_apply: false,
+      description: '',
       progressive_tiers: [{ min_value: 0, max_value: 100, discount: 5 }]
     });
     setIsAddingCoupon(false);
@@ -298,6 +306,8 @@ export const CouponsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'liv
       min_purchase_amount: coupon.min_purchase_amount != null ? String(coupon.min_purchase_amount) : '',
       min_items_quantity: coupon.min_items_quantity != null ? String(coupon.min_items_quantity) : '',
       apply_to_promotional: coupon.apply_to_promotional !== false,
+      auto_apply: coupon.auto_apply === true,
+      description: coupon.description || '',
       progressive_tiers: coupon.progressive_tiers || [{ min_value: 0, max_value: 100, discount: 5 }]
     });
     setIsAddingCoupon(true);
@@ -515,6 +525,30 @@ export const CouponsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'liv
                 />
                 <Label htmlFor="apply_to_promotional">Vale também em produtos já em promoção (Loja da Live)</Label>
               </div>
+
+              {channel === 'live' && (
+                <>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="auto_apply"
+                      checked={newCoupon.auto_apply}
+                      onCheckedChange={(checked) => setNewCoupon({ ...newCoupon, auto_apply: checked })}
+                    />
+                    <Label htmlFor="auto_apply">Aplicar automaticamente (o cliente não precisa digitar o código)</Label>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="coupon_description">Descrição na vitrine (2ª linha da faixa do cupom)</Label>
+                    <Input
+                      id="coupon_description"
+                      maxLength={80}
+                      value={newCoupon.description}
+                      onChange={(e) => setNewCoupon({ ...newCoupon, description: e.target.value })}
+                      placeholder="Ex.: Em compras acima de R$ 100,00. Vale só hoje!"
+                    />
+                    <p className="text-xs text-muted-foreground">Se ficar em branco, usamos a regra do cupom (valor mínimo etc.).</p>
+                  </div>
+                </>
+              )}
             </div>
 
             {newCoupon.discount_type === 'progressive' && (

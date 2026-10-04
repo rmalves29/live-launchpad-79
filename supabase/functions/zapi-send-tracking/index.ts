@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { liveTemplateOverride } from "../_shared/live-whatsapp.ts";
 import {
   antiBlockDelayLive,
   logAntiBlockDelay,
@@ -105,14 +106,16 @@ serve(async (req: Request) => {
       .eq("type", "TRACKING")
       .maybeSingle();
 
-    if (template && template.is_active === false) {
+    // Pedido da Loja da Live: o lojista pode desligar a mensagem ou trocar o texto (Loja da Live > WhatsApp).
+    const liveCfg = await liveTemplateOverride(supabase, tenant_id, order_id, "TRACKING");
+    if ((template && template.is_active === false) || (liveCfg.isLive && liveCfg.disabled)) {
       console.log("[zapi-send-tracking] SKIPPED: template TRACKING está desativado para o tenant", tenant_id);
       return new Response(JSON.stringify({ success: true, skipped: "template_disabled" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const defaultTemplate = "Seu pedido *#{{order_id}}* foi enviado!\n\nCódigo de Rastreio: *{{tracking_code}}*\nData de Envio: {{shipped_at}}\n\nRastreie em: https://www.melhorrastreio.com.br/rastreio/{{tracking_code}}";
-    let messageContent = template?.content || defaultTemplate;
+    let messageContent = (liveCfg.isLive && liveCfg.content) || template?.content || defaultTemplate;
 
     const confirmedShippedAt = order.shipped_at || shipped_at;
     const shippedDate = confirmedShippedAt

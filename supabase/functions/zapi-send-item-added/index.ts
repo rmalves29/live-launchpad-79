@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { liveTemplateOverride } from "../_shared/live-whatsapp.ts";
 import {
   antiBlockDelayLive,
   logAntiBlockDelay,
@@ -242,7 +243,13 @@ function getDefaultTemplateItemAdded(): string {
   return "Item adicionado ao pedido\n\n{{produto}}\nQtd: *{{quantidade}}*\nValor: *R$ {{valor}}*\n\nFinalize seu pedido: {{link_checkout}}\n\nQualquer duvida, estou a disposicao!";
 }
 
-async function getTemplate(supabase: any, tenantId: string) {
+async function getTemplate(supabase: any, tenantId: string, orderId?: number | null) {
+  // Pedido da Loja da Live: o lojista pode desligar a mensagem ou trocar o texto (Loja da Live > WhatsApp).
+  const live = await liveTemplateOverride(supabase, tenantId, orderId, "ITEM_ADDED");
+  if (live.isLive) {
+    if (live.disabled) return { disabled: true, content: null };
+    if (live.content) return { disabled: false, content: live.content };
+  }
   const { data: template } = await supabase.from("whatsapp_templates").select("content, is_active").eq("tenant_id", tenantId).eq("type", "ITEM_ADDED").maybeSingle();
   if (template && template.is_active === false) return { disabled: true, content: null };
   if (template?.content) return { disabled: false, content: template.content };
@@ -410,7 +417,7 @@ serve(async (req) => {
         markWaitingAfterSend = consent.state !== "active";
       }
 
-      const templateResult = await getTemplate(supabase, tenant_id);
+      const templateResult = await getTemplate(supabase, tenant_id, order_id);
       if (templateResult.disabled) {
         console.log("[zapi-send-item-added] SKIPPED: template ITEM_ADDED está desativado para o tenant", tenant_id);
         return;

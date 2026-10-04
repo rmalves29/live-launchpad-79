@@ -16,7 +16,14 @@ import RequireTenantAuth from "./components/RequireTenantAuth";
 import { TenantProvider } from "@/contexts/TenantContext";
 import { TenantLoader } from "@/components/TenantLoader";
 import { useTenantContext } from "@/contexts/TenantContext";
-import { WhatsAppSupportButton } from "@/components/WhatsAppSupportButton";
+const WhatsAppSupportButton = lazy(() => import("@/components/WhatsAppSupportButton").then((m) => ({ default: m.WhatsAppSupportButton })));
+
+// Balão de suporte: fica de fora da Loja da Live (/t/:slug/live) e carrega sob demanda nas demais telas.
+const SupportButtonGate = () => {
+  const { pathname } = useLocation();
+  if (/^\/t\/[^/]+\/live\/?$/.test(pathname)) return null;
+  return <Suspense fallback={null}><WhatsAppSupportButton /></Suspense>;
+};
 
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 
@@ -419,7 +426,7 @@ const App = () => (
             <Sonner />
           <BrowserRouter>
               <AppContent />
-              <WhatsAppSupportButton />
+              <SupportButtonGate />
             </BrowserRouter>
           </TooltipProvider>
         </TenantLoader>

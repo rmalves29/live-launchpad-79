@@ -1,5 +1,4 @@
 /* Loja da Live: estilos isolados em .ls-root (não afetam o resto do sistema). */
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap');
 .ls-root{
   --bg:#f4f3f7; --card:#ffffff; --ink:#1c1826; --muted:#6c6779; --line:#e6e3ee;
   --accent:#e5325a; --accent-ink:#ffffff; --accent-soft:#fde8ed;
@@ -143,3 +142,11 @@
 
 .ls-root .pr strong{white-space:nowrap}
 .ls-root .item .bot{flex-wrap:wrap}
+
+.ls-root .cp{min-width:200px;max-width:270px}
+.ls-root .cp b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ls-root .cp small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.ls-root .skel{border-radius:12px;background:linear-gradient(90deg,var(--line) 25%,color-mix(in srgb,var(--line) 55%,var(--card)) 50%,var(--line) 75%);background-size:200% 100%;animation:ls-shimmer 1.2s infinite}
+@keyframes ls-shimmer{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){.ls-root .skel{animation:none}}

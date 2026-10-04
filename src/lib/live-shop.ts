@@ -34,6 +34,8 @@ export interface LiveCoupon {
   min_items_quantity: number;
   progressive_tiers: Array<{ min_value: number; max_value: number | null; discount: number }> | null;
   apply_to_promotional: boolean;
+  auto_apply?: boolean;
+  description?: string | null;
   expires_at: string | null;
 }
 
@@ -164,6 +166,17 @@ export function previewCoupon(coupon: LiveCoupon | undefined, lines: CartLine[])
   return discount > 0 ? { ok: true, discount } : { ok: false, discount: 0, message: 'Cupom sem desconto para este pedido.' };
 }
 
+/** Cupom marcado como "automático" que dá o maior desconto para este carrinho (igual ao cálculo do servidor). */
+export function bestAutoCoupon(coupons: LiveCoupon[] | undefined, lines: CartLine[]): { coupon: LiveCoupon; discount: number } | null {
+  let best: { coupon: LiveCoupon; discount: number } | null = null;
+  for (const c of coupons || []) {
+    if (!c.auto_apply) continue;
+    const r = previewCoupon(c, lines);
+    if (r.ok && (!best || r.discount > best.discount)) best = { coupon: c, discount: r.discount };
+  }
+  return best;
+}
+
 export function describeCoupon(c: LiveCoupon) {
   let title = '';
   if (c.discount_type === 'percentage') title = `${c.discount_value}% OFF`;
@@ -176,7 +189,6 @@ export function describeCoupon(c: LiveCoupon) {
     if (c.min_purchase_amount > 0) rules.push(`em compras acima de ${brl(c.min_purchase_amount)}`);
     if (c.min_items_quantity > 0) rules.push(`a partir de ${c.min_items_quantity} item(ns)`);
   }
-  if (c.apply_to_promotional === false) rules.push('não vale em produtos promocionais');
   return { title, rule: rules.join(' · ') || 'sem valor mínimo' };
 }
 

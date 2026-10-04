@@ -1,6 +1,5 @@
 import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import * as Sentry from "@sentry/react";
 import {
   useLocation,
   useNavigationType,
@@ -12,7 +11,10 @@ import "./index.css";
 
 const SENTRY_DSN = "https://335d719db5d30da02c337fde1fb59194@o4511536610607104.ingest.us.sentry.io/4511536728637440";
 
-Sentry.init({
+// O Sentry (cerca de 1 MB sem compactar) saiu do pacote principal: carrega depois que a página já está na tela.
+async function initSentry() {
+  const Sentry = await import("@sentry/react");
+  Sentry.init({
   dsn: SENTRY_DSN,
   environment: import.meta.env.MODE,
   release: `orderzap-v2@${import.meta.env.VITE_APP_VERSION || "dev"}`,
@@ -40,10 +42,17 @@ Sentry.init({
     }
     return event;
   },
-});
+  });
+}
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />
   </StrictMode>,
 );
+
+if ("requestIdleCallback" in window) {
+  (window as any).requestIdleCallback(() => { initSentry().catch(() => {}); }, { timeout: 4000 });
+} else {
+  setTimeout(() => { initSentry().catch(() => {}); }, 2000);
+}

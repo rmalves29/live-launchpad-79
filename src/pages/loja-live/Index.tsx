@@ -14,6 +14,7 @@ import { toast } from '@/hooks/use-toast';
 import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
 import { ShippingOptionsManager } from '@/components/ShippingOptionsManager';
+import WhatsAppMessages from './WhatsAppMessages';
 import { AlertTriangle, CheckCircle2, Copy, ExternalLink, Store } from 'lucide-react';
 import { liveShopUrl } from '@/lib/live-shop';
 
@@ -43,7 +44,7 @@ export default function LojaDaLive() {
   const isSuperAdmin = profile?.role === 'super_admin' && !previewingTenant;
 
   const [settings, setSettings] = useState<Settings>({ live_shop_enabled: true, live_reserve_mode: 'order', live_cart_minutes: 15 });
-  const [cartMinutes, setCartMinutes] = useState(15);
+  const [draft, setDraft] = useState<Settings>({ live_shop_enabled: true, live_reserve_mode: 'order', live_cart_minutes: 15 });
   const [ready, setReady] = useState<Readiness | null>(null);
   const [saving, setSaving] = useState(false);
   const [allTenants, setAllTenants] = useState<Array<{ id: string; name: string; slug: string; live_shop_enabled: boolean }>>([]);
@@ -67,7 +68,11 @@ export default function LojaDaLive() {
         live_reserve_mode: d.live_reserve_mode === 'cart' ? 'cart' : 'order',
         live_cart_minutes: Math.max(1, Number(d.live_cart_minutes) || 15),
       });
-      setCartMinutes(Math.max(1, Number(d.live_cart_minutes) || 15));
+      setDraft({
+        live_shop_enabled: d.live_shop_enabled !== false,
+        live_reserve_mode: d.live_reserve_mode === 'cart' ? 'cart' : 'order',
+        live_cart_minutes: Math.max(1, Number(d.live_cart_minutes) || 15),
+      });
     }
     setReady({ products: prods.count || 0, coupons: coupons.count || 0, gifts: gifts.count || 0, shipping: ship.count || 0 });
 
@@ -79,13 +84,16 @@ export default function LojaDaLive() {
 
   useEffect(() => { load(); }, [load]);
 
-  async function save(patch: Partial<Settings>) {
+  const dirty = JSON.stringify(settings) !== JSON.stringify(draft);
+
+  async function save() {
     if (!tenant?.id) return;
     setSaving(true);
-    const next = { ...settings, ...patch };
+    const minutes = Math.max(1, Math.min(240, Math.round(Number(draft.live_cart_minutes) || 15)));
+    const next = { ...draft, live_cart_minutes: minutes };
     const { error } = await supabase
       .from('tenants')
-      .update({ live_shop_enabled: next.live_shop_enabled, live_reserve_mode: next.live_reserve_mode, live_cart_minutes: Math.max(1, Math.min(240, Math.round(next.live_cart_minutes))) } as any)
+      .update({ live_shop_enabled: next.live_shop_enabled, live_reserve_mode: next.live_reserve_mode, live_cart_minutes: next.live_cart_minutes } as any)
       .eq('id', tenant.id);
     setSaving(false);
     if (error) {
@@ -93,6 +101,7 @@ export default function LojaDaLive() {
       return;
     }
     setSettings(next);
+    setDraft(next);
     toast({ title: 'Configuração salva' });
   }
 
@@ -103,7 +112,10 @@ export default function LojaDaLive() {
       return;
     }
     setAllTenants((prev) => prev.map((t) => (t.id === id ? { ...t, live_shop_enabled: enabled } : t)));
-    if (id === tenant?.id) setSettings((s) => ({ ...s, live_shop_enabled: enabled }));
+    if (id === tenant?.id) {
+      setSettings((s) => ({ ...s, live_shop_enabled: enabled }));
+      setDraft((d) => ({ ...d, live_shop_enabled: enabled }));
+    }
   }
 
   const check = (ok: boolean, text: string, hint?: string, to?: string) => (
@@ -136,6 +148,7 @@ export default function LojaDaLive() {
           <TabsTrigger value="coupons">Cupons</TabsTrigger>
           <TabsTrigger value="gifts">Brindes</TabsTrigger>
           <TabsTrigger value="shipping">Frete</TabsTrigger>
+          <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
           {isSuperAdmin && <TabsTrigger value="tenants">Links de todas as empresas</TabsTrigger>}
         </TabsList>
 
@@ -147,8 +160,8 @@ export default function LojaDaLive() {
                 <p className="text-xs text-muted-foreground">Cole no link da live do Instagram. É o mesmo link para todos os clientes: cada um se identifica pelo celular.</p>
               </div>
               <div className="flex items-center gap-2">
-                <Label htmlFor="live-enabled" className="text-sm">{settings.live_shop_enabled ? 'Ativada' : 'Desativada'}</Label>
-                <Switch id="live-enabled" checked={settings.live_shop_enabled} disabled={saving} onCheckedChange={(v) => save({ live_shop_enabled: v })} />
+                <Label htmlFor="live-enabled" className="text-sm">{draft.live_shop_enabled ? 'Ativada' : 'Desativada'}</Label>
+                <Switch id="live-enabled" checked={draft.live_shop_enabled} disabled={saving} onCheckedChange={(v) => setDraft((d) => ({ ...d, live_shop_enabled: v }))} />
               </div>
             </div>
             {link ? (
@@ -162,7 +175,7 @@ export default function LojaDaLive() {
             ) : (
               <p className="text-sm text-destructive">Esta empresa ainda não tem um endereço (slug) definido.</p>
             )}
-            {!settings.live_shop_enabled && <Badge variant="secondary">O link mostra "indisponível" enquanto estiver desativada</Badge>}
+            {!draft.live_shop_enabled && <Badge variant="secondary">O link mostra "indisponível" enquanto estiver desativada</Badge>}
           </Card>
 
           <Card className="p-4 space-y-2">
@@ -183,32 +196,35 @@ export default function LojaDaLive() {
               <p className="text-xs text-muted-foreground">Define se o carrinho segura a peça ou só o pedido feito.</p>
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
-              <button type="button" role="radio" aria-checked={settings.live_reserve_mode === 'order'} disabled={saving}
-                onClick={() => save({ live_reserve_mode: 'order' })}
-                className={`rounded-lg border p-3 text-left text-sm ${settings.live_reserve_mode === 'order' ? 'border-primary bg-primary/5' : ''}`}>
+              <button type="button" role="radio" aria-checked={draft.live_reserve_mode === 'order'} disabled={saving}
+                onClick={() => setDraft((d) => ({ ...d, live_reserve_mode: 'order' }))}
+                className={`rounded-lg border p-3 text-left text-sm ${draft.live_reserve_mode === 'order' ? 'border-primary bg-primary/5' : ''}`}>
                 <b>Só ao fazer o pedido</b>
                 <span className="block text-xs text-muted-foreground">Carrinho abandonado não trava peça. Recomendado.</span>
               </button>
-              <button type="button" role="radio" aria-checked={settings.live_reserve_mode === 'cart'} disabled={saving}
-                onClick={() => save({ live_reserve_mode: 'cart' })}
-                className={`rounded-lg border p-3 text-left text-sm ${settings.live_reserve_mode === 'cart' ? 'border-primary bg-primary/5' : ''}`}>
+              <button type="button" role="radio" aria-checked={draft.live_reserve_mode === 'cart'} disabled={saving}
+                onClick={() => setDraft((d) => ({ ...d, live_reserve_mode: 'cart' }))}
+                className={`rounded-lg border p-3 text-left text-sm ${draft.live_reserve_mode === 'cart' ? 'border-primary bg-primary/5' : ''}`}>
                 <b>Ao adicionar no carrinho</b>
                 <span className="block text-xs text-muted-foreground">Reserva na hora e devolve ao estoque se o cliente sumir.</span>
               </button>
             </div>
-            {settings.live_reserve_mode === 'cart' && (
-              <div className="flex items-end gap-2">
-                <div className="space-y-1">
-                  <Label htmlFor="cart-min" className="text-xs">Tempo do carrinho (minutos)</Label>
-                  <Input id="cart-min" type="number" min={1} max={240} className="w-32" value={cartMinutes} onChange={(e) => setCartMinutes(Number(e.target.value))} />
-                </div>
-                <Button size="sm" disabled={saving} onClick={() => save({ live_cart_minutes: cartMinutes })}>Salvar tempo</Button>
+            {draft.live_reserve_mode === 'cart' && (
+              <div className="space-y-1">
+                <Label htmlFor="cart-min" className="text-xs">Tempo do carrinho (minutos)</Label>
+                <Input id="cart-min" type="number" min={1} max={240} className="w-32" value={draft.live_cart_minutes} onChange={(e) => setDraft((d) => ({ ...d, live_cart_minutes: Number(e.target.value) }))} />
               </div>
             )}
             <p className="text-xs text-muted-foreground">
               O prazo para o cliente pagar o pedido (e a peça voltar ao estoque) fica em <Link className="underline" to="/fila-espera">Fila de Espera</Link>, com um campo próprio para pedidos de live.
             </p>
           </Card>
+
+          <div className="sticky bottom-0 -mx-1 flex items-center justify-end gap-2 border-t bg-background/95 px-1 py-3 backdrop-blur">
+            {dirty && <span className="text-xs text-amber-700 mr-auto">Alterações não salvas</span>}
+            <Button variant="outline" disabled={!dirty || saving} onClick={() => setDraft(settings)}>Descartar</Button>
+            <Button disabled={!dirty || saving} onClick={save}>{saving ? 'Salvando…' : 'Salvar alterações'}</Button>
+          </div>
         </TabsContent>
 
         <TabsContent value="coupons" className="mt-4">
@@ -225,6 +241,8 @@ export default function LojaDaLive() {
           </p>
           <ShippingOptionsManager channel="live" />
         </TabsContent>
+
+        <TabsContent value="whatsapp" className="mt-4"><WhatsAppMessages /></TabsContent>
 
         {isSuperAdmin && (
           <TabsContent value="tenants" className="mt-4">

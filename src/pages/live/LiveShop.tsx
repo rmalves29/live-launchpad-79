@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import {
-  brl, calculateLiveShipping, cartOriginal, cartSubtotal, describeCoupon, formatCep, formatCpf, formatPhone,
+  bestAutoCoupon, brl, calculateLiveShipping, cartOriginal, cartSubtotal, describeCoupon, formatCep, formatCpf, formatPhone,
   liveApi, normalizeLocalPhone, onlyDigits, previewCoupon, validCpf,
   type CartLine, type LiveCatalogMeta, type LiveCoupon, type LiveCustomer, type LiveProduct, type LiveVariant, type ShippingOption,
 } from '@/lib/live-shop';
@@ -38,6 +38,52 @@ function writeLS(key: string, value: unknown) {
     /* navegação privada: segue sem persistir */
   }
 }
+
+// Cache curto da vitrine no aparelho (10 min): abre instantâneo na segunda visita; o servidor sempre revalida o estoque.
+const CATALOG_TTL_MS = 10 * 60 * 1000;
+function readCatalogCache(slug: string): { meta: LiveCatalogMeta; items: LiveProduct[]; total: number } | null {
+  try {
+    const raw = sessionStorage.getItem(`live_catalog_${slug}`);
+    if (!raw) return null;
+    const c = JSON.parse(raw);
+    if (!c?.ts || Date.now() - c.ts > CATALOG_TTL_MS) return null;
+    return c;
+  } catch {
+    return null;
+  }
+}
+function writeCatalogCache(slug: string, data: { meta: LiveCatalogMeta; items: LiveProduct[]; total: number }) {
+  try {
+    sessionStorage.setItem(`live_catalog_${slug}`, JSON.stringify({ ...data, ts: Date.now() }));
+  } catch {
+    /* sem armazenamento: segue sem cache */
+  }
+}
+
+const ShopSkeleton = () => (
+  <div className="panel" style={{ marginTop: 0, borderRadius: 0 }} aria-busy="true" aria-label="Carregando a vitrine">
+    <div className="phead">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+        <div className="skel" style={{ width: 38, height: 38, borderRadius: '50%' }} />
+        <div style={{ flex: 1 }}>
+          <div className="skel" style={{ height: 16, width: '60%', marginBottom: 6 }} />
+          <div className="skel" style={{ height: 11, width: '35%' }} />
+        </div>
+      </div>
+    </div>
+    <div className="list" style={{ paddingTop: 16 }}>
+      {[0, 1, 2].map((i) => (
+        <div className="item" key={i}>
+          <div className="skel" style={{ width: 92, height: 92 }} />
+          <div>
+            <div className="skel" style={{ height: 14, width: '80%', marginBottom: 8 }} />
+            <div className="skel" style={{ height: 22, width: '40%' }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
 
 const CartIcon = ({ plus = false }: { plus?: boolean }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -118,10 +164,31 @@ export default function LiveShop() {
     document.title = meta?.tenant?.name ? `Vitrine da live · ${meta.tenant.name}` : 'Loja da Live';
   }, [meta]);
 
+  // Fontes carregam em segundo plano (não seguram a primeira pintura)
+  useEffect(() => {
+    if (document.getElementById('ls-fonts')) return;
+    const link = document.createElement('link');
+    link.id = 'ls-fonts';
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap';
+    document.head.appendChild(link);
+  }, []);
+
   // ------------------------------------------------ carga inicial
   const loadCatalog = useCallback(async (opts: { offset?: number; q?: string; append?: boolean } = {}) => {
     const offset = opts.offset ?? 0;
     try {
+      // Primeira abertura: se o cliente já viu a vitrine há pouco, mostra a versão guardada e atualiza em seguida.
+      if (offset === 0 && !opts.q && !opts.append) {
+        const cached = readCatalogCache(slug);
+        if (cached) {
+          setMeta(cached.meta);
+          setProducts(cached.items);
+          setTotal(cached.total);
+          if (!cached.meta.payment.pix && cached.meta.payment.card) setPay('card');
+          setLoading(false);
+        }
+      }
       const res: any = await liveApi('catalog', slug, { offset, limit: 40, q: opts.q ?? '' });
       if (!res?.ok) { setError(res?.error || 'Loja não encontrada.'); return; }
       setError(null);
@@ -130,6 +197,9 @@ export default function LiveShop() {
         if (!res.payment.pix && res.payment.card) setPay('card');
       }
       setTotal(res.total || 0);
+      if (offset === 0 && !opts.q && res.tenant) {
+        writeCatalogCache(slug, { meta: { tenant: res.tenant, coupons: res.coupons || [], gifts: res.gifts || [], shipping_hints: res.shipping_hints || [], payment: res.payment, settings: res.settings }, items: res.items, total: res.total || 0 });
+      }
       setProducts((prev) => {
         if (!opts.append) return res.items;
         const map = new Map(prev.map((p) => [p.key, p]));
@@ -194,7 +264,11 @@ export default function LiveShop() {
   const original = cartOriginal(lines);
   const coupon: LiveCoupon | undefined = meta?.coupons.find((c) => c.code === couponCode);
   const couponCalc = couponCode ? previewCoupon(coupon, lines) : { ok: false, discount: 0 };
-  const couponOff = couponCalc.ok ? couponCalc.discount : 0;
+  // Cupom digitado vale primeiro; se não houver, entra sozinho o cupom "automático" de maior desconto.
+  const autoCoupon = !couponCalc.ok ? bestAutoCoupon(meta?.coupons, lines) : null;
+  const couponIsAuto = !couponCalc.ok && !!autoCoupon;
+  const effectiveCode = couponCalc.ok ? couponCode : autoCoupon?.coupon.code || null;
+  const couponOff = couponCalc.ok ? couponCalc.discount : autoCoupon?.discount || 0;
   const gift = useMemo(() => {
     const eligible = (meta?.gifts || []).filter((g) => subtotal >= g.minimum_purchase_amount);
     return eligible.sort((a, b) => b.minimum_purchase_amount - a.minimum_purchase_amount)[0] || null;
@@ -515,7 +589,13 @@ export default function LiveShop() {
           ))}
           {meta.coupons.slice(0, 6).map((c) => {
             const d = describeCoupon(c);
-            return <div className="cp off" key={c.code}><b>{d.title} · cupom {c.code}</b><small>{d.rule}. Digite no fechamento</small></div>;
+            // 2 linhas: título + descrição (editável pelo lojista; sem descrição usa a regra do cupom)
+            return (
+              <div className="cp off" key={c.code}>
+                <b>{d.title} · {c.auto_apply ? 'automático' : `cupom ${c.code}`}</b>
+                <small>{c.description || (c.auto_apply ? d.rule : `${d.rule} · digite o código`)}</small>
+              </div>
+            );
           })}
           {meta.gifts.slice(0, 3).map((g) => (
             <div className="cp gift" key={g.name}><b>Brinde: {g.name}</b><small>em compras acima de {brl(g.minimum_purchase_amount)}</small></div>
@@ -538,7 +618,7 @@ export default function LiveShop() {
           return (
             <div className="item it" key={p.key}>
               <div className="ph">
-                {p.image_url ? <img src={p.image_url} alt={p.name} loading="lazy" /> : null}
+                {p.image_url ? <img src={p.image_url} alt={p.name} loading={i < 4 ? 'eager' : 'lazy'} decoding="async" width={92} height={92} /> : null}
                 <span className="n">{i + 1}</span>
                 {p.is_live && <span className="live">Em LIVE agora</span>}
               </div>
@@ -622,10 +702,10 @@ export default function LiveShop() {
   ) : null;
 
   const couponBlock = () => {
-    if (couponCode && couponCalc.ok) {
+    if (couponOff > 0 && effectiveCode) {
       return (
         <div className="line">
-          <span>🏷 Cupom {couponCode} aplicado</span>
+          <span>🏷 Cupom {effectiveCode} {couponIsAuto ? 'aplicado automaticamente' : 'aplicado'}</span>
           <span className="v">-{brl(couponOff)}</span>
         </div>
       );
@@ -760,7 +840,7 @@ export default function LiveShop() {
               <div className="r"><span>Subtotal do produto</span><span>{brl(subtotal)}</span></div>
               {original > subtotal && <div className="r sb"><span>Preço original</span><span>{brl(original)}</span></div>}
               {original > subtotal && <div className="r sb"><span>Desconto no produto</span><span className="neg">- {brl(original - subtotal)}</span></div>}
-              {couponOff > 0 && <div className="r"><span>Cupom {couponCode}</span><span className="neg">- {brl(couponOff)}</span></div>}
+              {couponOff > 0 && <div className="r"><span>Cupom {effectiveCode}</span><span className="neg">- {brl(couponOff)}</span></div>}
               {pixOff > 0 && <div className="r"><span>Desconto Pix ({pixPct}%)</span><span className="neg">- {brl(pixOff)}</span></div>}
               <div className="r"><span>Frete</span><span>{selectedShip ? (shipPrice ? brl(shipPrice) : 'Grátis') : '—'}</span></div>
               <div className="r tot"><span>Total</span><span>{brl(totalFinal)}</span></div>
@@ -901,7 +981,7 @@ export default function LiveShop() {
     <div className="ls-root" style={rootStyle}>
       <div className="wrap" style={{ minHeight: '100vh' }}>
         {loading ? (
-          <div className="center" style={{ padding: '80px 16px' }}><span className="spin" />Carregando a vitrine…</div>
+          <ShopSkeleton />
         ) : error ? (
           <div className="center" style={{ padding: '80px 16px' }}><h3>Ops</h3><p className="note" style={{ marginTop: 6 }}>{error}</p></div>
         ) : screen === 'shop' ? shopView()

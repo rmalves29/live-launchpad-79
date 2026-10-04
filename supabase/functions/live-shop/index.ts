@@ -151,10 +151,55 @@ function sanitizeItems(raw: unknown): Array<{ product_id: number; qty: number }>
 
 // ------------------------------- ações -------------------------------
 
+// Cupons, brindes, fretes e gateway da vitrine (independem dos produtos; rodam em paralelo com a lista).
+async function loadCatalogExtras(tenant: any) {
+  const extras: Record<string, unknown> = {};
+    const nowIso = new Date().toISOString();
+    const [couponsRes, giftsRes, shipRes, pagarme, appmax, mp, infinite] = await Promise.all([
+      sb.from('coupons').select('code, discount_type, discount_value, min_purchase_amount, min_items_quantity, progressive_tiers, apply_to_promotional, auto_apply, description, starts_at, expires_at, usage_limit, used_count, is_active').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).limit(50),
+      sb.from('gifts').select('name, description, minimum_purchase_amount, auto_apply').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).order('minimum_purchase_amount', { ascending: true }),
+      sb.from('custom_shipping_options').select('name, price, delivery_days, free_shipping_min_order, coverage_type').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true),
+      sb.from('integration_pagarme').select('is_active, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
+      sb.from('integration_appmax').select('is_active, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
+      sb.from('integration_mp').select('is_active, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
+      sb.from('integration_infinitepay').select('is_active, enable_pix, enable_credit_card, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
+    ]);
+
+    extras.coupons = (couponsRes.data || [])
+      .filter((c: any) => couponActive(c))
+      .map((c: any) => ({
+        code: c.code, discount_type: c.discount_type, discount_value: num(c.discount_value),
+        min_purchase_amount: num(c.min_purchase_amount), min_items_quantity: num(c.min_items_quantity),
+        progressive_tiers: c.progressive_tiers, apply_to_promotional: c.apply_to_promotional !== false, auto_apply: c.auto_apply === true,
+        description: typeof c.description === 'string' && c.description.trim() ? c.description.trim() : null, expires_at: c.expires_at,
+      }));
+    extras.gifts = (giftsRes.data || []).filter((g: any) => g.auto_apply !== false).map((g: any) => ({ name: g.name, minimum_purchase_amount: num(g.minimum_purchase_amount) }));
+    extras.shipping_hints = (shipRes.data || [])
+      .filter((s: any) => (s.coverage_type || 'national') === 'national')
+      .map((s: any) => ({ name: s.name, price: num(s.price), free_min: s.free_shipping_min_order != null ? num(s.free_shipping_min_order) : null, pickup: s.delivery_days === 0 }));
+
+    // gateway ativo (mesma prioridade do create-payment): InfinitePay > AppMax > Pagar.me > Mercado Pago
+    let pix = true, card = true, pixDiscount = 0;
+    const inf: any = infinite.data;
+    if (inf?.is_active) { pix = inf.enable_pix !== false; card = inf.enable_credit_card !== false; pixDiscount = num(inf.pix_discount_percent); }
+    else {
+      const first: any = [appmax.data, pagarme.data, mp.data].find((x: any) => x?.is_active);
+      pixDiscount = num(first?.pix_discount_percent);
+    }
+    extras.payment = { pix, card, pix_discount_percent: pixDiscount, requires_email: !!inf?.is_active };
+    extras.tenant = { id: tenant.id, name: tenant.name, slug: tenant.slug, logo_url: tenant.logo_url, primary_color: tenant.primary_color };
+    extras.settings = { reserve_mode: tenant.live_reserve_mode, cart_minutes: tenant.live_cart_minutes };
+    extras.now = nowIso;
+  return extras;
+}
+
 async function catalog(body: any, tenant: any) {
   const offset = Math.max(0, Math.floor(num(body.offset, 0)));
   const limit = Math.min(100, Math.max(1, Math.floor(num(body.limit, 60))));
   const q = String(body.q ?? '').replace(/[%_\\,()]/g, ' ').trim().slice(0, 40);
+
+  // Cupons, brindes, fretes e gateway não dependem dos produtos: já saem em paralelo.
+  const extrasP = offset === 0 ? loadCatalogExtras(tenant) : null;
 
   let query = sb
     .from('products')
@@ -214,43 +259,7 @@ async function catalog(body: any, tenant: any) {
 
   const result: any = { ok: true, items, total: count ?? items.length, offset, limit };
 
-  if (offset === 0) {
-    const nowIso = new Date().toISOString();
-    const [couponsRes, giftsRes, shipRes, pagarme, appmax, mp, infinite] = await Promise.all([
-      sb.from('coupons').select('code, discount_type, discount_value, min_purchase_amount, min_items_quantity, progressive_tiers, apply_to_promotional, starts_at, expires_at, usage_limit, used_count, is_active').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).limit(50),
-      sb.from('gifts').select('name, description, minimum_purchase_amount, auto_apply').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).order('minimum_purchase_amount', { ascending: true }),
-      sb.from('custom_shipping_options').select('name, price, delivery_days, free_shipping_min_order, coverage_type').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true),
-      sb.from('integration_pagarme').select('is_active, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
-      sb.from('integration_appmax').select('is_active, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
-      sb.from('integration_mp').select('is_active, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
-      sb.from('integration_infinitepay').select('is_active, enable_pix, enable_credit_card, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
-    ]);
-
-    result.coupons = (couponsRes.data || [])
-      .filter((c: any) => couponActive(c))
-      .map((c: any) => ({
-        code: c.code, discount_type: c.discount_type, discount_value: num(c.discount_value),
-        min_purchase_amount: num(c.min_purchase_amount), min_items_quantity: num(c.min_items_quantity),
-        progressive_tiers: c.progressive_tiers, apply_to_promotional: c.apply_to_promotional !== false, expires_at: c.expires_at,
-      }));
-    result.gifts = (giftsRes.data || []).filter((g: any) => g.auto_apply !== false).map((g: any) => ({ name: g.name, minimum_purchase_amount: num(g.minimum_purchase_amount) }));
-    result.shipping_hints = (shipRes.data || [])
-      .filter((s: any) => (s.coverage_type || 'national') === 'national')
-      .map((s: any) => ({ name: s.name, price: num(s.price), free_min: s.free_shipping_min_order != null ? num(s.free_shipping_min_order) : null, pickup: s.delivery_days === 0 }));
-
-    // gateway ativo (mesma prioridade do create-payment): InfinitePay > AppMax > Pagar.me > Mercado Pago
-    let pix = true, card = true, pixDiscount = 0;
-    const inf: any = infinite.data;
-    if (inf?.is_active) { pix = inf.enable_pix !== false; card = inf.enable_credit_card !== false; pixDiscount = num(inf.pix_discount_percent); }
-    else {
-      const first: any = [appmax.data, pagarme.data, mp.data].find((x: any) => x?.is_active);
-      pixDiscount = num(first?.pix_discount_percent);
-    }
-    result.payment = { pix, card, pix_discount_percent: pixDiscount, requires_email: !!inf?.is_active };
-    result.tenant = { id: tenant.id, name: tenant.name, slug: tenant.slug, logo_url: tenant.logo_url, primary_color: tenant.primary_color };
-    result.settings = { reserve_mode: tenant.live_reserve_mode, cart_minutes: tenant.live_cart_minutes };
-    result.now = nowIso;
-  }
+  if (extrasP) Object.assign(result, await extrasP);
   return json(result);
 }
 
@@ -451,11 +460,21 @@ async function createOrder(body: any, tenant: any, ip: string) {
   });
   const subtotal = round2(lines.reduce((s, l) => s + l.unit * l.it.qty, 0));
 
-  let couponCode: string | null = null, couponDiscount = 0, couponMessage: string | undefined, couponRow: any = null;
+  let couponCode: string | null = null, couponDiscount = 0, couponMessage: string | undefined, couponRow: any = null, couponAuto = false;
   if (body.coupon_code) {
     couponRow = await loadCoupon(tenant.id, body.coupon_code);
     const r = couponRow ? computeCoupon(couponRow, lines.map((l) => l.line)) : { ok: false, discount: 0, message: 'Cupom inválido ou expirado.' };
     if (r.ok) { couponCode = couponRow.code; couponDiscount = r.discount; } else { couponMessage = r.message; couponRow = null; }
+  }
+  // Sem cupom digitado (ou inválido): aplica sozinho o cupom "automático" que dá o maior desconto para este pedido.
+  if (!couponRow) {
+    const { data: autos } = await sb.from('coupons').select('*').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).eq('auto_apply', true);
+    let best: { row: any; discount: number } | null = null;
+    for (const c of autos || []) {
+      const r = computeCoupon(c, lines.map((l) => l.line));
+      if (r.ok && (!best || r.discount > best.discount)) best = { row: c, discount: r.discount };
+    }
+    if (best) { couponRow = best.row; couponCode = best.row.code; couponDiscount = best.discount; couponAuto = true; couponMessage = undefined; }
   }
 
   let giftName: string | null = null;
@@ -477,12 +496,6 @@ async function createOrder(body: any, tenant: any, ip: string) {
     await undo();
   };
 
-  const { error: itemsErr } = await sb.from('cart_items').insert(lines.map((l) => ({
-    tenant_id: tenant.id, cart_id: cart.id, product_id: l.p.id, product_code: l.p.code, product_name: l.p.name,
-    product_image_url: l.p.image_url, unit_price: l.unit, qty: l.it.qty,
-  })));
-  if (itemsErr) { await rollbackAll(cart.id); console.error('[live-shop] items:', itemsErr.message); return fail('Não foi possível criar o pedido. Tente novamente.', 'ORDER_ERROR'); }
-
   const note = String(body.note ?? '').trim().slice(0, 300);
   const { data: order, error: orderErr } = await sb.from('orders').insert({
     tenant_id: tenant.id, cart_id: cart.id, customer_phone: phone, customer_name: customer.name,
@@ -497,6 +510,12 @@ async function createOrder(body: any, tenant: any, ip: string) {
   }).select('id').single();
   if (orderErr || !order) { await rollbackAll(cart.id); console.error('[live-shop] order:', orderErr?.message); return fail('Não foi possível criar o pedido. Tente novamente.', 'ORDER_ERROR'); }
 
+  const { error: itemsErr } = await sb.from('cart_items').insert(lines.map((l) => ({
+    tenant_id: tenant.id, cart_id: cart.id, product_id: l.p.id, product_code: l.p.code, product_name: l.p.name,
+    product_image_url: l.p.image_url, unit_price: l.unit, qty: l.it.qty,
+  })));
+  if (itemsErr) { await rollbackAll(cart.id, order.id); console.error('[live-shop] items:', itemsErr.message); return fail('Não foi possível criar o pedido. Tente novamente.', 'ORDER_ERROR'); }
+
   // a reserva do carrinho virou pedido
   if (sessionRows.length) await sb.from('live_cart_reservations').delete().eq('tenant_id', tenant.id).eq('session_id', sessionId);
   if (couponRow) await sb.from('coupons').update({ used_count: num(couponRow.used_count) + 1 }).eq('id', couponRow.id);
@@ -504,7 +523,7 @@ async function createOrder(body: any, tenant: any, ip: string) {
 
   return json({
     ok: true, order_id: order.id, cart_id: cart.id, subtotal, coupon_code: couponCode, coupon_discount: couponDiscount,
-    coupon_message: couponMessage, gift_name: giftName, total: round2(Math.max(0, subtotal - couponDiscount)),
+    coupon_message: couponMessage, coupon_auto: couponAuto, gift_name: giftName, total: round2(Math.max(0, subtotal - couponDiscount)),
     items: lines.map((l) => ({ product_name: l.p.name, product_code: l.p.code, qty: l.it.qty, unit_price: l.unit })),
   });
 }
