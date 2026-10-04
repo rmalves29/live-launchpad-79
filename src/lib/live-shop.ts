@@ -189,6 +189,7 @@ export function describeCoupon(c: LiveCoupon) {
     if (c.min_purchase_amount > 0) rules.push(`em compras acima de ${brl(c.min_purchase_amount)}`);
     if (c.min_items_quantity > 0) rules.push(`a partir de ${c.min_items_quantity} item(ns)`);
   }
+  if (c.apply_to_promotional === false) rules.push('não vale em produtos promocionais');
   return { title, rule: rules.join(' · ') || 'sem valor mínimo' };
 }
 

@@ -150,3 +150,7 @@
 .ls-root .skel{border-radius:12px;background:linear-gradient(90deg,var(--line) 25%,color-mix(in srgb,var(--line) 55%,var(--card)) 50%,var(--line) 75%);background-size:200% 100%;animation:ls-shimmer 1.2s infinite}
 @keyframes ls-shimmer{to{background-position:-200% 0}}
 @media (prefers-reduced-motion:reduce){.ls-root .skel{animation:none}}
+/* Faixas de cupom/brinde/frete: mesmo tamanho; título em 1 linha e a descrição quebrando em até 2 linhas */
+.ls-root .chips{align-items:stretch}
+.ls-root .cp{width:280px;min-width:280px;max-width:280px;box-sizing:border-box}
+.ls-root .cp small{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:clip;line-height:1.3;min-height:2.6em;margin-top:2px}
