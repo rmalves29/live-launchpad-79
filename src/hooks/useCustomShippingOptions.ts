@@ -33,6 +33,7 @@ export function useCustomShippingOptions(tenantId: string | null) {
         .select('*')
         .eq('tenant_id', tenantId)
         .eq('is_active', true)
+        .neq('channel', 'live')
         .order('created_at', { ascending: true });
 
       if (fetchError) {
@@ -150,16 +151,19 @@ export async function fetchCustomShippingOptions(
   tenantId: string,
   customerState?: string,
   customerCity?: string,
-  cartTotal?: number
+  cartTotal?: number,
+  channel: 'bazar' | 'live' = 'bazar'
 ): Promise<CustomShippingOption[]> {
   if (!tenantId) return [];
 
   try {
-    const { data, error } = await supabase
+    // Fretes cadastrados na Loja da Live ('live') só valem para ela; o bazar nunca os enxerga (e vice-versa).
+    const base = supabase
       .from('custom_shipping_options' as any)
       .select('*')
       .eq('tenant_id', tenantId)
-      .eq('is_active', true)
+      .eq('is_active', true);
+    const { data, error } = await (channel === 'live' ? base.eq('channel', 'live') : base.neq('channel', 'live'))
       .order('created_at', { ascending: true });
 
     if (error) {

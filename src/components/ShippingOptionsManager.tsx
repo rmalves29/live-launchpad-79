@@ -95,7 +95,7 @@ const MANDAE_SERVICES: CarrierService[] = [
   { id: 102, name: 'Expresso', company: 'Mandae' },
 ];
 
-export const ShippingOptionsManager = () => {
+export const ShippingOptionsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'live' } = {}) => {
   const { toast } = useToast();
   const { tenantId } = useTenantContext();
   const [loading, setLoading] = useState(true);
@@ -158,6 +158,7 @@ export const ShippingOptionsManager = () => {
         .from('custom_shipping_options' as any)
         .select('*')
         .eq('tenant_id', tenantId)
+        .eq('channel', channel)
         .order('created_at', { ascending: true });
 
       if (!shippingError && shippingOptions) {
@@ -312,6 +313,7 @@ export const ShippingOptionsManager = () => {
           .from('custom_shipping_options' as any)
           .insert({
             tenant_id: tenantId,
+            channel,
             name: formData.name,
             description: formData.description || null,
             delivery_days: formData.delivery_days,

@@ -37,7 +37,7 @@ interface Coupon {
 
 type MinConditionType = 'none' | 'amount' | 'quantity';
 
-export const CouponsManager = () => {
+export const CouponsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'live' } = {}) => {
   const { tenant } = useTenantContext();
   const tenantId = tenant?.id;
   const [coupons, setCoupons] = useState<Coupon[]>([]);
@@ -76,6 +76,7 @@ export const CouponsManager = () => {
       const { data, error } = await supabaseTenant
         .from('coupons')
         .select('*')
+        .eq('channel', channel)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -84,6 +85,7 @@ export const CouponsManager = () => {
           const { data: allData, error: allError } = await supabaseTenant.raw
             .from('coupons')
             .select('*')
+            .eq('channel', channel)
             .order('created_at', { ascending: false });
           
           if (allError) throw allError;
@@ -180,6 +182,7 @@ export const CouponsManager = () => {
         min_purchase_amount: minAmount,
         min_items_quantity: minQty,
         apply_to_promotional: newCoupon.apply_to_promotional,
+        channel,
         progressive_tiers: isProgressive ? newCoupon.progressive_tiers : null
       };
 

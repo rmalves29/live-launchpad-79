@@ -283,6 +283,7 @@ const PublicCheckout = () => {
           .select("*")
           .eq("tenant_id", tenant.id)
           .eq("is_active", true)
+          .neq('channel', 'live')
           .order("minimum_purchase_amount", { ascending: true });
 
         if (error) throw error;
@@ -791,6 +792,7 @@ const PublicCheckout = () => {
         .eq('tenant_id', tenant.id)
         .eq('code', codeToSearch)
         .eq('is_active', true)
+        .neq('channel', 'live')
         .maybeSingle();
 
       if (error) throw error;
@@ -898,7 +900,8 @@ const PublicCheckout = () => {
         .from('gifts')
         .select('*')
         .eq('tenant_id', tenant.id)
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .neq('channel', 'live');
 
       if (giftError) throw giftError;
 

@@ -237,6 +237,7 @@ const Checkout = () => {
         .from("gifts")
         .select("*")
         .eq("is_active", true)
+        .neq('channel', 'live')
         .order("minimum_purchase_amount", { ascending: true });
 
       if (error) throw error;
@@ -1040,6 +1041,7 @@ const Checkout = () => {
         .select('*')
         .eq('code', codeToSearch)
         .eq('is_active', true)
+        .neq('channel', 'live')
         .maybeSingle();
 
       if (error) throw error;
@@ -1125,7 +1127,8 @@ const Checkout = () => {
       const { data: gifts, error: giftError } = await supabaseTenant
         .from('gifts')
         .select('*')
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .neq('channel', 'live');
 
       if (giftError) throw giftError;
 

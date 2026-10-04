@@ -38,7 +38,9 @@ async function copy(text: string, label: string) {
 export default function LojaDaLive() {
   const { tenant } = useTenant();
   const { profile } = useAuth();
-  const isSuperAdmin = profile?.role === 'super_admin';
+  // A visão "todas as empresas" é só do super admin e some quando ele está visualizando uma empresa específica.
+  const previewingTenant = (() => { try { return !!localStorage.getItem('previewTenantId'); } catch { return false; } })();
+  const isSuperAdmin = profile?.role === 'super_admin' && !previewingTenant;
 
   const [settings, setSettings] = useState<Settings>({ live_shop_enabled: true, live_reserve_mode: 'order', live_cart_minutes: 15 });
   const [cartMinutes, setCartMinutes] = useState(15);
@@ -54,9 +56,9 @@ export default function LojaDaLive() {
     const [t, prods, coupons, gifts, ship] = await Promise.all([
       supabase.from('tenants').select('live_shop_enabled, live_reserve_mode, live_cart_minutes').eq('id', tenant.id).maybeSingle(),
       supabase.from('products').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('is_active', true).in('sale_type', ['LIVE', 'AMBOS']).gt('stock', 0),
-      supabase.from('coupons').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('is_active', true),
-      supabase.from('gifts').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('is_active', true),
-      supabase.from('custom_shipping_options').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('is_active', true),
+      supabase.from('coupons').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true),
+      supabase.from('gifts').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true),
+      supabase.from('custom_shipping_options').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true),
     ]);
     const d: any = t.data;
     if (d) {
@@ -209,13 +211,19 @@ export default function LojaDaLive() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="coupons" className="mt-4"><CouponsManager /></TabsContent>
-        <TabsContent value="gifts" className="mt-4"><GiftsManager /></TabsContent>
+        <TabsContent value="coupons" className="mt-4">
+          <p className="text-xs text-muted-foreground mb-3">Cupons criados aqui valem <b>somente na Loja da Live</b>. Eles não aparecem nem funcionam nas compras do bazar.</p>
+          <CouponsManager channel="live" />
+        </TabsContent>
+        <TabsContent value="gifts" className="mt-4">
+          <p className="text-xs text-muted-foreground mb-3">Brindes criados aqui valem <b>somente na Loja da Live</b>. Eles não são oferecidos nas compras do bazar.</p>
+          <GiftsManager channel="live" />
+        </TabsContent>
         <TabsContent value="shipping" className="mt-4">
           <p className="text-xs text-muted-foreground mb-3">
-            Frete grátis ou fixo: cada opção tem o seu "frete grátis acima de". A vitrine mostra "Frete grátis" quando alguma opção tiver esse valor mínimo.
+            Fretes criados aqui valem <b>somente na Loja da Live</b> (não aparecem no bazar). Cada opção tem o seu "frete grátis acima de"; a vitrine mostra "Frete grátis" quando alguma tiver esse valor mínimo.
           </p>
-          <ShippingOptionsManager />
+          <ShippingOptionsManager channel="live" />
         </TabsContent>
 
         {isSuperAdmin && (

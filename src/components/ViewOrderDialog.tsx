@@ -93,6 +93,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
         .eq('tenant_id', order.tenant_id)
         .eq('code', codeToSearch)
         .eq('is_active', true)
+        .neq('channel', 'live')
         .maybeSingle();
 
       if (coupon) {
@@ -148,7 +149,8 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
         .from('gifts')
         .select('*')
         .eq('tenant_id', order.tenant_id)
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .neq('channel', 'live');
 
       const gift = gifts?.find(g =>
         g.name.toUpperCase().replace(/\s+/g, '') === codeToSearch.replace(/\s+/g, '') ||

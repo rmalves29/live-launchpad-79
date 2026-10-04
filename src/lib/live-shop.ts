@@ -239,7 +239,7 @@ export async function calculateLiveShipping(params: {
     /* sem ViaCEP: segue só com o que já temos */
   }
 
-  const custom = await fetchCustomShippingOptions(params.tenantId, state, city, params.cartTotal);
+  const custom = await fetchCustomShippingOptions(params.tenantId, state, city, params.cartTotal, 'live');
   const options: ShippingOption[] = custom.map((o) => ({
     id: o.id,
     name: o.name,

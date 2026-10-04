@@ -51,6 +51,7 @@ export const useCouponOrGift = (tenantId?: string) => {
         .select('*')
         .eq('code', codeToSearch)
         .eq('is_active', true)
+        .neq('channel', 'live')
         .maybeSingle();
 
       if (couponError && !couponError.message?.includes('tenant_id')) {
@@ -110,7 +111,8 @@ export const useCouponOrGift = (tenantId?: string) => {
       const { data: gifts, error: giftError } = await supabaseTenant
         .from('gifts')
         .select('*')
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .neq('channel', 'live');
 
       if (giftError && !giftError.message?.includes('tenant_id')) {
         throw giftError;

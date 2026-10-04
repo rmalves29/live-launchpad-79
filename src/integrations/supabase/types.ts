@@ -479,6 +479,8 @@ export type Database = {
       }
       coupons: {
         Row: {
+          apply_to_promotional: boolean
+          channel: string
           code: string
           created_at: string
           discount_type: string
@@ -496,6 +498,8 @@ export type Database = {
           used_count: number
         }
         Insert: {
+          apply_to_promotional?: boolean
+          channel?: string
           code: string
           created_at?: string
           discount_type: string
@@ -513,6 +517,8 @@ export type Database = {
           used_count?: number
         }
         Update: {
+          apply_to_promotional?: boolean
+          channel?: string
           code?: string
           created_at?: string
           discount_type?: string
@@ -625,6 +631,7 @@ export type Database = {
         Row: {
           carrier_service_id: number | null
           carrier_service_name: string | null
+          channel: string
           coverage_city: string | null
           coverage_state: string | null
           coverage_states: string[] | null
@@ -643,6 +650,7 @@ export type Database = {
         Insert: {
           carrier_service_id?: number | null
           carrier_service_name?: string | null
+          channel?: string
           coverage_city?: string | null
           coverage_state?: string | null
           coverage_states?: string[] | null
@@ -661,6 +669,7 @@ export type Database = {
         Update: {
           carrier_service_id?: number | null
           carrier_service_name?: string | null
+          channel?: string
           coverage_city?: string | null
           coverage_state?: string | null
           coverage_states?: string[] | null
@@ -1275,11 +1284,18 @@ export type Database = {
           content_text: string | null
           content_type: string
           created_at: string | null
+          delay_seconds: number
+          depends_on: string | null
+          error_message: string | null
           group_id: string | null
           id: string
           media_url: string | null
+          poll_options: Json | null
+          poll_selectable_count: number | null
           scheduled_at: string | null
           sent_at: string | null
+          sequence_id: string | null
+          sequence_step: number
           status: string
           tenant_id: string
           updated_at: string | null
@@ -1290,11 +1306,18 @@ export type Database = {
           content_text?: string | null
           content_type?: string
           created_at?: string | null
+          delay_seconds?: number
+          depends_on?: string | null
+          error_message?: string | null
           group_id?: string | null
           id?: string
           media_url?: string | null
+          poll_options?: Json | null
+          poll_selectable_count?: number | null
           scheduled_at?: string | null
           sent_at?: string | null
+          sequence_id?: string | null
+          sequence_step?: number
           status?: string
           tenant_id: string
           updated_at?: string | null
@@ -1305,11 +1328,18 @@ export type Database = {
           content_text?: string | null
           content_type?: string
           created_at?: string | null
+          delay_seconds?: number
+          depends_on?: string | null
+          error_message?: string | null
           group_id?: string | null
           id?: string
           media_url?: string | null
+          poll_options?: Json | null
+          poll_selectable_count?: number | null
           scheduled_at?: string | null
           sent_at?: string | null
+          sequence_id?: string | null
+          sequence_step?: number
           status?: string
           tenant_id?: string
           updated_at?: string | null
@@ -1321,6 +1351,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "fe_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fe_messages_depends_on_fkey"
+            columns: ["depends_on"]
+            isOneToOne: false
+            referencedRelation: "fe_messages"
             referencedColumns: ["id"]
           },
           {
@@ -1494,6 +1531,8 @@ export type Database = {
       }
       gifts: {
         Row: {
+          auto_apply: boolean
+          channel: string
           created_at: string
           description: string | null
           id: number
@@ -1504,6 +1543,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          auto_apply?: boolean
+          channel?: string
           created_at?: string
           description?: string | null
           id?: number
@@ -1514,6 +1555,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          auto_apply?: boolean
+          channel?: string
           created_at?: string
           description?: string | null
           id?: number
@@ -1623,6 +1666,69 @@ export type Database = {
           youtube_url?: string
         }
         Relationships: []
+      }
+      instagram_dm_log: {
+        Row: {
+          channel: string | null
+          comment_id: string | null
+          created_at: string
+          dm_type: string
+          error: string | null
+          id: number
+          instagram_user_id: string | null
+          message: string | null
+          order_id: number | null
+          resent_at: string | null
+          status: string
+          tenant_id: string
+          username: string | null
+        }
+        Insert: {
+          channel?: string | null
+          comment_id?: string | null
+          created_at?: string
+          dm_type: string
+          error?: string | null
+          id?: never
+          instagram_user_id?: string | null
+          message?: string | null
+          order_id?: number | null
+          resent_at?: string | null
+          status: string
+          tenant_id: string
+          username?: string | null
+        }
+        Update: {
+          channel?: string | null
+          comment_id?: string | null
+          created_at?: string
+          dm_type?: string
+          error?: string | null
+          id?: never
+          instagram_user_id?: string | null
+          message?: string | null
+          order_id?: number | null
+          resent_at?: string | null
+          status?: string
+          tenant_id?: string
+          username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instagram_dm_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instagram_dm_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       instagram_live_comments: {
         Row: {
@@ -1999,6 +2105,10 @@ export type Database = {
       integration_instagram: {
         Row: {
           access_token: string | null
+          auto_reply_added: boolean
+          auto_reply_added_text: string | null
+          auto_reply_out_of_stock: boolean
+          auto_reply_out_of_stock_text: string | null
           created_at: string
           environment: string
           id: string
@@ -2010,11 +2120,18 @@ export type Database = {
           profile_picture_url: string | null
           send_cadastro_dm: boolean
           tenant_id: string
+          token_expires_at: string | null
+          token_last_error: string | null
+          token_refreshed_at: string | null
           updated_at: string
           webhook_verify_token: string | null
         }
         Insert: {
           access_token?: string | null
+          auto_reply_added?: boolean
+          auto_reply_added_text?: string | null
+          auto_reply_out_of_stock?: boolean
+          auto_reply_out_of_stock_text?: string | null
           created_at?: string
           environment?: string
           id?: string
@@ -2026,11 +2143,18 @@ export type Database = {
           profile_picture_url?: string | null
           send_cadastro_dm?: boolean
           tenant_id: string
+          token_expires_at?: string | null
+          token_last_error?: string | null
+          token_refreshed_at?: string | null
           updated_at?: string
           webhook_verify_token?: string | null
         }
         Update: {
           access_token?: string | null
+          auto_reply_added?: boolean
+          auto_reply_added_text?: string | null
+          auto_reply_out_of_stock?: boolean
+          auto_reply_out_of_stock_text?: string | null
           created_at?: string
           environment?: string
           id?: string
@@ -2042,6 +2166,9 @@ export type Database = {
           profile_picture_url?: string | null
           send_cadastro_dm?: boolean
           tenant_id?: string
+          token_expires_at?: string | null
+          token_last_error?: string | null
+          token_refreshed_at?: string | null
           updated_at?: string
           webhook_verify_token?: string | null
         }
@@ -2676,6 +2803,51 @@ export type Database = {
           },
           {
             foreignKeyName: "knowledge_base_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      live_cart_reservations: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          product_id: number
+          qty: number
+          session_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          product_id: number
+          qty: number
+          session_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          product_id?: number
+          qty?: number
+          session_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_cart_reservations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "live_cart_reservations_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants_public"
@@ -4408,6 +4580,7 @@ export type Database = {
           address: string | null
           admin_email: string | null
           admin_user_id: string | null
+          auto_cancel_live_minutes: number | null
           auto_cancel_unpaid_enabled: boolean
           auto_cancel_unpaid_hours: number
           auto_cancel_unpaid_minutes: number | null
@@ -4430,6 +4603,9 @@ export type Database = {
           id: string
           is_active: boolean
           is_blocked: boolean | null
+          live_cart_minutes: number
+          live_reserve_mode: string
+          live_shop_enabled: boolean
           logo_url: string | null
           max_orders: number | null
           max_products: number | null
@@ -4455,6 +4631,7 @@ export type Database = {
           address?: string | null
           admin_email?: string | null
           admin_user_id?: string | null
+          auto_cancel_live_minutes?: number | null
           auto_cancel_unpaid_enabled?: boolean
           auto_cancel_unpaid_hours?: number
           auto_cancel_unpaid_minutes?: number | null
@@ -4477,6 +4654,9 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_blocked?: boolean | null
+          live_cart_minutes?: number
+          live_reserve_mode?: string
+          live_shop_enabled?: boolean
           logo_url?: string | null
           max_orders?: number | null
           max_products?: number | null
@@ -4502,6 +4682,7 @@ export type Database = {
           address?: string | null
           admin_email?: string | null
           admin_user_id?: string | null
+          auto_cancel_live_minutes?: number | null
           auto_cancel_unpaid_enabled?: boolean
           auto_cancel_unpaid_hours?: number
           auto_cancel_unpaid_minutes?: number | null
@@ -4524,6 +4705,9 @@ export type Database = {
           id?: string
           is_active?: boolean
           is_blocked?: boolean | null
+          live_cart_minutes?: number
+          live_reserve_mode?: string
+          live_shop_enabled?: boolean
           logo_url?: string | null
           max_orders?: number | null
           max_products?: number | null
@@ -5493,6 +5677,15 @@ export type Database = {
       }
       is_super_admin: { Args: never; Returns: boolean }
       is_tenant_admin: { Args: never; Returns: boolean }
+      link_instagram_orders: {
+        Args: {
+          p_instagram: string
+          p_name: string
+          p_phone: string
+          p_tenant_id: string
+        }
+        Returns: number
+      }
       list_active_tenants_basic: {
         Args: never
         Returns: {
@@ -5505,6 +5698,7 @@ export type Database = {
           slug: string
         }[]
       }
+      live_release_expired_reservations: { Args: never; Returns: number }
       normalize_bazar_phone: { Args: { phone: string }; Returns: string }
       normalize_phone_regional: { Args: { phone: string }; Returns: string }
       public_register_instagram: {
@@ -5515,6 +5709,14 @@ export type Database = {
           p_tenant_slug: string
         }
         Returns: Json
+      }
+      release_product_stock: {
+        Args: { p_product_id: number; p_qty: number }
+        Returns: number
+      }
+      reserve_product_stock: {
+        Args: { p_product_id: number; p_qty: number }
+        Returns: number
       }
       reserve_send_slot: {
         Args: {

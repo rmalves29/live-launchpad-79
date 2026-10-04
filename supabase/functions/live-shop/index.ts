@@ -124,7 +124,7 @@ function computeCoupon(coupon: any, lines: Line[]): { ok: boolean; discount: num
 async function loadCoupon(tenantId: string, code: unknown) {
   const c = String(code ?? '').trim().toUpperCase();
   if (!c) return null;
-  const { data } = await sb.from('coupons').select('*').eq('tenant_id', tenantId).eq('code', c).eq('is_active', true).maybeSingle();
+  const { data } = await sb.from('coupons').select('*').eq('tenant_id', tenantId).eq('channel', 'live').eq('code', c).eq('is_active', true).maybeSingle();
   return data as any;
 }
 
@@ -217,9 +217,9 @@ async function catalog(body: any, tenant: any) {
   if (offset === 0) {
     const nowIso = new Date().toISOString();
     const [couponsRes, giftsRes, shipRes, pagarme, appmax, mp, infinite] = await Promise.all([
-      sb.from('coupons').select('code, discount_type, discount_value, min_purchase_amount, min_items_quantity, progressive_tiers, apply_to_promotional, starts_at, expires_at, usage_limit, used_count, is_active').eq('tenant_id', tenant.id).eq('is_active', true).limit(50),
-      sb.from('gifts').select('name, description, minimum_purchase_amount, auto_apply').eq('tenant_id', tenant.id).eq('is_active', true).order('minimum_purchase_amount', { ascending: true }),
-      sb.from('custom_shipping_options').select('name, price, delivery_days, free_shipping_min_order, coverage_type').eq('tenant_id', tenant.id).eq('is_active', true),
+      sb.from('coupons').select('code, discount_type, discount_value, min_purchase_amount, min_items_quantity, progressive_tiers, apply_to_promotional, starts_at, expires_at, usage_limit, used_count, is_active').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).limit(50),
+      sb.from('gifts').select('name, description, minimum_purchase_amount, auto_apply').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).order('minimum_purchase_amount', { ascending: true }),
+      sb.from('custom_shipping_options').select('name, price, delivery_days, free_shipping_min_order, coverage_type').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true),
       sb.from('integration_pagarme').select('is_active, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
       sb.from('integration_appmax').select('is_active, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
       sb.from('integration_mp').select('is_active, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
@@ -459,7 +459,7 @@ async function createOrder(body: any, tenant: any, ip: string) {
   }
 
   let giftName: string | null = null;
-  const { data: gifts } = await sb.from('gifts').select('name, minimum_purchase_amount, auto_apply').eq('tenant_id', tenant.id).eq('is_active', true).order('minimum_purchase_amount', { ascending: false });
+  const { data: gifts } = await sb.from('gifts').select('name, minimum_purchase_amount, auto_apply').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).order('minimum_purchase_amount', { ascending: false });
   const gift = (gifts || []).find((g: any) => g.auto_apply !== false && subtotal >= num(g.minimum_purchase_amount));
   if (gift) giftName = gift.name;
 

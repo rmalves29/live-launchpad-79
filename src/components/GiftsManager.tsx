@@ -23,7 +23,7 @@ interface GiftItem {
   tenant_id?: string;
 }
 
-export const GiftsManager = () => {
+export const GiftsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'live' } = {}) => {
   const { tenant } = useTenantContext();
   const tenantId = tenant?.id;
   const [gifts, setGifts] = useState<GiftItem[]>([]);
@@ -56,6 +56,7 @@ export const GiftsManager = () => {
       const { data, error } = await supabaseTenant
         .from('gifts')
         .select('*')
+        .eq('channel', channel)
         .order('minimum_purchase_amount', { ascending: true });
 
       if (error) {
@@ -65,6 +66,7 @@ export const GiftsManager = () => {
           const { data: allData, error: allError } = await supabaseTenant.raw
             .from('gifts')
             .select('*')
+            .eq('channel', channel)
             .order('minimum_purchase_amount', { ascending: true });
           
           if (allError) throw allError;
@@ -112,7 +114,8 @@ export const GiftsManager = () => {
         description: newGift.description || null,
         minimum_purchase_amount: newGift.minimum_purchase_amount,
         is_active: newGift.is_active,
-        auto_apply: newGift.auto_apply
+        auto_apply: newGift.auto_apply,
+        channel
       };
 
       // Adicionar tenant_id se a coluna existir
