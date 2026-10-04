@@ -593,7 +593,7 @@ export default function LiveShop() {
             return (
               <div className="cp off" key={c.code}>
                 <b>{d.title} · {c.auto_apply ? 'automático' : `cupom ${c.code}`}</b>
-                <small>{c.description || (c.auto_apply ? d.rule : `${d.rule} · digite o código`)}</small>
+                <small>{c.description || d.rule}</small>
               </div>
             );
           })}

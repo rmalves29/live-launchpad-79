@@ -143,7 +143,7 @@
 .ls-root .pr strong{white-space:nowrap}
 .ls-root .item .bot{flex-wrap:wrap}
 
-.ls-root .cp{min-width:200px;max-width:270px}
+.ls-root .cp{min-width:200px;max-width:300px}
 .ls-root .cp b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ls-root .cp small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
