@@ -116,14 +116,6 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
           .upsert(payload, { onConflict: 'tenant_id,provider' });
         if (error) throw error;
       }
-
-      if (data.is_active) {
-        await supabase
-          .from('shipping_integrations')
-          .update({ is_active: false })
-          .eq('tenant_id', tenantId)
-          .neq('provider', 'correios');
-      }
     },
     onSuccess: () => {
       toast({ title: 'Sucesso', description: 'Configuração dos Correios salva com sucesso!' });

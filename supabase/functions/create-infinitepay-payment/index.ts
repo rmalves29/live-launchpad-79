@@ -278,6 +278,7 @@ serve(async (req) => {
       const productsTotal = ctx.productsTotal > 0 ? ctx.productsTotal : fallbackPayloadSubtotal;
       const newTotal = Math.max(0, productsTotal - pixShare - couponShare) + freightForThisOrder;
       const shippingServiceId = body.shippingData?.service_id ? Number(body.shippingData.service_id) : null;
+      const shippingProvider = typeof body.shippingData?.provider === "string" && body.shippingData.provider ? body.shippingData.provider : null;
 
       console.log(`[create-infinitepay-payment] Order ${ctx.id} (${isFirst ? "FIRST" : "merged"}): products=${productsTotal.toFixed(2)}, pixShare=${pixShare.toFixed(2)} (percent=${pixDiscountPercent}), couponShare=${couponShare.toFixed(2)}, freight=${freightForThisOrder.toFixed(2)}, total=${newTotal.toFixed(2)}`);
 
@@ -295,6 +296,7 @@ serve(async (req) => {
           observation: nextObs,
           total_amount: newTotal,
           shipping_service_id: shippingServiceId,
+          shipping_provider: shippingProvider,
         })
         .eq("id", ctx.id);
     }

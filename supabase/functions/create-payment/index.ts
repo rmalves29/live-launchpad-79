@@ -418,6 +418,7 @@ serve(async (req) => {
       console.log(`[create-payment] Order ${orderId} (${isFirst ? "FIRST" : "merged"}): products=${productsTotal.toFixed(2)}, pixShare=${pixShare.toFixed(2)} (percent=${pixDiscountPercent}), couponShare=${couponShare.toFixed(2)}, freight=${freightForThisOrder.toFixed(2)}, total=${newTotal.toFixed(2)}`);
 
       const shippingServiceId = payload.shippingData?.service_id ? Number(payload.shippingData.service_id) : null;
+      const shippingProvider = typeof payload.shippingData?.provider === "string" && payload.shippingData.provider ? payload.shippingData.provider : null;
 
       const { error: updateError } = await sb
         .from("orders")
@@ -436,6 +437,7 @@ serve(async (req) => {
           coupon_discount: couponShare,
           coupon_code: couponShare > 0 ? (payload.coupon_code ?? null) : null,
           shipping_service_id: shippingServiceId,
+          shipping_provider: shippingProvider,
         })
         .eq("id", orderId);
 

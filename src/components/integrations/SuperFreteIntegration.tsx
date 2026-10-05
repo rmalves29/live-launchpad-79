@@ -72,15 +72,6 @@ export default function SuperFreteIntegration({ tenantId }: Props) {
     }
   }, [integration]);
 
-  // Desativa outras integrações de frete (regra "apenas 1 ativo por vez")
-  const deactivateOthers = async () => {
-    await supabase
-      .from('shipping_integrations')
-      .update({ is_active: false })
-      .eq('tenant_id', tenantId)
-      .neq('provider', 'superfrete');
-  };
-
   const saveMutation = useMutation({
     mutationFn: async () => {
       const dataToSave = {
@@ -104,7 +95,6 @@ export default function SuperFreteIntegration({ tenantId }: Props) {
           .insert([dataToSave]);
         if (error) throw error;
       }
-      await deactivateOthers();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['superfrete-integration', tenantId] });
@@ -116,7 +106,7 @@ export default function SuperFreteIntegration({ tenantId }: Props) {
       setIsEditing(false);
       toast({
         title: 'Integração salva!',
-        description: 'SuperFrete ativo. Outras integrações de frete foram desativadas.',
+        description: 'SuperFrete ativo.',
       });
     },
     onError: (e: Error) => toast({ title: 'Erro ao salvar', description: e.message, variant: 'destructive' }),
@@ -130,7 +120,6 @@ export default function SuperFreteIntegration({ tenantId }: Props) {
         .update({ is_active: active })
         .eq('id', integration.id);
       if (error) throw error;
-      if (active) await deactivateOthers();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['superfrete-integration', tenantId] });
@@ -291,7 +280,7 @@ export default function SuperFreteIntegration({ tenantId }: Props) {
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                <strong>Importante:</strong> ao salvar, qualquer outra integração de frete ativa (Melhor Envio, Mandae, Correios) será desativada automaticamente. Apenas 1 integração de frete pode ficar ativa por vez.
+                <strong>Importante:</strong> ao salvar, o SuperFrete ficará ativo. Você pode ter até 2 integrações de frete ativas ao mesmo tempo; o cliente escolhe entre as opções delas no checkout. Para ativar uma terceira, desative uma das outras antes.
               </AlertDescription>
             </Alert>
 

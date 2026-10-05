@@ -2965,6 +2965,7 @@ export type Database = {
           payment_method: string | null
           printed: boolean | null
           shipped_at: string | null
+          shipping_provider: string | null
           shipping_service_id: number | null
           skip_paid_message: boolean | null
           source: string | null
@@ -3016,6 +3017,7 @@ export type Database = {
           payment_method?: string | null
           printed?: boolean | null
           shipped_at?: string | null
+          shipping_provider?: string | null
           shipping_service_id?: number | null
           skip_paid_message?: boolean | null
           source?: string | null
@@ -3067,6 +3069,7 @@ export type Database = {
           payment_method?: string | null
           printed?: boolean | null
           shipped_at?: string | null
+          shipping_provider?: string | null
           shipping_service_id?: number | null
           skip_paid_message?: boolean | null
           source?: string | null

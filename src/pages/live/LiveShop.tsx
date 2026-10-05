@@ -279,7 +279,16 @@ export default function LiveShop() {
   }, [meta]);
   const selectedShip = shipOptions.find((o) => o.id === shipId) || null;
   const shipPrice = selectedShip ? selectedShip.price : 0;
-  const pixPct = pay === 'pix' ? meta?.payment.pix_discount_percent || 0 : 0;
+  const cardInfoText = useMemo(() => {
+    const ci = meta?.payment.card_installments;
+    if (!ci || ci.max <= 1) return 'Pagamento no cartão de crédito';
+    const free = Math.min(ci.max_without_interest, ci.max);
+    const base = free > 1 ? `Até ${free}x sem juros` : `Até ${ci.max}x`;
+    const withInterest = free > 1 && ci.max > free ? ` · até ${ci.max}x com juros` : '';
+    const min = ci.min_value > 0 ? ` · parcela mínima R$ ${ci.min_value.toFixed(2).replace('.', ',')}` : '';
+    return base + withInterest + min;
+  }, [meta]);
+  const pixPct = pay === 'pix' ?meta?.payment.pix_discount_percent || 0 : 0;
   const pixOff = pixPct > 0 ? Math.round((Math.max(0, subtotal - couponOff) * pixPct) / 100 * 100) / 100 : 0;
   const totalFinal = Math.max(0, subtotal - couponOff - pixOff) + shipPrice;
   const reserveLeft = expiresAt ? Math.max(0, Math.round((expiresAt - tick) / 1000)) : null;
@@ -500,7 +509,8 @@ export default function LiveShop() {
       writeLS(`live_order_${slug}`, order.order_id);
 
       const shippingData = {
-        service_id: selectedShip.id, service_name: selectedShip.name, company_name: selectedShip.company,
+        service_id: selectedShip.raw_id ?? selectedShip.id, service_name: selectedShip.name, company_name: selectedShip.company,
+        provider: selectedShip.provider ?? null,
         price: selectedShip.price, delivery_time: selectedShip.delivery_time,
       };
       const payTotal = Math.max(0, order.total - pixOff) + selectedShip.price;
@@ -815,7 +825,7 @@ export default function LiveShop() {
             )}
             {meta?.payment.card && (
               <button className="opt" role="radio" aria-checked={pay === 'card'} onClick={() => setPay('card')} type="button">
-                <span className="dot" /><span className="t"><b>Cartão de crédito</b><small>Parcele no pagamento</small></span>
+                <span className="dot" /><span className="t"><b>Cartão de crédito</b><small>{cardInfoText}</small></span>
               </button>
             )}
           </div>

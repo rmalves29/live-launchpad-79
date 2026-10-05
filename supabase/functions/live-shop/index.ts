@@ -159,9 +159,9 @@ async function loadCatalogExtras(tenant: any) {
       sb.from('coupons').select('code, discount_type, discount_value, min_purchase_amount, min_items_quantity, progressive_tiers, apply_to_promotional, auto_apply, description, starts_at, expires_at, usage_limit, used_count, is_active').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).limit(50),
       sb.from('gifts').select('name, description, minimum_purchase_amount, auto_apply').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).order('minimum_purchase_amount', { ascending: true }),
       sb.from('custom_shipping_options').select('name, price, delivery_days, free_shipping_min_order, coverage_type').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true),
-      sb.from('integration_pagarme').select('is_active, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
-      sb.from('integration_appmax').select('is_active, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
-      sb.from('integration_mp').select('is_active, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
+      sb.from('integration_pagarme').select('is_active, enable_pix, enable_credit_card, pix_discount_percent, max_installments, max_installments_without_interest, min_installment_value').eq('tenant_id', tenant.id).maybeSingle(),
+      sb.from('integration_appmax').select('is_active, enable_pix, enable_credit_card, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
+      sb.from('integration_mp').select('is_active, enable_pix, enable_credit_card, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
       sb.from('integration_infinitepay').select('is_active, enable_pix, enable_credit_card, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
     ]);
 
@@ -178,15 +178,23 @@ async function loadCatalogExtras(tenant: any) {
       .filter((s: any) => (s.coverage_type || 'national') === 'national')
       .map((s: any) => ({ name: s.name, price: num(s.price), free_min: s.free_shipping_min_order != null ? num(s.free_shipping_min_order) : null, pickup: s.delivery_days === 0 }));
 
-    // gateway ativo (mesma prioridade do create-payment): InfinitePay > AppMax > Pagar.me > Mercado Pago
-    let pix = true, card = true, pixDiscount = 0;
+    // Gateway ativo (mesma prioridade do create-payment): InfinitePay > AppMax > Pagar.me > Mercado Pago.
+    // Pix, desconto Pix e condições do cartão vêm só do gateway cadastrado: a mesma fonte vale para a live e para o bazar.
     const inf: any = infinite.data;
-    if (inf?.is_active) { pix = inf.enable_pix !== false; card = inf.enable_credit_card !== false; pixDiscount = num(inf.pix_discount_percent); }
-    else {
-      const first: any = [appmax.data, pagarme.data, mp.data].find((x: any) => x?.is_active);
-      pixDiscount = num(first?.pix_discount_percent);
-    }
-    extras.payment = { pix, card, pix_discount_percent: pixDiscount, requires_email: !!inf?.is_active };
+    const active: any = inf?.is_active ? inf : [appmax.data, pagarme.data, mp.data].find((x: any) => x?.is_active);
+    const pix = active ? active.enable_pix !== false : true;
+    const card = active ? active.enable_credit_card !== false : true;
+    const pg: any = !inf?.is_active && pagarme.data?.is_active && active === pagarme.data ? pagarme.data : null;
+    extras.payment = {
+      pix, card,
+      pix_discount_percent: num(active?.pix_discount_percent),
+      requires_email: !!inf?.is_active,
+      card_installments: pg ? {
+        max: Math.min(12, Math.max(1, num(pg.max_installments) || 12)),
+        max_without_interest: Math.max(1, num(pg.max_installments_without_interest) || 1),
+        min_value: num(pg.min_installment_value),
+      } : null,
+    };
     extras.tenant = { id: tenant.id, name: tenant.name, slug: tenant.slug, logo_url: tenant.logo_url, primary_color: tenant.primary_color };
     extras.settings = { reserve_mode: tenant.live_reserve_mode, cart_minutes: tenant.live_cart_minutes };
     extras.now = nowIso;

@@ -1,6 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { fetchCustomShippingOptions } from '@/hooks/useCustomShippingOptions';
-import { getActiveShippingIntegration, type ShippingProvider } from '@/lib/shipping-utils';
+import { getActiveShippingIntegrations, shippingProviderLabel, type ActiveShippingIntegration, type ShippingProvider } from '@/lib/shipping-utils';
 
 // ---------------------------------------------------------------- tipos
 export interface LiveVariant {
@@ -44,7 +44,7 @@ export interface LiveCatalogMeta {
   coupons: LiveCoupon[];
   gifts: Array<{ name: string; minimum_purchase_amount: number }>;
   shipping_hints: Array<{ name: string; price: number; free_min: number | null; pickup: boolean }>;
-  payment: { pix: boolean; card: boolean; pix_discount_percent: number; requires_email?: boolean };
+  payment: { pix: boolean; card: boolean; pix_discount_percent: number; requires_email?: boolean; card_installments?: { max: number; max_without_interest: number; min_value: number } | null };
   settings: { reserve_mode: 'order' | 'cart'; cart_minutes: number };
 }
 
@@ -81,6 +81,10 @@ export interface ShippingOption {
   company: string;
   price: number;
   delivery_time: string;
+  /** Id do serviço na transportadora (sem prefixo). Só existe nas opções vindas de integração. */
+  raw_id?: string;
+  /** Integração de frete de onde a opção veio (gravada no pedido). */
+  provider?: ShippingProvider;
 }
 
 // Endereço público que o cliente usa (independe do domínio em que o lojista está logado).
@@ -261,61 +265,71 @@ export async function calculateLiveShipping(params: {
     delivery_time: o.delivery_time,
   }));
 
-  const active = await getActiveShippingIntegration(params.tenantId);
-  if (!active.provider) return { options };
+  const actives = await getActiveShippingIntegrations(params.tenantId);
+  if (actives.length === 0) return { options };
 
-  try {
-    if (active.testFunctionName) {
-      const t = await supabase.functions.invoke(active.testFunctionName, { body: { tenant_id: params.tenantId } });
-      if (t.error || !t.data?.valid) return { options, notice: 'A transportadora não respondeu agora. Mostrando apenas as opções da loja.' };
+  const { data: app } = await supabase
+    .from('app_settings')
+    .select('default_weight_kg, default_width_cm, default_height_cm, default_length_cm')
+    .limit(1)
+    .single();
+  const weight = app?.default_weight_kg ?? 0.01;
+  const qty = params.lines.reduce((s, l) => s + l.qty, 0);
+  const insurance = params.lines.reduce((s, l) => s + l.price * l.qty, 0);
+  const products = [{
+    id: 'consolidated',
+    width: app?.default_width_cm ?? 13,
+    height: app?.default_height_cm ?? 6,
+    length: app?.default_length_cm ?? 16,
+    weight: Math.max(0.01, qty * weight),
+    insurance_value: insurance,
+    quantity: 1,
+  }];
+  const multi = actives.length > 1;
+
+  // Consulta uma integração; se falhar, só ela some e a outra continua aparecendo.
+  const quote = async (active: ActiveShippingIntegration): Promise<{ options: ShippingOption[]; failed: boolean }> => {
+    try {
+      if (active.testFunctionName) {
+        const t = await supabase.functions.invoke(active.testFunctionName, { body: { tenant_id: params.tenantId } });
+        if (t.error || !t.data?.valid) return { options: [], failed: true };
+      }
+
+      const res = await supabase.functions.invoke(active.functionName, {
+        body: { to_postal_code: cep, tenant_id: params.tenantId, products },
+      });
+      const data: any = res.data;
+      if (res.error || data?.success === false || !Array.isArray(data?.shipping_options)) return { options: [], failed: true };
+
+      const display = shippingProviderLabel(active.provider);
+      const carrier = data.shipping_options
+        .filter((o: any) => o && !o.error && o.price)
+        .map((o: any) => {
+          const rawId = String(o.service_id || o.id || Math.random());
+          return {
+            // Com 2 integrações, o id da tela leva o provider para não colidir entre transportadoras
+            id: multi ? `${active.provider}:${rawId}` : rawId,
+            raw_id: rawId,
+            provider: active.provider,
+            name: String(o.service_name || o.name || 'Transportadora'),
+            company: display,
+            price: parseFloat(o.custom_price || o.price || 0) || 0,
+            delivery_time: String(o.delivery_time || '5-10 dias'),
+          } as ShippingOption;
+        });
+      return { options: filterCarrierOptions(carrier, active.provider), failed: false };
+    } catch {
+      return { options: [], failed: true };
     }
+  };
 
-    const { data: app } = await supabase
-      .from('app_settings')
-      .select('default_weight_kg, default_width_cm, default_height_cm, default_length_cm')
-      .limit(1)
-      .single();
-    const weight = app?.default_weight_kg ?? 0.01;
-    const qty = params.lines.reduce((s, l) => s + l.qty, 0);
-    const insurance = params.lines.reduce((s, l) => s + l.price * l.qty, 0);
+  const results = await Promise.all(actives.map(quote));
+  let carrierOptions = results.flatMap((r) => r.options);
+  if (multi) carrierOptions = [...carrierOptions].sort((a, b) => a.price - b.price);
 
-    const res = await supabase.functions.invoke(active.functionName, {
-      body: {
-        to_postal_code: cep,
-        tenant_id: params.tenantId,
-        products: [{
-          id: 'consolidated',
-          width: app?.default_width_cm ?? 13,
-          height: app?.default_height_cm ?? 6,
-          length: app?.default_length_cm ?? 16,
-          weight: Math.max(0.01, qty * weight),
-          insurance_value: insurance,
-          quantity: 1,
-        }],
-      },
-    });
-
-    const data: any = res.data;
-    if (res.error || data?.success === false || !Array.isArray(data?.shipping_options)) {
-      return { options, notice: 'Não foi possível consultar a transportadora. Mostrando as opções da loja.' };
-    }
-
-    const display =
-      active.provider === 'mandae' ? 'Mandae' : active.provider === 'mandabem' ? 'Manda Bem' :
-      active.provider === 'superfrete' ? 'SuperFrete' : active.provider === 'frenet' ? 'Frenet' :
-      active.provider === 'meuscorreios' || active.provider === 'correios' ? 'Correios' : 'Melhor Envio';
-
-    const carrier = data.shipping_options
-      .filter((o: any) => o && !o.error && o.price)
-      .map((o: any) => ({
-        id: String(o.service_id || o.id || Math.random()),
-        name: String(o.service_name || o.name || 'Transportadora'),
-        company: display,
-        price: parseFloat(o.custom_price || o.price || 0) || 0,
-        delivery_time: String(o.delivery_time || '5-10 dias'),
-      }));
-    return { options: [...options, ...filterCarrierOptions(carrier, active.provider)] };
-  } catch {
+  const anyFailed = results.some((r) => r.failed);
+  if (carrierOptions.length === 0 && anyFailed) {
     return { options, notice: 'Não foi possível consultar a transportadora. Mostrando as opções da loja.' };
   }
+  return { options: [...options, ...carrierOptions] };
 }

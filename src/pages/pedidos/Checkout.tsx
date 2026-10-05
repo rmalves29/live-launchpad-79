@@ -18,7 +18,7 @@ import { formatCurrency, formatCPF } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { fetchCustomShippingOptions, CustomShippingOption } from '@/hooks/useCustomShippingOptions';
 import { useOrderMerge, MERGE_ORDER_SHIPPING_OPTION } from '@/hooks/useOrderMerge';
-import { getActiveShippingIntegration } from '@/lib/shipping-utils';
+import { getActiveShippingIntegrations, shippingProviderLabel, type ActiveShippingIntegration } from '@/lib/shipping-utils';
 
 
 interface OrderItem {
@@ -663,41 +663,18 @@ const Checkout = () => {
         throw new Error('ID do tenant não identificado');
       }
 
-      // Detectar qual integração de frete está ativa
-      console.log('🔍 Detectando integração de frete ativa...');
-      const activeIntegration = await getActiveShippingIntegration(tenantId);
-      console.log('🚚 Integração ativa:', activeIntegration);
+      // Integrações de frete ativas (até 2): consulta todas em paralelo e junta as opções
+      console.log('🔍 Detectando integrações de frete ativas...');
+      const activeIntegrations = await getActiveShippingIntegrations(tenantId);
+      console.log('🚚 Integrações ativas:', activeIntegrations.map(i => i.provider));
 
-      if (!activeIntegration.provider) {
+      if (activeIntegrations.length === 0) {
         console.log('⚠️ Nenhuma integração de frete ativa, usando apenas opções customizadas');
         toast({
           title: 'Aviso',
           description: 'Nenhuma integração de frete ativa. Usando opções de frete fixo.',
         });
         return;
-      }
-
-      // Se for Melhor Envio, testar token primeiro
-      if (activeIntegration.testFunctionName) {
-        console.log('🔍 Testando token...');
-        const tokenTestResponse = await supabaseTenant.raw.functions.invoke(activeIntegration.testFunctionName, {
-          body: { tenant_id: tenantId }
-        });
-        
-        console.log('🧪 Resposta do teste de token:', tokenTestResponse);
-        
-        if (tokenTestResponse.error) {
-          console.error('❌ Erro na função de teste de token:', tokenTestResponse.error);
-          throw new Error('Erro ao verificar token');
-        }
-
-        const tokenTest = tokenTestResponse.data;
-        if (!tokenTest?.valid) {
-          console.error('❌ Token inválido:', tokenTest);
-          throw new Error(tokenTest?.error || 'Token inválido ou expirado');
-        }
-        
-        console.log('✅ Token válido, calculando frete...');
       }
 
       // Preparar dados do produto de forma segura
@@ -710,102 +687,104 @@ const Checkout = () => {
         insurance_value: Number(item.unit_price) || 1,
         quantity: Number(item.qty) || 1
       }));
-      
-      console.log('📦 Produtos preparados:', products);
-      
-      // Calcular frete usando a integração ativa
-      console.log(`📡 Chamando ${activeIntegration.functionName}...`);
-      const shippingResponse = await supabaseTenant.raw.functions.invoke(activeIntegration.functionName, {
-        body: {
-          to_postal_code: cep.replace(/[^0-9]/g, ''),
-          tenant_id: tenantId,
-          products: products
-        }
-      });
 
-      console.log('📡 Resposta da função de frete:', shippingResponse);
+      const multiProvider = activeIntegrations.length > 1;
 
-      if (shippingResponse.error) {
-        console.error('❌ Erro na função de frete:', shippingResponse.error);
-        toast({
-          title: 'Frete não disponível',
-          description: 'Não foi possível consultar a transportadora para este CEP.',
-          variant: 'destructive'
-        });
-        return;
-      }
-
-      const data = shippingResponse.data;
-      if (data?.success === false) {
-        console.warn('⚠️ Frete não disponível:', data.error, data.details);
-        toast({
-          title: 'Frete não disponível',
-          description: data.error || 'A transportadora não retornou opções para este CEP.',
-          variant: 'destructive'
-        });
-        return;
-      }
-
-      if (data && data.success && data.shipping_options && Array.isArray(data.shipping_options)) {
-        // Log para debug da estrutura de dados
-        console.log('📊 Estrutura dos dados de frete recebidos:', data.shipping_options.slice(0, 2));
-        
-        // Processar opções de frete de forma segura
-        const validOptions = data.shipping_options
-          .filter((option: any) => option && !option.error && option.price)
-          .map((option: any) => {
-            console.log('🔧 Processando opção:', {
-              service_id: option.service_id,
-              id: option.id,
-              service_name: option.service_name,
-              name: option.name,
-              company: option.company,
-              company_type: typeof option.company,
-              company_name: option.company?.name
+      // Consulta uma integração. Se falhar, só ela some: a outra continua aparecendo.
+      const quoteIntegration = async (integ: ActiveShippingIntegration): Promise<{ options: any[]; error?: Error }> => {
+        try {
+          // Se for Melhor Envio, testar token primeiro
+          if (integ.testFunctionName) {
+            const tokenTestResponse = await supabaseTenant.raw.functions.invoke(integ.testFunctionName, {
+              body: { tenant_id: tenantId }
             });
-            
-            // SEMPRE exibe o nome da integração ativa do tenant, não da transportadora
-            const displayCompany = activeIntegration.provider === 'mandae' ? 'Mandae'
-              : activeIntegration.provider === 'superfrete' ? 'SuperFrete'
-              : (activeIntegration.provider === 'meuscorreios' || activeIntegration.provider === 'correios') ? 'Correios'
-              : 'Melhor Envio';
+            if (tokenTestResponse.error) {
+              console.error('❌ Erro na função de teste de token:', tokenTestResponse.error);
+              return { options: [], error: new Error('Erro ao verificar token') };
+            }
+            if (!tokenTestResponse.data?.valid) {
+              console.error('❌ Token inválido:', tokenTestResponse.data);
+              return { options: [], error: new Error(tokenTestResponse.data?.error || 'Token inválido ou expirado') };
+            }
+          }
 
-            return {
-              id: String(option.service_id || option.id || Math.random()),
-              name: String(option.service_name || option.name || 'Transportadora'),
-              company: displayCompany,
-              price: parseFloat(option.price || option.custom_price || 0).toFixed(2),
-              delivery_time: String(option.delivery_time || option.custom_delivery_time || '5-10 dias'),
-              custom_price: parseFloat(option.custom_price || option.price || 0).toFixed(2)
-            };
+          console.log(`📡 Chamando ${integ.functionName}...`);
+          const shippingResponse = await supabaseTenant.raw.functions.invoke(integ.functionName, {
+            body: {
+              to_postal_code: cep.replace(/[^0-9]/g, ''),
+              tenant_id: tenantId,
+              products: products
+            }
           });
 
-        if (validOptions.length > 0) {
-          // Filter shipping options to show only desired services
-          const filteredOptions = filterShippingOptions(validOptions, activeIntegration.provider);
-          // Preservar opção de merge + opções customizadas + opções do Melhor Envio
-          const allOptions = mergeOption 
-            ? [mergeOption, ...fallbackShipping, ...filteredOptions]
-            : [...fallbackShipping, ...filteredOptions];
-          setShippingOptions(allOptions);
-          
-          console.log('✅ Opções de frete filtradas:', filteredOptions.length);
-          toast({
-            title: 'Frete calculado',
-            description: `${allOptions.length} opções de frete encontradas`,
-          });
-        } else {
-          console.log('⚠️ Nenhuma opção válida retornada');
-          toast({
-            title: 'Frete não disponível',
-            description: fallbackShipping.length > 1 ? 'Opções de frete fixo disponíveis' : 'Apenas retirada disponível para este CEP',
-          });
+          if (shippingResponse.error) {
+            console.error(`❌ Erro na função de frete (${integ.provider}):`, shippingResponse.error);
+            return { options: [], error: new Error('Não foi possível consultar a transportadora para este CEP.') };
+          }
+
+          const data = shippingResponse.data;
+          if (data?.success === false) {
+            console.warn(`⚠️ Frete não disponível (${integ.provider}):`, data.error, data.details);
+            return { options: [], error: new Error(data.error || 'A transportadora não retornou opções para este CEP.') };
+          }
+
+          if (!(data && data.success && Array.isArray(data.shipping_options))) {
+            return { options: [] };
+          }
+
+          // SEMPRE exibe o nome da integração do tenant, não da transportadora
+          const displayCompany = shippingProviderLabel(integ.provider);
+          const validOptions = data.shipping_options
+            .filter((option: any) => option && !option.error && option.price)
+            .map((option: any) => {
+              const rawId = String(option.service_id || option.id || Math.random());
+              return {
+                // Com 2 integrações, o id da tela leva o provider para não colidir (ex.: serviço "1" nas duas)
+                id: multiProvider ? `${integ.provider}:${rawId}` : rawId,
+                raw_id: rawId,
+                provider: integ.provider,
+                name: String(option.service_name || option.name || 'Transportadora'),
+                company: displayCompany,
+                price: parseFloat(option.price || option.custom_price || 0).toFixed(2),
+                delivery_time: String(option.delivery_time || option.custom_delivery_time || '5-10 dias'),
+                custom_price: parseFloat(option.custom_price || option.price || 0).toFixed(2)
+              };
+            });
+
+          return { options: filterShippingOptions(validOptions, integ.provider as any) };
+        } catch (err) {
+          console.error(`❌ Falha ao consultar ${integ.provider}:`, err);
+          return { options: [], error: err instanceof Error ? err : new Error('Não foi possível consultar a transportadora') };
         }
+      };
+
+      const results = await Promise.all(activeIntegrations.map(quoteIntegration));
+      let carrierOptions = results.flatMap(r => r.options);
+      if (multiProvider) {
+        carrierOptions = [...carrierOptions].sort(
+          (a, b) => parseFloat(a.custom_price || a.price) - parseFloat(b.custom_price || b.price)
+        );
+      }
+
+      if (carrierOptions.length > 0) {
+        // Preservar opção de merge + opções customizadas + opções da(s) transportadora(s)
+        const allOptions = mergeOption
+          ? [mergeOption, ...fallbackShipping, ...carrierOptions]
+          : [...fallbackShipping, ...carrierOptions];
+        setShippingOptions(allOptions);
+        console.log('✅ Opções de frete:', carrierOptions.length);
+        toast({
+          title: 'Frete calculado',
+          description: `${allOptions.length} opções de frete encontradas`,
+        });
       } else {
-        console.log('⚠️ Resposta inválida da API de frete');
+        // Nenhuma transportadora respondeu: repete o comportamento antigo (erro de token vira aviso próprio)
+        const firstError = results.find(r => r.error)?.error;
+        if (firstError) throw firstError;
+        console.log('⚠️ Nenhuma opção válida retornada');
         toast({
           title: 'Frete não disponível',
-          description: 'Apenas retirada disponível para este CEP',
+          description: fallbackShipping.length > 1 ? 'Opções de frete fixo disponíveis' : 'Apenas retirada disponível para este CEP',
         });
       }
     } catch (error) {
@@ -1287,9 +1266,10 @@ const Checkout = () => {
         const selectedOption = shippingOptions.find(opt => opt.id === selectedShipping);
         if (selectedOption) {
           shippingData = {
-            service_id: selectedOption.id,
+            service_id: selectedOption.raw_id ?? selectedOption.id,
             service_name: selectedOption.name,
             company_name: selectedOption.company, // Corrigido: remover .name
+            provider: selectedOption.provider ?? null,
             price: parseFloat(selectedOption.custom_price || selectedOption.price),
             delivery_time: selectedOption.delivery_time,
             additional_services: selectedOption.additional_services

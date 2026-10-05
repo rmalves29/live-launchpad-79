@@ -1128,6 +1128,10 @@ async function sendOrderToBling(
   resyncSuffix?: string,
   skipStock?: boolean
 ): Promise<SendOrderResult> {
+  // Com até 2 integrações de frete ativas, vale a transportadora escolhida no checkout (gravada no pedido).
+  // Pedidos antigos não têm esse campo e seguem usando a integração ativa da empresa.
+  if (order?.shipping_provider) activeShippingProvider = String(order.shipping_provider);
+
   if (!cartItems || cartItems.length === 0) {
     throw new Error('O pedido não possui itens para enviar ao Bling');
   }
@@ -2530,14 +2534,17 @@ serve(async (req) => {
         console.log(`[bling-sync-orders] SYNC_TRACKING for tenant: ${tenant_id}`);
         
         // Verificar qual integração de frete está ativa
-        const { data: shippingIntegration } = await supabase
+        // Até 2 integrações podem estar ativas: se uma delas for Correios (rastreio vem do Bling), usa o fluxo dos Correios
+        const { data: shippingIntegrations } = await supabase
           .from('shipping_integrations')
           .select('provider, is_active')
           .eq('tenant_id', tenant_id)
-          .eq('is_active', true)
-          .maybeSingle();
+          .eq('is_active', true);
         
-        const activeShippingProvider = shippingIntegration?.provider || 'correios';
+        const activeProviders: string[] = (shippingIntegrations || []).map((r: any) => String(r.provider));
+        const activeShippingProvider = activeProviders.includes('correios')
+          ? 'correios'
+          : (activeProviders[0] || 'correios');
         console.log(`[bling-sync-orders] Active shipping provider: ${activeShippingProvider}`);
         
         // Se for Correios, buscar TODOS os pedidos com bling_order_id sem rastreio local

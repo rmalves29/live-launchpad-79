@@ -8,16 +8,36 @@ export interface ActiveShippingIntegration {
   testFunctionName: string | null;
 }
 
+const PROVIDER_PRIORITY: Array<{ provider: Exclude<ShippingProvider, null>; functionName: string; testFunctionName: string | null }> = [
+  { provider: 'superfrete', functionName: 'superfrete-shipping', testFunctionName: null },
+  { provider: 'frenet', functionName: 'frenet-shipping', testFunctionName: null },
+  { provider: 'mandae', functionName: 'mandae-shipping', testFunctionName: null },
+  { provider: 'mandabem', functionName: 'mandabem-shipping', testFunctionName: null },
+  { provider: 'melhor_envio', functionName: 'melhor-envio-shipping', testFunctionName: 'melhor-envio-test-token' },
+  { provider: 'correios', functionName: 'correios-shipping', testFunctionName: null },
+  { provider: 'meuscorreios', functionName: 'meuscorreios-shipping', testFunctionName: null },
+];
+
+/** Nome exibido ao cliente no checkout para cada integração. */
+export function shippingProviderLabel(provider: ShippingProvider): string {
+  switch (provider) {
+    case 'mandae': return 'Mandae';
+    case 'mandabem': return 'Manda Bem';
+    case 'superfrete': return 'SuperFrete';
+    case 'frenet': return 'Frenet';
+    case 'correios':
+    case 'meuscorreios': return 'Correios';
+    default: return 'Melhor Envio';
+  }
+}
+
 /**
- * Busca qual integração de frete está ativa para o tenant
- * Prioridade: Mandae > Melhor Envio
+ * Todas as integrações de frete ativas do tenant (até 2), na ordem de prioridade.
+ * O checkout consulta todas e junta as opções; o cliente escolhe entre elas.
  */
-export async function getActiveShippingIntegration(tenantId: string): Promise<ActiveShippingIntegration> {
+export async function getActiveShippingIntegrations(tenantId: string): Promise<ActiveShippingIntegration[]> {
   try {
-    if (!tenantId) {
-      console.log("[shipping-utils] tenant_id não fornecido");
-      return { provider: null, functionName: '', testFunctionName: null };
-    }
+    if (!tenantId) return [];
 
     // IMPORTANTE: usamos uma função SECURITY DEFINER (get_active_shipping_provider)
     // para que o checkout público (anon) consiga ler o provider sem precisar de
@@ -27,101 +47,36 @@ export async function getActiveShippingIntegration(tenantId: string): Promise<Ac
 
     if (error) {
       console.error("[shipping-utils] Erro ao buscar integrações:", error);
-      return { provider: null, functionName: '', testFunctionName: null };
+      return [];
     }
+    if (!integrations || integrations.length === 0) return [];
 
-    if (!integrations || integrations.length === 0) {
-      console.log("[shipping-utils] Nenhuma integração ativa encontrada para tenant:", tenantId);
-      return { provider: null, functionName: '', testFunctionName: null };
-    }
-
-    console.log("[shipping-utils] Integrações encontradas para tenant", tenantId, ":", integrations);
-
-    // Verificar se SuperFrete está ativo (prioridade alta)
-    const superfreteIntegration = integrations.find(i => i.provider === 'superfrete');
-    if (superfreteIntegration) {
-      console.log("[shipping-utils] Integração SuperFrete ativa para tenant:", tenantId);
-      return {
-        provider: 'superfrete',
-        functionName: 'superfrete-shipping',
-        testFunctionName: null
-      };
-    }
-
-    // Verificar se Frenet está ativo
-    const frenetIntegration = integrations.find(i => i.provider === 'frenet');
-    if (frenetIntegration) {
-      console.log("[shipping-utils] Integração Frenet ativa para tenant:", tenantId);
-      return {
-        provider: 'frenet',
-        functionName: 'frenet-shipping',
-        testFunctionName: null
-      };
-    }
-
-
-
-    // Verificar se Mandae está ativa (prioridade)
-    const mandaeIntegration = integrations.find(i => i.provider === 'mandae');
-    if (mandaeIntegration) {
-      console.log("[shipping-utils] Integração Mandae ativa para tenant:", tenantId);
-      return {
-        provider: 'mandae',
-        functionName: 'mandae-shipping',
-        testFunctionName: null // Mandae não tem função de teste de token
-      };
-    }
-
-    // Verificar se Manda Bem está ativo
-    const mandaBemIntegration = integrations.find(i => i.provider === 'mandabem');
-    if (mandaBemIntegration) {
-      console.log("[shipping-utils] Integração Manda Bem ativa para tenant:", tenantId);
-      return {
-        provider: 'mandabem',
-        functionName: 'mandabem-shipping',
-        testFunctionName: null
-      };
-    }
-
-    // Verificar se Melhor Envio está ativo
-    const melhorEnvioIntegration = integrations.find(i => i.provider === 'melhor_envio');
-    if (melhorEnvioIntegration) {
-      console.log("[shipping-utils] Integração Melhor Envio ativa para tenant:", tenantId);
-      return {
-        provider: 'melhor_envio',
-        functionName: 'melhor-envio-shipping',
-        testFunctionName: 'melhor-envio-test-token'
-      };
-    }
-
-    // Verificar se Correios está ativo
-    const correiosIntegration = integrations.find(i => i.provider === 'correios');
-    if (correiosIntegration) {
-      console.log("[shipping-utils] Integração Correios ativa para tenant:", tenantId);
-      return {
-        provider: 'correios',
-        functionName: 'correios-shipping',
-        testFunctionName: null
-      };
-    }
-
-    // Verificar se MeusCorreios está ativo
-    const meuscorreiosIntegration = integrations.find(i => i.provider === 'meuscorreios');
-    if (meuscorreiosIntegration) {
-      console.log("[shipping-utils] Integração MeusCorreios ativa para tenant:", tenantId);
-      return {
-        provider: 'meuscorreios',
-        functionName: 'meuscorreios-shipping',
-        testFunctionName: null
-      };
-    }
-
-    console.log("[shipping-utils] Nenhuma integração válida para tenant:", tenantId);
-    return { provider: null, functionName: '', testFunctionName: null };
+    const active = new Set((integrations as Array<{ provider: string }>).map((i) => i.provider));
+    return PROVIDER_PRIORITY
+      .filter((p) => active.has(p.provider))
+      .map((p) => ({ provider: p.provider, functionName: p.functionName, testFunctionName: p.testFunctionName }));
   } catch (err) {
-    console.error("[shipping-utils] Erro ao determinar integração ativa:", err);
-    return { provider: null, functionName: '', testFunctionName: null };
+    console.error("[shipping-utils] Erro ao determinar integrações ativas:", err);
+    return [];
   }
+}
+
+/**
+ * Integração de frete "principal" do tenant (a de maior prioridade entre as ativas).
+ * Usada onde só uma integração faz sentido (ex.: etiquetas de pedidos antigos, sem transportadora gravada).
+ * Prioridade: SuperFrete > Frenet > Mandae > Manda Bem > Melhor Envio > Correios > MeusCorreios
+ */
+export async function getActiveShippingIntegration(tenantId: string): Promise<ActiveShippingIntegration> {
+  const all = await getActiveShippingIntegrations(tenantId);
+  return all[0] ?? { provider: null, functionName: '', testFunctionName: null };
+}
+
+/** Integração de frete de um provider específico (ex.: o gravado no pedido). */
+export function shippingIntegrationFor(provider: ShippingProvider): ActiveShippingIntegration {
+  const found = PROVIDER_PRIORITY.find((p) => p.provider === provider);
+  return found
+    ? { provider: found.provider, functionName: found.functionName, testFunctionName: found.testFunctionName }
+    : { provider: null, functionName: '', testFunctionName: null };
 }
 
 /**

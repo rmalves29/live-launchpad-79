@@ -141,20 +141,38 @@ const Etiquetas = () => {
   const isProviderHandledInLabelsPage = !!activeShippingProvider && !!SHIPPING_LABEL_PROVIDERS[activeShippingProvider];
   const isCorreiosProvider = activeShippingProvider === 'correios' || activeShippingProvider === 'meuscorreios';
 
+  // Transportadora de um pedido: a gravada no checkout (shipping_provider).
+  // Pedidos antigos não têm esse campo e seguem usando a integração ativa da empresa.
+  const providerOfOrder = (order?: { shipping_provider?: string | null } | null): ShippingProvider =>
+    ((order?.shipping_provider as ShippingProvider) || activeShippingProvider || null);
+  const isOrderHandledHere = (order?: any) => {
+    const p = providerOfOrder(order);
+    return !!p && !!SHIPPING_LABEL_PROVIDERS[p];
+  };
+  const isOrderCorreios = (order?: any) => {
+    const p = providerOfOrder(order);
+    return p === 'correios' || p === 'meuscorreios';
+  };
+  const orderProviderLabel = (order?: any) => {
+    const p = providerOfOrder(order);
+    return p ? SHIPPING_PROVIDER_LABELS[p] : 'integração de frete';
+  };
+
   const openIntegrationsPage = () => {
     window.location.assign('/integracoes');
   };
 
-  const getUnsupportedProviderMessage = () => {
-    if (isCorreiosProvider) {
-      return `As etiquetas do ${activeProviderLabel} são geradas na aba Integrações.`;
+  const getUnsupportedProviderMessage = (provider: ShippingProvider = activeShippingProvider) => {
+    const label = provider ? SHIPPING_PROVIDER_LABELS[provider] : 'integração de frete';
+    if (provider === 'correios' || provider === 'meuscorreios') {
+      return `As etiquetas do ${label} são geradas na aba Integrações.`;
     }
 
-    if (!activeShippingProvider) {
+    if (!provider) {
       return 'Nenhuma integração de frete ativa. Configure uma integração antes de criar remessas.';
     }
 
-    return `Esta tela não oferece ações para ${activeProviderLabel}.`;
+    return `Esta tela não oferece ações para ${label}.`;
   };
 
   useEffect(() => {
@@ -397,26 +415,22 @@ const Etiquetas = () => {
   };
 
   const sendToShippingProvider = async (orderId: number) => {
-    const providerName = activeShippingProvider ? SHIPPING_PROVIDER_LABELS[activeShippingProvider] : 'integração de frete';
-    console.log(`🚀 [ETIQUETAS] Iniciando envio para ${providerName}:`, { orderId, provider: activeShippingProvider, timestamp: new Date().toISOString() });
-    
-    if (!activeShippingProvider) {
-      toast.error(getUnsupportedProviderMessage());
+    const orderProvider = providerOfOrder(orders.find(o => o.id === orderId));
+    const providerName = orderProvider ? SHIPPING_PROVIDER_LABELS[orderProvider] : 'integração de frete';
+    console.log(`🚀 [ETIQUETAS] Iniciando envio para ${providerName}:`, { orderId, provider: orderProvider, timestamp: new Date().toISOString() });
+
+    if (!orderProvider || !SHIPPING_LABEL_PROVIDERS[orderProvider]) {
+      toast.error(getUnsupportedProviderMessage(orderProvider));
       return;
     }
 
-    if (!isProviderHandledInLabelsPage) {
-      toast.error(getUnsupportedProviderMessage());
-      return;
-    }
-    
     setProcessingOrders(prev => new Set(prev).add(orderId));
     
     try {
       // Determinar função e action pela config centralizada
-      const cfg = SHIPPING_LABEL_PROVIDERS[activeShippingProvider!];
+      const cfg = SHIPPING_LABEL_PROVIDERS[orderProvider];
       if (!cfg) {
-        toast.error(getUnsupportedProviderMessage());
+        toast.error(getUnsupportedProviderMessage(orderProvider));
         return;
       }
       const functionName = cfg.functionName;
@@ -489,7 +503,7 @@ const Etiquetas = () => {
         message: error.message,
         stack: error.stack,
         orderId: orderId,
-        provider: activeShippingProvider,
+        provider: orderProvider,
         timestamp: new Date().toISOString()
       });
       
@@ -532,7 +546,7 @@ const Etiquetas = () => {
       else if (shipId.startsWith('mandabem_')) providerKey = 'mandabem';
       else if (shipId.startsWith('frenet_')) providerKey = 'frenet';
       else if (shipId.startsWith('superfrete_')) providerKey = 'superfrete';
-      else providerKey = activeShippingProvider || 'melhor_envio';
+      else providerKey = providerOfOrder(order) || 'melhor_envio';
 
       const cancelActionByProvider: Record<string, string> = {
         mandae: 'cancel_order',
@@ -602,7 +616,7 @@ const Etiquetas = () => {
     }
 
     // Detecta provider ativo (com fallback pelo prefixo do shipment_id)
-    let providerKey: string | null = activeShippingProvider || null;
+    let providerKey: string | null = providerOfOrder(order) || null;
     const shipId: string = order?.melhor_envio_shipment_id || '';
     if (shipId.startsWith('frenet_')) providerKey = 'frenet';
     else if (shipId.startsWith('superfrete_')) providerKey = 'superfrete';
@@ -694,7 +708,7 @@ const Etiquetas = () => {
       let providerKey: string | null = null;
       if (shipId.startsWith('frenet_')) providerKey = 'frenet';
       else if (shipId.startsWith('superfrete_')) providerKey = 'superfrete';
-      else providerKey = activeShippingProvider || 'melhor_envio';
+      else providerKey = providerOfOrder(order) || 'melhor_envio';
 
       const cfg = SHIPPING_LABEL_PROVIDERS[providerKey];
       const functionName = cfg?.functionName || 'melhor-envio-labels';
@@ -986,7 +1000,7 @@ const Etiquetas = () => {
   
   // Criar remessas em lote para todos os selecionados
   const createBatchShipments = async () => {
-    if (!isProviderHandledInLabelsPage) {
+    if (!isProviderHandledInLabelsPage && !orders.some(o => selectedOrders.has(o.id) && isOrderHandledHere(o))) {
       toast.error(getUnsupportedProviderMessage());
       return;
     }
@@ -1014,7 +1028,7 @@ const Etiquetas = () => {
         }
         
         // Determinar função e action baseado na integração ativa
-        const batchCfg = SHIPPING_LABEL_PROVIDERS[activeShippingProvider || 'melhor_envio'];
+        const batchCfg = SHIPPING_LABEL_PROVIDERS[providerOfOrder(order) || 'melhor_envio'];
         const functionName = batchCfg?.functionName || 'melhor-envio-labels';
         const action = batchCfg?.createAction || 'create_shipment';
         
@@ -1491,7 +1505,7 @@ const Etiquetas = () => {
 
                         {/* AÇÕES */}
                         <div className="flex flex-col gap-2 min-w-[180px]">
-                          {!order.melhor_envio_shipment_id && isProviderHandledInLabelsPage && (
+                          {!order.melhor_envio_shipment_id && isOrderHandledHere(order) && (
                             <Button
                               onClick={() => sendToShippingProvider(order.id)}
                               disabled={processingOrders.has(order.id) || !validation.valid}
@@ -1507,10 +1521,10 @@ const Etiquetas = () => {
                             </Button>
                           )}
 
-                          {!order.melhor_envio_shipment_id && isCorreiosProvider && (
+                          {!order.melhor_envio_shipment_id && isOrderCorreios(order) && (
                             <Button onClick={openIntegrationsPage} variant="outline" size="sm" className="justify-center">
                               <ExternalLink className="h-4 w-4 mr-2" />
-                              Abrir {activeProviderLabel}
+                              Abrir {orderProviderLabel(order)}
                             </Button>
                           )}
 

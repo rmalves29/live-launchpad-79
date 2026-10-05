@@ -36,7 +36,7 @@ serve(async (req: Request) => {
 
     let query = supabase
       .from("orders")
-      .select("id, tenant_id, melhor_envio_shipment_id")
+      .select("id, tenant_id, melhor_envio_shipment_id, shipping_provider")
       .not("melhor_envio_tracking_code", "is", null)
       .neq("melhor_envio_tracking_code", "")
       .eq("tracking_posted", false)
@@ -106,7 +106,8 @@ serve(async (req: Request) => {
           superfrete: ["superfrete-labels", "get_status"],
           melhor_envio: ["melhor-envio-labels", "get_status"],
         };
-        const provider = providerByTenant.get(order.tenant_id) || "";
+        // Pedido com transportadora gravada no checkout usa ela; senão, a integração ativa da empresa
+        const provider = order.shipping_provider || providerByTenant.get(order.tenant_id) || "";
         const route = PROVIDER_ROUTES[provider];
         if (!route) {
           results.push({ order_id: order.id, skipped: true });
