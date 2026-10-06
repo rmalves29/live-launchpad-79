@@ -1035,9 +1035,8 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
             printHasMore = page.length === PRINT_PAGE_SIZE;
             printOffset += PRINT_PAGE_SIZE;
           }
+          // (o erro de cada página já é lançado dentro do laço acima; cartItemsError não existe neste escopo)
           const cartItemsData = allPrintCartItems;
-
-          if (cartItemsError) throw cartItemsError;
 
           const cartItemsMap = new Map<number, any[]>();
           (cartItemsData || []).forEach((item: any) => {
