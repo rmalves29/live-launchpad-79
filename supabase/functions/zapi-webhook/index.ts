@@ -1360,6 +1360,7 @@ serve(async (req) => {
     // Process each product code
     const results = [];
     for (const entry of productEntries) {
+      try {
       const code = entry.code;
       const requestedQty = entry.qty;
       const codeUpper = code.toUpperCase();
@@ -1901,7 +1902,20 @@ serve(async (req) => {
           });
 
           // Send out of stock message
-          if (whatsappConfig?.send_out_of_stock_msg !== false) {
+          // (whatsappConfig não existe neste escopo: o acesso direto dava ReferenceError e derrubava a mensagem inteira com HTTP 500)
+          let sendOutOfStockMsg = true;
+          try {
+            const { data: oosCfg } = await supabase
+              .from('integration_whatsapp')
+              .select('send_out_of_stock_msg')
+              .eq('tenant_id', tenantId)
+              .eq('is_active', true)
+              .maybeSingle();
+            sendOutOfStockMsg = oosCfg?.send_out_of_stock_msg !== false;
+          } catch (cfgErr) {
+            console.error('[zapi-webhook] erro ao ler send_out_of_stock_msg:', cfgErr);
+          }
+          if (sendOutOfStockMsg) {
             const outOfStockMsg = waitlistPosition
               ? `😔 *Produto Esgotado*\n\nO produto *${product.name}* (${product.code}) está esgotado.\n\n🎯 Te coloquei na *fila de espera*! Você é a *${waitlistPosition}ª* da fila. Assim que voltar ao estoque, separo uma unidade pra você e te aviso aqui no WhatsApp com o link de pagamento. 💚`
               : `❌ *Produto Esgotado!*\n\nO produto *${product.name}* (${product.code}) está esgotado.\n\nDesculpe pelo inconveniente! 😔`;
@@ -2022,6 +2036,27 @@ serve(async (req) => {
         order_id: order.id,
         cart_item_id: cartItem.id 
       });
+      } catch (entryErr) {
+        // Um erro inesperado em UM código não pode derrubar os outros itens da mesma mensagem
+        console.error(`[zapi-webhook] ❌ Erro inesperado ao processar ${entry.code}:`, entryErr);
+        results.push({ code: entry.code, success: false, error: 'unexpected_error', message: String((entryErr as any)?.message || entryErr) });
+      }
+    }
+
+    // Registra o resultado quando algo falhou (o "[WEBHOOK] Processado" acima é gravado ANTES de processar os itens)
+    try {
+      const failedEntries = results.filter((r: any) => r && r.success === false);
+      if (failedEntries.length > 0) {
+        await supabase.from('whatsapp_messages').insert({
+          tenant_id: tenantId,
+          phone: normalizedPhone,
+          message: `[WEBHOOK] Resultado: ${results.length - failedEntries.length}/${results.length} itens adicionados. Falhas: ${failedEntries.map((r: any) => `${r.code}=${r.error}`).join(', ')}`.slice(0, 900),
+          type: 'system_log',
+          whatsapp_group_name: groupName || null,
+        });
+      }
+    } catch (logErr) {
+      console.error('[zapi-webhook] erro ao registrar resultado:', logErr);
     }
 
     // Log the webhook processing (only if we didn't already log with messageId above)
