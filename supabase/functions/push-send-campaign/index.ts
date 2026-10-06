@@ -23,10 +23,22 @@ serve(async (req) => {
       states,          // string[] of UFs (e.g. ["MG","SP"])
       date_from,       // ISO date "YYYY-MM-DD" (inclusive, Brasília)
       date_to,         // ISO date "YYYY-MM-DD" (inclusive, Brasília)
+      subscription_ids, // envio só para estes assinantes (contatos escolhidos na lista)
+      test,             // true = push de teste: não cria campanha no histórico
+      test_phone,       // telefone do assinante que recebe o teste
     } = await req.json();
 
     if (!tenant_id || !title || !body) {
       return new Response(JSON.stringify({ success: false, error: "faltam campos" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const isTest = test === true;
+    const targetedIds: number[] = Array.isArray(subscription_ids)
+      ? subscription_ids.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n)).slice(0, 500)
+      : [];
+    const testDigits = digits(test_phone);
+    const targeted = targetedIds.length > 0 || (isTest && testDigits.length >= 8);
+    if (isTest && !targeted) {
+      return new Response(JSON.stringify({ success: false, error: "Informe o telefone de quem vai receber o teste" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
     const allowedAud = new Set(["all", "paid", "unpaid", "buyers"]);
     const aud = allowedAud.has(audience) ? audience : "all";
@@ -38,15 +50,31 @@ serve(async (req) => {
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     // 1) Load subscriptions (active)
-    const { data: baseSubs } = await supabase
+    // Modo direcionado (teste ou contatos escolhidos): só assinantes ATIVOS desta empresa, sem filtros de público/estado.
+    let subsQuery = supabase
       .from("push_subscriptions")
       .select("*")
       .eq("tenant_id", tenant_id)
       .eq("is_active", true);
+    if (targeted) {
+      subsQuery = targetedIds.length > 0
+        ? subsQuery.in("id", targetedIds)
+        : subsQuery.ilike("phone", `%${testDigits.slice(-10)}%`);
+    }
+    const { data: baseSubs } = await subsQuery;
     let subs = baseSubs || [];
+    if (isTest) subs = subs.slice(0, 10);
+    if (targeted && subs.length === 0) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: isTest
+          ? "Esse telefone não tem notificação ativa. Peça para a pessoa abrir o link de divulgação e ativar as notificações."
+          : "Os contatos escolhidos não têm notificação ativa.",
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     // 2) Optional state filter — needs customer lookup by phone
-    if (ufList.length > 0 || aud !== "all") {
+    if (!targeted && (ufList.length > 0 || aud !== "all")) {
       const subPhones = Array.from(new Set(subs.map((s) => digits(s.phone)).filter((p) => p.length >= 8)));
 
       // Map: phone -> customer row (for state) using tenant-scoped customers
@@ -121,14 +149,18 @@ serve(async (req) => {
     const { data: tenantRow } = await supabase.from("tenants").select("name, logo_url").eq("id", tenant_id).maybeSingle();
     const tenantName = (tenantRow as any)?.name?.trim() || "";
     const tenantIcon = (tenantRow as any)?.logo_url || undefined;
-    const displayTitle = tenantName && !String(title).toLowerCase().startsWith(tenantName.toLowerCase())
+    const baseTitle = tenantName && !String(title).toLowerCase().startsWith(tenantName.toLowerCase())
       ? `${tenantName} · ${title}`
       : title;
+    const displayTitle = isTest ? `[TESTE] ${baseTitle}` : baseTitle;
 
-    const { data: campaign } = await supabase.from("push_campaigns").insert({
-      tenant_id, title, body, image_url: image_url || null, click_url: click_url || null,
-      audience: aud, total_targets: subs.length,
-    }).select("id").single();
+    // Teste não entra no histórico de campanhas
+    const { data: campaign } = isTest
+      ? { data: null as any }
+      : await supabase.from("push_campaigns").insert({
+          tenant_id, title, body, image_url: image_url || null, click_url: click_url || null,
+          audience: aud, total_targets: subs.length,
+        }).select("id").single();
     const campaignId = campaign?.id;
 
     // 4) Dispatch
@@ -152,7 +184,7 @@ serve(async (req) => {
     if (campaignId) {
       await supabase.from("push_campaigns").update({ total_sent: sent, total_failed: failed }).eq("id", campaignId);
     }
-    return new Response(JSON.stringify({ success: true, campaign_id: campaignId, targets: subs.length, sent, failed }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ success: true, test: isTest, campaign_id: campaignId, targets: subs.length, sent, failed }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     return new Response(JSON.stringify({ success: false, error: e?.message }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }

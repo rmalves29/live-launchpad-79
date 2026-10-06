@@ -9,6 +9,8 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useTenant } from '@/hooks/useTenant';
@@ -150,6 +152,13 @@ function SubscribersTab({ tenantId }: { tenantId?: string }) {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [sendOpen, setSendOpen] = useState(false);
+  const [sTitle, setSTitle] = useState('');
+  const [sBody, setSBody] = useState('');
+  const [sImage, setSImage] = useState('');
+  const [sLink, setSLink] = useState('');
+  const [sending, setSending] = useState(false);
 
   const load = async () => {
     if (!tenantId) return;
@@ -208,6 +217,47 @@ function SubscribersTab({ tenantId }: { tenantId?: string }) {
     load();
   };
 
+  const toggleSel = (key: string) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+  const allFilteredSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.key));
+  const toggleAllFiltered = () => setSelected((prev) => {
+    const next = new Set(prev);
+    if (allFilteredSelected) filtered.forEach((r) => next.delete(r.key));
+    else filtered.forEach((r) => next.add(r.key));
+    return next;
+  });
+  // só os assinantes ativos entram no envio (celular e/ou computador de cada pessoa)
+  const selectedIds = useMemo(() => {
+    const ids: number[] = [];
+    for (const r of grouped) if (selected.has(r.key)) ids.push(...r.ids);
+    return ids;
+  }, [grouped, selected]);
+
+  const sendToSelected = async () => {
+    if (!tenantId) return;
+    if (!sTitle.trim() || !sBody.trim()) { toast({ title: 'Preencha título e mensagem', variant: 'destructive' }); return; }
+    setSending(true);
+    const { data, error } = await supabase.functions.invoke('push-send-campaign', {
+      body: {
+        tenant_id: tenantId, title: sTitle, body: sBody,
+        image_url: sImage || null, click_url: sLink || null,
+        subscription_ids: selectedIds,
+      },
+    });
+    setSending(false);
+    if (error || (data as any)?.success === false) {
+      toast({ title: 'Falha no envio', description: (data as any)?.error || error?.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Push enviado aos selecionados', description: `Alvos: ${(data as any).targets} • Enviados: ${(data as any).sent} • Falhas: ${(data as any).failed}` });
+    setSendOpen(false);
+    setSTitle(''); setSBody(''); setSImage(''); setSLink('');
+    setSelected(new Set());
+  };
+
   const YesNo = ({ v }: { v: boolean }) => v
     ? <Badge variant="outline" className="border-emerald-300 text-emerald-700">Sim</Badge>
     : <Badge variant="outline" className="text-muted-foreground">Não</Badge>;
@@ -219,6 +269,9 @@ function SubscribersTab({ tenantId }: { tenantId?: string }) {
         <div className="flex gap-2 items-center">
           <Input placeholder="Buscar por nome, telefone ou @instagram" value={q} onChange={(e) => setQ(e.target.value)} className="w-72" />
           <Button variant="outline" size="sm" onClick={load}><RefreshCw className="h-4 w-4" /></Button>
+          <Button size="sm" disabled={selected.size === 0} onClick={() => setSendOpen(true)} className="bg-[#4f46e5] hover:bg-[#4338ca]">
+            <Send className="h-4 w-4 mr-1.5" />Enviar push aos selecionados ({selected.size})
+          </Button>
         </div>
       </CardHeader>
       <CardContent>
@@ -226,12 +279,13 @@ function SubscribersTab({ tenantId }: { tenantId?: string }) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted-foreground border-b">
-                <tr><th className="py-2">Nome</th><th>Telefone</th><th>@Instagram</th><th className="text-center">PC</th><th className="text-center">Cell</th><th>Cadastro</th><th></th></tr>
+                <tr><th className="py-2 w-8"><Checkbox checked={allFilteredSelected} onCheckedChange={toggleAllFiltered} aria-label="Selecionar todos" /></th><th>Nome</th><th>Telefone</th><th>@Instagram</th><th className="text-center">PC</th><th className="text-center">Cell</th><th>Cadastro</th><th></th></tr>
               </thead>
               <tbody>
                 {filtered.map((r) => (
                   <tr key={r.key} className="border-b hover:bg-muted/30">
-                    <td className="py-2">{r.name || '—'}</td>
+                    <td className="py-2"><Checkbox checked={selected.has(r.key)} onCheckedChange={() => toggleSel(r.key)} aria-label={`Selecionar ${r.name || r.phone}`} /></td>
+                    <td>{r.name || '—'}</td>
                     <td>{r.phone || '—'}</td>
                     <td>{r.instagram_handle ? `@${r.instagram_handle}` : '—'}</td>
                     <td className="text-center"><YesNo v={r.pc} /></td>
@@ -240,12 +294,49 @@ function SubscribersTab({ tenantId }: { tenantId?: string }) {
                     <td><Button variant="ghost" size="sm" onClick={() => remove(r.ids)}><Trash2 className="h-4 w-4" /></Button></td>
                   </tr>
                 ))}
-                {filtered.length === 0 && <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">Nenhum assinante ainda.</td></tr>}
+                {filtered.length === 0 && <tr><td colSpan={8} className="py-6 text-center text-muted-foreground">Nenhum assinante ainda.</td></tr>}
               </tbody>
             </table>
           </div>
         )}
       </CardContent>
+
+      <Dialog open={sendOpen} onOpenChange={setSendOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Enviar push aos selecionados</DialogTitle>
+            <DialogDescription>
+              {selected.size} contato(s) selecionado(s). O push vai para o celular e/ou computador de cada um que estiver com a notificação ativa.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Título</Label>
+              <Input value={sTitle} onChange={(e) => setSTitle(e.target.value)} placeholder="Ex: 🔥 Novidade!" maxLength={100} />
+            </div>
+            <div>
+              <Label className="text-xs">Mensagem</Label>
+              <Textarea value={sBody} onChange={(e) => setSBody(e.target.value)} rows={3} maxLength={300} placeholder="O que você quer avisar?" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Imagem (URL) — opcional</Label>
+                <Input value={sImage} onChange={(e) => setSImage(e.target.value)} />
+              </div>
+              <div>
+                <Label className="text-xs">Link ao clicar — opcional</Label>
+                <Input value={sLink} onChange={(e) => setSLink(e.target.value)} />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSendOpen(false)}>Cancelar</Button>
+            <Button onClick={sendToSelected} disabled={sending} className="bg-[#4f46e5] hover:bg-[#4338ca]">
+              <Send className="h-4 w-4 mr-1.5" />{sending ? 'Enviando…' : 'Enviar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
@@ -340,6 +431,8 @@ function CampaignTab({ tenantId }: { tenantId?: string }) {
   const [dateTo, setDateTo] = useState('');
   const [states, setStates] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
+  const [testPhone, setTestPhone] = useState('');
+  const [testing, setTesting] = useState(false);
   const [campaigns, setCampaigns] = useState<any[]>([]);
 
   const toggleState = (uf: string) => {
@@ -375,6 +468,26 @@ function CampaignTab({ tenantId }: { tenantId?: string }) {
     toast({ title: 'Campanha enviada', description: `Alvos: ${(data as any).targets} • Enviados: ${(data as any).sent} • Falhas: ${(data as any).failed}` });
     setTitle(''); setBody(''); setImageUrl(''); setClickUrl('');
     loadCampaigns();
+  };
+
+  const sendTest = async () => {
+    if (!tenantId) return;
+    if (!title.trim() || !body.trim()) { toast({ title: 'Preencha título e mensagem para o teste', variant: 'destructive' }); return; }
+    if (testPhone.replace(/\D/g, '').length < 8) { toast({ title: 'Informe o telefone de quem vai receber o teste', variant: 'destructive' }); return; }
+    setTesting(true);
+    const { data, error } = await supabase.functions.invoke('push-send-campaign', {
+      body: {
+        tenant_id: tenantId, title, body,
+        image_url: imageUrl || null, click_url: clickUrl || null,
+        test: true, test_phone: testPhone,
+      },
+    });
+    setTesting(false);
+    if (error || (data as any)?.success === false) {
+      toast({ title: 'Teste não enviado', description: (data as any)?.error || error?.message, variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Teste enviado', description: `Enviados: ${(data as any).sent} • Falhas: ${(data as any).failed}. Não entra no histórico de campanhas.` });
   };
 
   return (
@@ -452,6 +565,18 @@ function CampaignTab({ tenantId }: { tenantId?: string }) {
             </div>
             <div className="text-[11px] text-muted-foreground mt-1.5">
               {states.length === 0 ? 'Nenhum estado selecionado — envia para todas as regiões.' : `Enviando apenas para: ${states.join(', ')}`}
+            </div>
+          </div>
+          <div className="rounded-md border border-dashed border-slate-300 bg-slate-50/60 p-3 space-y-2">
+            <Label className="text-xs">Enviar teste (só para um telefone — não dispara a campanha)</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input value={testPhone} onChange={(e) => setTestPhone(e.target.value)} placeholder="Telefone com DDD, ex: 16991234567" className="w-64" inputMode="tel" />
+              <Button type="button" variant="outline" onClick={sendTest} disabled={testing}>
+                <Send className="h-4 w-4 mr-2" />{testing ? 'Enviando teste…' : 'Enviar teste'}
+              </Button>
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              A pessoa precisa ter ativado as notificações pelo link de divulgação. O teste usa o título e a mensagem acima e chega com "[TESTE]" no título.
             </div>
           </div>
           <Button onClick={send} disabled={sending} className="bg-[#4f46e5] hover:bg-[#4338ca]">
