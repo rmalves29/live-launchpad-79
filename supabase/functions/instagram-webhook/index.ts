@@ -396,6 +396,13 @@ Deno.serve(async (req) => {
 
         console.log(`[${timestamp}] [instagram-webhook] Customer resolved: phone=${customerPhone}, name=${customerName}, registered=${!!customerData}`);
 
+        // Cliente bloqueado não pode receber itens em nenhum canal (inclui comentário de live)
+        if (customerData?.is_blocked) {
+          console.warn(`[${timestamp}] [instagram-webhook] Cliente BLOQUEADO (@${buyerUsername}, ${customerData.phone}): comentário ignorado, nenhum pedido criado`);
+          await releaseReservedStock('blocked_customer');
+          continue;
+        }
+
         let { data: cart } = await supabase
           .from('carts')
           .select('*')
@@ -1048,6 +1055,7 @@ interface ResolvedCustomer {
   city?: string | null;
   state?: string | null;
   complement?: string | null;
+  is_blocked?: boolean | null;
 }
 
 async function resolveCustomerByInstagram(
@@ -1062,7 +1070,7 @@ async function resolveCustomerByInstagram(
 
   const { data: customer, error } = await supabase
     .from('customers')
-    .select('name, phone, cep, street, number, neighborhood, city, state, complement')
+    .select('name, phone, cep, street, number, neighborhood, city, state, complement, is_blocked')
     .eq('tenant_id', tenantId)
     .ilike('instagram', cleanUsername)
     .maybeSingle();

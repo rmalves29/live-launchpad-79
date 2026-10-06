@@ -73,15 +73,41 @@ Deno.serve(async (req) => {
   }
 });
 
+// Chave de comparação de telefone: DDD + últimos 8 dígitos (ignora 55 e o 9º dígito)
+function phoneKey(p: string | null | undefined): string {
+  let d = String(p || '').replace(/\D/g, '');
+  if (d.length >= 12 && d.startsWith('55')) d = d.slice(2);
+  return d.length >= 10 ? d.slice(0, 2) + d.slice(-8) : d;
+}
+
+async function isBlockedCustomer(supabase: any, tenant_id: string, phone: string | null | undefined): Promise<boolean> {
+  if (!phone || String(phone).startsWith('@')) return false;
+  const key = phoneKey(phone);
+  if (key.length < 10) return false;
+  const { data } = await supabase.from('customers').select('phone').eq('tenant_id', tenant_id).eq('is_blocked', true);
+  return (data || []).some((c: any) => phoneKey(c.phone) === key);
+}
+
 async function processOne(supabase: any, tenant_id: string, product_id: number) {
-  // Próxima da fila
-  const { data: next } = await supabase
-    .from('product_waitlist')
-    .select('*')
-    .eq('tenant_id', tenant_id).eq('product_id', product_id)
-    .eq('status', 'waiting')
-    .order('created_at', { ascending: true })
-    .limit(1).maybeSingle();
+  // Próxima da fila (pula e remove da fila quem foi bloqueado depois de entrar)
+  let next: any = null;
+  for (let i = 0; i < 25; i++) {
+    const { data: cand } = await supabase
+      .from('product_waitlist')
+      .select('*')
+      .eq('tenant_id', tenant_id).eq('product_id', product_id)
+      .eq('status', 'waiting')
+      .order('created_at', { ascending: true })
+      .limit(1).maybeSingle();
+    if (!cand) break;
+    if (await isBlockedCustomer(supabase, tenant_id, cand.customer_phone)) {
+      console.warn(`[waitlist-process-next] Cliente bloqueado na fila (${cand.customer_phone}) - removido, sem criar pedido`);
+      await supabase.from('product_waitlist').update({ status: 'expired' }).eq('id', cand.id);
+      continue;
+    }
+    next = cand;
+    break;
+  }
   if (!next) return { tenant_id, product_id, skipped: 'no-waiting' };
 
   // Produto + estoque atual

@@ -1359,6 +1359,7 @@ serve(async (req) => {
 
     // Process each product code
     const results = [];
+    let blockedNoticeSent = false; // aviso de bloqueio: no máximo 1 por mensagem recebida
     for (const entry of productEntries) {
       try {
       const code = entry.code;
@@ -1485,6 +1486,112 @@ serve(async (req) => {
 
       console.log(`[zapi-webhook] Found product: ${product.name} (${product.code}) - R$ ${product.price} - Estoque: ${product.stock}`);
 
+      // CLIENTE BLOQUEADO: checado ANTES do estoque (senão o bloqueado recebia 'esgotado'/fila de espera)
+      // Find or create customer
+      let customer = await findOrCreateCustomer(supabase, tenantId, normalizedPhone, payload.senderName || '');
+
+      // ===== BLOCKED CUSTOMER CHECK =====
+      // Check if this customer is blocked BEFORE processing any cart/order logic
+      if (customer?.is_blocked) {
+        console.log(`[zapi-webhook] 🚫 BLOCKED customer ${normalizedPhone} tried to order ${codeUpper} in tenant ${tenantId}`);
+        
+        // Send blocked customer message (uma vez por mensagem recebida, mesmo com vários códigos)
+        const shouldSendBlockedNotice = !blockedNoticeSent;
+        blockedNoticeSent = true;
+        try {
+          const { data: whatsappConfig } = await supabase
+            .from('integration_whatsapp')
+            .select('zapi_instance_id, zapi_token, zapi_client_token, is_active, provider, uazapi_url, uazapi_token')
+            .eq('tenant_id', tenantId)
+            .eq('is_active', true)
+            .maybeSingle();
+
+          // Try to get custom template from whatsapp_templates
+          const { data: blockedTemplate } = await supabase
+            .from('whatsapp_templates')
+            .select('content, is_active')
+            .eq('tenant_id', tenantId)
+            .eq('type', 'BLOCKED_CUSTOMER')
+            .maybeSingle();
+
+          if (!shouldSendBlockedNotice) {
+            console.log(`[zapi-webhook] Aviso de bloqueio já enviado nesta mensagem; ignorando ${codeUpper}`);
+          } else if (blockedTemplate && blockedTemplate.is_active === false) {
+            console.log(`[zapi-webhook] SKIPPED: template BLOCKED_CUSTOMER está desativado para o tenant ${tenantId}`);
+          } else if (whatsappConfig?.provider === 'uazapi' && whatsappConfig?.uazapi_url && whatsappConfig?.uazapi_token) {
+            // Tenant em UazAPI: envia pelo mesmo provedor do resto do sistema
+            const defaultBlockedMsgUaz = 'Olá! Identificamos uma restrição em seu cadastro que impede a realização de novos pedidos no momento. ⛔\n\nPara entender melhor o motivo ou solicitar uma reavaliação, por favor, entre em contato diretamente com o suporte da loja.';
+            const blockedMessageUaz = addMessageVariation(blockedTemplate?.content || defaultBlockedMsgUaz);
+            const phoneForUaz = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
+            const uazResp = await fetch(`${String(whatsappConfig.uazapi_url).replace(/\/$/, '')}/send/text`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', token: whatsappConfig.uazapi_token },
+              body: JSON.stringify({ number: phoneForUaz, text: blockedMessageUaz }),
+            });
+            console.log(`[zapi-webhook] 📤 Aviso de bloqueio (UazAPI) para ${phoneForUaz}: HTTP ${uazResp.status}`);
+            await supabase.from('whatsapp_messages').insert({
+              tenant_id: tenantId,
+              phone: normalizedPhone,
+              message: `[BLOQUEADO] ${blockedMessageUaz}`,
+              type: 'outgoing',
+              product_name: product.name,
+              sent_at: new Date().toISOString(),
+            });
+          } else if (whatsappConfig?.zapi_instance_id && whatsappConfig?.zapi_token) {
+            const defaultBlockedMsg = 'Olá! Identificamos uma restrição em seu cadastro que impede a realização de novos pedidos no momento. ⛔\n\nPara entender melhor o motivo ou solicitar uma reavaliação, por favor, entre em contato diretamente com o suporte da loja.';
+            const blockedMessage = addMessageVariation(blockedTemplate?.content || defaultBlockedMsg);
+            
+            const phoneForZapi = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
+            
+            await simulateTyping(
+              whatsappConfig.zapi_instance_id,
+              whatsappConfig.zapi_token,
+              whatsappConfig.zapi_client_token,
+              phoneForZapi
+            );
+            
+            const delayMs = await antiBlockDelay(1000, 4000);
+            logAntiBlockDelay('zapi-webhook (blocked-customer)', delayMs);
+            
+            const zapiUrl = `https://api.z-api.io/instances/${whatsappConfig.zapi_instance_id}/token/${whatsappConfig.zapi_token}/send-text`;
+            
+            await fetch(zapiUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Client-Token': whatsappConfig.zapi_client_token || ''
+              },
+              body: JSON.stringify({
+                phone: phoneForZapi,
+                message: blockedMessage
+              })
+            });
+            
+            console.log(`[zapi-webhook] 📤 Blocked customer message sent to ${phoneForZapi}`);
+            
+            await supabase.from('whatsapp_messages').insert({
+              tenant_id: tenantId,
+              phone: normalizedPhone,
+              message: `[BLOQUEADO] ${blockedMessage}`,
+              type: 'outgoing',
+              product_name: product.name,
+              sent_at: new Date().toISOString(),
+            });
+          }
+        } catch (msgError) {
+          console.error(`[zapi-webhook] Error sending blocked customer message:`, msgError);
+        }
+        
+        results.push({ 
+          code: codeUpper, 
+          success: false, 
+          error: 'customer_blocked',
+          product_name: product.name,
+          customer_phone: normalizedPhone
+        });
+        continue;
+      }
+
       // Re-read stock fresh from DB to avoid stale data from race conditions
       const { data: freshProduct } = await supabase
         .from('products')
@@ -1594,88 +1701,6 @@ serve(async (req) => {
           product_name: product.name,
           current_stock: product.stock,
           message_sent: true
-        });
-        continue;
-      }
-
-      // Find or create customer
-      let customer = await findOrCreateCustomer(supabase, tenantId, normalizedPhone, payload.senderName || '');
-
-      // ===== BLOCKED CUSTOMER CHECK =====
-      // Check if this customer is blocked BEFORE processing any cart/order logic
-      if (customer?.is_blocked) {
-        console.log(`[zapi-webhook] 🚫 BLOCKED customer ${normalizedPhone} tried to order ${codeUpper} in tenant ${tenantId}`);
-        
-        // Send blocked customer message
-        try {
-          const { data: whatsappConfig } = await supabase
-            .from('integration_whatsapp')
-            .select('zapi_instance_id, zapi_token, zapi_client_token, is_active')
-            .eq('tenant_id', tenantId)
-            .eq('is_active', true)
-            .maybeSingle();
-
-          // Try to get custom template from whatsapp_templates
-          const { data: blockedTemplate } = await supabase
-            .from('whatsapp_templates')
-            .select('content, is_active')
-            .eq('tenant_id', tenantId)
-            .eq('type', 'BLOCKED_CUSTOMER')
-            .maybeSingle();
-
-          if (blockedTemplate && blockedTemplate.is_active === false) {
-            console.log(`[zapi-webhook] SKIPPED: template BLOCKED_CUSTOMER está desativado para o tenant ${tenantId}`);
-          } else if (whatsappConfig?.zapi_instance_id && whatsappConfig?.zapi_token) {
-            const defaultBlockedMsg = 'Olá! Identificamos uma restrição em seu cadastro que impede a realização de novos pedidos no momento. ⛔\n\nPara entender melhor o motivo ou solicitar uma reavaliação, por favor, entre em contato diretamente com o suporte da loja.';
-            const blockedMessage = addMessageVariation(blockedTemplate?.content || defaultBlockedMsg);
-            
-            const phoneForZapi = normalizedPhone.startsWith('55') ? normalizedPhone : `55${normalizedPhone}`;
-            
-            await simulateTyping(
-              whatsappConfig.zapi_instance_id,
-              whatsappConfig.zapi_token,
-              whatsappConfig.zapi_client_token,
-              phoneForZapi
-            );
-            
-            const delayMs = await antiBlockDelay(1000, 4000);
-            logAntiBlockDelay('zapi-webhook (blocked-customer)', delayMs);
-            
-            const zapiUrl = `https://api.z-api.io/instances/${whatsappConfig.zapi_instance_id}/token/${whatsappConfig.zapi_token}/send-text`;
-            
-            await fetch(zapiUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Client-Token': whatsappConfig.zapi_client_token || ''
-              },
-              body: JSON.stringify({
-                phone: phoneForZapi,
-                message: blockedMessage
-              })
-            });
-            
-            console.log(`[zapi-webhook] 📤 Blocked customer message sent to ${phoneForZapi}`);
-            
-            await supabase.from('whatsapp_messages').insert({
-              tenant_id: tenantId,
-              phone: normalizedPhone,
-              message: `[BLOQUEADO] ${blockedMessage}`,
-              type: 'outgoing',
-              product_name: product.name,
-              sent_at: new Date().toISOString(),
-            });
-          }
-        } catch (msgError) {
-          console.error(`[zapi-webhook] Error sending blocked customer message:`, msgError);
-        }
-        
-        results.push({ 
-          code: codeUpper, 
-          success: false, 
-          error: 'customer_blocked',
-          product_name: product.name,
-          customer_phone: normalizedPhone
         });
         continue;
       }
