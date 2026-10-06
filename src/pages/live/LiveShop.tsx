@@ -47,6 +47,9 @@ function readCatalogCache(slug: string): { meta: LiveCatalogMeta; items: LivePro
     if (!raw) return null;
     const c = JSON.parse(raw);
     if (!c?.ts || Date.now() - c.ts > CATALOG_TTL_MS) return null;
+    // vitrine guardada de uma loja que já passou da hora de sair do ar: não mostra
+    const closeAt = c?.meta?.settings?.close_at ? Date.parse(c.meta.settings.close_at) : NaN;
+    if (Number.isFinite(closeAt) && Date.now() >= closeAt) return null;
     return c;
   } catch {
     return null;

@@ -69,7 +69,7 @@ async function getTenant(slugRaw: unknown) {
   if (!slug) return null;
   const { data } = await sb
     .from('tenants')
-    .select('id, name, slug, logo_url, primary_color, is_active, live_reserve_mode, live_cart_minutes, live_shop_enabled')
+    .select('id, name, slug, logo_url, primary_color, is_active, live_reserve_mode, live_cart_minutes, live_shop_enabled, live_shop_close_at')
     .eq('slug', slug)
     .eq('is_active', true)
     .maybeSingle();
@@ -196,7 +196,7 @@ async function loadCatalogExtras(tenant: any) {
       } : null,
     };
     extras.tenant = { id: tenant.id, name: tenant.name, slug: tenant.slug, logo_url: tenant.logo_url, primary_color: tenant.primary_color };
-    extras.settings = { reserve_mode: tenant.live_reserve_mode, cart_minutes: tenant.live_cart_minutes };
+    extras.settings = { reserve_mode: tenant.live_reserve_mode, cart_minutes: tenant.live_cart_minutes, close_at: tenant.live_shop_close_at || null };
     extras.now = nowIso;
   return extras;
 }
@@ -542,7 +542,10 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({} as any));
     const tenant = await getTenant(body.tenant_slug);
     if (!tenant) return fail('Loja não encontrada.', 'TENANT_NOT_FOUND');
-    if (tenant.live_shop_enabled === false) return fail('A vitrine da live está indisponível no momento.', 'LIVE_DISABLED');
+    // Desativada à mão OU a hora agendada para sair do ar já passou (vale na hora, sem depender do cron)
+    const closeAtMs = tenant.live_shop_close_at ? Date.parse(tenant.live_shop_close_at) : NaN;
+    const closedBySchedule = Number.isFinite(closeAtMs) && Date.now() >= closeAtMs;
+    if (tenant.live_shop_enabled === false || closedBySchedule) return fail('A vitrine da live está indisponível no momento.', 'LIVE_DISABLED');
     switch (body.action) {
       case 'catalog': return await catalog(body, tenant);
       case 'recognize': return await recognize(tenant, clientIp(req));

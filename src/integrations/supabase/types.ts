@@ -4608,6 +4608,7 @@ export type Database = {
           is_blocked: boolean | null
           live_cart_minutes: number
           live_reserve_mode: string
+          live_shop_close_at: string | null
           live_shop_enabled: boolean
           logo_url: string | null
           max_orders: number | null
@@ -4659,6 +4660,7 @@ export type Database = {
           is_blocked?: boolean | null
           live_cart_minutes?: number
           live_reserve_mode?: string
+          live_shop_close_at?: string | null
           live_shop_enabled?: boolean
           logo_url?: string | null
           max_orders?: number | null
@@ -4710,6 +4712,7 @@ export type Database = {
           is_blocked?: boolean | null
           live_cart_minutes?: number
           live_reserve_mode?: string
+          live_shop_close_at?: string | null
           live_shop_enabled?: boolean
           logo_url?: string | null
           max_orders?: number | null

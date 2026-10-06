@@ -45,7 +45,7 @@ export interface LiveCatalogMeta {
   gifts: Array<{ name: string; minimum_purchase_amount: number }>;
   shipping_hints: Array<{ name: string; price: number; free_min: number | null; pickup: boolean }>;
   payment: { pix: boolean; card: boolean; pix_discount_percent: number; requires_email?: boolean; card_installments?: { max: number; max_without_interest: number; min_value: number } | null };
-  settings: { reserve_mode: 'order' | 'cart'; cart_minutes: number };
+  settings: { reserve_mode: 'order' | 'cart'; cart_minutes: number; close_at?: string | null };
 }
 
 export interface LiveCustomer {

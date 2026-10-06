@@ -9,18 +9,39 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
 import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
 import { ShippingOptionsManager } from '@/components/ShippingOptionsManager';
 import WhatsAppMessages from './WhatsAppMessages';
-import { AlertTriangle, CheckCircle2, Copy, ExternalLink, Store } from 'lucide-react';
+import { AlertTriangle, CalendarClock, CheckCircle2, Copy, ExternalLink, Store } from 'lucide-react';
 import { liveShopUrl } from '@/lib/live-shop';
 
 
+// Agendamento em horário de Brasília (UTC-3, sem horário de verão)
+const BR_TZ = 'America/Sao_Paulo';
+function isoToInput(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const p = new Intl.DateTimeFormat('sv-SE', { timeZone: BR_TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(d);
+  return p.replace(' ', 'T');
+}
+function inputToIso(v: string): string | null {
+  if (!v) return null;
+  const d = new Date(`${v}:00-03:00`);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+function brLabel(iso: string | null): string {
+  if (!iso) return '';
+  return new Intl.DateTimeFormat('pt-BR', { timeZone: BR_TZ, dateStyle: 'full', timeStyle: 'short' }).format(new Date(iso));
+}
+
 type Settings = {
   live_shop_enabled: boolean;
+  live_shop_close_at: string | null;
   live_reserve_mode: 'order' | 'cart';
   live_cart_minutes: number;
 };
@@ -43,10 +64,12 @@ export default function LojaDaLive() {
   const previewingTenant = (() => { try { return !!localStorage.getItem('previewTenantId'); } catch { return false; } })();
   const isSuperAdmin = profile?.role === 'super_admin' && !previewingTenant;
 
-  const [settings, setSettings] = useState<Settings>({ live_shop_enabled: true, live_reserve_mode: 'order', live_cart_minutes: 15 });
-  const [draft, setDraft] = useState<Settings>({ live_shop_enabled: true, live_reserve_mode: 'order', live_cart_minutes: 15 });
+  const [settings, setSettings] = useState<Settings>({ live_shop_enabled: true, live_shop_close_at: null, live_reserve_mode: 'order', live_cart_minutes: 15 });
+  const [draft, setDraft] = useState<Settings>({ live_shop_enabled: true, live_shop_close_at: null, live_reserve_mode: 'order', live_cart_minutes: 15 });
   const [ready, setReady] = useState<Readiness | null>(null);
   const [saving, setSaving] = useState(false);
+  const [confirmOff, setConfirmOff] = useState(false);       // confirmar desativação agora
+  const [confirmSchedule, setConfirmSchedule] = useState(false); // confirmar o agendamento ao salvar
   const [allTenants, setAllTenants] = useState<Array<{ id: string; name: string; slug: string; live_shop_enabled: boolean }>>([]);
 
   const slug = tenant?.slug || '';
@@ -55,7 +78,7 @@ export default function LojaDaLive() {
   const load = useCallback(async () => {
     if (!tenant?.id) return;
     const [t, prods, coupons, gifts, ship] = await Promise.all([
-      supabase.from('tenants').select('live_shop_enabled, live_reserve_mode, live_cart_minutes').eq('id', tenant.id).maybeSingle(),
+      supabase.from('tenants').select('live_shop_enabled, live_shop_close_at, live_reserve_mode, live_cart_minutes').eq('id', tenant.id).maybeSingle(),
       supabase.from('products').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('is_active', true).in('sale_type', ['LIVE', 'AMBOS']).gt('stock', 0),
       supabase.from('coupons').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true),
       supabase.from('gifts').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true),
@@ -65,11 +88,13 @@ export default function LojaDaLive() {
     if (d) {
       setSettings({
         live_shop_enabled: d.live_shop_enabled !== false,
+        live_shop_close_at: d.live_shop_close_at || null,
         live_reserve_mode: d.live_reserve_mode === 'cart' ? 'cart' : 'order',
         live_cart_minutes: Math.max(1, Number(d.live_cart_minutes) || 15),
       });
       setDraft({
         live_shop_enabled: d.live_shop_enabled !== false,
+        live_shop_close_at: d.live_shop_close_at || null,
         live_reserve_mode: d.live_reserve_mode === 'cart' ? 'cart' : 'order',
         live_cart_minutes: Math.max(1, Number(d.live_cart_minutes) || 15),
       });
@@ -86,6 +111,35 @@ export default function LojaDaLive() {
 
   const dirty = JSON.stringify(settings) !== JSON.stringify(draft);
 
+  // Clique em "Salvar": se há agendamento novo, pede confirmação antes
+  function requestSave() {
+    if (draft.live_shop_close_at && draft.live_shop_close_at !== settings.live_shop_close_at) {
+      if (new Date(draft.live_shop_close_at).getTime() <= Date.now()) {
+        toast({ title: 'Data de desativação já passou', description: 'Escolha um dia e horário no futuro, ou limpe o agendamento.', variant: 'destructive' });
+        return;
+      }
+      setConfirmSchedule(true);
+      return;
+    }
+    save();
+  }
+
+  // Desativar agora (depois da confirmação): vale na hora, sem precisar clicar em Salvar
+  async function deactivateNow() {
+    if (!tenant?.id) return;
+    setSaving(true);
+    const { error } = await supabase.from('tenants').update({ live_shop_enabled: false, live_shop_close_at: null } as any).eq('id', tenant.id);
+    setSaving(false);
+    setConfirmOff(false);
+    if (error) {
+      toast({ title: 'Erro ao desativar', description: error.message, variant: 'destructive' });
+      return;
+    }
+    setSettings((s) => ({ ...s, live_shop_enabled: false, live_shop_close_at: null }));
+    setDraft((d) => ({ ...d, live_shop_enabled: false, live_shop_close_at: null }));
+    toast({ title: 'Loja da Live desativada', description: 'O link já mostra "indisponível" para os clientes.' });
+  }
+
   async function save() {
     if (!tenant?.id) return;
     setSaving(true);
@@ -93,16 +147,17 @@ export default function LojaDaLive() {
     const next = { ...draft, live_cart_minutes: minutes };
     const { error } = await supabase
       .from('tenants')
-      .update({ live_shop_enabled: next.live_shop_enabled, live_reserve_mode: next.live_reserve_mode, live_cart_minutes: next.live_cart_minutes } as any)
+      .update({ live_shop_enabled: next.live_shop_enabled, live_shop_close_at: next.live_shop_enabled ? next.live_shop_close_at : null, live_reserve_mode: next.live_reserve_mode, live_cart_minutes: next.live_cart_minutes } as any)
       .eq('id', tenant.id);
     setSaving(false);
     if (error) {
       toast({ title: 'Erro ao salvar', description: error.message, variant: 'destructive' });
       return;
     }
-    setSettings(next);
-    setDraft(next);
-    toast({ title: 'Configuração salva' });
+    const saved = { ...next, live_shop_close_at: next.live_shop_enabled ? next.live_shop_close_at : null };
+    setSettings(saved);
+    setDraft(saved);
+    toast({ title: 'Configuração salva', description: saved.live_shop_close_at ? `A página será desativada em ${brLabel(saved.live_shop_close_at)}.` : undefined });
   }
 
   async function toggleTenant(id: string, enabled: boolean) {
@@ -161,7 +216,7 @@ export default function LojaDaLive() {
               </div>
               <div className="flex items-center gap-2">
                 <Label htmlFor="live-enabled" className="text-sm">{draft.live_shop_enabled ? 'Ativada' : 'Desativada'}</Label>
-                <Switch id="live-enabled" checked={draft.live_shop_enabled} disabled={saving} onCheckedChange={(v) => setDraft((d) => ({ ...d, live_shop_enabled: v }))} />
+                <Switch id="live-enabled" checked={draft.live_shop_enabled} disabled={saving} onCheckedChange={(v) => { if (v) setDraft((d) => ({ ...d, live_shop_enabled: true })); else setConfirmOff(true); }} />
               </div>
             </div>
             {link ? (
@@ -176,6 +231,48 @@ export default function LojaDaLive() {
               <p className="text-sm text-destructive">Esta empresa ainda não tem um endereço (slug) definido.</p>
             )}
             {!draft.live_shop_enabled && <Badge variant="secondary">O link mostra "indisponível" enquanto estiver desativada</Badge>}
+          </Card>
+
+          <Card className="p-4 space-y-3">
+            <div className="flex items-start gap-2">
+              <CalendarClock className="h-5 w-5 mt-0.5 text-primary shrink-0" />
+              <div>
+                <h3 className="font-semibold">Desativar automaticamente</h3>
+                <p className="text-xs text-muted-foreground">
+                  Escolha o dia e a hora em que a página sai do ar sozinha (horário de Brasília). Por exemplo, deixe aberta até a meia-noite do dia da live: depois disso o link mostra "indisponível" e o cliente não consegue mais fechar pedido.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="space-y-1">
+                <Label htmlFor="close-at" className="text-xs">Desativar em</Label>
+                <Input id="close-at" type="datetime-local" className="w-56" disabled={saving || !draft.live_shop_enabled}
+                  value={isoToInput(draft.live_shop_close_at)}
+                  onChange={(e) => setDraft((d) => ({ ...d, live_shop_close_at: inputToIso(e.target.value) }))} />
+              </div>
+              <Button type="button" size="sm" variant="outline" disabled={saving || !draft.live_shop_enabled}
+                onClick={() => {
+                  // meia-noite que vira o dia de hoje (00:00 de amanhã, Brasília)
+                  const now = new Date();
+                  const ymd = new Intl.DateTimeFormat('sv-SE', { timeZone: BR_TZ }).format(new Date(now.getTime() + 24 * 3600 * 1000));
+                  setDraft((d) => ({ ...d, live_shop_close_at: inputToIso(`${ymd}T00:00`) }));
+                }}>
+                Hoje à meia-noite
+              </Button>
+              {draft.live_shop_close_at && (
+                <Button type="button" size="sm" variant="ghost" disabled={saving} onClick={() => setDraft((d) => ({ ...d, live_shop_close_at: null }))}>
+                  Limpar agendamento
+                </Button>
+              )}
+            </div>
+            {!draft.live_shop_enabled && <p className="text-xs text-muted-foreground">A página está desativada. Ative-a para poder agendar o horário de desativação.</p>}
+            {draft.live_shop_enabled && draft.live_shop_close_at && (
+              <p className="text-xs text-amber-700">
+                {draft.live_shop_close_at === settings.live_shop_close_at
+                  ? <>Agendado: a página será desativada em <b>{brLabel(draft.live_shop_close_at)}</b>.</>
+                  : <>Novo horário (ainda não salvo): <b>{brLabel(draft.live_shop_close_at)}</b>. Clique em "Salvar alterações" para confirmar.</>}
+              </p>
+            )}
           </Card>
 
           <Card className="p-4 space-y-2">
@@ -223,7 +320,7 @@ export default function LojaDaLive() {
           <div className="sticky bottom-0 -mx-1 flex items-center justify-end gap-2 border-t bg-background/95 px-1 py-3 backdrop-blur">
             {dirty && <span className="text-xs text-amber-700 mr-auto">Alterações não salvas</span>}
             <Button variant="outline" disabled={!dirty || saving} onClick={() => setDraft(settings)}>Descartar</Button>
-            <Button disabled={!dirty || saving} onClick={save}>{saving ? 'Salvando…' : 'Salvar alterações'}</Button>
+            <Button disabled={!dirty || saving} onClick={requestSave}>{saving ? 'Salvando…' : 'Salvar alterações'}</Button>
           </div>
         </TabsContent>
 
@@ -264,6 +361,36 @@ export default function LojaDaLive() {
           </TabsContent>
         )}
       </Tabs>
+
+      <AlertDialog open={confirmOff} onOpenChange={setConfirmOff}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Desativar a Loja da Live agora?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O link passa a mostrar "indisponível" na hora e os clientes não conseguem mais fechar pedidos. Pedidos já feitos continuam valendo. Qualquer agendamento de desativação será apagado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Manter ativada</AlertDialogCancel>
+            <AlertDialogAction onClick={deactivateNow} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Sim, desativar agora</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmSchedule} onOpenChange={setConfirmSchedule}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar a desativação programada?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A página ficará aberta até <b>{brLabel(draft.live_shop_close_at)}</b> (horário de Brasília). Nesse momento ela sai do ar sozinha e os clientes deixam de conseguir fechar pedidos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Voltar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setConfirmSchedule(false); save(); }}>Confirmar e salvar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
