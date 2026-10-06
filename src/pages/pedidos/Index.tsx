@@ -187,10 +187,12 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
         
         // 1. Buscar pedidos com filtros aplicados (paginado — sem limite fixo que
         //    corta os resultados e distorce as somas/contagens exibidas na tela)
-        const buildOrdersQuery = () => {
+        // withCount: a contagem exata só funciona se pedida no PRIMEIRO select (from().select(cols, { count })).
+        // Chamar .select('*', { count }) de novo depois dos filtros ignora o count, e a tela parava nos 1.000 primeiros.
+        const buildOrdersQuery = (withCount = false) => {
           let query = supabaseTenant
             .from('orders')
-            .select('*')
+            .select('*', withCount ? { count: 'exact' } : undefined)
             .order('created_at', { ascending: false });
 
           if (filterPaid === 'paid') {
@@ -241,14 +243,30 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
         // (em vez de esperar uma página terminar para pedir a próxima).
         const ORDERS_PAGE_SIZE = 1000;
         const ORDERS_HARD_CAP = 50000; // segurança contra loop infinito
-        const { data: firstOrdersPage, count: ordersTotalCount, error: firstOrdersError } = await buildOrdersQuery()
-          .select('*', { count: 'exact' })
+        const { data: firstOrdersPage, count: ordersTotalCount, error: firstOrdersError } = await buildOrdersQuery(true)
           .range(0, ORDERS_PAGE_SIZE - 1);
         if (firstOrdersError) throw firstOrdersError;
 
+        // Sem contagem não dá para saber se há mais páginas: nunca mostrar totais cortados em silêncio.
+        if (ordersTotalCount == null && (firstOrdersPage?.length ?? 0) >= ORDERS_PAGE_SIZE) {
+          console.warn('[pedidos] contagem exata indisponível; carregando páginas até esgotar');
+        }
+
         let orderData: any[] = firstOrdersPage || [];
+        if (ordersTotalCount == null && orderData.length >= ORDERS_PAGE_SIZE) {
+          let off = ORDERS_PAGE_SIZE;
+          while (off < ORDERS_HARD_CAP) {
+            const { data: page, error: pageError } = await buildOrdersQuery().range(off, off + ORDERS_PAGE_SIZE - 1);
+            if (pageError) throw pageError;
+            if (!page || page.length === 0) break;
+            orderData = orderData.concat(page);
+            if (page.length < ORDERS_PAGE_SIZE) break;
+            off += ORDERS_PAGE_SIZE;
+          }
+        }
         const ordersTotal = Math.min(ordersTotalCount ?? orderData.length, ORDERS_HARD_CAP);
-        if (ordersTotal > ORDERS_PAGE_SIZE) {
+        // Páginas restantes em paralelo só quando a contagem exata existe (sem ela, o plano B acima já paginou)
+        if (ordersTotalCount != null && ordersTotal > ORDERS_PAGE_SIZE) {
           const remainingOffsets: number[] = [];
           for (let off = ORDERS_PAGE_SIZE; off < ordersTotal; off += ORDERS_PAGE_SIZE) {
             remainingOffsets.push(off);
