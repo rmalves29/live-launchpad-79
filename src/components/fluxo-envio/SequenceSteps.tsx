@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { checkVideoNoteFile } from '@/lib/video-note-check';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -84,6 +85,16 @@ export default function SequenceSteps({ steps, onChange, tenantId }: Props) {
   const patch = (key: string, p: Partial<SeqStep>) => onChange(steps.map((s) => (s.key === key ? { ...s, ...p } : s)));
 
   const upload = async (step: SeqStep, file: File) => {
+    // Vídeo redondo: bloqueia arquivo pesado ou em HEVC antes de subir (senão chega em branco no WhatsApp)
+    if (step.contentType === 'video_note') {
+      const problem = await checkVideoNoteFile(file);
+      if (problem) {
+        toast({ title: 'Vídeo não serve para vídeo redondo', description: problem, variant: 'destructive' });
+        const input = fileRefs.current[step.key];
+        if (input) input.value = '';
+        return;
+      }
+    }
     patch(step.key, { uploading: true, mediaName: file.name });
     try {
       const ext = file.name.split('.').pop() || 'bin';

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { checkVideoNoteFile } from '@/lib/video-note-check';
 import { useTenant } from '@/hooks/useTenant';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -119,6 +120,16 @@ export default function MessageComposer() {
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !tenant) return;
+
+    // Vídeo redondo: bloqueia arquivo pesado ou em HEVC antes de subir (senão chega em branco no WhatsApp)
+    if (contentType === 'video_note') {
+      const problem = await checkVideoNoteFile(file);
+      if (problem) {
+        toast({ title: 'Vídeo não serve para vídeo redondo', description: problem, variant: 'destructive' });
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+    }
 
     setMediaFile(file);
     setUploading(true);
