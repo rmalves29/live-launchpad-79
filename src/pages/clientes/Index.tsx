@@ -720,9 +720,10 @@ const Clientes = () => {
       'Criado em'
     ];
 
+    // Clientes sem nome (ou com qualquer campo vazio) não podem quebrar a exportação: tudo vira texto
     const rows = filteredCustomers.map(customer => [
-      customer.name,
-      formatPhone(customer.phone),
+      customer.name || '',
+      formatPhone(customer.phone || ''),
       customer.email || '',
       customer.instagram || '',
       customer.cpf || '',
@@ -733,16 +734,16 @@ const Clientes = () => {
       customer.neighborhood || '',
       customer.city || '',
       customer.state || '',
-      customer.total_orders.toString(),
-      customer.paid_orders_count.toString(),
-      formatCurrency(customer.total_spent),
+      String(customer.total_orders ?? 0),
+      String(customer.paid_orders_count ?? 0),
+      formatCurrency(Number(customer.total_spent) || 0),
       customer.last_order_date ? formatDate(customer.last_order_date) : '',
-      formatDate(customer.created_at)
+      customer.created_at ? formatDate(customer.created_at) : ''
     ]);
 
     const csvContent = [
       headers.join(';'),
-      ...rows.map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(';'))
+      ...rows.map(row => row.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(';'))
     ].join('\n');
 
     const BOM = '\uFEFF';
