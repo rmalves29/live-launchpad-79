@@ -14,6 +14,7 @@ import {
   sendDocument as uazSendDocument,
   sendAudio as uazSendAudio,
   sendVideo as uazSendVideo,
+  sendVideoNote as uazSendVideoNote,
   sendButton as uazSendButton,
   sendPoll as uazSendPoll,
   sendLinkMessage as uazSendLinkMessage,
@@ -94,6 +95,12 @@ export async function sendVideo(instanceName: string, phone: string, videoUrl: s
   const cfg = parseCfg(instanceName);
   if (!cfg) return noCfgError("sendVideo");
   return uazSendVideo(cfg, phone, videoUrl, caption);
+}
+
+export async function sendVideoNote(instanceName: string, phone: string, videoUrl: string) {
+  const cfg = parseCfg(instanceName);
+  if (!cfg) return noCfgError("sendVideoNote");
+  return uazSendVideoNote(cfg, phone, videoUrl);
 }
 
 export async function sendDocument(instanceName: string, phone: string, documentUrl: string, fileName = "documento.pdf") {

@@ -79,7 +79,7 @@ async function loadBase64(mediaUrl: string): Promise<string> {
 export async function sendMedia(
   cfg: UazapiConfig,
   phone: string,
-  type: "image" | "video" | "audio" | "document" | "ptt",
+  type: "image" | "video" | "audio" | "document" | "ptt" | "ptv",
   fileUrlOrBase64: string,
   caption?: string,
   docName?: string,
@@ -114,6 +114,11 @@ export async function sendAudio(cfg: UazapiConfig, phone: string, audioUrl: stri
 
 export async function sendVideo(cfg: UazapiConfig, phone: string, videoUrl: string, caption?: string) {
   return sendMedia(cfg, phone, "video", videoUrl, caption);
+}
+
+// Vídeo redondo ("recado de vídeo" / PTV). Não aceita legenda: o texto vai em mensagem separada.
+export async function sendVideoNote(cfg: UazapiConfig, phone: string, videoUrl: string) {
+  return sendMedia(cfg, phone, "ptv", videoUrl);
 }
 
 export async function sendButton(

@@ -6,6 +6,7 @@ import {
   sendImageByUrl as evoSendImageByUrl,
   sendAudio as evoSendAudio,
   sendVideo as evoSendVideo,
+  sendVideoNote as evoSendVideoNote,
   sendPoll as evoSendPoll,
   getGroupParticipants as evoGetGroupParticipants,
 } from "../_shared/evolution-api.ts";
@@ -181,7 +182,12 @@ async function sendToGroupEvolution(
       case "video":
         return await evoSendVideo(instanceName, evoJid, mediaUrl || "", contentText);
       case "video_note": {
-        const res = await evoSendVideo(instanceName, evoJid, mediaUrl || "");
+        // Vídeo redondo de verdade (ptv). Se o WhatsApp recusar o formato, cai para vídeo comum para a mensagem não se perder.
+        let res = await evoSendVideoNote(instanceName, evoJid, mediaUrl || "");
+        if (!res.success) {
+          console.warn(`[fe-send-message] ptv falhou para ${evoJid} (${res.error}); enviando como vídeo comum`);
+          res = await evoSendVideo(instanceName, evoJid, mediaUrl || "");
+        }
         if (contentText && contentText.trim()) {
           await new Promise((r) => setTimeout(r, 800));
           await evoSendText(instanceName, evoJid, contentText);
