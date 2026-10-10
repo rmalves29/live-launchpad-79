@@ -51,6 +51,7 @@ export default function MessageComposer() {
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
   const [mentionAll, setMentionAll] = useState(false);
   const [groupSort, setGroupSort] = useState<'name' | 'last_sent'>('name');
   const [groupSearch, setGroupSearch] = useState('');
@@ -232,6 +233,8 @@ export default function MessageComposer() {
 
   const handleSend = async () => {
     if (!tenant) return;
+    // Trava imediata contra clique duplo (o state 'sending' demora um render para refletir)
+    if (sendingRef.current) return;
     if (contentType === 'text' && !contentText.trim()) {
       toast({ title: 'Escreva uma mensagem', variant: 'destructive' });
       return;
@@ -278,6 +281,7 @@ export default function MessageComposer() {
       return;
     }
 
+    sendingRef.current = true;
     setSending(true);
 
     try {
@@ -387,6 +391,7 @@ export default function MessageComposer() {
     } catch (err: any) {
       toast({ title: 'Erro ao enviar', description: err.message, variant: 'destructive' });
     }
+    sendingRef.current = false;
     setSending(false);
   };
 
