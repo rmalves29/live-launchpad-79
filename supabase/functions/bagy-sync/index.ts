@@ -408,7 +408,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ===================== SYNC PRODUCTS (Bagy → OrderZap) =====================
+    // ===================== SYNC PRODUCTS (Bagy → Cartzy) =====================
     if (action === "sync_products") {
       try {
         const bagyProducts = await fetchAllBagyProducts(token);

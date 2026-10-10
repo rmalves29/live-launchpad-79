@@ -1,6 +1,6 @@
 {
-  "name": "OrderZaps",
-  "short_name": "OrderZaps",
+  "name": "Cartzy",
+  "short_name": "Cartzy",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

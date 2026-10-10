@@ -22,7 +22,7 @@ export default function WhatsAppOfficialPage() {
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
             A integração com a <strong>API Oficial da Meta</strong> está disponível apenas para a empresa
-            <strong> OrderZap</strong>. As demais empresas utilizam o fluxo padrão via <strong>Z-API</strong>.
+            <strong> Cartzy</strong>. As demais empresas utilizam o fluxo padrão via <strong>Z-API</strong>.
           </AlertDescription>
         </Alert>
       )}

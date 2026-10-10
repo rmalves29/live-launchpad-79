@@ -162,8 +162,8 @@ Deno.serve(async (req) => {
       items: [
         {
           description: body.plan_name
-            ? `OrderZap ${body.plan_name}`
-            : `OrderZap ${body.plan_id === "enterprise" ? "Enterprise (anual)" : "Pro (semestral)"}`,
+            ? `Cartzy ${body.plan_name}`
+            : `Cartzy ${body.plan_id === "enterprise" ? "Enterprise (anual)" : "Pro (semestral)"}`,
           quantity: 1,
           pricing_scheme: { scheme_type: "unit", price: priceCents },
         },

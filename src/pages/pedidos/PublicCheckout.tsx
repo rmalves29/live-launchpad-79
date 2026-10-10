@@ -2406,7 +2406,7 @@ const PublicCheckout = () => {
         {/* Footer */}
         <div className="text-center pt-6 pb-4">
           <p className="text-sm text-muted-foreground/60">
-            Powered by <span className="font-semibold text-primary">OrderZap</span>
+            Powered by <span className="font-semibold text-primary">Cartzy</span>
           </p>
         </div>
       </div>

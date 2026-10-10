@@ -114,7 +114,7 @@ export default function AdminLinks() {
       <header className="mb-8">
         <h1 className="text-3xl font-bold text-[#111827]">Links do Sistema</h1>
         <p className="text-[#6b7280] mt-2">
-          Índice completo das rotas do OrderZap / Cartzy — descrição de cada página e nível de acesso.
+          Índice completo das rotas do Cartzy — descrição de cada página e nível de acesso.
         </p>
       </header>
 

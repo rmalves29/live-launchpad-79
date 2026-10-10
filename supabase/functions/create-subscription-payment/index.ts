@@ -60,8 +60,8 @@ serve(async (req) => {
       );
     }
 
-    // Usar integração de pagamento da OrderZap (fallback global)
-    // Aqui usamos o MP_ACCESS_TOKEN global configurado para a OrderZap
+    // Usar integração de pagamento do Cartzy (fallback global)
+    // Aqui usamos o MP_ACCESS_TOKEN global configurado para o Cartzy
     const mpAccessToken = Deno.env.get("MP_ACCESS_TOKEN");
 
     if (!mpAccessToken) {
@@ -78,7 +78,7 @@ serve(async (req) => {
     const webhookUrl = `${supabaseUrl}/functions/v1/subscription-webhook`;
 
     // URLs de retorno
-    const publicAppUrl = Deno.env.get("PUBLIC_APP_URL") || "https://app.orderzaps.com";
+    const publicAppUrl = Deno.env.get("PUBLIC_APP_URL") || "https://app.cartzy.com.br";
 
     const preferenceBody = {
       items: [
@@ -101,7 +101,7 @@ serve(async (req) => {
         pending: `${publicAppUrl}/mp/return?status=pending&type=subscription`,
       },
       auto_return: "approved",
-      statement_descriptor: "ORDERZAP",
+      statement_descriptor: "CARTZY",
     };
 
     console.log("[create-subscription-payment] Creating MP preference:", JSON.stringify(preferenceBody));

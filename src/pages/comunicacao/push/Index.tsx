@@ -89,7 +89,7 @@ export default function PushPage() {
 /* ================= Share Link ================= */
 function ShareLinkCard({ slug }: { slug: string }) {
   const { toast } = useToast();
-  const url = `https://app.orderzaps.com/t/${slug}/push`;
+  const url = `https://app.cartzy.com.br/t/${slug}/push`;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(url)}`;
 
   const copy = async () => {

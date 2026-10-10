@@ -88,7 +88,7 @@ export interface ShippingOption {
 }
 
 // Endereço público que o cliente usa (independe do domínio em que o lojista está logado).
-export const LIVE_SHOP_PUBLIC_BASE = 'https://app.orderzaps.com';
+export const LIVE_SHOP_PUBLIC_BASE = 'https://app.cartzy.com.br';
 export const liveShopUrl = (slug: string) => `${LIVE_SHOP_PUBLIC_BASE}/t/${slug}/live`;
 
 // ---------------------------------------------------------------- utilidades

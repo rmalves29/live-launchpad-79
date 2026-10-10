@@ -146,10 +146,10 @@ serve(async (req) => {
       `## ${kb.title} (${kb.category})\n${kb.content}`
     ).join("\n\n") || "Nenhum documento na base de conhecimento.";
 
-    const systemPrompt = `Você é um assistente de suporte ao cliente do OrderZap - Sistema de Gestão de Pedidos via WhatsApp.
+    const systemPrompt = `Você é um assistente de suporte ao cliente do Cartzy - Sistema de Gestão de Pedidos via WhatsApp.
 
 ## INFORMAÇÕES DA EMPRESA:
-- Nome: ${tenant?.company_name || tenant?.name || "OrderZap"}
+- Nome: ${tenant?.company_name || tenant?.name || "Cartzy"}
 - Telefone: ${tenant?.phone || "Não informado"}
 - Email: ${tenant?.email || "Não informado"}
 
@@ -159,7 +159,7 @@ ${knowledgeContext}
 ## SUAS FUNÇÕES:
 1. Responder dúvidas sobre o sistema usando a base de conhecimento acima
 2. Ajudar com problemas técnicos baseado nos documentos
-3. Orientar sobre funcionalidades do OrderZap
+3. Orientar sobre funcionalidades do Cartzy
 4. Ser educado, profissional e objetivo
 
 ## REGRAS IMPORTANTES:

@@ -310,7 +310,7 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
               <div>
                 <p className="font-medium">Exportar Pedidos Automaticamente</p>
                 <p className="text-sm text-muted-foreground">
-                  Ao marcar um pedido como pago no OrderZap, ele é enviado automaticamente para a Bagy
+                  Ao marcar um pedido como pago no Cartzy, ele é enviado automaticamente para a Bagy
                 </p>
               </div>
             </div>
@@ -354,7 +354,7 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
             <Info className="h-4 w-4" />
             <AlertDescription>
               O mapeamento de produtos é feito pelo <strong>código/SKU</strong>. Certifique-se de que
-              os códigos dos produtos no OrderZap correspondem aos SKUs (reference) na Bagy.
+              os códigos dos produtos no Cartzy correspondem aos SKUs (reference) na Bagy.
             </AlertDescription>
           </Alert>
         </CardContent>

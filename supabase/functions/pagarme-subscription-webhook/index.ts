@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { createHmac } from "node:crypto";
-import { notifyOrderZapAdmins } from "../_shared/admin-push-notify.ts";
+import { notifyCartzyAdmins } from "../_shared/admin-push-notify.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -143,17 +143,17 @@ Deno.serve(async (req) => {
         .update({ subscription_ends_at: extended.toISOString(), plan_type: planId })
         .eq("id", tenantId);
 
-      // Alerta admins OrderZap quando sai do trial ou muda de plano
+      // Alerta admins Cartzy quando sai do trial ou muda de plano
       const planLabel = planId === "enterprise" ? "Alto Volume" : planId === "pro" ? "Profissional" : "Essencial";
       if (previousPlan === "trial" || !previousPlan) {
-        notifyOrderZapAdmins({
+        notifyCartzyAdmins({
           title: '💸 Contratação Fluxo de Envio',
           body: `${(tenant as any)?.name || 'Empresa'} saiu do trial e contratou o plano ${planLabel}.`,
           url: '/empresas',
           tag: `fluxo-upgrade-${tenantId}`,
         }).catch((err) => console.error('[pagarme-webhook] notify admin failed:', err));
       } else if (previousPlan !== planId) {
-        notifyOrderZapAdmins({
+        notifyCartzyAdmins({
           title: '🔄 Mudança de plano',
           body: `${(tenant as any)?.name || 'Empresa'} mudou para o plano ${planLabel}.`,
           url: '/empresas',

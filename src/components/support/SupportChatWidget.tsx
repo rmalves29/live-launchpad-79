@@ -47,7 +47,7 @@ export function SupportChatWidget({ tenantId, customerPhone, customerName }: Sup
       setMessages([{
         id: 'welcome',
         role: 'assistant',
-        content: 'Olá! 👋 Sou o assistente virtual do OrderZap. Como posso ajudar você hoje?',
+        content: 'Olá! 👋 Sou o assistente virtual do Cartzy. Como posso ajudar você hoje?',
         timestamp: new Date()
       }]);
     }
@@ -343,7 +343,7 @@ export function SupportChatWidget({ tenantId, customerPhone, customerName }: Sup
               </Button>
             </div>
             <p className="text-xs text-muted-foreground mt-2 text-center">
-              Powered by OrderZap AI
+              Powered by Cartzy AI
             </p>
           </div>
         </div>

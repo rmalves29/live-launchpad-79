@@ -1,10 +1,10 @@
-// Envia push para os admins inscritos no tenant OrderZap.
+// Envia push para os admins inscritos no tenant Cartzy.
 // Usado para alertar sobre novos cadastros / upgrades de plano no Fluxo de Envio.
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendWebPush } from "./web-push.ts";
 
-export const ORDERZAP_TENANT_ID = "d5671cfb-9c42-4c44-8f94-0a19a39473d8";
+export const CARTZY_TENANT_ID = "d5671cfb-9c42-4c44-8f94-0a19a39473d8";
 
 export interface AdminNotifyArgs {
   title: string;
@@ -13,7 +13,7 @@ export interface AdminNotifyArgs {
   tag?: string;
 }
 
-export async function notifyOrderZapAdmins(args: AdminNotifyArgs): Promise<{ sent: number; failed: number }> {
+export async function notifyCartzyAdmins(args: AdminNotifyArgs): Promise<{ sent: number; failed: number }> {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -23,16 +23,16 @@ export async function notifyOrderZapAdmins(args: AdminNotifyArgs): Promise<{ sen
     const { data: subs } = await sb
       .from("push_subscriptions")
       .select("*")
-      .eq("tenant_id", ORDERZAP_TENANT_ID)
+      .eq("tenant_id", CARTZY_TENANT_ID)
       .eq("is_active", true);
 
     if (!subs || subs.length === 0) return { sent: 0, failed: 0 };
 
     let sent = 0;
     let failed = 0;
-    // Fetch OrderZap branding (logo as icon)
-    const { data: tenantRow } = await sb.from("tenants").select("name, logo_url").eq("id", ORDERZAP_TENANT_ID).maybeSingle();
-    const tenantName = (tenantRow as any)?.name?.trim() || "OrderZap";
+    // Fetch Cartzy branding (logo as icon)
+    const { data: tenantRow } = await sb.from("tenants").select("name, logo_url").eq("id", CARTZY_TENANT_ID).maybeSingle();
+    const tenantName = (tenantRow as any)?.name?.trim() || "Cartzy";
     const tenantIcon = (tenantRow as any)?.logo_url || undefined;
     const displayTitle = args.title.toLowerCase().startsWith(tenantName.toLowerCase())
       ? args.title

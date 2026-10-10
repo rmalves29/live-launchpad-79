@@ -51,7 +51,7 @@ serve(async (req) => {
 
     console.log(`[olist-export-products] Iniciando exportação para tenant: ${tenant_id}`);
 
-    // Buscar produtos do OrderZap
+    // Buscar produtos do Cartzy
     const { data: products, error: prodError } = await supabase
       .from('products')
       .select('*')

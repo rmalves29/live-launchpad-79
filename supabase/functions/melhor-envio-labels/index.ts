@@ -842,7 +842,7 @@ async function cancelShipment(
     order: {
       id: shipmentId,
       reason_id: 2, // Motivo padrão para cancelamento via API
-      description: "Cancelamento solicitado pelo sistema OrderZaps"
+      description: "Cancelamento solicitado pelo sistema Cartzy"
     }
   };
 

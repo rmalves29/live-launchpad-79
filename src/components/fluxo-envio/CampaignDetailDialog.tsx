@@ -347,7 +347,7 @@ export default function CampaignDetailDialog({
 
   const getCampaignLink = () => {
     if (!tenant) return '';
-    return `https://app.orderzaps.com/fluxo/${tenant.slug}/${campaignSlug}`;
+    return `https://app.cartzy.com.br/fluxo/${tenant.slug}/${campaignSlug}`;
   };
 
   const copyLink = () => {

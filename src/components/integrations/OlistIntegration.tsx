@@ -706,11 +706,11 @@ export default function OlistIntegration({ tenantId }: OlistIntegrationProps) {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Importar do Olist → OrderZap */}
+            {/* Importar do Olist → Cartzy */}
             <div>
               <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
                 <Download className="h-4 w-4" />
-                Importar do Olist → OrderZap
+                Importar do Olist → Cartzy
               </h4>
               <div className="flex flex-wrap gap-3">
                 {modules.sync_orders && (
@@ -748,11 +748,11 @@ export default function OlistIntegration({ tenantId }: OlistIntegrationProps) {
 
             <Separator />
 
-            {/* Exportar do OrderZap → Olist */}
+            {/* Exportar do Cartzy → Olist */}
             <div>
               <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
                 <Upload className="h-4 w-4" />
-                Exportar do OrderZap → Olist
+                Exportar do Cartzy → Olist
               </h4>
               <div className="flex flex-wrap gap-3">
                 {modules.sync_orders && (

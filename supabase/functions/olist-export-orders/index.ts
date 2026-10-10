@@ -264,8 +264,8 @@ serve(async (req) => {
           idContato: contactId,
           data: order.event_date || new Date().toISOString().split('T')[0],
           situacao: order.is_paid ? 3 : 8, // 3 = Aprovado, 8 = Em aberto
-          observacoes: `[OrderZap] Pedido #${order.id}`,
-          observacoesInternas: `Exportado do OrderZap em ${new Date().toISOString()}`,
+          observacoes: `[Cartzy] Pedido #${order.id}`,
+          observacoesInternas: `Exportado do Cartzy em ${new Date().toISOString()}`,
           itens: itensOlist,
         };
 

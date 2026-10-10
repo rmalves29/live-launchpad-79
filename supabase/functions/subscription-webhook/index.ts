@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { notifyOrderZapAdmins } from "../_shared/admin-push-notify.ts";
+import { notifyCartzyAdmins } from "../_shared/admin-push-notify.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -51,7 +51,7 @@ serve(async (req) => {
 
     const { type, data, topic, resource } = body;
 
-    // Usar token global da OrderZap
+    // Usar token global do Cartzy
     const mpAccessToken = Deno.env.get("MP_ACCESS_TOKEN");
 
     if (!mpAccessToken) {
@@ -184,14 +184,14 @@ async function processSubscriptionPayment(
     }
 
     if (previousPlan === "trial") {
-      notifyOrderZapAdmins({
+      notifyCartzyAdmins({
         title: '💸 Contratação Fluxo de Envio',
         body: `${(prevTenant as any)?.name || 'Empresa'} saiu do trial e contratou o plano ${planName}.`,
         url: '/empresas',
         tag: `fluxo-upgrade-${tenantId}`,
       }).catch((err) => console.error('[subscription-webhook] notify admin failed:', err));
     } else if (previousPlan && previousPlan !== planId) {
-      notifyOrderZapAdmins({
+      notifyCartzyAdmins({
         title: '🔄 Mudança de plano',
         body: `${(prevTenant as any)?.name || 'Empresa'} mudou para o plano ${planName}.`,
         url: '/empresas',

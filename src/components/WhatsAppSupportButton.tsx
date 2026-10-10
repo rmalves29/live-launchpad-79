@@ -71,7 +71,7 @@ export function WhatsAppSupportButton() {
         setMessages([{
           id: 'welcome',
           role: 'assistant',
-          content: 'Olá! 👋 Sou o assistente virtual do OrderZap. Como posso ajudar você hoje?',
+          content: 'Olá! 👋 Sou o assistente virtual do Cartzy. Como posso ajudar você hoje?',
           timestamp: new Date()
         }]);
       }
@@ -315,7 +315,7 @@ export function WhatsAppSupportButton() {
             ← Voltar ao menu
           </Button>
           <p className="text-xs text-muted-foreground">
-            Powered by OrderZap AI
+            Powered by Cartzy AI
           </p>
         </div>
       </div>

@@ -17,7 +17,7 @@ async function initSentry() {
   Sentry.init({
   dsn: SENTRY_DSN,
   environment: import.meta.env.MODE,
-  release: `orderzap-v2@${import.meta.env.VITE_APP_VERSION || "dev"}`,
+  release: `cartzy-v2@${import.meta.env.VITE_APP_VERSION || "dev"}`,
   integrations: [
     Sentry.browserTracingIntegration(),
     Sentry.reactRouterV6BrowserTracingIntegration({

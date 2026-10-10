@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const APP_URL = Deno.env.get('PUBLIC_APP_URL') || 'https://app.orderzaps.com';
+const APP_URL = Deno.env.get('PUBLIC_APP_URL') || 'https://app.cartzy.com.br';
 const REDIRECT_URI = 'https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/whatsapp-official-auth-callback';
 
 function redirect(qs: string) {

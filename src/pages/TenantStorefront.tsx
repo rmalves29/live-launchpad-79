@@ -291,8 +291,8 @@ export default function TenantStorefront() {
     );
   }
 
-  const storeUrl = `https://app.orderzaps.com/t/${tenant.slug}`;
-  const checkoutUrl = `https://app.orderzaps.com/t/${tenant.slug}/checkout`;
+  const storeUrl = `https://app.cartzy.com.br/t/${tenant.slug}`;
+  const checkoutUrl = `https://app.cartzy.com.br/t/${tenant.slug}/checkout`;
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: tenant.primary_color || '#f8fafc' }}>
@@ -543,7 +543,7 @@ export default function TenantStorefront() {
 
           <div className="border-t pt-4 text-center text-sm text-gray-600">
             <p>© {new Date().getFullYear()} {tenant.name}. Todos os direitos reservados.</p>
-            <p className="mt-1">Powered by <strong>OrderZap</strong> - Sistema Multi-Tenant</p>
+            <p className="mt-1">Powered by <strong>Cartzy</strong> - Sistema Multi-Tenant</p>
           </div>
         </div>
       </footer>

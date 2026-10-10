@@ -339,14 +339,14 @@ async function ensureBlingNoStockServiceProduct(accessToken: string): Promise<nu
   }
 
   const payload = {
-    nome: 'OrderZap - item sem baixa de estoque',
+    nome: 'Cartzy - item sem baixa de estoque',
     codigo: serviceCode,
     tipo: 'S',
     situacao: 'A',
     formato: 'S',
     preco: 0,
     unidade: 'UN',
-    descricaoCurta: 'Item técnico usado pelo OrderZap para reenviar vendas sem movimentar estoque.',
+    descricaoCurta: 'Item técnico usado pelo Cartzy para reenviar vendas sem movimentar estoque.',
   };
 
   const { response, text } = await blingFetchWithRetry(
@@ -1687,7 +1687,7 @@ async function sendOrderToBling(
     }
   }
 
-  // Vincular à loja OrderZap sempre que configurado.
+  // Vincular à loja Cartzy sempre que configurado.
   // Mesmo em skipStock (usa item "serviço" sem estoque), o pedido precisa aparecer na loja correta.
   if (storeId) {
     blingOrder.loja = { id: storeId };

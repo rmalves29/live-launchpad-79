@@ -3,7 +3,7 @@
 // e já configura a integração WhatsApp/uazapi (mesma base dos tenants Cartzy).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { createInstance, setWebhook } from '../_shared/uazapi-api.ts';
-import { notifyOrderZapAdmins } from '../_shared/admin-push-notify.ts';
+import { notifyCartzyAdmins } from '../_shared/admin-push-notify.ts';
 
 
 
@@ -159,8 +159,8 @@ Deno.serve(async (req) => {
       console.error('[landing-fluxo-signup] whatsapp provisioning failed:', (e as Error).message);
     }
 
-    // Alerta admins OrderZap sobre novo cadastro Fluxo de Envio
-    notifyOrderZapAdmins({
+    // Alerta admins Cartzy sobre novo cadastro Fluxo de Envio
+    notifyCartzyAdmins({
       title: '🎉 Nova empresa no Fluxo de Envio',
       body: `${company} acabou de criar uma conta (Trial 3 dias).`,
       url: '/empresas',

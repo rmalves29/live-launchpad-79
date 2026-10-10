@@ -151,7 +151,7 @@ const Checkout = () => {
 
   // Estado para slug do tenant (para link do checkout público)
   const [tenantSlug, setTenantSlug] = useState<string | null>(null);
-  const [publicBaseUrl, setPublicBaseUrl] = useState<string>('https://app.orderzaps.com');
+  const [publicBaseUrl, setPublicBaseUrl] = useState<string>('https://app.cartzy.com.br');
 
   // Hook para verificar pedidos pagos recentes (juntar pedidos)
   const { hasPaidOrderWithinPeriod, mergeableOrders, orderMergeDays } = useOrderMerge(
@@ -181,7 +181,7 @@ const Checkout = () => {
             .select('public_base_url')
             .single();
           
-          const baseUrl = settingsData?.public_base_url || 'https://app.orderzaps.com';
+          const baseUrl = settingsData?.public_base_url || 'https://app.cartzy.com.br';
           const publicCheckoutUrl = `${baseUrl}/t/${slug}/checkout`;
           
           // Redirecionar para o checkout público

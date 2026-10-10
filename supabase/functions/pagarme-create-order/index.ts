@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
       items: [
         {
           amount: priceCents,
-          description: `OrderZap ${body.plan_name} - ${body.plan_days} dias`,
+          description: `Cartzy ${body.plan_name} - ${body.plan_days} dias`,
           quantity: 1,
           code: body.plan_id,
         },
@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
           payment_method: "credit_card",
           credit_card: {
             installments: 1,
-            statement_descriptor: "ORDERZAP",
+            statement_descriptor: "CARTZY",
             card: {
               number: body.card.number.replace(/\D/g, ""),
               holder_name: body.card.holder_name,

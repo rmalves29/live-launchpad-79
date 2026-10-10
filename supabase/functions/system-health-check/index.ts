@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
 
       if (waTenant?.tenant_id) {
         for (const alert of toSend) {
-          const body = `🩺 *Saúde do Sistema — OrderZaps*\n\n${alert.title}\n\n_Regra: ${alert.key}_\n_${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}_`;
+          const body = `🩺 *Saúde do Sistema — Cartzy*\n\n${alert.title}\n\n_Regra: ${alert.key}_\n_${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}_`;
           try {
             await supabase.functions.invoke("zapi-send-message", {
               body: { tenant_id: waTenant.tenant_id, phone: alertPhone, message: body },

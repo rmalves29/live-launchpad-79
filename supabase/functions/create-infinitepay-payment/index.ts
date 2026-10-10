@@ -75,7 +75,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const requestOrigin = req.headers.get("origin") || req.headers.get("referer")?.replace(/\/[^/]*$/, "") || "";
-  const appBaseUrl = Deno.env.get("PUBLIC_APP_URL") || requestOrigin || "https://app.orderzaps.com";
+  const appBaseUrl = Deno.env.get("PUBLIC_APP_URL") || requestOrigin || "https://app.cartzy.com.br";
 
   try {
     const body = (await req.json()) as Body;

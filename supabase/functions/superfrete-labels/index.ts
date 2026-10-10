@@ -409,7 +409,7 @@ async function cancelOrder(
     body: JSON.stringify({
       order: { id: sfId },
       reason_id: "2",
-      description: "Cancelado via OrderZap",
+      description: "Cancelado via Cartzy",
     }),
   });
   const text = await resp.text();

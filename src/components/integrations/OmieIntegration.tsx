@@ -621,7 +621,7 @@ export default function OmieIntegration({ tenantId }: OmieIntegrationProps) {
             <Badge variant="secondary">{activeModulesCount} ativo(s)</Badge>
           </CardTitle>
           <CardDescription>
-            Selecione quais módulos deseja sincronizar entre o OrderZap e o Omie
+            Selecione quais módulos deseja sincronizar entre o Cartzy e o Omie
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

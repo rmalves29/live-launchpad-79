@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { Zap, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
+import cartzyLogo from "@/assets/cartzy-logo.png";
 
 export default function ResetPassword() {
   const [password, setPassword] = useState("");
@@ -84,16 +85,9 @@ export default function ResetPassword() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <main className="w-full max-w-md p-4">
-        <div className="flex justify-center mb-6">
-          <div className="flex items-center gap-3 bg-gradient-to-r from-primary/10 to-accent/10 px-5 py-3 rounded-2xl border border-primary/20">
-            <div className="p-2 bg-gradient-to-br from-primary to-accent rounded-xl shadow-lg">
-              <Zap className="h-7 w-7 text-white" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-3xl font-display font-bold text-gradient-primary">OrderZap</span>
-              <span className="text-xs text-muted-foreground -mt-1">Redefinir Senha</span>
-            </div>
-          </div>
+        <div className="flex flex-col items-center mb-6">
+          <img src={cartzyLogo} alt="Cartzy" className="h-20 w-auto" />
+          <span className="text-xs text-muted-foreground mt-1">Redefinir Senha</span>
         </div>
 
         {error && (

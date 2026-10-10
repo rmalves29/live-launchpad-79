@@ -29,7 +29,7 @@ export const usePageTitle = (customTitle?: string) => {
   const location = useLocation();
 
   useEffect(() => {
-    const baseTitle = 'OrderZap';
+    const baseTitle = 'Cartzy';
     
     if (customTitle) {
       document.title = `${baseTitle} - ${customTitle}`;

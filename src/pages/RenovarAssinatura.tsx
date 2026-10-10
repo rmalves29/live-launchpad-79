@@ -117,7 +117,7 @@ export default function RenovarAssinatura() {
   };
 
   useEffect(() => {
-    document.title = "Renovar Assinatura - OrderZap";
+    document.title = "Renovar Assinatura - Cartzy";
   }, []);
 
   useEffect(() => {

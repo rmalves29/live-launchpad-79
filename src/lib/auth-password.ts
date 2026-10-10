@@ -167,7 +167,7 @@ async function signInWithXHR(email: string, password: string): Promise<Resilient
       "Content-Type": "application/json",
       "apikey": SUPABASE_ANON_KEY,
       "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-      "X-Client-Info": "orderzap-auth-xhr-fallback",
+      "X-Client-Info": "cartzy-auth-xhr-fallback",
     };
     const body = JSON.stringify({ email, password });
     
@@ -239,7 +239,7 @@ async function signInWithDirectFetch(email: string, password: string): Promise<R
         "Content-Type": "application/json",
         apikey: SUPABASE_ANON_KEY,
         Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        "X-Client-Info": "orderzap-auth-fallback",
+        "X-Client-Info": "cartzy-auth-fallback",
       },
       body: JSON.stringify({ email, password }),
     });

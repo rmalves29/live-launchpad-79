@@ -180,7 +180,7 @@ export default function CampaignsManager() {
 
   const getCampaignLink = (slug: string) => {
     if (!tenant) return '';
-    return `https://app.orderzaps.com/fluxo/${tenant.slug}/${slug}`;
+    return `https://app.cartzy.com.br/fluxo/${tenant.slug}/${slug}`;
   };
 
   const copyLink = (slug: string) => {

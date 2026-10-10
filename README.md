@@ -1,4 +1,4 @@
-# 📱 OrderZap v2 - Sistema Multi-Tenant com WhatsApp
+# 📱 Cartzy v2 - Sistema Multi-Tenant com WhatsApp
 
 Sistema completo de gestão de pedidos com integração WhatsApp gratuita (Baileys).
 
@@ -524,7 +524,7 @@ MIT License - veja `LICENSE` para detalhes.
 
 ## ⭐ CRÉDITOS
 
-**Desenvolvido por:** OrderZap Team  
+**Desenvolvido por:** Cartzy Team  
 **Powered by:**
 - [Baileys](https://github.com/WhiskeySockets/Baileys) - WhatsApp library
 - [Next.js](https://nextjs.org/) - React framework

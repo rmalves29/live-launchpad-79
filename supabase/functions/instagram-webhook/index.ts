@@ -593,8 +593,8 @@ Deno.serve(async (req) => {
           if (isOwnerCommenting) {
             console.log(`[${timestamp}] [instagram-webhook] Skipping DM: comment is from account owner (@${buyerUsername})`);
           } else {
-            const checkoutUrl = `https://app.orderzaps.com/t/${tenantSlug}/checkout`;
-            const cadastroUrl = `https://app.orderzaps.com/t/${tenantSlug}/cadastro-instagram`;
+            const checkoutUrl = `https://app.cartzy.com.br/t/${tenantSlug}/checkout`;
+            const cadastroUrl = `https://app.cartzy.com.br/t/${tenantSlug}/cadastro-instagram`;
             const priceFormatted = `R$ ${product.price.toFixed(2).replace('.', ',')}`;
             const totalFormatted = `R$ ${total.toFixed(2).replace('.', ',')}`;
             const qtyLabel = requestedQty > 1 ? ` (${requestedQty}x)` : '';

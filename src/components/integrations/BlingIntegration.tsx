@@ -756,7 +756,7 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
                   <Input
                     id="manual_store_name"
                     type="text"
-                    placeholder="Ex: OrderZap"
+                    placeholder="Ex: Cartzy"
                     value={manualStoreName}
                     onChange={(e) => setManualStoreName(e.target.value)}
                   />

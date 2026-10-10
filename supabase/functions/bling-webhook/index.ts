@@ -230,8 +230,8 @@ serve(async (req) => {
             shouldFetchTracking = true;
             console.log(`[bling-webhook] Order ${localOrder.id} marked as Atendido - will fetch tracking`);
             break;
-          case 12: // Cancelado no Bling - IGNORADO por política do OrderZap
-            console.log(`[bling-webhook] Order ${localOrder.id} foi cancelado no Bling, mas cancelamento via Bling está DESABILITADO no OrderZap. Nenhuma alteração aplicada.`);
+          case 12: // Cancelado no Bling - IGNORADO por política do Cartzy
+            console.log(`[bling-webhook] Order ${localOrder.id} foi cancelado no Bling, mas cancelamento via Bling está DESABILITADO no Cartzy. Nenhuma alteração aplicada.`);
             break;
           default:
             console.log(`[bling-webhook] Order ${localOrder.id} status: ${situacaoId}`);
