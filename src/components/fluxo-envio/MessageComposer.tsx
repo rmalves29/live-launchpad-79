@@ -51,6 +51,7 @@ export default function MessageComposer() {
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
   const [mentionAll, setMentionAll] = useState(false);
   const [groupSort, setGroupSort] = useState<'name' | 'last_sent'>('name');
   const [groupSearch, setGroupSearch] = useState('');
@@ -390,6 +391,7 @@ export default function MessageComposer() {
     } catch (err: any) {
       toast({ title: 'Erro ao enviar', description: err.message, variant: 'destructive' });
     }
+    sendingRef.current = false;
     setSending(false);
   };
 
