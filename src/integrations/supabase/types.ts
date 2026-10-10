@@ -14,6 +14,78 @@ export type Database = {
   }
   public: {
     Tables: {
+      agenda_config: {
+        Row: {
+          chave: string
+          updated_at: string
+          valor: string | null
+        }
+        Insert: {
+          chave: string
+          updated_at?: string
+          valor?: string | null
+        }
+        Update: {
+          chave?: string
+          updated_at?: string
+          valor?: string | null
+        }
+        Relationships: []
+      }
+      agenda_reunioes: {
+        Row: {
+          cliente_email: string | null
+          cliente_envio_status: string | null
+          cliente_nome: string
+          cliente_req_id: number | null
+          cliente_telefone: string
+          created_at: string
+          duracao_min: number
+          google_event_id: string | null
+          id: string
+          inicio: string
+          lembrete_enviado_em: string | null
+          meet_link: string | null
+          observacoes: string | null
+          status: string
+          titulo: string
+        }
+        Insert: {
+          cliente_email?: string | null
+          cliente_envio_status?: string | null
+          cliente_nome: string
+          cliente_req_id?: number | null
+          cliente_telefone: string
+          created_at?: string
+          duracao_min?: number
+          google_event_id?: string | null
+          id?: string
+          inicio: string
+          lembrete_enviado_em?: string | null
+          meet_link?: string | null
+          observacoes?: string | null
+          status?: string
+          titulo?: string
+        }
+        Update: {
+          cliente_email?: string | null
+          cliente_envio_status?: string | null
+          cliente_nome?: string
+          cliente_req_id?: number | null
+          cliente_telefone?: string
+          created_at?: string
+          duracao_min?: number
+          google_event_id?: string | null
+          id?: string
+          inicio?: string
+          lembrete_enviado_em?: string | null
+          meet_link?: string | null
+          observacoes?: string | null
+          status?: string
+          titulo?: string
+        }
+        Relationships: []
+      }
       announcement_dismissals: {
         Row: {
           announcement_id: string
@@ -480,9 +552,11 @@ export type Database = {
       coupons: {
         Row: {
           apply_to_promotional: boolean
+          auto_apply: boolean
           channel: string
           code: string
           created_at: string
+          description: string | null
           discount_type: string
           discount_value: number
           expires_at: string | null
@@ -499,9 +573,11 @@ export type Database = {
         }
         Insert: {
           apply_to_promotional?: boolean
+          auto_apply?: boolean
           channel?: string
           code: string
           created_at?: string
+          description?: string | null
           discount_type: string
           discount_value: number
           expires_at?: string | null
@@ -518,9 +594,11 @@ export type Database = {
         }
         Update: {
           apply_to_promotional?: boolean
+          auto_apply?: boolean
           channel?: string
           code?: string
           created_at?: string
+          description?: string | null
           discount_type?: string
           discount_value?: number
           expires_at?: string | null
@@ -2848,6 +2926,48 @@ export type Database = {
           },
           {
             foreignKeyName: "live_cart_reservations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      live_shop_whatsapp: {
+        Row: {
+          content: string | null
+          id: string
+          is_active: boolean
+          message_type: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          content?: string | null
+          id?: string
+          is_active?: boolean
+          message_type: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          content?: string | null
+          id?: string
+          is_active?: boolean
+          message_type?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_shop_whatsapp_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "live_shop_whatsapp_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants_public"
@@ -5419,6 +5539,12 @@ export type Database = {
         Args: { p_from: string; p_to: string; p_ttl_seconds?: number }
         Returns: Json
       }
+      agenda_cfg: { Args: { k: string }; Returns: string }
+      agenda_msg_cliente: {
+        Args: { r: Database["public"]["Tables"]["agenda_reunioes"]["Row"] }
+        Returns: string
+      }
+      agenda_whats_rafael: { Args: { msg: string }; Returns: undefined }
       bytea_to_text: { Args: { data: string }; Returns: string }
       cached_report_cleanup: { Args: never; Returns: number }
       cached_report_get: {
@@ -5449,6 +5575,7 @@ export type Database = {
         Args: { cutoff: string; max_runid: number; min_runid: number }
         Returns: number
       }
+      enviar_lembretes_reuniao: { Args: never; Returns: number }
       get_active_shipping_provider: {
         Args: { tenant_uuid: string }
         Returns: {
@@ -5707,6 +5834,7 @@ export type Database = {
       live_release_expired_reservations: { Args: never; Returns: number }
       normalize_bazar_phone: { Args: { phone: string }; Returns: string }
       normalize_phone_regional: { Args: { phone: string }; Returns: string }
+      phone_match_key: { Args: { p: string }; Returns: string }
       public_register_instagram: {
         Args: {
           p_instagram: string
