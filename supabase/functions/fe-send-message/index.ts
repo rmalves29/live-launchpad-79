@@ -272,6 +272,32 @@ serve(async (req) => {
             await new Promise((r) => setTimeout(r, 500 + Math.random() * 1000));
           }
 
+          // Proteção contra envio duplicado: mesma mensagem já enviada a este grupo nos últimos 60 s
+          const dupSince = new Date(Date.now() - 60_000).toISOString();
+          let dupQuery = supabase
+            .from("fe_messages")
+            .select("id")
+            .eq("tenant_id", tenant_id)
+            .eq("group_id", group.id)
+            .eq("content_type", content_type)
+            .eq("status", "sent")
+            .gte("sent_at", dupSince)
+            .limit(1);
+          if (content_text) dupQuery = dupQuery.eq("content_text", content_text);
+          else dupQuery = dupQuery.is("content_text", null);
+          if (media_url) dupQuery = dupQuery.eq("media_url", media_url);
+          const { data: dup } = await dupQuery.maybeSingle();
+          if (dup) {
+            console.log("[fe-send-message] Duplicada ignorada - Group " + group.group_name);
+            results.push({ group_id: group.id, group_name: group.group_name, success: true, error: "duplicada_ignorada" });
+            const dupMessageId = groupToMessageId.get(group.id);
+            let dupUpdate = supabase.from("fe_messages").update({ status: "sent", sent_at: new Date().toISOString() });
+            if (dupMessageId) dupUpdate = dupUpdate.eq("id", dupMessageId).eq("status", "sending");
+            else dupUpdate = dupUpdate.eq("tenant_id", tenant_id).eq("group_id", group.id).eq("status", "sending");
+            await dupUpdate;
+            continue;
+          }
+
           let sent = false;
           let errMsg: string | undefined;
           let waMessageId: string | undefined;
