@@ -379,9 +379,7 @@ const AppContent = () => {
         } />
         <Route path="/ajuda" element={
           <RequireAuth>
-            <SuperAdminOnly>
-              <Ajuda />
-            </SuperAdminOnly>
+            <Ajuda />
           </RequireAuth>
         } />
         <Route path="/design-preview" element={

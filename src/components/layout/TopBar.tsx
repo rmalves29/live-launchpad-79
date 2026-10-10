@@ -20,7 +20,6 @@ export function TopBar() {
       .map((s) => s[0]?.toUpperCase())
       .join('') || '?';
 
-  const isSuperAdmin = profile?.role === 'super_admin';
   const helpMeta = getHelpPageMeta(location.pathname);
 
   const getSubscriptionInfo = () => {
@@ -50,16 +49,15 @@ export function TopBar() {
 
   return (
     <div className="hidden lg:flex sticky top-0 z-30 bg-white border-b border-[#e5e7eb] h-14 items-center justify-end gap-3 px-6">
-      {isSuperAdmin && (
-        <Link
-          to={`/ajuda?page=${encodeURIComponent(helpMeta.key)}`}
-          className="flex items-center gap-1.5 text-[12px] font-medium text-[#4f46e5] hover:text-[#3730a3] hover:underline"
-          title={`Ver tutoriais de ${helpMeta.label}`}
-        >
-          <HelpCircle className="h-4 w-4" />
-          Tutoriais
-        </Link>
-      )}
+      {/* Tutoriais: disponível para todas as clientes (a lista só mostra os vídeos da área em que ela está) */}
+      <Link
+        to={`/ajuda?page=${encodeURIComponent(helpMeta.key)}`}
+        className="flex items-center gap-1.5 text-[12px] font-medium text-[#4f46e5] hover:text-[#3730a3] hover:underline"
+        title={`Ver tutoriais de ${helpMeta.label}`}
+      >
+        <HelpCircle className="h-4 w-4" />
+        Tutoriais
+      </Link>
       
       {subInfo && (
         <div className="flex items-center px-3 border-l border-[#e5e7eb] h-8">

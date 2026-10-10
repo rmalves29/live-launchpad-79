@@ -98,9 +98,10 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           : []),
         { type: 'item', item: { path: '/fluxo-envio/painel', label: 'Fluxo de Envio', icon: GitBranch } },
         { type: 'item', item: { path: '/comunicacao/push', label: 'Push', icon: Bell } },
+        // Super admin gerencia os vídeos; as clientes assistem na Central de Ajuda (também no celular, onde não há barra superior)
         ...(isSuperAdmin
           ? [{ type: 'item' as const, item: { path: '/admin/tutoriais', label: 'Tutoriais', icon: PlayCircle } }]
-          : []),
+          : [{ type: 'item' as const, item: { path: '/ajuda', label: 'Tutoriais', icon: PlayCircle } }]),
 
         {
           type: 'collapsible',
