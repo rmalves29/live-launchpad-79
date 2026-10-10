@@ -232,6 +232,9 @@ export default function MessageComposer() {
 
   const handleSend = async () => {
     if (!tenant) return;
+    // Trava imediata contra clique duplo (o state 'sending' demora um render para refletir)
+    if (sendingRef.current) return;
+    sendingRef.current = true;
     if (contentType === 'text' && !contentText.trim()) {
       toast({ title: 'Escreva uma mensagem', variant: 'destructive' });
       return;
