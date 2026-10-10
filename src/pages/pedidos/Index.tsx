@@ -44,6 +44,7 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
     event_date: string;
     total_amount: number;
     is_paid: boolean;
+    paid_at?: string | null;
     is_cancelled?: boolean;
     payment_link?: string;
     created_at: string;
@@ -2164,6 +2165,16 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
                       {/* Data Evento */}
                       <TableCell className="px-3 py-3 text-center">
                         <span className="text-xs">{formatBrasiliaDate(order.event_date)}</span>
+                        {order.is_paid && order.paid_at && (() => {
+                          // formatBrasiliaDateTime => "dd/MM/yyyy HH:mm" (Brasília). Mesmo dia do evento: só a hora; outro dia: dd/MM + hora.
+                          const paid = formatBrasiliaDateTime(order.paid_at);
+                          const sameDay = paid.slice(0, 10) === formatBrasiliaDate(order.event_date);
+                          return (
+                            <span className="block text-[10px] text-emerald-600 font-medium leading-tight mt-0.5" title={`Pago em ${paid}`}>
+                              Pago {sameDay ? paid.slice(11) : `${paid.slice(0, 5)} ${paid.slice(11)}`}
+                            </span>
+                          );
+                        })()}
                       </TableCell>
                       
                       {/* Disparo (Mensagens) */}
