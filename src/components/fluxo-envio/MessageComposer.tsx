@@ -235,7 +235,6 @@ export default function MessageComposer() {
     if (!tenant) return;
     // Trava imediata contra clique duplo (o state 'sending' demora um render para refletir)
     if (sendingRef.current) return;
-    sendingRef.current = true;
     if (contentType === 'text' && !contentText.trim()) {
       toast({ title: 'Escreva uma mensagem', variant: 'destructive' });
       return;
@@ -282,6 +281,7 @@ export default function MessageComposer() {
       return;
     }
 
+    sendingRef.current = true;
     setSending(true);
 
     try {
