@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, useLocation, Link } from "react-router-dom";
-import { Zap, AlertTriangle, Phone, Mail } from "lucide-react";
+import { AlertTriangle, Phone, Mail } from "lucide-react";
+import cartzyLogo from "@/assets/cartzy-logo.png";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { isInvalidCredentialsError, isNetworkAuthError, signInWithPasswordResilient } from "@/lib/auth-password";
 
@@ -251,15 +252,7 @@ export default function Auth() {
       <main className="w-full max-w-md p-4">
         {/* Logo */}
         <div className="flex justify-center mb-6">
-          <div className="flex items-center gap-3 bg-gradient-to-r from-primary/10 to-accent/10 px-5 py-3 rounded-2xl border border-primary/20">
-            <div className="p-2 bg-gradient-to-br from-primary to-accent rounded-xl shadow-lg">
-              <Zap className="h-7 w-7 text-white" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-3xl font-display font-bold text-gradient-primary">OrderZap</span>
-              <span className="text-xs text-muted-foreground -mt-1">Gestão Inteligente</span>
-            </div>
-          </div>
+          <img src={cartzyLogo} alt="Cartzy" className="h-20 w-auto" />
         </div>
 
         {/* Mensagem de erro de acesso */}
