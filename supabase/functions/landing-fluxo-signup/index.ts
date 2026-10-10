@@ -2,6 +2,7 @@
 // cria auth user, tenant trial, profile com access_scope='fluxo_envio'
 // e já configura a integração WhatsApp/uazapi (mesma base dos tenants Cartzy).
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { createInstance, setWebhook } from '../_shared/uazapi-api.ts';
 import { notifyCartzyAdmins } from '../_shared/admin-push-notify.ts';
 
@@ -48,6 +49,9 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
       { auth: { autoRefreshToken: false, persistSession: false } },
     );
+
+    const rlBlocked = await enforceRateLimit(req, admin, "landing-signup", 10, 3600);
+    if (rlBlocked) return rlBlocked;
 
     // 1) Criar usuário
     const { data: created, error: createErr } = await admin.auth.admin.createUser({

@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { applyPaymentMethodLock } from "../_shared/payment-method-lock.ts";
 import { resolvePixDiscount } from "../_shared/pix-discount.ts";
@@ -228,6 +229,9 @@ serve(async (req) => {
     }
 
     const sb = createClient(supabaseUrl, serviceKey);
+
+    const rlBlocked = await enforceRateLimit(req, sb, "create-payment", 60, 60);
+    if (rlBlocked) return rlBlocked;
 
     // === BLINDAGEM SERVIDOR: recalcular desconto PIX a partir das integrações ativas ===
     // Ignoramos qualquer valor enviado pelo frontend — fonte de verdade é o backend.

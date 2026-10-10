@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 const corsHeaders = {
@@ -48,6 +49,9 @@ serve(async (req) => {
     }
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+
+    const rlBlocked = await enforceRateLimit(req, supabase, "support-chat", 30, 60);
+    if (rlBlocked) return rlBlocked;
 
     // Buscar configurações de suporte do tenant
     const { data: settings } = await supabase

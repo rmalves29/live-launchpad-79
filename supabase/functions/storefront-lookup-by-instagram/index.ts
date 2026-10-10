@@ -4,6 +4,7 @@
 // Body: { tenant_slug: string, instagram: string }
 // Resp: { found: boolean, phone?: string, instagram?: string, name?: string, blocked?: boolean }
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { enforceRateLimit } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -45,6 +46,9 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
+
+    const rlBlocked = await enforceRateLimit(req, supabase, "storefront-lookup", 60, 60);
+    if (rlBlocked) return rlBlocked;
 
     const { data: tenant } = await supabase
       .from('tenants')
