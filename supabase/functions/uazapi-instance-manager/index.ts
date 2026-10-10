@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { authorizeTenantCaller, guardResponse } from "../_shared/auth-guard.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   connectInstance,
@@ -33,12 +34,8 @@ Deno.serve(async (req) => {
     const { action, tenant_id } = body;
     if (!tenant_id) return json({ error: "tenant_id obrigatório" }, 400);
 
-    if (user) {
-      const { data: profile } = await supabase.from("profiles").select("tenant_id, role").eq("id", user.id).maybeSingle();
-      if (profile && profile.tenant_id !== tenant_id && profile.role !== "super_admin") {
-        return json({ error: "Não autorizado" }, 403);
-      }
-    }
+    const guard = await authorizeTenantCaller(req, supabase, tenant_id);
+    if (!guard.ok) return json({ error: guard.error }, guard.status);
 
     const { data: integration } = await supabase
       .from("integration_whatsapp")

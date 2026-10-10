@@ -57,10 +57,13 @@ function formatPhone(phone?: string | null): string {
   return phone;
 }
 
-function callFunction(name: string, body: object) {
+async function callFunction(name: string, body: object) {
+  // As funções de WhatsApp agora exigem o login de quem chama; sem sessão cai na chave pública (e será recusado).
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token || ANON_KEY;
   return fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}`, 'apikey': ANON_KEY },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'apikey': ANON_KEY },
     body: JSON.stringify(body),
   }).then(r => r.json());
 }

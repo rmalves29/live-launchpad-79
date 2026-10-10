@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { authorizeTenantCaller, guardResponse } from "../_shared/auth-guard.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -59,6 +60,9 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const guard = await authorizeTenantCaller(req, supabase, tenant_id);
+    if (!guard.ok) return guardResponse(guard, corsHeaders);
 
     // Get Z-API integration config for this tenant
     const { data: integration, error: integrationError } = await supabase
