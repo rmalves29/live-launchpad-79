@@ -638,7 +638,7 @@ async function processTaskQueue({
     lastProductId = task.product_id;
     await supabase.from("sendflow_tasks").update({ status: "running", started_at: new Date().toISOString() }).eq("id", task.id);
 
-    const DUPLICATE_WINDOW_MINUTES = 15;
+    const DUPLICATE_WINDOW_MINUTES = 60;
     const cutoffIso = new Date(Date.now() - DUPLICATE_WINDOW_MINUTES * 60 * 1000).toISOString();
     const { data: recentSends } = await supabase
       .from("sendflow_history")
@@ -650,7 +650,8 @@ async function processTaskQueue({
       .limit(1);
 
     if (Array.isArray(recentSends) && recentSends.length > 0) {
-      await supabase.from("sendflow_tasks").update({ status: "skipped", completed_at: new Date().toISOString(), error_message: "Duplicata (" + DUPLICATE_WINDOW_MINUTES + "min)" }).eq("id", task.id);
+      await supabase.from("sendflow_tasks").update({ status: "error", completed_at: new Date().toISOString(), error_message: "Produto já enviado neste grupo na última hora" }).eq("id", task.id);
+      errorMessages++;
       await updateJobProgress();
       if (i < tasks.length - 1 && tasks[i + 1].product_id === task.product_id) {
         const delayMs = useRandomDelay ? getRandomDelay(minGroupDelaySeconds, maxGroupDelaySeconds) : perGroupDelaySeconds * 1000;
