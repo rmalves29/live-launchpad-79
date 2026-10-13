@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "13.0.4"
   }
   public: {
     Tables: {
@@ -339,6 +339,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      auth_login_failures: {
+        Row: {
+          created_at: string
+          id: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: number
+          user_id?: string
+        }
+        Relationships: []
       }
       bling_sync_logs: {
         Row: {
@@ -3913,6 +3931,24 @@ export type Database = {
         }
         Relationships: []
       }
+      rate_limit_hits: {
+        Row: {
+          hits: number
+          key: string
+          window_start: string
+        }
+        Insert: {
+          hits?: number
+          key: string
+          window_start?: string
+        }
+        Update: {
+          hits?: number
+          key?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       report_cache: {
         Row: {
           computed_at: string
@@ -5576,6 +5612,13 @@ export type Database = {
         Returns: number
       }
       enviar_lembretes_reuniao: { Args: never; Returns: number }
+      first_paid_order_by_phone: {
+        Args: { p_phones: string[]; p_tenant_id: string }
+        Returns: {
+          customer_phone: string
+          first_order_id: number
+        }[]
+      }
       get_active_shipping_provider: {
         Args: { tenant_uuid: string }
         Returns: {
@@ -5674,6 +5717,10 @@ export type Database = {
         Returns: number
       }
       get_user_tenant_id: { Args: never; Returns: string }
+      hook_password_verification_attempt: {
+        Args: { event: Json }
+        Returns: Json
+      }
       http: {
         Args: { request: Database["public"]["CompositeTypes"]["http_request"] }
         Returns: Database["public"]["CompositeTypes"]["http_response"]
@@ -5844,10 +5891,16 @@ export type Database = {
         }
         Returns: Json
       }
+      rate_limit_cleanup: { Args: never; Returns: undefined }
+      rate_limit_hit: {
+        Args: { p_key: string; p_max: number; p_window_seconds: number }
+        Returns: boolean
+      }
       release_product_stock: {
         Args: { p_product_id: number; p_qty: number }
         Returns: number
       }
+      request_client_ip: { Args: never; Returns: string }
       reserve_product_stock: {
         Args: { p_product_id: number; p_qty: number }
         Returns: number

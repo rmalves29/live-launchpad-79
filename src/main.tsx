@@ -45,6 +45,27 @@ async function initSentry() {
   });
 }
 
+// Após nova publicação, abas abertas pedem arquivos antigos que não existem mais.
+// Recarrega a página uma vez (no máximo a cada 10s) para buscar a versão nova.
+function reloadOnStaleChunk() {
+  try {
+    const last = Number(sessionStorage.getItem("chunk_reload_at") || 0);
+    if (Date.now() - last < 10000) return;
+    sessionStorage.setItem("chunk_reload_at", String(Date.now()));
+  } catch {}
+  window.location.reload();
+}
+window.addEventListener("vite:preloadError", (e) => {
+  e.preventDefault();
+  reloadOnStaleChunk();
+});
+window.addEventListener("unhandledrejection", (e) => {
+  const msg = String((e as PromiseRejectionEvent).reason?.message || "");
+  if (/Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(msg)) {
+    reloadOnStaleChunk();
+  }
+});
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />
