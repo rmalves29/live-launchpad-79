@@ -16,6 +16,7 @@ import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
 import { ShippingOptionsManager } from '@/components/ShippingOptionsManager';
 import WhatsAppMessages from './WhatsAppMessages';
+import { LiveProductsManager } from './LiveProductsManager';
 import { AlertTriangle, CalendarClock, CheckCircle2, Copy, ExternalLink, Store } from 'lucide-react';
 import { liveShopUrl } from '@/lib/live-shop';
 
@@ -200,6 +201,7 @@ export default function LojaDaLive() {
       <Tabs defaultValue="link">
         <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="link">Link e ajustes</TabsTrigger>
+          <TabsTrigger value="products">Produtos</TabsTrigger>
           <TabsTrigger value="coupons">Cupons</TabsTrigger>
           <TabsTrigger value="gifts">Brindes</TabsTrigger>
           <TabsTrigger value="shipping">Frete</TabsTrigger>
@@ -322,6 +324,10 @@ export default function LojaDaLive() {
             <Button variant="outline" disabled={!dirty || saving} onClick={() => setDraft(settings)}>Descartar</Button>
             <Button disabled={!dirty || saving} onClick={requestSave}>{saving ? 'Salvando…' : 'Salvar alterações'}</Button>
           </div>
+        </TabsContent>
+
+        <TabsContent value="products" className="mt-4">
+          <LiveProductsManager onChanged={load} />
         </TabsContent>
 
         <TabsContent value="coupons" className="mt-4">
