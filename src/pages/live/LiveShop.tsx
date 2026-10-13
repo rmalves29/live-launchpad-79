@@ -178,6 +178,7 @@ export default function LiveShop() {
   }, []);
 
   // ------------------------------------------------ carga inicial
+  const versionRef = useRef<string | null>(null);
   const loadCatalog = useCallback(async (opts: { offset?: number; q?: string; append?: boolean } = {}) => {
     const offset = opts.offset ?? 0;
     try {
@@ -195,6 +196,7 @@ export default function LiveShop() {
       const res: any = await liveApi('catalog', slug, { offset, limit: 40, q: opts.q ?? '' });
       if (!res?.ok) { setError(res?.error || 'Loja não encontrada.'); return; }
       setError(null);
+      if (res.version) versionRef.current = res.version;
       if (res.tenant) {
         setMeta({ tenant: res.tenant, coupons: res.coupons || [], gifts: res.gifts || [], shipping_hints: res.shipping_hints || [], payment: res.payment, settings: res.settings });
         if (!res.payment.pix && res.payment.card) setPay('card');
@@ -223,6 +225,41 @@ export default function LiveShop() {
     })();
     return () => { alive = false; };
   }, [loadCatalog]);
+
+  // Vitrine "ao vivo": a cada 8 s (e ao voltar para a aba) confere se a lista de produtos da live mudou
+  // (produto marcado/desmarcado, estoque, loja desativada) e recarrega sozinha, sem o cliente precisar atualizar a página.
+  const queryRef = useRef(query);
+  queryRef.current = query;
+  const errorRef = useRef(error);
+  errorRef.current = error;
+  useEffect(() => {
+    let busyCheck = false;
+    const check = async () => {
+      if (busyCheck || document.visibilityState !== 'visible') return;
+      busyCheck = true;
+      try {
+        const r: any = await liveApi('catalog_version', slug);
+        if (!r?.ok) {
+          if (r?.code === 'LIVE_DISABLED') setError(r.error || 'A vitrine da live está indisponível no momento.');
+          return;
+        }
+        if (errorRef.current || (versionRef.current && r.version !== versionRef.current)) {
+          versionRef.current = r.version;
+          await loadCatalog({ q: queryRef.current });
+        } else if (!versionRef.current) {
+          versionRef.current = r.version;
+        }
+      } catch {
+        /* sem conexão: tenta de novo no próximo ciclo */
+      } finally {
+        busyCheck = false;
+      }
+    };
+    const t = setInterval(check, 8000);
+    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
+  }, [slug, loadCatalog]);
 
   // reconhece o aparelho: se já comprou aqui, lembra o telefone (nunca por IP)
   useEffect(() => {

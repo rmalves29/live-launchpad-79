@@ -201,6 +201,19 @@ async function loadCatalogExtras(tenant: any) {
   return extras;
 }
 
+// "Versão" da lista de produtos da live: muda quando um produto entra, sai, ou tem estoque/preço alterado.
+// É barata (2 consultas pequenas) para a vitrine aberta perguntar a cada poucos segundos se precisa recarregar.
+async function catalogVersion(tenant: any): Promise<string> {
+  const base = () => sb.from('products').select('updated_at', { count: 'exact' })
+    .eq('tenant_id', tenant.id).eq('is_active', true).in('sale_type', ['LIVE', 'AMBOS']).gt('stock', 0);
+  const [{ count }, { data: last }] = await Promise.all([
+    sb.from('products').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenant.id).eq('is_active', true).in('sale_type', ['LIVE', 'AMBOS']).gt('stock', 0),
+    base().order('updated_at', { ascending: false }).limit(1),
+  ]);
+  return `${count ?? 0}:${last?.[0]?.updated_at || ''}`;
+}
+
 async function catalog(body: any, tenant: any) {
   const offset = Math.max(0, Math.floor(num(body.offset, 0)));
   const limit = Math.min(100, Math.max(1, Math.floor(num(body.limit, 60))));
@@ -267,6 +280,7 @@ async function catalog(body: any, tenant: any) {
 
   const result: any = { ok: true, items, total: count ?? items.length, offset, limit };
 
+  if (offset === 0) result.version = await catalogVersion(tenant);
   if (extrasP) Object.assign(result, await extrasP);
   return json(result);
 }
@@ -548,6 +562,7 @@ Deno.serve(async (req) => {
     if (tenant.live_shop_enabled === false || closedBySchedule) return fail('A vitrine da live está indisponível no momento.', 'LIVE_DISABLED');
     switch (body.action) {
       case 'catalog': return await catalog(body, tenant);
+      case 'catalog_version': return json({ ok: true, version: await catalogVersion(tenant) });
       case 'recognize': return await recognize(tenant, clientIp(req));
       case 'customer_lookup': return await customerLookup(body, tenant, clientIp(req));
       case 'customer_save': return await customerSave(body, tenant, clientIp(req));
