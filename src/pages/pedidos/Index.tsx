@@ -97,6 +97,8 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
     const { confirm, confirmDialogElement } = useConfirmDialog();
     const { profile } = useAuth();
     const [orders, setOrders] = useState<Order[]>([]);
+    // telefone -> id do 1º pedido pago da cliente (null = ainda não carregou; sem a info, nenhuma tag aparece)
+    const [firstPaidByPhone, setFirstPaidByPhone] = useState<Record<string, number> | null>(null);
     const [loading, setLoading] = useState(true);
     const [filterPaid, setFilterPaid] = useState<string>('all'); // 'all' | 'paid' | 'unpaid' | 'cancelled'
     const [filterEventType, setFilterEventType] = useState<string>('all');
@@ -373,6 +375,19 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
         }));
 
         setOrders(ordersWithDetails);
+
+        // Tag "1ª Compra": descobre qual foi o 1º pedido pago de cada cliente (não bloqueia a tela)
+        const tenantIdForTag = supabaseTenant.getTenantId();
+        if (tenantIdForTag) {
+          (supabaseTenant.raw as any)
+            .rpc('first_paid_order_by_phone', { p_tenant_id: tenantIdForTag, p_phones: uniquePhones })
+            .then(({ data, error: firstErr }: any) => {
+              if (firstErr) { console.warn('[pedidos] 1ª compra indisponível:', firstErr.message); return; }
+              const map: Record<string, number> = {};
+              (data || []).forEach((r: any) => { map[r.customer_phone] = Number(r.first_order_id); });
+              setFirstPaidByPhone(map);
+            });
+        }
       } catch (error) {
         console.error('Error loading orders:', error);
         toast({
@@ -1491,6 +1506,15 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
       });
     });
 
+    // "1ª Compra": este pedido PAGO é o primeiro pedido pago da cliente na loja
+    const isFirstPurchase = (order: Order) => {
+      if (!firstPaidByPhone || order.is_cancelled || !order.is_paid) return false;
+      return firstPaidByPhone[order.customer_phone] === order.id;
+    };
+    const firstPurchaseTag = (
+      <Badge className="text-[10px] px-1.5 py-0 leading-4 bg-green-600 text-white hover:bg-green-600">1ª Compra</Badge>
+    );
+
     // Contar pedidos por telefone para identificar clientes com múltiplos pedidos
     // Exclui pedidos cancelados e só conta pedidos com até 3 dias de diferença entre eles
     const orderCountByPhone = (() => {
@@ -1891,7 +1915,10 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
                         />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2">
-                            <span className="font-mono text-[13px] font-semibold text-[#111827]">#{order.tenant_order_number || order.id}</span>
+                            <div className="flex flex-col items-start gap-0.5">
+                              <span className="font-mono text-[13px] font-semibold text-[#111827]">#{order.tenant_order_number || order.id}</span>
+                              {isFirstPurchase(order) && firstPurchaseTag}
+                            </div>
                             <span className="text-sm font-bold text-[#111827]">{formatCurrency(order.total_amount)}</span>
                           </div>
                           <div className="mt-1 flex items-center gap-1.5 flex-wrap">
@@ -2053,7 +2080,10 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
                       
                       {/* Número do Pedido (por tenant) */}
                       <TableCell className="px-3 py-3 text-center">
-                        <span className="font-mono text-[12px] text-[#6b7280] font-semibold">#{order.tenant_order_number || order.id}</span>
+                        <div className="flex flex-col items-center gap-0.5">
+                          <span className="font-mono text-[12px] text-[#6b7280] font-semibold">#{order.tenant_order_number || order.id}</span>
+                          {isFirstPurchase(order) && firstPurchaseTag}
+                        </div>
                       </TableCell>
                       
                       {/* Telefone + Badge múltiplos pedidos */}
