@@ -2,6 +2,18 @@
 <html lang="pt-BR">
   <head>
     <script>
+      // Endereço oficial do sistema: app.cartzy.com.br. Quem abrir pelo link publicado do Lovable
+      // (live-launchpad-79.lovable.app) é levado para ele, mantendo caminho, parâmetros e âncora.
+      // Só vale para esse host exato: o preview do editor do Lovable usa outros endereços e não é afetado.
+      (function () {
+        try {
+          if (location.hostname === 'live-launchpad-79.lovable.app') {
+            location.replace('https://app.cartzy.com.br' + location.pathname + location.search + location.hash);
+          }
+        } catch (e) { /* segue sem redirecionar */ }
+      })();
+    </script>
+    <script>
       // Fast-path: redireciona links de campanha ANTES de carregar o bundle React.
       // Corta 2-4s de download/parse do SPA + init de auth no fluxo do WhatsApp.
       (function () {
