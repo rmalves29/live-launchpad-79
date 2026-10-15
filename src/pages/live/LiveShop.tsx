@@ -142,6 +142,13 @@ export default function LiveShop() {
   const [tick, setTick] = useState(() => Date.now());
   const toastTimer = useRef<ReturnType<typeof setTimeout>>();
   const pendingNext = useRef<'checkout' | null>(null);
+  // Pedido aberto (carrinho = pedido pendente): ações que esperam a identificação, fila de sincronismo e carrinho já confirmado
+  const pendingAction = useRef<(() => void) | null>(null);
+  const customerRef = useRef<LiveCustomer | null>(null);
+  const couponRef = useRef<string | null>(null);
+  const cartTouched = useRef(false);
+  const hydratedFor = useRef<string | null>(null);
+  const syncRef = useRef<{ running: Promise<boolean> | null; queued: CartLine[] | null; confirmed: CartLine[] }>({ running: null, queued: null, confirmed: [] });
 
   const sessionId = useMemo(() => {
     let id = readLS<string | null>(`live_session_${slug}`, null);
@@ -301,6 +308,26 @@ export default function LiveShop() {
     })();
   }, [slug]);
 
+  // Pedido aberto: o servidor é a fonte do carrinho. Ao identificar a cliente, traz o que já está no pedido dela
+  // (e limpa o que já foi pago ou cancelado). Só aplica se ela ainda não mexeu no carrinho nesta visita.
+  useEffect(() => {
+    const phone = customer ? normalizeLocalPhone(customer.phone) : '';
+    if (!openOrder || !phone || hydratedFor.current === phone) return;
+    hydratedFor.current = phone;
+    (async () => {
+      try {
+        const r: any = await liveApi('cart_state', slug, { phone });
+        if (!r?.ok || cartTouched.current || syncRef.current.running || syncRef.current.queued) return;
+        const lines2: CartLine[] = Array.isArray(r.lines) ? r.lines : [];
+        syncRef.current.confirmed = lines2;
+        setCart(lines2);
+        writeLS(`live_order_${slug}`, r.order_id ?? null);
+        if (r.coupon_code && !couponCode) setCouponCode(r.coupon_code);
+      } catch { /* mantém o carrinho local */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openOrder, customer?.phone]);
+
   function notMe() {
     try { sessionStorage.setItem(`live_norecognize_${slug}`, '1'); } catch { /* ignora */ }
     writeLS(`live_phone_${slug}`, null);
@@ -359,7 +386,84 @@ export default function LiveShop() {
     image_url: v?.image_url || p.image_url, price: v ? v.price : p.price, was: v ? v.was : p.was, stock: v ? v.stock : p.stock,
   });
 
+  const openOrder = meta?.settings.open_order === true;
+  customerRef.current = customer;
+  couponRef.current = couponCode;
+
+  // Manda o carrinho inteiro para o servidor (ele cria, atualiza ou apaga o pedido aberto). Uma chamada por vez; se a cliente
+  // mexer de novo enquanto uma vai, só a última versão é enviada em seguida.
+  function queueSync(next: CartLine[]): Promise<boolean> {
+    const st = syncRef.current;
+    st.queued = next;
+    if (st.running) return st.running;
+    st.running = (async () => {
+      let ok = true;
+      try {
+        while (st.queued) {
+          const items = st.queued;
+          st.queued = null;
+          const phone = customerRef.current ? normalizeLocalPhone(customerRef.current.phone) : '';
+          if (!phone) { ok = false; break; }
+          let r: any;
+          try {
+            r = await liveApi('cart_sync', slug, {
+              phone, session_id: sessionId, coupon_code: couponRef.current,
+              items: items.map((l) => ({ product_id: l.product_id, qty: l.qty })),
+            });
+          } catch {
+            toast('Sem conexão. Seu carrinho não foi salvo.');
+            setCart(st.confirmed);
+            ok = false;
+            continue;
+          }
+          if (r?.ok) {
+            st.confirmed = items;
+            ok = true;
+            writeLS(`live_order_${slug}`, r.order_id ?? null);
+            continue;
+          }
+          ok = false;
+          toast(r?.error || 'Não foi possível atualizar seu carrinho.');
+          if (Array.isArray(r?.items_state)) {
+            // o servidor diz o que ficou no pedido: o carrinho local passa a espelhar isso
+            const qtyOf = new Map<number, number>(r.items_state.map((x: any) => [Number(x.product_id), Number(x.qty)]));
+            const fixed = items.flatMap((l) => (qtyOf.get(l.product_id) ? [{ ...l, qty: qtyOf.get(l.product_id) as number }] : []));
+            st.confirmed = fixed;
+            setCart(fixed);
+          } else if (r?.code === 'NOT_AVAILABLE' && r?.product_id) {
+            const fixed = st.confirmed.filter((l) => l.product_id !== Number(r.product_id));
+            st.confirmed = fixed;
+            setCart(fixed);
+            loadCatalog({ q: query });
+          } else {
+            setCart(st.confirmed);
+          }
+        }
+      } finally {
+        st.running = null;
+      }
+      return ok;
+    })();
+    return st.running;
+  }
+
+  // Ação que precisa do celular da cliente (pedido aberto): pede a identificação e retoma logo depois
+  function withCustomer(action: () => void) {
+    if (customerRef.current) { action(); return; }
+    pendingAction.current = action;
+    pendingNext.current = null;
+    setPhoneInput('');
+    setModal({ type: 'phone' });
+  }
+  function resumePending() {
+    const next = pendingAction.current;
+    if (!next) return;
+    pendingAction.current = null;
+    setTimeout(next, 0);
+  }
+
   async function syncReserve(productId: number, qty: number): Promise<boolean> {
+    if (openOrder) return true; // o próprio pedido aberto segura a peça
     if (meta?.settings.reserve_mode !== 'cart') return true;
     try {
       const r: any = await liveApi('reserve', slug, { session_id: sessionId, product_id: productId, qty });
@@ -377,6 +481,13 @@ export default function LiveShop() {
     const stock = v ? v.stock : p.stock;
     const current = cart.find((l) => l.product_id === id)?.qty || 0;
     if (current + qty > stock) { toast(`Só temos ${stock} em estoque.`); return false; }
+    if (openOrder) {
+      cartTouched.current = true;
+      const found = cart.find((l) => l.product_id === id);
+      const next = found ? cart.map((l) => (l.product_id === id ? { ...l, qty: l.qty + qty } : l)) : [...cart, makeLine(p, v, qty)];
+      setCart(next);
+      return await queueSync(next);
+    }
     if (!(await syncReserve(id, current + qty))) return false;
     setCart((prev) => {
       const found = prev.find((l) => l.product_id === id);
@@ -389,6 +500,13 @@ export default function LiveShop() {
     const line = cart.find((l) => l.product_id === productId);
     if (!line) return;
     if (qty > line.stock) { toast(`Só temos ${line.stock} em estoque.`); return; }
+    if (openOrder) {
+      cartTouched.current = true;
+      const next = qty <= 0 ? cart.filter((l) => l.product_id !== productId) : cart.map((l) => (l.product_id === productId ? { ...l, qty } : l));
+      setCart(next);
+      queueSync(next);
+      return;
+    }
     if (!(await syncReserve(productId, Math.max(0, qty)))) return;
     setCart((prev) => (qty <= 0 ? prev.filter((l) => l.product_id !== productId) : prev.map((l) => (l.product_id === productId ? { ...l, qty } : l))));
   }
@@ -396,6 +514,10 @@ export default function LiveShop() {
   function onAdd(p: LiveProduct, mode: 'cart' | 'buy') {
     if (p.variants.length > 0) {
       setModal({ type: 'variant', product: p, mode, variantId: null, qty: 1 });
+      return;
+    }
+    if (openOrder) {
+      withCustomer(() => { addLine(p, null, 1).then((ok) => { if (ok) { if (mode === 'cart') toast('Adicionado ao carrinho'); else startCheckout(null); } }); });
       return;
     }
     if (mode === 'cart') {
@@ -412,6 +534,10 @@ export default function LiveShop() {
     const { product, mode, qty } = modal;
     if (qty > v.stock) { toast(`Só temos ${v.stock} em estoque.`); return; }
     setModal(null);
+    if (openOrder) {
+      withCustomer(() => { addLine(product, v, qty).then((ok) => { if (ok) { if (mode === 'cart') toast('Adicionado ao carrinho'); else startCheckout(null); } }); });
+      return;
+    }
     if (mode === 'cart') {
       if (await addLine(product, v, qty)) toast('Adicionado ao carrinho');
     } else {
@@ -442,10 +568,12 @@ export default function LiveShop() {
       if (!r?.ok) { toast(r?.error || 'Não foi possível continuar.'); return; }
       writeLS(`live_phone_${slug}`, phone);
       if (r.found && r.complete) {
+        customerRef.current = { ...EMPTY_CUSTOMER, ...r.customer };
         setCustomer({ ...EMPTY_CUSTOMER, ...r.customer });
         setModal(null);
         toast('Encontramos seu cadastro');
         if (pendingNext.current === 'checkout') goCheckout();
+        resumePending();
         return;
       }
       setForm({ ...EMPTY_CUSTOMER, ...(r.found ? r.customer : {}), phone });
@@ -487,11 +615,13 @@ export default function LiveShop() {
       const r: any = await liveApi('customer_save', slug, { customer: { ...form, phone: normalizeLocalPhone(form.phone) } });
       if (!r?.ok) { setFormError(r?.error || 'Não foi possível salvar seus dados.'); return; }
       writeLS(`live_phone_${slug}`, r.phone);
+      customerRef.current = { ...form, phone: r.phone };
       setCustomer({ ...form, phone: r.phone });
       setModal(null);
       setShipOptions([]);
       setShipId('');
       if (pendingNext.current === 'checkout' || screen === 'checkout') goCheckout();
+      resumePending();
     } catch {
       setFormError('Sem conexão. Tente novamente.');
     } finally {
@@ -549,7 +679,7 @@ export default function LiveShop() {
     setBusy(true);
     const phone = normalizeLocalPhone(customer.phone);
     try {
-      const prevOrder = readLS<number | null>(`live_order_${slug}`, null);
+      const prevOrder = openOrder ? null : readLS<number | null>(`live_order_${slug}`, null);
       const order: any = await liveApi('create_order', slug, {
         phone, session_id: sessionId, items: lines.map((l) => ({ product_id: l.product_id, qty: l.qty })),
         coupon_code: couponCode, note, replace_order_id: prevOrder,
@@ -558,7 +688,7 @@ export default function LiveShop() {
         toast(order?.error || 'Não foi possível criar o pedido.');
         if (order?.code === 'INSUFFICIENT_STOCK' || order?.code === 'NOT_AVAILABLE') {
           const pid = Number(order.product_id);
-          const stock = Number(order.stock ?? 0);
+          const stock = Number(order.max_qty ?? order.stock ?? 0);
           const fix = (arr: CartLine[]) => arr.flatMap((l) => (l.product_id !== pid ? [l] : stock > 0 ? [{ ...l, qty: Math.min(l.qty, stock), stock }] : []));
           setCart(fix);
           setDirect((d) => (d ? fix(d) : d));
@@ -590,8 +720,11 @@ export default function LiveShop() {
       });
 
       const fail = async (msg: string) => {
-        await liveApi('cancel_order', slug, { order_id: order.order_id, phone }).catch(() => null);
-        writeLS(`live_order_${slug}`, null);
+        // Pedido aberto: o carrinho continua no pedido (a cliente pode tentar pagar de novo). Fora disso, desfaz o pedido criado.
+        if (!openOrder) {
+          await liveApi('cancel_order', slug, { order_id: order.order_id, phone }).catch(() => null);
+          writeLS(`live_order_${slug}`, null);
+        }
         toast(msg);
       };
       if (payErr) { await fail('Não foi possível iniciar o pagamento. Tente novamente.'); return; }
@@ -945,7 +1078,7 @@ export default function LiveShop() {
 
   const sheets = () => {
     if (!modal) return null;
-    const close = () => setModal(null);
+    const close = () => { if (modal.type === 'phone' || modal.type === 'signup') pendingAction.current = null; setModal(null); };
     if (modal.type === 'variant') {
       const p = modal.product;
       const vs = p.variants;

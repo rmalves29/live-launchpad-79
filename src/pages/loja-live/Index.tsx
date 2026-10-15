@@ -45,6 +45,7 @@ type Settings = {
   live_shop_close_at: string | null;
   live_reserve_mode: 'order' | 'cart';
   live_cart_minutes: number;
+  live_open_order: boolean;
 };
 
 type Readiness = { products: number; coupons: number; gifts: number; shipping: number };
@@ -65,8 +66,8 @@ export default function LojaDaLive() {
   const previewingTenant = (() => { try { return !!localStorage.getItem('previewTenantId'); } catch { return false; } })();
   const isSuperAdmin = profile?.role === 'super_admin' && !previewingTenant;
 
-  const [settings, setSettings] = useState<Settings>({ live_shop_enabled: true, live_shop_close_at: null, live_reserve_mode: 'order', live_cart_minutes: 15 });
-  const [draft, setDraft] = useState<Settings>({ live_shop_enabled: true, live_shop_close_at: null, live_reserve_mode: 'order', live_cart_minutes: 15 });
+  const [settings, setSettings] = useState<Settings>({ live_shop_enabled: true, live_shop_close_at: null, live_reserve_mode: 'order', live_cart_minutes: 15, live_open_order: false });
+  const [draft, setDraft] = useState<Settings>({ live_shop_enabled: true, live_shop_close_at: null, live_reserve_mode: 'order', live_cart_minutes: 15, live_open_order: false });
   const [ready, setReady] = useState<Readiness | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmOff, setConfirmOff] = useState(false);       // confirmar desativação agora
@@ -79,7 +80,7 @@ export default function LojaDaLive() {
   const load = useCallback(async () => {
     if (!tenant?.id) return;
     const [t, prods, coupons, gifts, ship] = await Promise.all([
-      supabase.from('tenants').select('live_shop_enabled, live_shop_close_at, live_reserve_mode, live_cart_minutes').eq('id', tenant.id).maybeSingle(),
+      supabase.from('tenants').select('live_shop_enabled, live_shop_close_at, live_reserve_mode, live_cart_minutes, live_open_order').eq('id', tenant.id).maybeSingle(),
       supabase.from('products').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('is_active', true).in('sale_type', ['LIVE', 'AMBOS']).gt('stock', 0),
       supabase.from('coupons').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true),
       supabase.from('gifts').select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true),
@@ -92,12 +93,14 @@ export default function LojaDaLive() {
         live_shop_close_at: d.live_shop_close_at || null,
         live_reserve_mode: d.live_reserve_mode === 'cart' ? 'cart' : 'order',
         live_cart_minutes: Math.max(1, Number(d.live_cart_minutes) || 15),
+        live_open_order: d.live_open_order === true,
       });
       setDraft({
         live_shop_enabled: d.live_shop_enabled !== false,
         live_shop_close_at: d.live_shop_close_at || null,
         live_reserve_mode: d.live_reserve_mode === 'cart' ? 'cart' : 'order',
         live_cart_minutes: Math.max(1, Number(d.live_cart_minutes) || 15),
+        live_open_order: d.live_open_order === true,
       });
     }
     setReady({ products: prods.count || 0, coupons: coupons.count || 0, gifts: gifts.count || 0, shipping: ship.count || 0 });
@@ -148,7 +151,7 @@ export default function LojaDaLive() {
     const next = { ...draft, live_cart_minutes: minutes };
     const { error } = await supabase
       .from('tenants')
-      .update({ live_shop_enabled: next.live_shop_enabled, live_shop_close_at: next.live_shop_enabled ? next.live_shop_close_at : null, live_reserve_mode: next.live_reserve_mode, live_cart_minutes: next.live_cart_minutes } as any)
+      .update({ live_shop_enabled: next.live_shop_enabled, live_shop_close_at: next.live_shop_enabled ? next.live_shop_close_at : null, live_reserve_mode: next.live_reserve_mode, live_cart_minutes: next.live_cart_minutes, live_open_order: next.live_open_order } as any)
       .eq('id', tenant.id);
     setSaving(false);
     if (error) {
@@ -287,6 +290,20 @@ export default function LojaDaLive() {
                 {check(ready.gifts > 0, `${ready.gifts} brinde(s) ativo(s)`, 'Opcional: brindes aparecem na vitrine')}
               </div>
             ) : <p className="text-sm text-muted-foreground">Verificando…</p>}
+          </Card>
+
+          <Card className="p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-semibold">Criar o pedido assim que a cliente adicionar no carrinho</h3>
+                <p className="text-xs text-muted-foreground">
+                  Funciona como o grupo de WhatsApp: ao adicionar o primeiro produto, o pedido já nasce como <b>pendente de pagamento</b> (evento Instagram Live). Produto retirado do carrinho sai do pedido, e o estoque segue a regra normal (a peça é reservada ao entrar no pedido e volta ao sair ou ao cancelar). Se a cliente pagar, o fluxo de pagamento é o de sempre. Se não pagar, o pedido fica em aberto para você cobrar por mensagem, até o prazo de cancelamento automático da Fila de Espera. A cliente informa o celular antes do primeiro item.
+                </p>
+              </div>
+              <Switch id="live-open-order" checked={draft.live_open_order} disabled={saving}
+                onCheckedChange={(v) => setDraft((d) => ({ ...d, live_open_order: v }))} aria-label="Criar o pedido ao adicionar no carrinho" />
+            </div>
+            {draft.live_open_order && <p className="text-xs text-amber-700">Com isso ligado, a opção "Quando reservar a peça" abaixo deixa de valer: a peça fica reservada pelo próprio pedido aberto.</p>}
           </Card>
 
           <Card className="p-4 space-y-3">
