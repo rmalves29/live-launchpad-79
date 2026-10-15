@@ -60,14 +60,24 @@ Deno.serve(async (req) => {
           updated_at: new Date().toISOString(),
         };
         if (integration?.id) {
-          await supabase.from("integration_whatsapp").update(payload).eq("id", integration.id);
+          const { error: upErr } = await supabase.from("integration_whatsapp").update(payload).eq("id", integration.id);
+          if (upErr) {
+            console.error("[uazapi-instance-manager] update falhou:", upErr.message);
+            return json({ error: `Não foi possível salvar as credenciais: ${upErr.message}` }, 500);
+          }
         } else {
-          await supabase.from("integration_whatsapp").insert({
+          // instance_name é UNIQUE na tabela: um nome fixo ("uazapi") só servia para a primeira loja.
+          // Cada loja ganha o seu, derivado do tenant_id.
+          const { error: insErr } = await supabase.from("integration_whatsapp").insert({
             tenant_id,
             ...payload,
-            instance_name: "uazapi",
+            instance_name: `uazapi-${String(tenant_id).slice(0, 8)}`,
             webhook_secret: crypto.randomUUID(),
           });
+          if (insErr) {
+            console.error("[uazapi-instance-manager] insert falhou:", insErr.message);
+            return json({ error: `Não foi possível salvar as credenciais: ${insErr.message}` }, 500);
+          }
         }
         // Configurar webhook automaticamente
         const newCfg: UazapiConfig = { url: String(payload.uazapi_url), token: String(payload.uazapi_token) };
