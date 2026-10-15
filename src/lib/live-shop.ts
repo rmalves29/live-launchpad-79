@@ -6,6 +6,8 @@ import { getActiveShippingIntegrations, shippingProviderLabel, type ActiveShippi
 export interface LiveVariant {
   id: number;
   label: string;
+  color?: string | null;
+  size?: string | null;
   stock: number;
   price: number;
   was: number | null;

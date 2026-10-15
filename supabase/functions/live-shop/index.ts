@@ -257,6 +257,8 @@ async function catalog(body: any, tenant: any) {
       g.variants.push({
         id: p.id,
         label: [p.color, p.size].filter(Boolean).join(' / ') || p.code,
+        color: p.color || null,
+        size: p.size || null,
         stock: p.stock,
         price: effectivePrice(p),
         was: wasPrice(p),

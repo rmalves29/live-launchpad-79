@@ -11,7 +11,7 @@ import './live-shop.css';
 type Screen = 'shop' | 'cart' | 'checkout' | 'done';
 type Modal =
   | null
-  | { type: 'variant'; product: LiveProduct; mode: 'cart' | 'buy'; variantId: number | null; qty: number }
+  | { type: 'variant'; product: LiveProduct; mode: 'cart' | 'buy'; variantId: number | null; qty: number; color?: string | null; size?: string | null }
   | { type: 'phone' }
   | { type: 'signup' }
   | { type: 'note' };
@@ -948,38 +948,106 @@ export default function LiveShop() {
     const close = () => setModal(null);
     if (modal.type === 'variant') {
       const p = modal.product;
-      const v = p.variants.find((x) => x.id === modal.variantId);
+      const vs = p.variants;
+      const colors = Array.from(new Set(vs.map((x) => x.color).filter(Boolean))) as string[];
+      const sizes = Array.from(new Set(vs.map((x) => x.size).filter(Boolean))) as string[];
+      const needC = colors.length > 0;
+      const needS = sizes.length > 0;
+      const grouped = needC || needS;
+      // dimensão com uma única opção já vem escolhida
+      const selColor = needC ? (modal.color ?? (colors.length === 1 ? colors[0] : null)) : null;
+      const selSize = needS ? (modal.size ?? (sizes.length === 1 ? sizes[0] : null)) : null;
+      const v = grouped
+        ? ((!needC || selColor) && (!needS || selSize)
+            ? vs.find((x) => (!needC || x.color === selColor) && (!needS || x.size === selSize)) || null
+            : null)
+        : vs.find((x) => x.id === modal.variantId) || null;
       const price = v ? v.price : p.price;
       const was = v ? v.was : p.was;
+      const colorImg = (col: string) => vs.find((x) => x.color === col && x.image_url)?.image_url || p.image_url;
+      const headImg = v?.image_url || (selColor ? colorImg(selColor) : null) || p.image_url;
+      const maxQty = Math.min(9, Math.max(1, v?.stock ?? 9));
+
+      const pick = (color: string | null, size: string | null) => {
+        const c = needC ? color : null;
+        let s2 = needS ? size : null;
+        // se o tamanho já escolhido não existe (ou está esgotado) na nova cor, limpa o tamanho
+        if (needC && needS && c && s2 && !vs.some((x) => x.color === c && x.size === s2 && x.stock > 0)) s2 = null;
+        const done = (!needC || c) && (!needS || s2);
+        const found = done ? vs.find((x) => (!needC || x.color === c) && (!needS || x.size === s2)) : null;
+        setModal({ ...modal, color: c, size: s2, variantId: found?.id ?? null, qty: Math.min(modal.qty, Math.max(1, found?.stock ?? 9)) });
+      };
+      const colorOk = (col: string) => vs.some((x) => x.color === col && x.stock > 0 && (!selSize || x.size === selSize));
+      const sizeOk = (sz: string) => vs.some((x) => x.size === sz && x.stock > 0 && (!selColor || x.color === selColor));
+      const missing = [!selColor && needC ? 'a cor' : '', !selSize && needS ? 'o tamanho' : ''].filter(Boolean).join(' e ');
+
       return (
         <>
           <div className="scrim" onClick={close} />
-          <div className="sheet" role="dialog" aria-modal="true">
+          <div className="sheet" role="dialog" aria-modal="true" aria-label="Escolha a opção do produto">
             <div className="top">
-              <div className="ph">{(v?.image_url || p.image_url) ? <img src={(v?.image_url || p.image_url) as string} alt="" /> : null}</div>
+              <div className="ph">{headImg ? <img src={headImg} alt="" /> : null}</div>
               <div style={{ minWidth: 0 }}>
-                <div className="pr"><strong>{brl(price)}</strong>{was ? <s style={{ display: 'inline', marginLeft: 6 }}>{brl(was)}</s> : null}{pct(price, was) > 0 ? <span className="pc">-{pct(price, was)}%</span> : null}</div>
+                <div className="pr">
+                  {!v && p.price_from ? <small style={{ marginRight: 4 }}>a partir de</small> : null}
+                  <strong>{brl(price)}</strong>{was ? <s style={{ display: 'inline', marginLeft: 6 }}>{brl(was)}</s> : null}{pct(price, was) > 0 ? <span className="pc">-{pct(price, was)}%</span> : null}
+                </div>
                 <div className="note" style={{ marginTop: 6 }}>{p.name}</div>
+                {v && v.stock > 0 && v.stock <= 5 ? <div className="stock-hint">Restam {v.stock}</div> : null}
               </div>
               <button className="x" onClick={close} aria-label="Fechar" type="button">×</button>
             </div>
-            <h3 style={{ fontSize: 15 }}>Escolha uma opção ({p.variants.length})</h3>
-            <div className="vgrid">
-              {p.variants.map((x) => (
-                <button className="vt" key={x.id} aria-pressed={modal.variantId === x.id} disabled={x.stock <= 0} onClick={() => setModal({ ...modal, variantId: x.id })} type="button">
-                  {x.label}{x.stock <= 0 ? <><br /><small>esgotado</small></> : null}
-                </button>
-              ))}
-            </div>
-            <div className="qrow">
+
+            {grouped ? (
+              <>
+                {needC && (
+                  <>
+                    <h3 className="og-title">Cor ({colors.length})</h3>
+                    <div className="cgrid">
+                      {colors.map((col) => (
+                        <button className="ct" key={col} aria-pressed={selColor === col} disabled={!colorOk(col)} onClick={() => pick(col, selSize)} type="button">
+                          <span className="im">{colorImg(col) ? <img src={colorImg(col) as string} alt="" loading="lazy" /> : null}</span>
+                          <span className="nm">{col}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {needS && (
+                  <>
+                    <h3 className="og-title">Tamanho</h3>
+                    <div className="sgrid">
+                      {sizes.map((sz) => (
+                        <button className="st" key={sz} aria-pressed={selSize === sz} disabled={!sizeOk(sz)} onClick={() => pick(selColor, sz)} type="button">{sz}</button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <h3 className="og-title">Escolha uma opção ({vs.length})</h3>
+                <div className="vgrid">
+                  {vs.map((x) => (
+                    <button className="vt" key={x.id} aria-pressed={modal.variantId === x.id} disabled={x.stock <= 0} onClick={() => setModal({ ...modal, variantId: x.id })} type="button">
+                      {x.label}{x.stock <= 0 ? <><br /><small>esgotado</small></> : null}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div className="qrow" style={{ marginTop: 16 }}>
               <span>Quantidade</span>
               <div className="qty">
                 <button onClick={() => setModal({ ...modal, qty: Math.max(1, modal.qty - 1) })} aria-label="Diminuir" type="button">−</button>
                 <span>{modal.qty}</span>
-                <button onClick={() => setModal({ ...modal, qty: Math.min(9, modal.qty + 1) })} aria-label="Aumentar" type="button">+</button>
+                <button onClick={() => setModal({ ...modal, qty: Math.min(maxQty, modal.qty + 1) })} aria-label="Aumentar" type="button">+</button>
               </div>
             </div>
-            <button className="cta block" onClick={confirmVariant} type="button">{modal.mode === 'buy' ? 'Comprar agora' : 'Adicionar ao carrinho'}</button>
+            <button className="cta block" onClick={confirmVariant} disabled={!v || v.stock <= 0} type="button">
+              {!v ? (grouped && missing ? `Escolha ${missing}` : 'Escolha uma opção') : modal.mode === 'buy' ? 'Comprar agora' : 'Adicionar ao carrinho'}
+            </button>
           </div>
         </>
       );
