@@ -69,7 +69,7 @@ async function getTenant(slugRaw: unknown) {
   if (!slug) return null;
   const { data } = await sb
     .from('tenants')
-    .select('id, name, slug, logo_url, primary_color, is_active, live_reserve_mode, live_cart_minutes, live_shop_enabled, live_shop_close_at')
+    .select('id, name, slug, logo_url, primary_color, is_active, live_reserve_mode, live_cart_minutes, live_shop_enabled, live_shop_close_at, live_open_order')
     .eq('slug', slug)
     .eq('is_active', true)
     .maybeSingle();
@@ -196,7 +196,7 @@ async function loadCatalogExtras(tenant: any) {
       } : null,
     };
     extras.tenant = { id: tenant.id, name: tenant.name, slug: tenant.slug, logo_url: tenant.logo_url, primary_color: tenant.primary_color };
-    extras.settings = { reserve_mode: tenant.live_reserve_mode, cart_minutes: tenant.live_cart_minutes, close_at: tenant.live_shop_close_at || null };
+    extras.settings = { reserve_mode: tenant.live_reserve_mode, cart_minutes: tenant.live_cart_minutes, close_at: tenant.live_shop_close_at || null, open_order: tenant.live_open_order === true };
     extras.now = nowIso;
   return extras;
 }
@@ -376,7 +376,7 @@ async function couponCheck(body: any, tenant: any) {
 
 // Modo "reservar ao adicionar no carrinho": define a quantidade ABSOLUTA reservada para a sessão.
 async function reserve(body: any, tenant: any) {
-  if (tenant.live_reserve_mode !== 'cart') return json({ ok: true, skipped: true });
+  if (tenant.live_open_order === true || tenant.live_reserve_mode !== 'cart') return json({ ok: true, skipped: true });
   const sessionId = String(body.session_id ?? '').slice(0, 80);
   const productId = Number(body.product_id);
   const want = Math.max(0, Math.min(99, Math.floor(num(body.qty, 0))));
@@ -426,7 +426,244 @@ async function cancelOrder(body: any, tenant: any) {
   return json({ ok: true, cancelled: ok });
 }
 
+// ------------------------------- pedido aberto (carrinho = pedido pendente) -------------------------------
+// O pedido nasce quando a cliente adiciona o primeiro item e acompanha o carrinho: item novo entra no pedido, item
+// retirado sai dele, e o estoque segue a regra normal (reserva ao entrar no pedido, devolve ao sair ou ao cancelar).
+// O evento continua INSTAGRAM_LIVE e a origem live_shop (mesmas etiquetas de sempre).
+async function findOpenLiveOrder(tenantId: string, phone: string) {
+  const { data } = await sb.from('orders')
+    .select('id, cart_id, customer_phone, payment_link, observation, coupon_code')
+    .eq('tenant_id', tenantId).eq('source', 'live_shop').eq('is_paid', false).eq('is_cancelled', false)
+    .in('customer_phone', phoneVariants(phone))
+    .order('id', { ascending: false }).limit(1);
+  return ((data && data[0]) as any) || null;
+}
+
+// Carrinho esvaziado: devolve o estoque e tira o pedido. Se nunca houve link de pagamento, apaga de vez; senao, cancela (fica o historico).
+async function dropOpenOrder(order: any) {
+  await sb.rpc('restore_order_stock', { p_order_id: order.id });
+  let deleted = false;
+  if (!order.payment_link) {
+    const { error } = await sb.from('orders').delete().eq('id', order.id).eq('is_paid', false);
+    if (!error) {
+      await sb.from('cart_items').delete().eq('cart_id', order.cart_id);
+      await sb.from('carts').delete().eq('id', order.cart_id);
+      deleted = true;
+    }
+  }
+  if (!deleted) {
+    await sb.from('orders').update({ is_cancelled: true, cancellation_reason: 'Carrinho da Loja da Live esvaziado pelo cliente' }).eq('id', order.id).eq('is_paid', false);
+  }
+}
+
+async function syncOpenOrder(body: any, tenant: any, finalize: boolean) {
+  const phone = normPhone(body.phone);
+  const items = sanitizeItems(body.items);
+  if (phone.length < 10 || phone.length > 11) return fail('Informe o celular com DDD.', 'INVALID_PHONE');
+
+  const customer = await findCustomer(tenant.id, phone);
+  if (!customer) return fail('Complete seu cadastro para continuar.', 'NO_CUSTOMER');
+  if (customer.is_blocked) return fail('Não foi possível continuar com este número. Fale com a loja.', 'BLOCKED');
+
+  let order = await findOpenLiveOrder(tenant.id, phone);
+
+  // carrinho vazio: sai tudo
+  if (!items.length) {
+    if (order) await dropOpenOrder(order);
+    return json({ ok: true, order_id: null, items_state: [] });
+  }
+
+  const products = await loadProducts(tenant.id, items.map((i) => i.product_id));
+  const availableP = (p: any) => !!p && p.is_active && ['LIVE', 'AMBOS'].includes(p.sale_type);
+
+  // itens atuais do pedido (se ja existe)
+  let cartId: number | null = order?.cart_id ?? null;
+  const curRows: any[] = cartId ? ((await sb.from('cart_items').select('id, product_id, qty').eq('cart_id', cartId)).data || []) : [];
+  const cur = new Map<number, any>(curRows.map((r) => [r.product_id, r]));
+
+  // quer entrar um produto que nao esta mais na live: avisa; se ja estava no pedido, sai sozinho
+  const want = new Map<number, number>();
+  for (const it of items) {
+    const p = products.get(it.product_id);
+    if (!availableP(p)) {
+      if (!cur.has(it.product_id)) return fail(`${p?.name || 'Um produto'} não está mais disponível.`, 'NOT_AVAILABLE', { product_id: it.product_id });
+      continue; // estava no pedido e saiu da live: sai do pedido
+    }
+    want.set(it.product_id, it.qty);
+  }
+  if (!want.size) {
+    if (order) await dropOpenOrder(order);
+    return json({ ok: true, order_id: null, items_state: [] });
+  }
+
+  // cria o pedido aberto (carrinho + pedido) na primeira vez
+  if (!order) {
+    const today = brtToday();
+    const { data: cart, error: cartErr } = await sb.from('carts').insert({
+      tenant_id: tenant.id, customer_phone: phone, event_date: today, event_type: 'INSTAGRAM_LIVE', status: 'OPEN',
+    }).select('id').single();
+    if (cartErr || !cart) { console.error('[live-shop] cart aberto:', cartErr?.message); return fail('Não foi possível criar o pedido. Tente novamente.', 'ORDER_ERROR'); }
+    const { data: created, error: orderErr } = await sb.from('orders').insert({
+      tenant_id: tenant.id, cart_id: cart.id, customer_phone: phone, customer_name: customer.name,
+      event_date: today, event_type: 'INSTAGRAM_LIVE', source: 'live_shop',
+      total_amount: 0, is_paid: false, printed: false,
+      item_added_message_sent: false, payment_confirmation_sent: false, is_cancelled: false,
+      customer_cep: customer.cep, customer_street: customer.street, customer_number: customer.number,
+      customer_complement: customer.complement, customer_neighborhood: customer.neighborhood,
+      customer_city: customer.city, customer_state: customer.state,
+    }).select('id, cart_id, customer_phone, payment_link, observation, coupon_code').single();
+    if (orderErr || !created) {
+      await sb.from('carts').delete().eq('id', cart.id);
+      console.error('[live-shop] pedido aberto:', orderErr?.message);
+      return fail('Não foi possível criar o pedido. Tente novamente.', 'ORDER_ERROR');
+    }
+    order = created as any;
+    cartId = cart.id;
+  }
+
+  let changed = false;
+
+  // 1) sai ou diminui (devolve estoque primeiro)
+  for (const [pid, row] of cur) {
+    const w = want.get(pid) ?? 0;
+    if (w < num(row.qty)) {
+      await sb.rpc('release_product_stock', { p_product_id: pid, p_qty: num(row.qty) - w });
+      if (w === 0) await sb.from('cart_items').delete().eq('id', row.id);
+      else await sb.from('cart_items').update({ qty: w }).eq('id', row.id);
+      changed = true;
+    }
+  }
+
+  // 2) entra ou aumenta (reserva atomica; o primeiro que chega leva)
+  let problem: { product_id: number; max_qty: number; stock: number } | null = null;
+  const finalQty = new Map<number, number>();
+  for (const [pid, w] of want) {
+    const p = products.get(pid);
+    const held = Math.min(num(cur.get(pid)?.qty), w);
+    let qty = held;
+    if (w > held) {
+      const need = w - held;
+      const { data: left, error } = await sb.rpc('reserve_product_stock', { p_product_id: pid, p_qty: need });
+      if (error || left === null || left === undefined) {
+        const fresh = (await loadProducts(tenant.id, [pid])).get(pid);
+        if (!problem) problem = { product_id: pid, max_qty: held + Math.max(0, num(fresh?.stock)), stock: num(fresh?.stock) };
+      } else {
+        qty = w;
+      }
+    }
+    finalQty.set(pid, qty);
+    if (qty <= 0) continue;
+    const unit = effectivePrice(p);
+    if (cur.has(pid)) {
+      if (qty !== num(cur.get(pid).qty)) changed = true;
+      await sb.from('cart_items').update({ qty, unit_price: unit }).eq('id', cur.get(pid).id);
+    } else {
+      const { error: insErr } = await sb.from('cart_items').insert({
+        tenant_id: tenant.id, cart_id: cartId, product_id: p.id, product_code: p.code, product_name: p.name,
+        product_image_url: p.image_url, unit_price: unit, qty,
+      });
+      if (insErr) {
+        await sb.rpc('release_product_stock', { p_product_id: pid, p_qty: qty });
+        finalQty.set(pid, 0);
+        console.error('[live-shop] item aberto:', insErr.message);
+        if (!problem) problem = { product_id: pid, max_qty: 0, stock: 0 };
+      } else {
+        changed = true;
+      }
+    }
+  }
+
+  // ---- valores do pedido ----
+  const lines = Array.from(finalQty.entries()).filter(([, q]) => q > 0).map(([pid, q]) => {
+    const p = products.get(pid);
+    return { pid, p, qty: q, unit: effectivePrice(p), line: { unit_price: effectivePrice(p), qty: q, promotional: isPromo(p) } as Line };
+  });
+  const subtotal = round2(lines.reduce((sum, l) => sum + l.unit * l.qty, 0));
+
+  let couponCode: string | null = null, couponDiscount = 0, couponMessage: string | undefined, couponRow: any = null, couponAuto = false;
+  if (body.coupon_code) {
+    couponRow = await loadCoupon(tenant.id, body.coupon_code);
+    const r = couponRow ? computeCoupon(couponRow, lines.map((l) => l.line)) : { ok: false, discount: 0, message: 'Cupom inválido ou expirado.' };
+    if (r.ok) { couponCode = couponRow.code; couponDiscount = r.discount; } else { couponMessage = r.message; couponRow = null; }
+  }
+  if (!couponRow) {
+    const { data: autos } = await sb.from('coupons').select('*').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).eq('auto_apply', true);
+    let best: { row: any; discount: number } | null = null;
+    for (const c of autos || []) {
+      const r = computeCoupon(c, lines.map((l) => l.line));
+      if (r.ok && (!best || r.discount > best.discount)) best = { row: c, discount: r.discount };
+    }
+    if (best) { couponRow = best.row; couponCode = best.row.code; couponDiscount = best.discount; couponAuto = true; couponMessage = undefined; }
+  }
+
+  let giftName: string | null = null;
+  const { data: gifts } = await sb.from('gifts').select('name, minimum_purchase_amount, auto_apply').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).order('minimum_purchase_amount', { ascending: false });
+  const gift = (gifts || []).find((g: any) => g.auto_apply !== false && subtotal >= num(g.minimum_purchase_amount));
+  if (gift) giftName = gift.name;
+
+  const total = round2(Math.max(0, subtotal - couponDiscount));
+  const note = String(body.note ?? '').trim().slice(0, 300);
+  const patch: Record<string, unknown> = {
+    total_amount: total, coupon_code: couponCode, coupon_discount: couponDiscount || null, gift_name: giftName,
+    customer_name: customer.name,
+    customer_cep: customer.cep, customer_street: customer.street, customer_number: customer.number,
+    customer_complement: customer.complement, customer_neighborhood: customer.neighborhood,
+    customer_city: customer.city, customer_state: customer.state,
+  };
+  // o carrinho mudou: o link de pagamento antigo (com o valor antigo) nao vale mais
+  if (changed && order.payment_link) patch.payment_link = null;
+  if (finalize && note) patch.observation = `Nota do cliente: ${note}`;
+  await sb.from('orders').update(patch).eq('id', order.id).eq('is_paid', false);
+
+  // cupom usado: conta ao fechar o pedido (primeira vez com este valor de carrinho)
+  if (finalize && couponRow && (changed || !order.payment_link)) {
+    await sb.from('coupons').update({ used_count: num(couponRow.used_count) + 1 }).eq('id', couponRow.id);
+  }
+
+  const itemsState = lines.map((l) => ({ product_id: l.pid, qty: l.qty }));
+  if (problem) {
+    return fail(`Estoque insuficiente de ${products.get(problem.product_id)?.name || 'um produto'}.`, 'INSUFFICIENT_STOCK',
+      { product_id: problem.product_id, stock: problem.stock, max_qty: problem.max_qty, items_state: itemsState });
+  }
+  if (!lines.length) {
+    await dropOpenOrder(order);
+    return json({ ok: true, order_id: null, items_state: [] });
+  }
+  return json({
+    ok: true, order_id: order.id, cart_id: cartId, subtotal, coupon_code: couponCode, coupon_discount: couponDiscount,
+    coupon_message: couponMessage, coupon_auto: couponAuto, gift_name: giftName, total, items_state: itemsState,
+    items: lines.map((l) => ({ product_name: l.p.name, product_code: l.p.code, qty: l.qty, unit_price: l.unit })),
+  });
+}
+
+// O que ja esta no pedido aberto da cliente (para ela ver o mesmo carrinho ao voltar, ou em outro aparelho)
+async function cartState(body: any, tenant: any) {
+  const phone = normPhone(body.phone);
+  if (phone.length < 10 || phone.length > 11) return json({ ok: true, order_id: null, lines: [] });
+  const order = await findOpenLiveOrder(tenant.id, phone);
+  if (!order) return json({ ok: true, order_id: null, lines: [] });
+  const { data: rows } = await sb.from('cart_items').select('product_id, qty').eq('cart_id', order.cart_id);
+  const ids = (rows || []).map((r: any) => r.product_id);
+  const prods = await loadProducts(tenant.id, ids);
+  const parentIds = Array.from(new Set(Array.from(prods.values()).map((p: any) => p.parent_product_id).filter(Boolean))) as number[];
+  const parents = await loadProducts(tenant.id, parentIds);
+  const lines = (rows || []).flatMap((r: any) => {
+    const p = prods.get(r.product_id);
+    if (!p) return [];
+    const parent = p.parent_product_id ? parents.get(p.parent_product_id) : null;
+    return [{
+      product_id: p.id, qty: num(r.qty), code: (parent || p).code, name: (parent || p).name,
+      label: parent ? ([p.color, p.size].filter(Boolean).join(' / ') || p.code) : '',
+      image_url: p.image_url || parent?.image_url || null, price: effectivePrice(p), was: wasPrice(p),
+      stock: num(p.stock) + num(r.qty),
+    }];
+  });
+  return json({ ok: true, order_id: order.id, coupon_code: order.coupon_code || null, lines });
+}
+
 async function createOrder(body: any, tenant: any, ip: string) {
+  // Loja com pedido aberto: o pedido ja existe (criado ao adicionar no carrinho). Aqui so fecha os valores e segue para o pagamento.
+  if (tenant.live_open_order === true) return await syncOpenOrder(body, tenant, true);
   const phone = normPhone(body.phone);
   const sessionId = String(body.session_id ?? '').slice(0, 80);
   const items = sanitizeItems(body.items);
@@ -571,6 +808,8 @@ Deno.serve(async (req) => {
       case 'coupon_check': return await couponCheck(body, tenant);
       case 'reserve': return await reserve(body, tenant);
       case 'create_order': return await createOrder(body, tenant, clientIp(req));
+      case 'cart_sync': return tenant.live_open_order === true ? await syncOpenOrder(body, tenant, false) : fail('Ação indisponível.', 'NOT_ENABLED');
+      case 'cart_state': return tenant.live_open_order === true ? await cartState(body, tenant) : json({ ok: true, order_id: null, lines: [] });
       case 'cancel_order': return await cancelOrder(body, tenant);
       default: return fail('Ação inválida.', 'BAD_ACTION');
     }
