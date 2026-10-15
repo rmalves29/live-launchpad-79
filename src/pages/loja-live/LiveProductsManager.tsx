@@ -8,12 +8,22 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, Package, Search, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, Package, Search, X } from 'lucide-react';
 
 // Um produto está "na live" quando o tipo de venda é LIVE ou AMBOS (é o que a vitrine do link usa).
 // Marcar = vira AMBOS (continua no bazar); desmarcar = vira BAZAR (sai da live).
+// Produto com variações: cada variação (tamanho/cor) entra ou sai sozinha; o produto "pai" acompanha.
 const IN_LIVE = ['LIVE', 'AMBOS'];
 const PAGE_SIZE = 50;
+
+type Child = {
+  id: number;
+  code: string | null;
+  label: string;        // "G", "Azul / M" ou o código
+  stock: number;
+  sale_type: string | null;
+  inLive: boolean;      // estado salvo no banco
+};
 
 type Row = {
   id: number;
@@ -24,8 +34,8 @@ type Row = {
   stock: number | null;
   image_url: string | null;
   sale_type: string | null;
-  variants: number;     // quantidade de variações (filhos)
-  inLive: boolean;      // estado salvo no banco
+  children: Child[];    // vazio = produto sem variações
+  inLive: boolean;      // estado salvo no banco (com variações: alguma variação na live)
 };
 
 type Filter = 'all' | 'in' | 'out';
@@ -43,9 +53,10 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
-  // alterações ainda não salvas: id do produto -> quer estar na live?
+  const [open, setOpen] = useState<Set<number>>(new Set());
+  // alterações ainda não salvas: id do produto SEM variações ou da VARIAÇÃO -> quer estar na live?
   const [pending, setPending] = useState<Map<number, boolean>>(new Map());
-  // guarda o estado salvo de cada produto mexido, para saber o que gravar mesmo depois de trocar de busca/página
+  // estado salvo de tudo que já apareceu na tela (vale mesmo depois de trocar de busca/página)
   const [known, setKnown] = useState<Map<number, Row>>(new Map());
 
   useEffect(() => {
@@ -87,23 +98,33 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
       return;
     }
     const list = (data as any[]) || [];
-    // variações (filhos) desses produtos: somam estoque e acompanham o pai
     const ids = list.map((p) => p.id);
-    const kids = new Map<number, { n: number; stock: number; live: boolean }>();
+    const kids = new Map<number, Child[]>();
     if (ids.length) {
-      const { data: ch } = await supabase.from('products').select('parent_product_id, stock, sale_type').eq('tenant_id', tenant.id).in('parent_product_id', ids);
+      const { data: ch } = await supabase
+        .from('products')
+        .select('id, parent_product_id, code, color, size, stock, sale_type')
+        .eq('tenant_id', tenant.id)
+        .eq('is_active', true)
+        .in('parent_product_id', ids)
+        .order('code', { ascending: true });
       for (const c of (ch as any[]) || []) {
-        const k = kids.get(c.parent_product_id) || { n: 0, stock: 0, live: false };
-        k.n += 1; k.stock += Number(c.stock) || 0; k.live = k.live || IN_LIVE.includes(c.sale_type);
-        kids.set(c.parent_product_id, k);
+        const arr = kids.get(c.parent_product_id) || [];
+        arr.push({
+          id: c.id, code: c.code,
+          label: [c.color, c.size].filter(Boolean).join(' / ') || c.code || `#${c.id}`,
+          stock: Number(c.stock) || 0, sale_type: c.sale_type, inLive: IN_LIVE.includes(c.sale_type),
+        });
+        kids.set(c.parent_product_id, arr);
       }
     }
     const mapped: Row[] = list.map((p) => {
-      const k = kids.get(p.id);
+      const children = kids.get(p.id) || [];
       return {
         id: p.id, code: p.code, name: p.name, price: p.price, promotional_price: p.promotional_price,
-        stock: k ? k.stock : p.stock, image_url: p.image_url, sale_type: p.sale_type,
-        variants: k?.n || 0, inLive: IN_LIVE.includes(p.sale_type) || !!k?.live,
+        stock: children.length ? children.reduce((s, c) => s + c.stock, 0) : p.stock,
+        image_url: p.image_url, sale_type: p.sale_type, children,
+        inLive: children.length ? children.some((c) => c.inLive) : IN_LIVE.includes(p.sale_type),
       };
     });
     setRows(mapped);
@@ -115,56 +136,97 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { countInLive(); }, [countInLive]);
 
-  const wanted = (r: Row) => (pending.has(r.id) ? pending.get(r.id)! : r.inLive);
+  // estado "quer estar na live?" de uma variação ou de um produto sem variações
+  const wantedLeaf = (id: number, saved: boolean) => (pending.has(id) ? pending.get(id)! : saved);
 
-  function toggle(r: Row, value: boolean) {
+  // estado do produto na tela: true / false / 'indeterminate' (só algumas variações)
+  function rowState(r: Row): boolean | 'indeterminate' {
+    if (r.children.length === 0) return wantedLeaf(r.id, r.inLive);
+    const on = r.children.filter((c) => wantedLeaf(c.id, c.inLive)).length;
+    if (on === 0) return false;
+    return on === r.children.length ? true : 'indeterminate';
+  }
+
+  function setLeaf(map: Map<number, boolean>, id: number, saved: boolean, value: boolean) {
+    if (value === saved) map.delete(id); else map.set(id, value);
+  }
+
+  function setRow(r: Row, value: boolean) {
     setPending((prev) => {
       const n = new Map(prev);
-      if (value === r.inLive) n.delete(r.id); else n.set(r.id, value);
+      if (r.children.length === 0) setLeaf(n, r.id, r.inLive, value);
+      else r.children.forEach((c) => setLeaf(n, c.id, c.inLive, value));
       return n;
     });
   }
 
-  const allOnPage = rows.length > 0 && rows.every((r) => wanted(r));
-  const someOnPage = rows.some((r) => wanted(r));
+  function setChild(c: Child, value: boolean) {
+    setPending((prev) => { const n = new Map(prev); setLeaf(n, c.id, c.inLive, value); return n; });
+  }
+
+  function toggleOpen(id: number) {
+    setOpen((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  }
+
+  const allOnPage = rows.length > 0 && rows.every((r) => rowState(r) === true);
+  const someOnPage = rows.some((r) => rowState(r) !== false);
   function toggleAllOnPage(value: boolean) {
     setPending((prev) => {
       const n = new Map(prev);
-      rows.forEach((r) => { if (value === r.inLive) n.delete(r.id); else n.set(r.id, value); });
+      rows.forEach((r) => {
+        if (r.children.length === 0) setLeaf(n, r.id, r.inLive, value);
+        else r.children.forEach((c) => setLeaf(n, c.id, c.inLive, value));
+      });
       return n;
     });
   }
 
   const summary = useMemo(() => {
     let add = 0, remove = 0;
-    pending.forEach((want, id) => { if (want) add++; else remove++; void id; });
+    pending.forEach((want) => { if (want) add++; else remove++; });
     return { add, remove };
   }, [pending]);
 
   async function save() {
     if (!tenant?.id || pending.size === 0) return;
     setSaving(true);
+
+    // estado salvo de cada folha (produto sem variação ou variação), e de qual produto ela é
+    const savedLeaf = new Map<number, { live: boolean; parent?: Row }>();
+    known.forEach((r) => {
+      if (r.children.length === 0) savedLeaf.set(r.id, { live: r.inLive });
+      else r.children.forEach((c) => savedLeaf.set(c.id, { live: c.inLive, parent: r }));
+    });
+
     const toLive: number[] = [];
     const toOut: number[] = [];
+    const touchedParents = new Map<number, Row>();
     pending.forEach((want, id) => {
-      const saved = known.get(id);
-      if (want && !saved?.inLive) toLive.push(id);
-      if (!want && saved?.inLive) toOut.push(id);
+      const s = savedLeaf.get(id);
+      if (!s || s.live === want) return;
+      (want ? toLive : toOut).push(id);
+      if (s.parent) touchedParents.set(s.parent.id, s.parent);
     });
+
+    // o produto "pai" acompanha as variações: fica na live se alguma variação ficar
+    const parentLive: number[] = [];
+    const parentOut: number[] = [];
+    touchedParents.forEach((p) => {
+      const anyOn = p.children.some((c) => wantedLeaf(c.id, c.inLive));
+      if (anyOn && !IN_LIVE.includes(p.sale_type || '')) parentLive.push(p.id);
+      if (!anyOn && IN_LIVE.includes(p.sale_type || '')) parentOut.push(p.id);
+    });
+
     const chunk = <T,>(a: T[]) => Array.from({ length: Math.ceil(a.length / 150) }, (_, i) => a.slice(i * 150, i * 150 + 150));
     try {
-      for (const ids of chunk(toLive)) {
+      for (const ids of chunk([...toLive, ...parentLive])) {
         // só quem hoje é BAZAR vira AMBOS; quem já é LIVE/AMBOS fica como está
         const a = await supabase.from('products').update({ sale_type: 'AMBOS' } as any).eq('tenant_id', tenant.id).in('id', ids).eq('sale_type', 'BAZAR');
         if (a.error) throw a.error;
-        const b = await supabase.from('products').update({ sale_type: 'AMBOS' } as any).eq('tenant_id', tenant.id).in('parent_product_id', ids).eq('sale_type', 'BAZAR');
-        if (b.error) throw b.error;
       }
-      for (const ids of chunk(toOut)) {
+      for (const ids of chunk([...toOut, ...parentOut])) {
         const a = await supabase.from('products').update({ sale_type: 'BAZAR' } as any).eq('tenant_id', tenant.id).in('id', ids);
         if (a.error) throw a.error;
-        const b = await supabase.from('products').update({ sale_type: 'BAZAR' } as any).eq('tenant_id', tenant.id).in('parent_product_id', ids);
-        if (b.error) throw b.error;
       }
       toast({
         title: 'Produtos da live atualizados',
@@ -190,7 +252,7 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
           <div>
             <h3 className="font-semibold">Produtos da live</h3>
             <p className="text-xs text-muted-foreground">
-              Marque os produtos que aparecem no link da live e clique em <b>Salvar</b>. Desmarque e salve para tirar da live. Os produtos continuam cadastrados e à venda no bazar.
+              Marque os produtos que aparecem no link da live e clique em <b>Salvar</b>. Desmarque e salve para tirar da live. Produtos com variações abrem na setinha: marque só os tamanhos ou cores que quer vender na live. Os produtos continuam cadastrados e à venda no bazar.
             </p>
           </div>
           {inLiveCount !== null && <Badge variant="secondary">{inLiveCount} na live</Badge>}
@@ -246,30 +308,66 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
           ) : (
             <ul className="divide-y">
               {rows.map((r) => {
-                const on = wanted(r);
-                const changed = pending.has(r.id);
+                const st = rowState(r);
+                const hasKids = r.children.length > 0;
+                const isOpen = open.has(r.id);
+                const onKids = r.children.filter((c) => wantedLeaf(c.id, c.inLive)).length;
+                const changed = hasKids ? r.children.some((c) => pending.has(c.id)) : pending.has(r.id);
                 const noStock = (r.stock ?? 0) <= 0;
                 return (
-                  <li key={r.id} className={`flex items-center gap-3 px-3 py-2 ${changed ? 'bg-amber-50 dark:bg-amber-950/20' : ''}`}>
-                    <Checkbox checked={on} onCheckedChange={(v) => toggle(r, v === true)} aria-label={`${on ? 'Tirar' : 'Colocar'} ${r.code || r.name} ${on ? 'da' : 'na'} live`} />
-                    <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border bg-muted">
-                      {r.image_url
-                        ? <img src={r.image_url} alt="" loading="lazy" className="h-full w-full object-cover" />
-                        : <div className="grid h-full w-full place-items-center"><Package className="h-5 w-5 text-muted-foreground" /></div>}
+                  <li key={r.id} className={changed ? 'bg-amber-50 dark:bg-amber-950/20' : ''}>
+                    <div className="flex items-center gap-3 px-3 py-2">
+                      <Checkbox checked={st} onCheckedChange={(v) => setRow(r, v === true)} aria-label={`${st === true ? 'Tirar' : 'Colocar'} ${r.code || r.name} ${st === true ? 'da' : 'na'} live`} />
+                      <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border bg-muted">
+                        {r.image_url
+                          ? <img src={r.image_url} alt="" loading="lazy" className="h-full w-full object-cover" />
+                          : <div className="grid h-full w-full place-items-center"><Package className="h-5 w-5 text-muted-foreground" /></div>}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{r.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          <span className="font-mono">{r.code || 'sem código'}</span>
+                          {hasKids && (
+                            <button type="button" onClick={() => toggleOpen(r.id)} className="ml-2 inline-flex items-center gap-0.5 rounded px-1 text-primary hover:underline" aria-expanded={isOpen}>
+                              {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                              {r.children.length} variações{st === 'indeterminate' ? ` · ${onKids} na live` : ''}
+                            </button>
+                          )}
+                          {noStock && <span className="ml-2 text-amber-700">sem estoque: não aparece no link</span>}
+                        </p>
+                      </div>
+                      <span className="hidden w-20 text-right text-sm tabular-nums sm:block">{r.stock ?? 0}</span>
+                      <span className="hidden w-24 text-right text-sm tabular-nums sm:block">{money(r.promotional_price ?? r.price)}</span>
+                      <span className="w-24 text-right">
+                        {st === true && <Badge className="bg-emerald-600 hover:bg-emerald-600">Na live</Badge>}
+                        {st === 'indeterminate' && <Badge className="bg-amber-500 hover:bg-amber-500">Parcial</Badge>}
+                        {st === false && <Badge variant="outline">Fora</Badge>}
+                      </span>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{r.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        <span className="font-mono">{r.code || 'sem código'}</span>
-                        {r.variants > 0 && <> · {r.variants} variações</>}
-                        {noStock && <span className="ml-2 text-amber-700">sem estoque: não aparece no link</span>}
-                      </p>
-                    </div>
-                    <span className="hidden w-20 text-right text-sm tabular-nums sm:block">{r.stock ?? 0}</span>
-                    <span className="hidden w-24 text-right text-sm tabular-nums sm:block">{money(r.promotional_price ?? r.price)}</span>
-                    <span className="w-24 text-right">
-                      {on ? <Badge className="bg-emerald-600 hover:bg-emerald-600">Na live</Badge> : <Badge variant="outline">Fora</Badge>}
-                    </span>
+
+                    {hasKids && isOpen && (
+                      <ul className="border-t bg-muted/20 py-1 pl-14 pr-3">
+                        {r.children.map((c) => {
+                          const on = wantedLeaf(c.id, c.inLive);
+                          return (
+                            <li key={c.id} className={`flex items-center gap-3 py-1.5 ${pending.has(c.id) ? 'bg-amber-50 dark:bg-amber-950/20' : ''}`}>
+                              <Checkbox checked={on} onCheckedChange={(v) => setChild(c, v === true)} aria-label={`${on ? 'Tirar' : 'Colocar'} ${r.name} ${c.label} ${on ? 'da' : 'na'} live`} />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm">{c.label}</p>
+                                <p className="truncate text-xs text-muted-foreground">
+                                  <span className="font-mono">{c.code || ''}</span>
+                                  {c.stock <= 0 && <span className="ml-2 text-amber-700">sem estoque</span>}
+                                </p>
+                              </div>
+                              <span className="w-20 text-right text-sm tabular-nums">{c.stock}</span>
+                              <span className="w-24 text-right">
+                                {on ? <Badge className="bg-emerald-600 hover:bg-emerald-600">Na live</Badge> : <Badge variant="outline">Fora</Badge>}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
                   </li>
                 );
               })}
