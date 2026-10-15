@@ -78,7 +78,7 @@ serve(async (req) => {
     const webhookUrl = `${supabaseUrl}/functions/v1/subscription-webhook`;
 
     // URLs de retorno
-    const publicAppUrl = Deno.env.get("PUBLIC_APP_URL") || "https://app.cartzy.com.br";
+    const publicAppUrl = (Deno.env.get("PUBLIC_APP_URL") || "https://app.cartzy.com.br").trim().replace(/\/+$/, "");
 
     const preferenceBody = {
       items: [

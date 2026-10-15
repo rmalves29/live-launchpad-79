@@ -206,7 +206,7 @@ serve(async (req) => {
 
   // Detect origin dynamically from request headers
   const requestOrigin = req.headers.get("origin") || req.headers.get("referer")?.replace(/\/[^/]*$/, "") || "";
-  const appBaseUrl = Deno.env.get("PUBLIC_APP_URL") || requestOrigin || "https://app.cartzy.com.br";
+  const appBaseUrl = (Deno.env.get("PUBLIC_APP_URL") || requestOrigin || "https://app.cartzy.com.br").trim().replace(/\/+$/, "");
 
   try {
     const parsed = validate(await req.json());

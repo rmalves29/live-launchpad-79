@@ -14,6 +14,17 @@
       })();
     </script>
     <script>
+      // Links com barra dupla no começo do caminho (ex.: //pagamento/retorno, gerados quando o endereço-base vinha com
+      // barra no final) caem em 404. Corrige para uma barra só, mantendo parâmetros e âncora.
+      (function () {
+        try {
+          if (/^\/{2,}/.test(location.pathname)) {
+            location.replace(location.pathname.replace(/^\/{2,}/, '/') + location.search + location.hash);
+          }
+        } catch (e) { /* segue sem corrigir */ }
+      })();
+    </script>
+    <script>
       // Fast-path: redireciona links de campanha ANTES de carregar o bundle React.
       // Corta 2-4s de download/parse do SPA + init de auth no fluxo do WhatsApp.
       (function () {
