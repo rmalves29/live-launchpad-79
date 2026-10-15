@@ -16,15 +16,14 @@ export default function IntegrationsChecklist() {
   const { tenant } = useTenantContext();
   const tenantId = tenant?.id || '';
 
-  // Z-API Status
+  // WhatsApp (qualquer provedor): só conta como conectado quando existe número conectado
   const { data: zapiIntegration, isLoading: zapiLoading } = useQuery({
-    queryKey: ['zapi-status', tenantId],
+    queryKey: ['whatsapp-status', tenantId],
     queryFn: async () => {
       const { data } = await supabase
         .from('integration_whatsapp')
         .select('is_active, connected_phone, provider')
         .eq('tenant_id', tenantId)
-        .eq('provider', 'zapi')
         .maybeSingle();
       return data;
     },
@@ -225,9 +224,9 @@ export default function IntegrationsChecklist() {
         : 'Não configurado',
     },
     {
-      name: 'Z-API (WhatsApp)',
+      name: 'WhatsApp',
       icon: <MessageSquare className="h-5 w-5" />,
-      isActive: zapiIntegration?.is_active || false,
+      isActive: !!(zapiIntegration?.is_active && zapiIntegration?.connected_phone),
       details: zapiIntegration?.connected_phone 
         ? `Conectado: ${zapiIntegration.connected_phone}` 
         : 'Não conectado',

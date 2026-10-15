@@ -131,8 +131,8 @@ export default function WhatsAppOfficialIntegration() {
       <Alert>
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>
-          A <strong>Z-API permanece sempre conectada</strong> para leitura de grupos e mensagens recebidas.
-          A API Oficial afeta apenas o <strong>envio individual (1:1)</strong>. Grupos continuam pela Z-API.
+          A <strong>conexão WhatsApp da loja permanece ativa</strong> para leitura de grupos e mensagens recebidas.
+          A API Oficial afeta apenas o <strong>envio individual (1:1)</strong>. Grupos continuam pela conexão WhatsApp.
         </AlertDescription>
       </Alert>
 

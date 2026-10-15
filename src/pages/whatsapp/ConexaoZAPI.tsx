@@ -78,8 +78,10 @@ export default function ConexaoZAPI({ restrictToUazapi = false }: ConexaoZAPIPro
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
-  const [provider, setProvider] = useState<Provider>(restrictToUazapi ? 'uazapi' : 'zapi');
-  const [activeProvider, setActiveProvider] = useState<Provider>(restrictToUazapi ? 'uazapi' : 'zapi');
+  const [provider, setProvider] = useState<Provider>('uazapi');
+  const [activeProvider, setActiveProvider] = useState<Provider>('uazapi');
+  // Z-API é legado: o seletor só aparece para loja que ainda tem a Z-API salva como provedor
+  const [zapiLegacy, setZapiLegacy] = useState(false);
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [loadingQR, setLoadingQR] = useState(false);
@@ -150,9 +152,23 @@ export default function ConexaoZAPI({ restrictToUazapi = false }: ConexaoZAPIPro
         setUazapiUrl((data as any).uazapi_url || '');
         setUazapiToken((data as any).uazapi_token || '');
         setUazapiAdminToken((data as any).uazapi_admin_token || '');
-        const savedProvider: Provider = restrictToUazapi ? 'uazapi' : ((data as any).provider === 'uazapi' ? 'uazapi' : 'zapi');
+        const savedProvider: Provider = restrictToUazapi ? 'uazapi' : ((data as any).provider === 'zapi' ? 'zapi' : 'uazapi');
+        setZapiLegacy(!restrictToUazapi && (data as any).provider === 'zapi');
         setProvider(savedProvider);
         setActiveProvider(savedProvider);
+      } else {
+        // Loja sem integração salva: limpa tudo. Antes sobravam na tela os campos da loja aberta antes
+        // (token, servidor...), e um "Salvar" gravaria dados de OUTRA loja nesta.
+        setIntegrationId(null);
+        setInstanceId('');
+        setToken('');
+        setClientToken('');
+        setUazapiUrl('');
+        setUazapiToken('');
+        setUazapiAdminToken('');
+        setProvider('uazapi');
+        setActiveProvider('uazapi');
+        setZapiLegacy(false);
       }
     } catch (e: any) {
       console.error('Error loading integration:', e);
@@ -438,7 +454,7 @@ export default function ConexaoZAPI({ restrictToUazapi = false }: ConexaoZAPIPro
       </div>
 
       {/* Provider selector */}
-      {!restrictToUazapi && (
+      {!restrictToUazapi && zapiLegacy && (
       <div className="grid grid-cols-2 gap-3 max-w-md">
         <button
           onClick={() => setProvider('zapi')}

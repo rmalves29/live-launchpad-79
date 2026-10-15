@@ -139,7 +139,7 @@ const Navbar = () => {
                           WhatsApp
                         </div>
                         {[
-                          { path: '/whatsapp/zapi', label: 'Z-API' },
+                          { path: '/whatsapp/zapi', label: 'Conexão WhatsApp' },
                           { path: '/whatsapp/templates', label: 'Templates' },
                           { path: '/whatsapp/cobranca', label: 'Cobrança em Massa' },
                           { path: '/whatsapp/envios-ativos', label: 'Envios Ativos' },
@@ -269,8 +269,7 @@ const Navbar = () => {
                 <DropdownMenuContent align="center" className="w-52 bg-popover/95 backdrop-blur-xl border-border/50">
                   <DropdownMenuItem onClick={() => navigate('/whatsapp/zapi')} className="cursor-pointer">
                     <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-success rounded-full"></div>
-                      Z-API (Recomendado)
+                      Conexão WhatsApp
                     </div>
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => navigate('/whatsapp/templates')} className="cursor-pointer">

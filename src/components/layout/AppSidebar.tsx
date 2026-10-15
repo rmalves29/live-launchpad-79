@@ -109,7 +109,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           label: 'WhatsApp',
           icon: MessageSquare,
           items: [
-            { path: '/whatsapp/zapi', label: 'Conexão Z-API' },
+            { path: '/whatsapp/zapi', label: 'Conexão WhatsApp' },
             ...(tenant?.slug === 'orderzap' ? [{ path: '/whatsapp/oficial', label: 'API Oficial (Meta)' }] : []),
             { path: '/whatsapp/templates', label: 'Templates' },
             { path: '/whatsapp/cobranca', label: 'Cobrança em Massa' },
