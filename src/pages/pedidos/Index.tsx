@@ -92,6 +92,10 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
     }[];
   }
 
+  // Texto exibido do tipo de evento: pedidos da live (LIVE ou INSTAGRAM_LIVE) aparecem só como "Live".
+  // O valor guardado no banco NAO muda (relatorios e filtros continuam usando INSTAGRAM_LIVE).
+  const eventLabel = (v: string | null | undefined) => (['LIVE', 'INSTAGRAM_LIVE'].includes(String(v || '').toUpperCase()) ? 'Live' : (v as string));
+
   const Pedidos = () => {
     const { toast } = useToast();
     const { confirm, confirmDialogElement } = useConfirmDialog();
@@ -219,7 +223,8 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
           }
 
           if (filterEventType && filterEventType !== 'all') {
-            query = query.eq('event_type', filterEventType);
+            // "LIVE" no filtro inclui os pedidos da Loja da Live, que ficam guardados como INSTAGRAM_LIVE
+            query = filterEventType === 'LIVE' ? query.in('event_type', ['LIVE', 'INSTAGRAM_LIVE']) : query.eq('event_type', filterEventType);
           }
 
           if (filterDate?.from) {
@@ -1164,7 +1169,7 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
               <div style="margin-top: 10px; padding: 10px; background: #fff; border-radius: 8px; border-left: 4px solid #3b82f6;">
                 <div style="font-size: 11px; line-height: 1.5;">
                   <strong style="display: block; margin-bottom: 4px; font-size: 11px; color: #374151;">🚚 Informações de envio:</strong>
-                  <span style="color: #4b5563;">${order.event_type || 'Não especificado'} - ${formatBrasiliaDate(order.event_date)}</span>
+                  <span style="color: #4b5563;">${eventLabel(order.event_type) || 'Não especificado'} - ${formatBrasiliaDate(order.event_date)}</span>
                 </div>
               </div>
             </div>
@@ -1747,7 +1752,7 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
                   <SelectItem value="BAZAR">BAZAR</SelectItem>
-                  <SelectItem value="LIVE">LIVE</SelectItem>
+                  <SelectItem value="LIVE">Live</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -1938,7 +1943,7 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
 
                       <div className="flex flex-wrap gap-1.5 items-center">
                         {statusBadge}
-                        <Badge className={`text-[10px] font-semibold rounded-full px-2 py-0.5 border-0 ${String(order.event_type).toUpperCase().includes('LIVE') ? 'bg-[#dbeafe] text-[#2563eb]' : 'bg-[#f3e8ff] text-[#9333ea]'}`}>{order.event_type}</Badge>
+                        <Badge className={`text-[10px] font-semibold rounded-full px-2 py-0.5 border-0 ${String(order.event_type).toUpperCase().includes('LIVE') ? 'bg-[#dbeafe] text-[#2563eb]' : 'bg-[#f3e8ff] text-[#9333ea]'}`}>{eventLabel(order.event_type)}</Badge>
                         <span className={`text-[10px] font-medium rounded-full px-1.5 py-0.5 ${srcInfo.cls}`}>{srcInfo.label}</span>
                         <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full", order.printed ? 'bg-[#e5e7eb] text-[#111827] font-semibold' : 'bg-transparent text-[#9ca3af]')} onClick={() => togglePrintedStatus(order.id, order.printed || false)}>
                           {order.printed ? 'Impresso' : 'Não impresso'}
@@ -2175,7 +2180,7 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
                       {/* Tipo Evento */}
                       <TableCell className="px-3 py-3 text-center">
                         <div className="flex flex-col items-center gap-1">
-                          <Badge className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${String(order.event_type).toUpperCase().includes('LIVE') ? 'bg-[#dbeafe] text-[#2563eb] hover:bg-[#dbeafe]' : 'bg-[#f3e8ff] text-[#9333ea] hover:bg-[#f3e8ff]'}`}>{order.event_type}</Badge>
+                          <Badge className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${String(order.event_type).toUpperCase().includes('LIVE') ? 'bg-[#dbeafe] text-[#2563eb] hover:bg-[#dbeafe]' : 'bg-[#f3e8ff] text-[#9333ea] hover:bg-[#f3e8ff]'}`}>{eventLabel(order.event_type)}</Badge>
                           {(() => {
                             const src = order.source || 'manual';
                             const map: Record<string, { label: string; cls: string }> = {
