@@ -1006,7 +1006,7 @@ export default function LiveShop() {
                     <div className="cgrid">
                       {colors.map((col) => (
                         <button className="ct" key={col} aria-pressed={selColor === col} disabled={!colorOk(col)} onClick={() => pick(col, selSize)} type="button">
-                          <span className="im">{colorImg(col) ? <img src={colorImg(col) as string} alt="" loading="lazy" /> : null}</span>
+                          <span className="im">{colorImg(col) ? <img src={colorImg(col) as string} alt="" decoding="async" /> : null}</span>
                           <span className="nm">{col}</span>
                         </button>
                       ))}
