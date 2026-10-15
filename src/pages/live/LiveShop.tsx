@@ -208,7 +208,27 @@ export default function LiveShop() {
       setProducts((prev) => {
         if (!opts.append) return res.items;
         const map = new Map(prev.map((p) => [p.key, p]));
-        for (const it of res.items as LiveProduct[]) map.set(it.key, it);
+        for (const it of res.items as LiveProduct[]) {
+          const before = map.get(it.key);
+          if (before && before.variants.length && it.variants.length) {
+            // Variações do mesmo produto caíram em páginas diferentes: junta as duas listas em vez de perder as da página anterior.
+            const byId = new Map(before.variants.map((v) => [v.id, v]));
+            for (const v of it.variants) byId.set(v.id, v);
+            const variants = Array.from(byId.values());
+            const prices = variants.map((v) => v.price);
+            const low = Math.min(...prices);
+            map.set(it.key, {
+              ...it,
+              variants,
+              stock: variants.reduce((s, v) => s + v.stock, 0),
+              price: low,
+              price_from: low !== Math.max(...prices),
+              was: variants.find((v) => v.price === low)?.was ?? null,
+            });
+          } else {
+            map.set(it.key, it);
+          }
+        }
         return Array.from(map.values());
       });
     } catch {
