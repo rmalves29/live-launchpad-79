@@ -159,6 +159,10 @@ export default function LiveShop() {
     return id;
   }, [slug]);
 
+  // Pedido aberto (carrinho = pedido pendente). Precisa existir ANTES dos efeitos que o usam: usar um const antes da
+  // linha em que ele e declarado derruba a pagina inteira (tela branca).
+  const openOrder = meta?.settings.open_order === true;
+
   const toast = useCallback((m: string) => {
     setToastMsg(m);
     clearTimeout(toastTimer.current);
@@ -386,7 +390,6 @@ export default function LiveShop() {
     image_url: v?.image_url || p.image_url, price: v ? v.price : p.price, was: v ? v.was : p.was, stock: v ? v.stock : p.stock,
   });
 
-  const openOrder = meta?.settings.open_order === true;
   customerRef.current = customer;
   couponRef.current = couponCode;
 
