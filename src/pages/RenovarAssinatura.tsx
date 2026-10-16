@@ -103,6 +103,32 @@ export default function RenovarAssinatura() {
   const [recurringDialog, setRecurringDialog] = useState<Plan | null>(null);
   const [activeRecurring, setActiveRecurring] = useState<any | null>(null);
   const [cancelingRec, setCancelingRec] = useState(false);
+  // Assinatura pelo Asaas (site cartzy.com.br): renovação automática no cartão; aqui só paga o que venceu
+  const [asaasSub, setAsaasSub] = useState<boolean | null>(null);
+  const [asaasLoading, setAsaasLoading] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    supabase.functions
+      .invoke("asaas-renovar", { body: { action: "info" } })
+      .then(({ data }) => vivo && setAsaasSub(!!data?.asaas))
+      .catch(() => vivo && setAsaasSub(false));
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  const renovarAsaas = async () => {
+    setAsaasLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("asaas-renovar", { body: { action: "renovar" } });
+      if (error || !data?.url) throw new Error(data?.error || "Não foi possível abrir o pagamento");
+      window.location.href = data.url;
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+      setAsaasLoading(false);
+    }
+  };
 
   const loadRecurring = async (tid: string) => {
     const { data } = await supabase
@@ -169,6 +195,49 @@ export default function RenovarAssinatura() {
   const isExpired = tenantInfo?.subscription_ends_at
     ? new Date(tenantInfo.subscription_ends_at) < new Date()
     : false;
+
+  if (asaasSub) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/30 py-10 px-4">
+        <div className="max-w-xl mx-auto">
+          <Alert variant="destructive" className="mb-6">
+            <AlertTriangle className="h-5 w-5" />
+            <AlertTitle>Assinatura vencida</AlertTitle>
+            <AlertDescription>
+              {isExpired ? (
+                <>
+                  Seu acesso venceu em <strong>{formatDate(tenantInfo?.subscription_ends_at ?? null)}</strong>. Renove para voltar a usar o Cartzy.
+                </>
+              ) : (
+                <>Seu acesso está bloqueado. Renove para voltar a usar o Cartzy.</>
+              )}
+            </AlertDescription>
+          </Alert>
+          <Card>
+            <CardHeader className="text-center">
+              <CardTitle>Renovar assinatura</CardTitle>
+              <CardDescription>
+                {tenantInfo ? <>Empresa: <span className="font-semibold">{tenantInfo.name}</span></> : "Cartzy · assinatura mensal"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="text-center space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Você será levado ao ambiente seguro do Asaas para pagar. Assim que o pagamento for confirmado, o seu acesso é liberado
+                automaticamente por mais 30 dias, sem você precisar fazer mais nada.
+              </p>
+            </CardContent>
+            <CardFooter className="flex-col gap-2">
+              <Button size="lg" className="w-full" onClick={renovarAsaas} disabled={asaasLoading}>
+                {asaasLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                Renovar agora
+              </Button>
+              <p className="text-xs text-muted-foreground">Já pagou? A liberação leva poucos minutos. Atualize a página.</p>
+            </CardFooter>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/30 py-8 px-4">

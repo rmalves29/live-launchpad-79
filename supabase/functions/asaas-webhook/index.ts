@@ -23,6 +23,7 @@ import { PLANO_CLIENTE, provisionarTenant } from "../_shared/provision-tenant.ts
 import { enviarGa4, enviarMeta } from "../_shared/conversions.ts";
 import { asaas, asaasConfig, iguais } from "../_shared/asaas.ts";
 
+const DIAS_RENOVACAO = 30;
 const APP_URL = (Deno.env.get("APP_URL") || "https://app.cartzy.com.br").replace(/\/$/, "");
 const SITE_URL = (Deno.env.get("SITE_URL") || "https://cartzy.com.br").replace(/\/$/, "");
 
@@ -132,23 +133,25 @@ async function primeiroPagamento(sb: any, pend: any, pay: any) {
   return { provisioned: true, tenant_id: r.tenant_id };
 }
 
-/** Mensalidade seguinte: estende o acesso em 1 mês. */
+/** Mensalidade seguinte (ou renovação pelo botão): soma 30 dias ao acesso, a partir do que sobrou ou de hoje. */
 async function renovacao(sb: any, pend: any, pay: any) {
   if (!pend.tenant_id) return { ignorado: "sem tenant ainda" };
+  const upd: any = { asaas_last_payment_id: pay.id };
+  if (pay.subscription && pay.subscription !== pend.asaas_subscription_id) upd.asaas_subscription_id = pay.subscription; // assinatura nova após renovar
+  if (pay.customer) upd.asaas_customer_id = pay.customer;
   const { data: reserva } = await sb
     .from("assinaturas_pendentes")
-    .update({ asaas_last_payment_id: pay.id })
+    .update(upd)
     .eq("id", pend.id)
-    .neq("asaas_last_payment_id", pay.id)
+    .or(`asaas_last_payment_id.is.null,asaas_last_payment_id.neq.${pay.id}`)
     .select("id")
     .maybeSingle();
   if (!reserva) return { idempotent: true };
   const { data: tenant } = await sb.from("tenants").select("subscription_ends_at").eq("id", pend.tenant_id).maybeSingle();
   const agora = new Date();
   const base = tenant?.subscription_ends_at && new Date(tenant.subscription_ends_at) > agora ? new Date(tenant.subscription_ends_at) : agora;
-  const fim = new Date(base);
-  fim.setMonth(fim.getMonth() + 1);
-  await sb.from("tenants").update({ subscription_ends_at: fim.toISOString(), plan_type: PLANO_CLIENTE, is_blocked: false }).eq("id", pend.tenant_id);
+  const fim = new Date(base.getTime() + DIAS_RENOVACAO * 864e5);
+  await sb.from("tenants").update({ subscription_ends_at: fim.toISOString(), plan_type: PLANO_CLIENTE }).eq("id", pend.tenant_id);
   return { renovado_ate: fim.toISOString() };
 }
 
