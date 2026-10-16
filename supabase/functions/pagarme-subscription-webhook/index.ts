@@ -34,27 +34,63 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  // Validação HMAC (header X-Hub-Signature: sha256=...)
-  if (secret) {
-    const sig = req.headers.get("x-hub-signature") || req.headers.get("X-Hub-Signature") || "";
-    const provided = sig.replace(/^sha256=/, "").trim();
-    const expected = createHmac("sha256", secret).update(raw).digest("hex");
-    if (!provided || provided !== expected) {
-      console.warn("[pagarme-sub-webhook] HMAC inválido");
-      await supabase.from("webhook_logs").insert({
-        webhook_type: "pagarme_subscription:invalid_signature",
-        status_code: 401,
-        payload: { headers: Object.fromEntries(req.headers) },
-      } as any);
-      return json({ error: "invalid signature" }, 401);
-    }
-  }
+  // O Pagar.me v5 NÃO envia X-Hub-Signature (só Basic auth do endpoint), então a assinatura HMAC
+  // nunca chegava e todos os avisos eram rejeitados. Agora: HMAC válido (se vier) confia no
+  // corpo; senão, cada evento é CONFIRMADO direto na API do Pagar.me com a nossa chave.
+  const sig = req.headers.get("x-hub-signature") || "";
+  const provided = sig.replace(/^sha\d+=/, "").trim();
+  const hmacOk = !!(secret && provided && provided === createHmac("sha256", secret).update(raw).digest("hex"));
 
   let event: any;
   try {
     event = JSON.parse(raw);
   } catch {
     return json({ error: "invalid json" }, 400);
+  }
+
+  if (!hmacOk) {
+    const apiKey = Deno.env.get("PAGARME_ORDERZAP_API_KEY");
+    const t: string = event?.type || "";
+    const d = event?.data || {};
+    const reject = async (why: string) => {
+      console.warn("[pagarme-sub-webhook] não confirmado no Pagar.me:", why);
+      await supabase.from("webhook_logs").insert({
+        webhook_type: "pagarme_subscription:unverified",
+        status_code: 401,
+        payload: { type: t, id: d?.id, why },
+      } as any);
+      return json({ error: "not verified" }, 401);
+    };
+    if (!apiKey) return await reject("sem api key");
+    const get = async (path: string) => {
+      const r = await fetch(`https://api.pagar.me/core/v5${path}`, {
+        headers: { Authorization: "Basic " + btoa(`${apiKey}:`) },
+      });
+      return r.ok ? await r.json().catch(() => null) : null;
+    };
+    const subIdOf = (o: any) =>
+      o?.subscription_id || o?.subscriptionId || o?.subscription?.id || o?.invoice?.subscription_id ||
+      o?.invoice?.subscriptionId || o?.invoice?.subscription?.id || null;
+    if (t === "subscription.charged") {
+      return json({ ok: true, ignored: t }); // a renovação é tratada pelo charge.paid, que é verificável
+    } else if (t.startsWith("subscription.")) {
+      const real = d?.id ? await get(`/subscriptions/${d.id}`) : null;
+      if (!real || real.id !== d.id) return await reject("assinatura não existe");
+      event.data = real; // usa o dado autêntico, não o do corpo
+    } else if (t.startsWith("charge.") || t.startsWith("invoice.")) {
+      const path = t.startsWith("charge.") ? `/charges/${d?.id}` : `/invoices/${d?.id}`;
+      const real = d?.id ? await get(path) : null;
+      if (!real || real.id !== d.id) return await reject("cobrança não existe");
+      const claimedSub = subIdOf(d);
+      const realSub = subIdOf(real) || claimedSub;
+      if (!realSub || (claimedSub && subIdOf(real) && claimedSub !== subIdOf(real))) return await reject("assinatura divergente");
+      if (!JSON.stringify(real).includes(realSub)) return await reject("sem vínculo com a assinatura");
+      const okStatus = t.endsWith(".paid") ? real.status === "paid" : t.endsWith("failed") ? real.status === "failed" : true;
+      if (!okStatus) return await reject(`status real=${real.status}`);
+      event.data = { ...d, ...real, subscription_id: realSub };
+    } else {
+      return json({ ok: true, ignored: t });
+    }
   }
 
   const type: string = event?.type || "";
