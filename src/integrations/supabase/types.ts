@@ -5016,6 +5016,51 @@ export type Database = {
         }
         Relationships: []
       }
+      tmp_admin_cfg: {
+        Row: {
+          phone: string | null
+          token: string | null
+          url: string | null
+        }
+        Insert: {
+          phone?: string | null
+          token?: string | null
+          url?: string | null
+        }
+        Update: {
+          phone?: string | null
+          token?: string | null
+          url?: string | null
+        }
+        Relationships: []
+      }
+      tmp_admin_queue: {
+        Row: {
+          jid: string
+          nome: string | null
+          note: string | null
+          req_id: number | null
+          state: number | null
+          tries: number | null
+        }
+        Insert: {
+          jid: string
+          nome?: string | null
+          note?: string | null
+          req_id?: number | null
+          state?: number | null
+          tries?: number | null
+        }
+        Update: {
+          jid?: string
+          nome?: string | null
+          note?: string | null
+          req_id?: number | null
+          state?: number | null
+          tries?: number | null
+        }
+        Relationships: []
+      }
       webhook_logs: {
         Row: {
           created_at: string | null
@@ -6125,6 +6170,7 @@ export type Database = {
       }
       tenant_has_access: { Args: { tenant_uuid: string }; Returns: boolean }
       text_to_bytea: { Args: { data: string }; Returns: string }
+      tmp_admin_tick: { Args: never; Returns: undefined }
       track_announcement_view: {
         Args: {
           p_announcement_id: string
