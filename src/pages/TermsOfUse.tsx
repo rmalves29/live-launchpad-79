@@ -77,7 +77,7 @@ const TermsOfUse = () => {
 
         <h2 className="text-lg font-semibold text-primary mt-9 mb-2.5 pb-1.5 border-b-2 border-primary/10">11. Contato</h2>
         <p className="mb-3.5 leading-7">
-          Se você tiver alguma dúvida sobre estes Termos, entre em contato através do nosso site: <a href="https://app.cartzy.com.br" className="text-primary hover:underline">app.cartzy.com.br</a>.
+          Se você tiver alguma dúvida sobre estes Termos, escreva para <a href="mailto:cartzy.saas@gmail.com">cartzy.saas@gmail.com</a> ou fale pelo WhatsApp (31) 99290-4210.
         </p>
     </LegalLayout>
   );

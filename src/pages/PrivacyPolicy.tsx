@@ -47,10 +47,10 @@ const PrivacyPolicy = () => {
           Retemos suas informações pessoais apenas pelo tempo necessário para cumprir as finalidades descritas nesta política ou conforme exigido por lei.
         </p>
         <p className="mb-3.5 leading-7">
-          <strong className="text-primary/90">Solicitação de Exclusão de Dados:</strong> Você tem o direito de solicitar a exclusão dos seus dados pessoais a qualquer momento. Fale conosco pelo WhatsApp (31) 99290-4210 ou utilize a opção de exclusão de conta dentro do aplicativo.
+          <strong className="text-primary/90">Solicitação de Exclusão de Dados:</strong> Você tem o direito de solicitar a exclusão dos seus dados pessoais a qualquer momento. Envie um e-mail para <a href="mailto:cartzy.saas@gmail.com">cartzy.saas@gmail.com</a>, fale pelo WhatsApp (31) 99290-4210 ou utilize a opção de exclusão de conta dentro do aplicativo.
         </p>
         <p className="mb-3.5 leading-7">
-          <strong className="text-primary/90">Instruções de Exclusão de Dados do Instagram/Meta:</strong> Se você interagiu com um vendedor que utiliza o Cartzy durante uma Live no Instagram (por exemplo, comentando o código de um produto) e deseja que os dados associados a essa interação (comentário processado e mensagem direta enviada) sejam excluídos, fale conosco pelo WhatsApp <strong className="text-primary/90">(31) 99290-4210</strong> informando seu nome de usuário do Instagram e a conta do vendedor envolvida. Processaremos a solicitação e excluiremos os dados em até 15 dias úteis, exceto quando a retenção for exigida por lei (por exemplo, registros fiscais de uma compra já concluída). Comerciantes que desejam revogar o acesso do Cartzy à própria conta comercial do Instagram podem clicar em "Desconectar" na tela de Integrações do painel a qualquer momento, o que interrompe imediatamente a coleta de novos dados.
+          <strong className="text-primary/90">Instruções de Exclusão de Dados do Instagram/Meta:</strong> Se você interagiu com um vendedor que utiliza o Cartzy durante uma Live no Instagram (por exemplo, comentando o código de um produto) e deseja que os dados associados a essa interação (comentário processado e mensagem direta enviada) sejam excluídos, envie um e-mail para <strong className="text-primary/90">cartzy.saas@gmail.com</strong> (ou fale pelo WhatsApp (31) 99290-4210) informando seu nome de usuário do Instagram e a conta do vendedor envolvida. Processaremos a solicitação e excluiremos os dados em até 15 dias úteis, exceto quando a retenção for exigida por lei (por exemplo, registros fiscais de uma compra já concluída). Comerciantes que desejam revogar o acesso do Cartzy à própria conta comercial do Instagram podem clicar em "Desconectar" na tela de Integrações do painel a qualquer momento, o que interrompe imediatamente a coleta de novos dados.
         </p>
 
         <h2 className="text-lg font-semibold text-primary mt-9 mb-2.5 pb-1.5 border-b-2 border-primary/10">5. Seus Direitos (LGPD)</h2>
@@ -64,7 +64,7 @@ const PrivacyPolicy = () => {
           <li>Eliminação dos dados pessoais tratados com o consentimento;</li>
           <li>Informação sobre o compartilhamento de dados.</li>
         </ul>
-        <p className="mb-3.5 leading-7">Para exercer esses direitos, fale conosco pelo WhatsApp (31) 99290-4210.</p>
+        <p className="mb-3.5 leading-7">Para exercer esses direitos, envie um e-mail para <a href="mailto:cartzy.saas@gmail.com">cartzy.saas@gmail.com</a> ou fale pelo WhatsApp (31) 99290-4210.</p>
 
         <h2 className="text-lg font-semibold text-primary mt-9 mb-2.5 pb-1.5 border-b-2 border-primary/10">6. Segurança das Informações</h2>
         <p className="mb-3.5 leading-7">
@@ -78,7 +78,7 @@ const PrivacyPolicy = () => {
 
         <h2 className="text-lg font-semibold text-primary mt-9 mb-2.5 pb-1.5 border-b-2 border-primary/10">8. Contato</h2>
         <p className="mb-3.5 leading-7">
-          Se você tiver dúvidas, fale conosco pelo WhatsApp <a href="http://api.whatsapp.com/send?l=pt&phone=5531992904210" target="_blank" rel="noopener noreferrer">(31) 99290-4210</a> ou pelo site <a href="https://cartzy.com.br">cartzy.com.br</a>.
+          Se você tiver dúvidas, escreva para <a href="mailto:cartzy.saas@gmail.com">cartzy.saas@gmail.com</a> ou fale conosco pelo WhatsApp <a href="http://api.whatsapp.com/send?l=pt&phone=5531992904210" target="_blank" rel="noopener noreferrer">(31) 99290-4210</a> ou pelo site <a href="https://cartzy.com.br">cartzy.com.br</a>.
         </p>
     </LegalLayout>
   );
