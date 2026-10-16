@@ -17,6 +17,7 @@ import { GiftsManager } from '@/components/GiftsManager';
 import { ShippingOptionsManager } from '@/components/ShippingOptionsManager';
 import WhatsAppMessages from './WhatsAppMessages';
 import { LiveProductsManager } from './LiveProductsManager';
+import { LiveOfferPinTest, isManiaDeMulherTenant } from './LiveOfferPinTest';
 import { AlertTriangle, CalendarClock, CheckCircle2, Copy, ExternalLink, Store } from 'lucide-react';
 import { liveShopUrl } from '@/lib/live-shop';
 
@@ -209,6 +210,7 @@ export default function LojaDaLive() {
           <TabsTrigger value="gifts">Brindes</TabsTrigger>
           <TabsTrigger value="shipping">Frete</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+          {isManiaDeMulherTenant(tenant) && <TabsTrigger value="live-offer">Oferta na Live</TabsTrigger>}
           {isSuperAdmin && <TabsTrigger value="tenants">Links de todas as empresas</TabsTrigger>}
         </TabsList>
 
@@ -363,6 +365,10 @@ export default function LojaDaLive() {
         </TabsContent>
 
         <TabsContent value="whatsapp" className="mt-4"><WhatsAppMessages /></TabsContent>
+
+        {isManiaDeMulherTenant(tenant) && tenant?.id && (
+          <TabsContent value="live-offer" className="mt-4"><LiveOfferPinTest tenantId={tenant.id} /></TabsContent>
+        )}
 
         {isSuperAdmin && (
           <TabsContent value="tenants" className="mt-4">
