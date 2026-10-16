@@ -1,24 +1,10 @@
+import LegalLayout from "@/components/legal/LegalLayout";
+
 const TermsOfUse = () => {
   return (
-    <div className="min-h-screen bg-muted/30">
-      <header className="bg-primary py-6 text-center shadow-md">
-        <div className="text-3xl font-extrabold text-primary-foreground tracking-wide">
-          Order<span className="opacity-80">Zap</span>
-        </div>
-      </header>
-
-      <nav className="bg-background border-b flex justify-center gap-8 py-3.5">
-        <a href="/politica-de-privacidade" className="text-primary font-semibold text-sm hover:border-b-2 hover:border-primary/70 transition-colors">
-          Política de Privacidade
-        </a>
-        <a href="/termos-de-uso" className="text-primary font-semibold text-sm border-b-2 border-primary">
-          Termos de Uso
-        </a>
-      </nav>
-
-      <div className="max-w-[860px] mx-auto my-12 bg-background rounded-xl shadow-lg px-14 py-12 max-sm:px-5 max-sm:py-7 max-sm:mx-3 max-sm:my-6">
+    <LegalLayout current="terms">
         <h1 className="text-3xl font-bold text-primary mb-2 max-sm:text-xl">Termos de Uso</h1>
-        <p className="text-sm text-muted-foreground mb-8">Última atualização: 23 de março de 2026</p>
+        <p className="text-sm text-muted-foreground mb-8">Última atualização: 16 de outubro de 2026</p>
 
         <p className="mb-3.5 leading-7">
           Bem-vindo ao <strong className="text-primary/90">Cartzy</strong>. Estes Termos de Uso ("Termos") regem o seu acesso e uso do aplicativo Cartzy, seus serviços, recursos e site associado (<a href="https://app.cartzy.com.br" className="text-primary hover:underline">app.cartzy.com.br</a>). O Cartzy é uma plataforma desenvolvida para facilitar a gestão de pedidos via WhatsApp, operada no Brasil.
@@ -93,12 +79,7 @@ const TermsOfUse = () => {
         <p className="mb-3.5 leading-7">
           Se você tiver alguma dúvida sobre estes Termos, entre em contato através do nosso site: <a href="https://app.cartzy.com.br" className="text-primary hover:underline">app.cartzy.com.br</a>.
         </p>
-      </div>
-
-      <footer className="text-center py-6 text-sm text-muted-foreground">
-        &copy; 2026 Cartzy. Todos os direitos reservados.
-      </footer>
-    </div>
+    </LegalLayout>
   );
 };
 
