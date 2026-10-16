@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, Pin, Search, ShoppingBag, Timer, X } from 'lucide-react';
+import { LiveCameraPreview } from './LiveCameraPreview';
 
 /** Teste exclusivo Mania de Mulher. Só deve ser renderizado quando isManiaDeMulherTenant() for true. */
 export function isManiaDeMulherTenant(t?: { name?: string | null; slug?: string | null } | null): boolean {
@@ -152,6 +153,10 @@ export function LiveOfferPinTest({ tenantId }: { tenantId: string }) {
           </div>
         </div>
       </div>
+
+      <LiveCameraPreview offer={active && selected ? {
+        name: selected.name, imageUrl: selected.image_url, basePrice: base, offerPrice: offer, pct, remaining,
+      } : null} />
     </div>
   );
 }
