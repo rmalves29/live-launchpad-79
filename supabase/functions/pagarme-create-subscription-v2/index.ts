@@ -165,6 +165,8 @@ Deno.serve(async (req) => {
             ? `Cartzy ${body.plan_name}`
             : `Cartzy ${body.plan_id === "enterprise" ? "Enterprise (anual)" : "Pro (semestral)"}`,
           quantity: 1,
+          // Só limita quando o cliente pediu um número de cobranças; sem isso a assinatura segue mensal sem fim.
+          ...(Number(body.total_cycles) > 0 ? { cycles: Number(body.total_cycles) } : {}),
           pricing_scheme: { scheme_type: "unit", price: priceCents },
         },
       ],
