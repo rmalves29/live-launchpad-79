@@ -15,6 +15,7 @@ import PagarMeIntegration from '@/components/integrations/PagarMeIntegration';
 import SipagIntegration from '@/components/integrations/SipagIntegration';
 import AppmaxIntegration from '@/components/integrations/AppmaxIntegration';
 import InfinitePayIntegration from '@/components/integrations/InfinitePayIntegration';
+import AsaasIntegration from '@/components/integrations/AsaasIntegration';
 import ShippingIntegrations from '@/components/integrations/ShippingIntegrations';
 import MandaeIntegration from '@/components/integrations/MandaeIntegration';
 import MandaBemIntegration from '@/components/integrations/MandaBemIntegration';
@@ -154,6 +155,17 @@ export default function TenantIntegrationsPage() {
       return data;
     },
     enabled: !!tenantId,
+  });
+
+  // Asaas: cobra a assinatura do site; só aparece para a empresa Cartzy
+  const isCartzy = tenantId === 'b82a01c9-dbab-4f4d-b412-bb29fca58ffd';
+  const { data: asaasIntegration } = useQuery({
+    queryKey: ['asaas-status', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase.from('integration_asaas' as any).select('is_active, api_key').eq('tenant_id', tenantId).maybeSingle();
+      return data as unknown as { is_active: boolean; api_key: string | null } | null;
+    },
+    enabled: !!tenantId && isCartzy,
   });
 
   const { data: infinitepayIntegration } = useQuery({
@@ -329,6 +341,14 @@ export default function TenantIntegrationsPage() {
             {infinitepayIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
           )}
+          {isCartzy && (
+          <TabsTrigger value="asaas" className="flex items-center gap-2">
+            <Wallet className="h-4 w-4" />
+            <span className="hidden sm:inline">Asaas</span>
+            <span className="sm:hidden">AS</span>
+            {asaasIntegration?.is_active && asaasIntegration?.api_key && <CheckCircle2 className="h-4 w-4 text-primary" />}
+          </TabsTrigger>
+          )}
           {en('melhorenvio') && (
           <TabsTrigger value="melhorenvio" className="flex items-center gap-2">
             <Truck className="h-4 w-4" />
@@ -435,6 +455,11 @@ export default function TenantIntegrationsPage() {
         {en('infinitepay') && (
         <TabsContent value="infinitepay" className="mt-6">
           <InfinitePayIntegration tenantId={tenantId} />
+        </TabsContent>
+        )}
+        {isCartzy && (
+        <TabsContent value="asaas" className="mt-6">
+          <AsaasIntegration tenantId={tenantId} />
         </TabsContent>
         )}
         {en('melhorenvio') && (

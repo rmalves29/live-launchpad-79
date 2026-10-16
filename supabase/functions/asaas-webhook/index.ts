@@ -21,7 +21,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { notifyCartzyAdmins } from "../_shared/admin-push-notify.ts";
 import { PLANO_CLIENTE, provisionarTenant } from "../_shared/provision-tenant.ts";
 import { enviarGa4, enviarMeta } from "../_shared/conversions.ts";
-import { asaas, iguais } from "../_shared/asaas.ts";
+import { asaas, asaasConfig, iguais } from "../_shared/asaas.ts";
 
 const APP_URL = (Deno.env.get("APP_URL") || "https://app.cartzy.com.br").replace(/\/$/, "");
 const SITE_URL = (Deno.env.get("SITE_URL") || "https://cartzy.com.br").replace(/\/$/, "");
@@ -155,12 +155,11 @@ async function renovacao(sb: any, pend: any, pay: any) {
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
 
-  const esperado = Deno.env.get("ASAAS_WEBHOOK_TOKEN");
-  if (!esperado) return json({ error: "webhook não configurado" }, 500);
-  const recebido = req.headers.get("asaas-access-token") || "";
-  if (!iguais(recebido, esperado)) return json({ error: "unauthorized" }, 401);
-
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  const cfg = await asaasConfig(sb);
+  if (!cfg.webhookToken) return json({ error: "webhook não configurado" }, 500);
+  const recebido = req.headers.get("asaas-access-token") || "";
+  if (!iguais(recebido, cfg.webhookToken)) return json({ error: "unauthorized" }, 401);
   const log = (tipo: string, status: number, payload: unknown, erro?: string) =>
     sb.from("webhook_logs").insert({ webhook_type: `asaas:${tipo}`, status_code: status, payload, error_message: erro || null } as any);
 
@@ -176,7 +175,7 @@ Deno.serve(async (req) => {
     if (tipo === "PAYMENT_CONFIRMED" || tipo === "PAYMENT_RECEIVED") {
       const id = ev?.payment?.id;
       if (!id) return json({ ok: true, ignored: "sem id" });
-      const pay = await asaas("GET", `/payments/${encodeURIComponent(id)}`); // dado autêntico
+      const pay = await asaas(cfg, "GET", `/payments/${encodeURIComponent(id)}`); // dado autêntico
       if (pay.id !== id || !["CONFIRMED", "RECEIVED", "RECEIVED_IN_CASH"].includes(pay.status)) {
         await log(`${tipo}:status_${pay.status}`, 200, { id });
         return json({ ok: true, ignored: `status ${pay.status}` });
@@ -205,7 +204,7 @@ Deno.serve(async (req) => {
 
     if (tipo === "PAYMENT_CREDIT_CARD_CAPTURE_REFUSED" || tipo === "PAYMENT_REFUSED") {
       const id = ev?.payment?.id;
-      const pay = id ? await asaas("GET", `/payments/${encodeURIComponent(id)}`) : null;
+      const pay = id ? await asaas(cfg, "GET", `/payments/${encodeURIComponent(id)}`) : null;
       if (pay?.paymentLink) {
         await sb
           .from("assinaturas_pendentes")

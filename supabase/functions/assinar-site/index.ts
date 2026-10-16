@@ -17,7 +17,7 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 import { clientIp, enforceRateLimit, rateLimitOk } from "../_shared/rate-limit.ts";
 import { attribution, normalizePhone, texto } from "../_shared/agenda-core.ts";
 import { enviarMeta, sha256 } from "../_shared/conversions.ts";
-import { asaas, AsaasError } from "../_shared/asaas.ts";
+import { asaas, asaasConfig, AsaasError } from "../_shared/asaas.ts";
 
 // ── Oferta: constantes do servidor ──
 const PRECO_MENSAL = 499;
@@ -91,9 +91,10 @@ async function carregar(sb: SupabaseClient, token: unknown) {
  * Implantação: o link não cobra implantação (hoje é grátis na promoção; se ligar a cobrança, ela é feita por fora).
  */
 // deno-lint-ignore no-explicit-any
-async function criarCheckout(p: any): Promise<{ id: string; url: string }> {
+async function criarCheckout(sb: SupabaseClient, p: any): Promise<{ id: string; url: string }> {
+  const cfg = await asaasConfig(sb);
   const amanha = new Date(Date.now() + 24 * 3600 * 1000).toISOString().slice(0, 10);
-  const link = await asaas("POST", "/paymentLinks", {
+  const link = await asaas(cfg, "POST", "/paymentLinks", {
     name: `Cartzy · ${String(p.loja_nome).slice(0, 40)}`,
     description: "Assinatura mensal do Cartzy",
     billingType: "CREDIT_CARD",
@@ -178,7 +179,7 @@ Deno.serve(async (req) => {
 
         let checkout;
         try {
-          checkout = await criarCheckout(p);
+          checkout = await criarCheckout(sb, p);
         } catch (e) {
           const msg = e instanceof AsaasError ? e.message : String(e);
           console.error("[assinar-site] checkout", msg, e instanceof AsaasError ? JSON.stringify(e.detalhes).slice(0, 500) : "");

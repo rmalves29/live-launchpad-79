@@ -1,13 +1,29 @@
-// Cliente mínimo da API v3 do Asaas. Chave só no servidor: ASAAS_API_KEY (secret da edge function).
-// Sandbox: ASAAS_ENV=sandbox (https://api-sandbox.asaas.com/v3). Padrão: produção.
+// Cliente mínimo da API v3 do Asaas. A chave fica só no servidor (integration_asaas ou secret ASAAS_API_KEY).
 // Dados de cartão NUNCA passam por aqui: o cliente paga na página hospedada do Asaas (link de pagamento).
 
 // deno-lint-ignore-file no-explicit-any
 
-const BASE = () =>
-  (Deno.env.get("ASAAS_ENV") || "").toLowerCase() === "sandbox"
-    ? "https://api-sandbox.asaas.com/v3"
-    : "https://api.asaas.com/v3";
+/** Tenant Cartzy: dono da conta Asaas que cobra a assinatura do site. */
+export const CARTZY_TENANT_ID = "b82a01c9-dbab-4f4d-b412-bb29fca58ffd";
+
+export interface AsaasConfig {
+  apiKey: string | null;
+  webhookToken: string | null;
+  sandbox: boolean;
+}
+
+/** Credenciais: tela Integrações → Asaas (tabela integration_asaas); se vazia, usa os secrets ASAAS_*. */
+export async function asaasConfig(sb: any): Promise<AsaasConfig> {
+  const { data } = await sb.from("integration_asaas").select("api_key, webhook_token, environment, is_active").eq("tenant_id", CARTZY_TENANT_ID).maybeSingle();
+  if (data?.is_active && data.api_key) {
+    return { apiKey: data.api_key, webhookToken: data.webhook_token || Deno.env.get("ASAAS_WEBHOOK_TOKEN") || null, sandbox: data.environment === "sandbox" };
+  }
+  return {
+    apiKey: Deno.env.get("ASAAS_API_KEY") || null,
+    webhookToken: Deno.env.get("ASAAS_WEBHOOK_TOKEN") || null,
+    sandbox: (Deno.env.get("ASAAS_ENV") || "").toLowerCase() === "sandbox",
+  };
+}
 
 export class AsaasError extends Error {
   constructor(public status: number, msg: string, public detalhes?: unknown) {
@@ -15,10 +31,11 @@ export class AsaasError extends Error {
   }
 }
 
-export async function asaas<T = any>(method: string, path: string, body?: unknown): Promise<T> {
-  const key = Deno.env.get("ASAAS_API_KEY");
-  if (!key) throw new AsaasError(500, "ASAAS_API_KEY não configurada");
-  const r = await fetch(`${BASE()}${path}`, {
+export async function asaas<T = any>(cfg: AsaasConfig, method: string, path: string, body?: unknown): Promise<T> {
+  const key = cfg.apiKey;
+  if (!key) throw new AsaasError(500, "Chave do Asaas não configurada");
+  const base = cfg.sandbox ? "https://api-sandbox.asaas.com/v3" : "https://api.asaas.com/v3";
+  const r = await fetch(`${base}${path}`, {
     method,
     headers: { access_token: key, "Content-Type": "application/json", "User-Agent": "cartzy-site" },
     body: body ? JSON.stringify(body) : undefined,
