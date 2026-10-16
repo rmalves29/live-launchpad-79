@@ -34,55 +34,175 @@ export type Database = {
       }
       agenda_reunioes: {
         Row: {
+          agendado_em: string | null
+          aviso_rafael_5m_em: string | null
+          canal_venda: string | null
+          cancelado_em: string | null
           cliente_email: string | null
           cliente_envio_status: string | null
           cliente_nome: string
           cliente_req_id: number | null
           cliente_telefone: string
+          confirmacao_30m_em: string | null
+          confirmacao_enviada_em: string | null
+          confirmacao_status: string | null
+          consentimento_em: string | null
+          consentimento_whatsapp: boolean
           created_at: string
+          cta_posicao: string | null
           duracao_min: number
+          fbc: string | null
+          fbclid: string | null
+          fbp: string | null
+          ga_client_id: string | null
+          gbraid: string | null
+          gclid: string | null
           google_event_id: string | null
           id: string
-          inicio: string
+          inicio: string | null
+          instagram: string | null
+          ip_hash: string | null
+          landing_path: string | null
+          lembrete_1h_em: string | null
+          lembrete_d1_em: string | null
           lembrete_enviado_em: string | null
+          maior_caos: string | null
           meet_link: string | null
+          objecao: string | null
           observacoes: string | null
+          origem: string
+          pedidos_semana: string | null
+          quem_atende: string | null
+          reagendamentos: number
+          recuperacao_enviada_em: string | null
+          referrer: string | null
+          resultado: string | null
+          retorno_combinado_em: string | null
           status: string
           titulo: string
+          token_reagendar: string | null
+          updated_at: string
+          user_agent: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+          wbraid: string | null
         }
         Insert: {
+          agendado_em?: string | null
+          aviso_rafael_5m_em?: string | null
+          canal_venda?: string | null
+          cancelado_em?: string | null
           cliente_email?: string | null
           cliente_envio_status?: string | null
           cliente_nome: string
           cliente_req_id?: number | null
           cliente_telefone: string
+          confirmacao_30m_em?: string | null
+          confirmacao_enviada_em?: string | null
+          confirmacao_status?: string | null
+          consentimento_em?: string | null
+          consentimento_whatsapp?: boolean
           created_at?: string
+          cta_posicao?: string | null
           duracao_min?: number
+          fbc?: string | null
+          fbclid?: string | null
+          fbp?: string | null
+          ga_client_id?: string | null
+          gbraid?: string | null
+          gclid?: string | null
           google_event_id?: string | null
           id?: string
-          inicio: string
+          inicio?: string | null
+          instagram?: string | null
+          ip_hash?: string | null
+          landing_path?: string | null
+          lembrete_1h_em?: string | null
+          lembrete_d1_em?: string | null
           lembrete_enviado_em?: string | null
+          maior_caos?: string | null
           meet_link?: string | null
+          objecao?: string | null
           observacoes?: string | null
+          origem?: string
+          pedidos_semana?: string | null
+          quem_atende?: string | null
+          reagendamentos?: number
+          recuperacao_enviada_em?: string | null
+          referrer?: string | null
+          resultado?: string | null
+          retorno_combinado_em?: string | null
           status?: string
           titulo?: string
+          token_reagendar?: string | null
+          updated_at?: string
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          wbraid?: string | null
         }
         Update: {
+          agendado_em?: string | null
+          aviso_rafael_5m_em?: string | null
+          canal_venda?: string | null
+          cancelado_em?: string | null
           cliente_email?: string | null
           cliente_envio_status?: string | null
           cliente_nome?: string
           cliente_req_id?: number | null
           cliente_telefone?: string
+          confirmacao_30m_em?: string | null
+          confirmacao_enviada_em?: string | null
+          confirmacao_status?: string | null
+          consentimento_em?: string | null
+          consentimento_whatsapp?: boolean
           created_at?: string
+          cta_posicao?: string | null
           duracao_min?: number
+          fbc?: string | null
+          fbclid?: string | null
+          fbp?: string | null
+          ga_client_id?: string | null
+          gbraid?: string | null
+          gclid?: string | null
           google_event_id?: string | null
           id?: string
-          inicio?: string
+          inicio?: string | null
+          instagram?: string | null
+          ip_hash?: string | null
+          landing_path?: string | null
+          lembrete_1h_em?: string | null
+          lembrete_d1_em?: string | null
           lembrete_enviado_em?: string | null
+          maior_caos?: string | null
           meet_link?: string | null
+          objecao?: string | null
           observacoes?: string | null
+          origem?: string
+          pedidos_semana?: string | null
+          quem_atende?: string | null
+          reagendamentos?: number
+          recuperacao_enviada_em?: string | null
+          referrer?: string | null
+          resultado?: string | null
+          retorno_combinado_em?: string | null
           status?: string
           titulo?: string
+          token_reagendar?: string | null
+          updated_at?: string
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          wbraid?: string | null
         }
         Relationships: []
       }
@@ -4763,6 +4883,7 @@ export type Database = {
           is_active: boolean
           is_blocked: boolean | null
           live_cart_minutes: number
+          live_open_order: boolean
           live_reserve_mode: string
           live_shop_close_at: string | null
           live_shop_enabled: boolean
@@ -4815,6 +4936,7 @@ export type Database = {
           is_active?: boolean
           is_blocked?: boolean | null
           live_cart_minutes?: number
+          live_open_order?: boolean
           live_reserve_mode?: string
           live_shop_close_at?: string | null
           live_shop_enabled?: boolean
@@ -4867,6 +4989,7 @@ export type Database = {
           is_active?: boolean
           is_blocked?: boolean | null
           live_cart_minutes?: number
+          live_open_order?: boolean
           live_reserve_mode?: string
           live_shop_close_at?: string | null
           live_shop_enabled?: boolean
@@ -5580,6 +5703,11 @@ export type Database = {
         Args: { r: Database["public"]["Tables"]["agenda_reunioes"]["Row"] }
         Returns: string
       }
+      agenda_site_dia: { Args: { p: string }; Returns: string }
+      agenda_site_post: {
+        Args: { p_phone: string; p_text: string }
+        Returns: number
+      }
       agenda_whats_rafael: { Args: { msg: string }; Returns: undefined }
       bytea_to_text: { Args: { data: string }; Returns: string }
       cached_report_cleanup: { Args: never; Returns: number }
@@ -5612,6 +5740,7 @@ export type Database = {
         Returns: number
       }
       enviar_lembretes_reuniao: { Args: never; Returns: number }
+      enviar_lembretes_site: { Args: never; Returns: number }
       first_paid_order_by_phone: {
         Args: { p_phones: string[]; p_tenant_id: string }
         Returns: {
@@ -5919,6 +6048,80 @@ export type Database = {
           items_restored: number
           restored: boolean
         }[]
+      }
+      site_agenda_reservar: {
+        Args: {
+          p_duracao: number
+          p_inicio: string
+          p_intervalo: number
+          p_limite_dia: number
+          p_limite_semana: number
+          p_reagendar?: boolean
+          p_token: string
+        }
+        Returns: {
+          agendado_em: string | null
+          aviso_rafael_5m_em: string | null
+          canal_venda: string | null
+          cancelado_em: string | null
+          cliente_email: string | null
+          cliente_envio_status: string | null
+          cliente_nome: string
+          cliente_req_id: number | null
+          cliente_telefone: string
+          confirmacao_30m_em: string | null
+          confirmacao_enviada_em: string | null
+          confirmacao_status: string | null
+          consentimento_em: string | null
+          consentimento_whatsapp: boolean
+          created_at: string
+          cta_posicao: string | null
+          duracao_min: number
+          fbc: string | null
+          fbclid: string | null
+          fbp: string | null
+          ga_client_id: string | null
+          gbraid: string | null
+          gclid: string | null
+          google_event_id: string | null
+          id: string
+          inicio: string | null
+          instagram: string | null
+          ip_hash: string | null
+          landing_path: string | null
+          lembrete_1h_em: string | null
+          lembrete_d1_em: string | null
+          lembrete_enviado_em: string | null
+          maior_caos: string | null
+          meet_link: string | null
+          objecao: string | null
+          observacoes: string | null
+          origem: string
+          pedidos_semana: string | null
+          quem_atende: string | null
+          reagendamentos: number
+          recuperacao_enviada_em: string | null
+          referrer: string | null
+          resultado: string | null
+          retorno_combinado_em: string | null
+          status: string
+          titulo: string
+          token_reagendar: string | null
+          updated_at: string
+          user_agent: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+          wbraid: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "agenda_reunioes"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       tenant_has_access: { Args: { tenant_uuid: string }; Returns: boolean }
       text_to_bytea: { Args: { data: string }; Returns: string }
