@@ -10,6 +10,7 @@ import {
   sendPoll as evoSendPoll,
   getGroupParticipants as evoGetGroupParticipants,
 } from "../_shared/evolution-api.ts";
+import { sendMedia as uazSendMedia } from "../_shared/uazapi-api.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -154,13 +155,21 @@ async function sendToGroupEvolution(
   contentText?: string,
   mediaUrl?: string,
   pollOptions?: string[],
-  pollSelectableCount?: number
+  pollSelectableCount?: number,
+  viewOnce?: boolean
 ): Promise<{ success: boolean; error?: string; messageId?: string }> {
   try {
     // Evolution API expects WhatsApp JID format "<id>@g.us"; convert from Z-API "<id>-group" if needed
     const evoJid = groupJid.includes("@g.us")
       ? groupJid
       : groupJid.replace(/-group$/i, "") + "@g.us";
+
+    // Visualização única: só imagem, vídeo e áudio. Se falhar, NÃO cai para envio comum (a pessoa pediu que não ficasse salvo).
+    if (viewOnce && (contentType === "image" || contentType === "video" || contentType === "audio")) {
+      const [url, token] = instanceName.split("|");
+      if (!url || !token) return { success: false, error: "uazapi nao configurada" };
+      return await uazSendMedia({ url, token }, evoJid, contentType, mediaUrl || "", contentType === "audio" ? undefined : contentText || undefined, undefined, true);
+    }
 
     switch (contentType) {
       case "text": {
@@ -263,6 +272,18 @@ serve(async (req) => {
       group_ids.forEach((gid, idx) => { if (gid && message_ids[idx]) groupToMessageId.set(gid, message_ids[idx]); });
     }
 
+    // Visualização única vem da própria mensagem (fe_messages.view_once): vale igual para envio imediato e agendado.
+    const viewOnceByMessage = new Map<string, boolean>();
+    if (Array.isArray(message_ids) && message_ids.length) {
+      const { data: vo, error: voError } = await supabase
+        .from("fe_messages")
+        .select("id, view_once")
+        .in("id", message_ids.filter(Boolean))
+        .eq("tenant_id", tenant_id);
+      if (voError) console.warn("[fe-send-message] view_once indisponivel:", voError.message);
+      for (const row of vo || []) viewOnceByMessage.set(row.id, row.view_once === true);
+    }
+
     const processGroups = async () => {
       const results: Array<{ group_id: string; group_name: string; success: boolean; error?: string }> = [];
 
@@ -303,11 +324,12 @@ serve(async (req) => {
           let waMessageId: string | undefined;
 
           if (creds.provider === "uazapi") {
-            const result = await sendToGroupEvolution(creds.instanceName!, group.group_jid, content_type, content_text, media_url, poll_options, poll_selectable_count);
+            const viewOnce = viewOnceByMessage.get(groupToMessageId.get(group.id) || "") === true;
+            const result = await sendToGroupEvolution(creds.instanceName!, group.group_jid, content_type, content_text, media_url, poll_options, poll_selectable_count, viewOnce);
             sent = result.success;
             errMsg = result.error;
             waMessageId = result.messageId;
-            console.log("[fe-send-message] uazapi - Group " + group.group_name + " (" + group.group_jid + "): sent=" + sent + (errMsg ? " error=" + errMsg : ""));
+            console.log("[fe-send-message] uazapi - Group " + group.group_name + " (" + group.group_jid + "): sent=" + sent + (viewOnce ? " viewOnce" : "") + (errMsg ? " error=" + errMsg : ""));
           } else {
             const res = await sendToGroupZapi(zapiBaseUrl, creds.clientToken!, group.group_jid, content_type, content_text, media_url, mention_all, poll_options, poll_selectable_count);
             const resText = await res.text();

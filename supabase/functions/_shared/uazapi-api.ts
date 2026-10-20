@@ -83,12 +83,14 @@ export async function sendMedia(
   fileUrlOrBase64: string,
   caption?: string,
   docName?: string,
+  viewOnce?: boolean,
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
     // uazapi aceita URL ou base64 no campo "file"
     const body: Record<string, unknown> = { number: phone, type, file: fileUrlOrBase64 };
     if (caption) body.text = caption;
     if (docName) body.docName = docName;
+    if (viewOnce) body.viewOnce = true; // visualização única (imagem, vídeo, áudio)
     const res = await fetchWithTimeout(`${trimUrl(cfg.url)}/send/media`, {
       method: "POST",
       headers: instanceHeaders(cfg.token),
