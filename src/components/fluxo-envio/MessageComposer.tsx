@@ -567,14 +567,16 @@ export default function MessageComposer() {
 
 
             {/* Visualização única (só imagem, vídeo e áudio) */}
-            {viewOnceAvailable && canViewOnce(contentType) && (
-              <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/30">
-                <Checkbox checked={viewOnce} onCheckedChange={(v) => setViewOnce(!!v)} id="view-once" />
-                <label htmlFor="view-once" className="text-sm font-medium text-foreground flex items-center gap-1.5 cursor-pointer">
+            {viewOnceAvailable && (
+              <div className={`flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/30 ${canViewOnce(contentType) ? '' : 'opacity-60'}`}>
+                <Checkbox checked={canViewOnce(contentType) && viewOnce} disabled={!canViewOnce(contentType)} onCheckedChange={(v) => setViewOnce(!!v)} id="view-once" />
+                <label htmlFor="view-once" className={`text-sm font-medium text-foreground flex items-center gap-1.5 ${canViewOnce(contentType) ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
                   <Eye className="h-4 w-4 text-primary" />
                   Visualização única
                 </label>
-                <span className="text-xs text-muted-foreground ml-auto">Abre uma vez e some</span>
+                <span className="text-xs text-muted-foreground ml-auto text-right">
+                  {canViewOnce(contentType) ? 'Abre uma vez e some' : 'Só imagem, vídeo e áudio'}
+                </span>
               </div>
             )}
 

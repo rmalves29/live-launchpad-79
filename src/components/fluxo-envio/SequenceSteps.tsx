@@ -221,13 +221,15 @@ export default function SequenceSteps({ steps, onChange, tenantId, viewOnceAvail
               </div>
             )}
 
-            {(viewOnceAvailable || viewOnceEnabledFor(tenantId)) && canViewOnce(s.contentType) && (
-              <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/30">
-                <Checkbox id={`vo-${s.key}`} checked={s.viewOnce} onCheckedChange={(v) => patch(s.key, { viewOnce: !!v })} />
-                <label htmlFor={`vo-${s.key}`} className="text-sm cursor-pointer flex items-center gap-1.5">
+            {(viewOnceAvailable || viewOnceEnabledFor(tenantId)) && (
+              <div className={`flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/30 ${canViewOnce(s.contentType) ? '' : 'opacity-60'}`}>
+                <Checkbox id={`vo-${s.key}`} disabled={!canViewOnce(s.contentType)} checked={canViewOnce(s.contentType) && s.viewOnce} onCheckedChange={(v) => patch(s.key, { viewOnce: !!v })} />
+                <label htmlFor={`vo-${s.key}`} className={`text-sm flex items-center gap-1.5 ${canViewOnce(s.contentType) ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
                   <Eye className="h-4 w-4 text-primary" />Visualização única
                 </label>
-                <span className="text-xs text-muted-foreground ml-auto">Abre uma vez e some</span>
+                <span className="text-xs text-muted-foreground ml-auto text-right">
+                  {canViewOnce(s.contentType) ? 'Abre uma vez e some' : 'Só imagem, vídeo e áudio'}
+                </span>
               </div>
             )}
           </CardContent>
