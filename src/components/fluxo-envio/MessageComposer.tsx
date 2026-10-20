@@ -43,6 +43,7 @@ export default function MessageComposer() {
   const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
   const [pollMultiple, setPollMultiple] = useState(false);
   const [viewOnce, setViewOnce] = useState(false);
+  const [whatsappProvider, setWhatsappProvider] = useState<string | null>(null);
   const [mediaUrl, setMediaUrl] = useState('');
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -57,6 +58,14 @@ export default function MessageComposer() {
   const [groupSort, setGroupSort] = useState<'name' | 'last_sent'>('name');
   const [groupSearch, setGroupSearch] = useState('');
   const [extraSteps, setExtraSteps] = useState<SeqStep[]>([]);
+
+  // Visualização única depende da UazAPI (Z-API não tem). Aparece para qualquer empresa com UazAPI ativa.
+  useEffect(() => {
+    if (!tenant) return;
+    supabase.from('integration_whatsapp' as any).select('provider').eq('tenant_id', tenant.id).eq('is_active', true).maybeSingle()
+      .then(({ data }) => setWhatsappProvider(((data as any)?.provider as string | undefined) ?? null));
+  }, [tenant]);
+  const viewOnceAvailable = whatsappProvider === 'uazapi' || viewOnceEnabledFor(tenant?.id);
 
   
   const [messages, setMessages] = useState<any[]>([]);
@@ -296,7 +305,7 @@ export default function MessageComposer() {
         content_type: contentType,
         content_text: contentText || null,
         media_url: mediaUrl || null,
-        view_once: viewOnceEnabledFor(tenant.id) && canViewOnce(contentType) && viewOnce,
+        view_once: viewOnceAvailable && canViewOnce(contentType) && viewOnce,
         poll_options: contentType === 'poll' ? cleanPollOptions() : null,
         poll_selectable_count: contentType === 'poll' ? (pollMultiple ? cleanPollOptions().length : 1) : null,
         status: sendMode === 'scheduled' ? 'pending' : 'sending',
@@ -330,7 +339,7 @@ export default function MessageComposer() {
             content_type: st.contentType,
             content_text: st.text || null,
             media_url: st.mediaUrl || null,
-            view_once: viewOnceEnabledFor(tenant.id) && canViewOnce(st.contentType) && st.viewOnce,
+            view_once: viewOnceAvailable && canViewOnce(st.contentType) && st.viewOnce,
             poll_options: st.contentType === 'poll' ? cleanStepPoll(st) : null,
             poll_selectable_count: st.contentType === 'poll' ? (st.pollMultiple ? cleanStepPoll(st).length : 1) : null,
             status: 'pending',
@@ -438,7 +447,7 @@ export default function MessageComposer() {
         content_type: contentType,
         content_text: contentText || null,
         media_url: mediaUrl || null,
-        ...(viewOnceEnabledFor(tenant?.id) ? { view_once: canViewOnce(contentType) && viewOnce } : {}),
+        ...(viewOnceAvailable ? { view_once: canViewOnce(contentType) && viewOnce } : {}),
         poll_options: contentType === 'poll' ? cleanPollOptions() : null,
         poll_selectable_count: contentType === 'poll' ? (pollMultiple ? cleanPollOptions().length : 1) : null,
         scheduled_at: sendMode === 'scheduled' && scheduledAt ? new Date(scheduledAt).toISOString() : null,
@@ -558,7 +567,7 @@ export default function MessageComposer() {
 
 
             {/* Visualização única (só imagem, vídeo e áudio) */}
-            {viewOnceEnabledFor(tenant?.id) && canViewOnce(contentType) && (
+            {viewOnceAvailable && canViewOnce(contentType) && (
               <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/30">
                 <Checkbox checked={viewOnce} onCheckedChange={(v) => setViewOnce(!!v)} id="view-once" />
                 <label htmlFor="view-once" className="text-sm font-medium text-foreground flex items-center gap-1.5 cursor-pointer">
@@ -602,7 +611,7 @@ export default function MessageComposer() {
             )}
 
             {!editingMessage && tenant && (
-              <SequenceSteps steps={extraSteps} onChange={setExtraSteps} tenantId={tenant.id} />
+              <SequenceSteps steps={extraSteps} onChange={setExtraSteps} tenantId={tenant.id} viewOnceAvailable={viewOnceAvailable} />
             )}
 
             {/* Target */}

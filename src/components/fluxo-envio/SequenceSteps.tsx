@@ -85,9 +85,11 @@ interface Props {
   steps: SeqStep[];
   onChange: (steps: SeqStep[]) => void;
   tenantId: string;
+  /** Mostra a opção de visualização única (empresa com UazAPI). */
+  viewOnceAvailable?: boolean;
 }
 
-export default function SequenceSteps({ steps, onChange, tenantId }: Props) {
+export default function SequenceSteps({ steps, onChange, tenantId, viewOnceAvailable }: Props) {
   const { toast } = useToast();
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -219,7 +221,7 @@ export default function SequenceSteps({ steps, onChange, tenantId }: Props) {
               </div>
             )}
 
-            {viewOnceEnabledFor(tenantId) && canViewOnce(s.contentType) && (
+            {(viewOnceAvailable || viewOnceEnabledFor(tenantId)) && canViewOnce(s.contentType) && (
               <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/30">
                 <Checkbox id={`vo-${s.key}`} checked={s.viewOnce} onCheckedChange={(v) => patch(s.key, { viewOnce: !!v })} />
                 <label htmlFor={`vo-${s.key}`} className="text-sm cursor-pointer flex items-center gap-1.5">
