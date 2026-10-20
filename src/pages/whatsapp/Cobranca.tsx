@@ -102,6 +102,8 @@ export default function Cobranca() {
   const hasDaysFilter = minDaysSinceLastPurchase.trim() !== '' && Number.isFinite(daysFilter) && daysFilter >= 0;
   const hasCountFilter = minPurchaseCount.trim() !== '' && Number.isFinite(countFilter) && countFilter >= 0;
   const historyFilterActive = hasDaysFilter || hasCountFilter;
+  // Qualquer filtro de pedido (status, evento ou data) busca clientes pelos pedidos; a data só limita o período
+  const orderFilterActive = filters.isPaid !== 'all' || filters.eventType !== 'all' || !!filters.orderDate?.from;
 
   // Lista final de destinatários = lista carregada + filtros de histórico de compras
   const customers = useMemo(() => {
@@ -358,7 +360,7 @@ export default function Cobranca() {
       return;
     }
 
-    if (!filters.orderDate?.from) {
+    if (!orderFilterActive) {
       setBaseCustomers([]);
       return;
     }
@@ -366,18 +368,20 @@ export default function Cobranca() {
     try {
       setLoading(true);
 
-      const fromStr = format(filters.orderDate.from, 'yyyy-MM-dd');
+      const fromStr = filters.orderDate?.from ? format(filters.orderDate.from, 'yyyy-MM-dd') : null;
       const buildQuery = () => {
         let q = supabaseTenant
           .from('orders')
           .select('id, cart_id, payment_link, customer_phone, customer_name, event_type, event_date, total_amount, is_paid, created_at')
           .order('created_at', { ascending: false });
 
-        if (filters.orderDate!.to) {
-          const toStr = format(filters.orderDate!.to, 'yyyy-MM-dd');
-          q = q.gte('event_date', fromStr).lte('event_date', toStr);
-        } else {
-          q = q.eq('event_date', fromStr);
+        if (fromStr) {
+          if (filters.orderDate!.to) {
+            const toStr = format(filters.orderDate!.to, 'yyyy-MM-dd');
+            q = q.gte('event_date', fromStr).lte('event_date', toStr);
+          } else {
+            q = q.eq('event_date', fromStr);
+          }
         }
 
         if (filters.isPaid === 'paid') q = q.eq('is_paid', true);
@@ -598,10 +602,12 @@ export default function Cobranca() {
   };
 
   useEffect(() => {
-    if (useAllCustomers || (historyFilterActive && !filters.orderDate?.from)) {
+    if (useAllCustomers) {
       loadAllCustomers();
-    } else if (filters.orderDate?.from) {
+    } else if (orderFilterActive) {
       loadCustomers();
+    } else if (historyFilterActive) {
+      loadAllCustomers();
     } else {
       setBaseCustomers([]);
     }
@@ -1178,7 +1184,7 @@ export default function Cobranca() {
                   <div className="text-xs text-[#6366f1] mt-0.5">
                     {historyFilterActive
                       ? [
-                          useAllCustomers || !filters.orderDate?.from ? 'da base de clientes' : 'dos pedidos filtrados',
+                          useAllCustomers || !orderFilterActive ? 'da base de clientes' : 'dos pedidos filtrados',
                           hasDaysFilter ? `sem comprar há ${daysFilter}+ dias` : null,
                           hasCountFilter ? `com mais de ${countFilter} compra${countFilter === 1 ? '' : 's'}` : null,
                         ].filter(Boolean).join(' · ')
