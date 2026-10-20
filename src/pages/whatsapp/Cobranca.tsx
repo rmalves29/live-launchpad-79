@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { DateRange } from 'react-day-picker';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useToast } from '@/hooks/use-toast';
@@ -14,7 +14,7 @@ import { Switch } from '@/components/ui/switch';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Loader2, Send, Users, Calendar as CalendarIcon, Filter, Tag, RefreshCw, Clock, Database, ImagePlus, X as XIcon } from 'lucide-react';
-import { normalizeForSending } from '@/lib/phone-utils';
+import { normalizeForSending, normalizeForStorage } from '@/lib/phone-utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -89,8 +89,37 @@ export default function Cobranca() {
   const [messageTemplate, setMessageTemplate] = useState('');
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [imageFileName, setImageFileName] = useState<string | null>(null);
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [baseCustomers, setBaseCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Filtros de histórico de compras (pedidos pagos e não cancelados do tenant)
+  const [minDaysSinceLastPurchase, setMinDaysSinceLastPurchase] = useState('');
+  const [minPurchaseCount, setMinPurchaseCount] = useState('');
+  const [purchaseStats, setPurchaseStats] = useState<Map<string, { count: number; last: number }> | null>(null);
+  const [loadingStats, setLoadingStats] = useState(false);
+  const daysFilter = Number(minDaysSinceLastPurchase);
+  const countFilter = Number(minPurchaseCount);
+  const hasDaysFilter = minDaysSinceLastPurchase.trim() !== '' && Number.isFinite(daysFilter) && daysFilter >= 0;
+  const hasCountFilter = minPurchaseCount.trim() !== '' && Number.isFinite(countFilter) && countFilter >= 0;
+  const historyFilterActive = hasDaysFilter || hasCountFilter;
+
+  // Lista final de destinatários = lista carregada + filtros de histórico de compras
+  const customers = useMemo(() => {
+    if (!historyFilterActive) return baseCustomers;
+    if (!purchaseStats) return [];
+    const now = Date.now();
+    return baseCustomers.filter((c) => {
+      const stat = purchaseStats.get(normalizeForStorage(c.customer_phone || ''));
+      // Quem nunca comprou não entra nos filtros de histórico
+      if (!stat) return false;
+      if (hasCountFilter && !(stat.count > countFilter)) return false;
+      if (hasDaysFilter) {
+        const daysSince = Math.floor((now - stat.last) / 86_400_000);
+        if (daysSince < daysFilter) return false;
+      }
+      return true;
+    });
+  }, [baseCustomers, historyFilterActive, purchaseStats, hasCountFilter, hasDaysFilter, countFilter, daysFilter]);
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState({ current: 0, total: 0 });
   const [whatsappApiUrl, setWhatsappApiUrl] = useState<string | null>(null);
@@ -330,13 +359,13 @@ export default function Cobranca() {
     }
 
     if (!filters.orderDate?.from) {
-      setCustomers([]);
+      setBaseCustomers([]);
       return;
     }
 
     try {
       setLoading(true);
-      
+
       const fromStr = format(filters.orderDate.from, 'yyyy-MM-dd');
       const buildQuery = () => {
         let q = supabaseTenant
@@ -444,7 +473,7 @@ export default function Cobranca() {
         }
       }
 
-      setCustomers(uniqueCustomers);
+      setBaseCustomers(uniqueCustomers);
 
       // Inicializar status como pendente para todos
       const initialStatuses: Record<string, SendStatus> = {};
@@ -453,7 +482,7 @@ export default function Cobranca() {
       });
       setSendStatuses(initialStatuses);
 
-      
+
       toast({
         title: 'Filtro aplicado',
         description: `${uniqueCustomers.length} cliente(s) encontrado(s)`,
@@ -498,8 +527,8 @@ export default function Cobranca() {
         customer_name: c.name
       })) || [];
 
-      setCustomers(mappedCustomers);
-      
+      setBaseCustomers(mappedCustomers);
+
       // Inicializar status como pendente para todos
       const initialStatuses: Record<string, SendStatus> = {};
       mappedCustomers.forEach(c => {
@@ -523,15 +552,66 @@ export default function Cobranca() {
     }
   };
 
+  // Histórico de compras por telefone: nº de pedidos pagos (não cancelados) e data da última compra
+  const loadPurchaseStats = async () => {
+    try {
+      setLoadingStats(true);
+      const PAGE = 1000;
+      let offset = 0;
+      const stats = new Map<string, { count: number; last: number }>();
+      while (true) {
+        const { data: pageData, error } = await supabaseTenant
+          .from('orders')
+          .select('customer_phone, paid_at, created_at')
+          .eq('is_paid', true)
+          .or('is_cancelled.is.null,is_cancelled.eq.false')
+          .order('id', { ascending: true })
+          .range(offset, offset + PAGE - 1);
+        if (error) throw error;
+        if (!pageData || pageData.length === 0) break;
+        for (const o of pageData as any[]) {
+          if (!o.customer_phone) continue;
+          const key = normalizeForStorage(o.customer_phone);
+          const ts = new Date(o.paid_at || o.created_at || 0).getTime();
+          const cur = stats.get(key);
+          if (cur) {
+            cur.count += 1;
+            if (ts > cur.last) cur.last = ts;
+          } else {
+            stats.set(key, { count: 1, last: ts });
+          }
+        }
+        if (pageData.length < PAGE) break;
+        offset += PAGE;
+      }
+      setPurchaseStats(stats);
+    } catch (error: any) {
+      console.error('Erro ao carregar histórico de compras:', error);
+      toast({
+        title: 'Erro',
+        description: error?.message || 'Erro ao carregar histórico de compras',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
   useEffect(() => {
-    if (useAllCustomers) {
+    if (useAllCustomers || (historyFilterActive && !filters.orderDate?.from)) {
       loadAllCustomers();
     } else if (filters.orderDate?.from) {
       loadCustomers();
     } else {
-      setCustomers([]);
+      setBaseCustomers([]);
     }
-  }, [filters, useAllCustomers]);
+  }, [filters, useAllCustomers, historyFilterActive]);
+
+  useEffect(() => {
+    if (historyFilterActive && !purchaseStats && !loadingStats && tenant?.id) {
+      loadPurchaseStats();
+    }
+  }, [historyFilterActive, purchaseStats, tenant?.id]);
 
   // Função para agendar envio
   const scheduleMessage = async () => {
@@ -620,7 +700,9 @@ export default function Cobranca() {
             event_type: filters.eventType,
             order_date: filters.orderDate?.from ? format(filters.orderDate.from, 'yyyy-MM-dd') : '',
             order_date_to: filters.orderDate?.to ? format(filters.orderDate.to, 'yyyy-MM-dd') : '',
-            use_all_customers: useAllCustomers
+            use_all_customers: useAllCustomers,
+            min_days_since_last_purchase: hasDaysFilter ? daysFilter : null,
+            min_purchase_count_exclusive: hasCountFilter ? countFilter : null
           }
         }
       });
@@ -1034,9 +1116,56 @@ export default function Cobranca() {
               </div>
             </div>
 
+            {/* Filtros de histórico de compras */}
+            <div className="space-y-3 p-3 rounded-xl border border-[#e5e7eb] bg-[#f9fafb]">
+              <div>
+                <Label className="font-medium text-sm">Histórico de compras</Label>
+                <p className="text-xs text-muted-foreground">
+                  Considera pedidos pagos e não cancelados. Quem nunca comprou fica de fora quando um destes filtros está preenchido.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="minDaysSinceLastPurchase" className="text-xs text-muted-foreground">Sem comprar há (dias ou mais)</Label>
+                <Input
+                  id="minDaysSinceLastPurchase"
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  placeholder="Ex.: 60"
+                  value={minDaysSinceLastPurchase}
+                  onChange={(e) => setMinDaysSinceLastPurchase(e.target.value)}
+                  className="h-10 rounded-lg bg-white border-[#e5e7eb]"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="minPurchaseCount" className="text-xs text-muted-foreground">Comprou mais de (vezes)</Label>
+                <Input
+                  id="minPurchaseCount"
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  placeholder="Ex.: 2"
+                  value={minPurchaseCount}
+                  onChange={(e) => setMinPurchaseCount(e.target.value)}
+                  className="h-10 rounded-lg bg-white border-[#e5e7eb]"
+                />
+              </div>
+              {historyFilterActive && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => { setMinDaysSinceLastPurchase(''); setMinPurchaseCount(''); }}
+                >
+                  <XIcon className="w-3 h-3 mr-1" /> Limpar filtros de histórico
+                </Button>
+              )}
+            </div>
+
             {/* Resumo: clientes encontrados */}
             <div className="p-4 rounded-xl bg-[#eef2ff] border border-[#c7d2fe]">
-              {loading ? (
+              {loading || loadingStats ? (
                 <div className="flex items-center gap-2 text-sm text-[#4338ca]">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Calculando...
@@ -1047,7 +1176,13 @@ export default function Cobranca() {
                     {customers.length} cliente{customers.length === 1 ? '' : 's'} encontrado{customers.length === 1 ? '' : 's'}
                   </div>
                   <div className="text-xs text-[#6366f1] mt-0.5">
-                    {useAllCustomers ? 'base completa' : (filters.isPaid === 'unpaid' ? 'com pedidos pendentes' : 'pelos filtros aplicados')}
+                    {historyFilterActive
+                      ? [
+                          useAllCustomers || !filters.orderDate?.from ? 'da base de clientes' : 'dos pedidos filtrados',
+                          hasDaysFilter ? `sem comprar há ${daysFilter}+ dias` : null,
+                          hasCountFilter ? `com mais de ${countFilter} compra${countFilter === 1 ? '' : 's'}` : null,
+                        ].filter(Boolean).join(' · ')
+                      : useAllCustomers ? 'base completa' : (filters.isPaid === 'unpaid' ? 'com pedidos pendentes' : 'pelos filtros aplicados')}
                   </div>
                 </>
               )}
