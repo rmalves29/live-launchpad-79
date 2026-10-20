@@ -9,9 +9,16 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { BarChart3, Circle, FileText, Image, Loader2, Music, Plus, Trash2, Upload, Video, X } from 'lucide-react';
+import { BarChart3, Circle, Eye, FileText, Image, Loader2, Music, Plus, Trash2, Upload, Video, X } from 'lucide-react';
 
 export type StepType = 'text' | 'image' | 'audio' | 'video' | 'video_note' | 'poll';
+
+/** Só imagem, vídeo e áudio têm visualização única no WhatsApp. */
+export const canViewOnce = (t: StepType) => t === 'image' || t === 'video' || t === 'audio';
+
+/** Empresas com a opção liberada (por enquanto só a Mania de Mulher, para teste). */
+const VIEW_ONCE_TENANT_IDS = ['08f2b1b9-3988-489e-8186-c60f0c0b0622'];
+export const viewOnceEnabledFor = (tenantId: string | undefined | null) => !!tenantId && VIEW_ONCE_TENANT_IDS.includes(tenantId);
 
 export interface SeqStep {
   key: string;
@@ -22,6 +29,7 @@ export interface SeqStep {
   uploading: boolean;
   pollOptions: string[];
   pollMultiple: boolean;
+  viewOnce: boolean;
   delayValue: number;
   delayUnit: 'seconds' | 'minutes';
 }
@@ -37,6 +45,7 @@ export const newStep = (): SeqStep => ({
   uploading: false,
   pollOptions: ['', ''],
   pollMultiple: false,
+  viewOnce: false,
   delayValue: 5,
   delayUnit: 'seconds',
 });
@@ -152,7 +161,7 @@ export default function SequenceSteps({ steps, onChange, tenantId }: Props) {
             <div className="flex flex-wrap gap-1.5">
               {(Object.keys(typeLabels) as StepType[]).map((t) => (
                 <Button key={t} type="button" size="sm" variant={s.contentType === t ? 'default' : 'outline'}
-                  onClick={() => patch(s.key, { contentType: t, mediaUrl: '', mediaName: '' })}>
+                  onClick={() => patch(s.key, { contentType: t, mediaUrl: '', mediaName: '', viewOnce: canViewOnce(t) ? s.viewOnce : false })}>
                   {icon(t)}<span className="ml-1">{typeLabels[t]}</span>
                 </Button>
               ))}
@@ -207,6 +216,16 @@ export default function SequenceSteps({ steps, onChange, tenantId }: Props) {
                     <Upload className="h-4 w-4 mr-2" />Selecionar arquivo
                   </Button>
                 )}
+              </div>
+            )}
+
+            {viewOnceEnabledFor(tenantId) && canViewOnce(s.contentType) && (
+              <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/30">
+                <Checkbox id={`vo-${s.key}`} checked={s.viewOnce} onCheckedChange={(v) => patch(s.key, { viewOnce: !!v })} />
+                <label htmlFor={`vo-${s.key}`} className="text-sm cursor-pointer flex items-center gap-1.5">
+                  <Eye className="h-4 w-4 text-primary" />Visualização única
+                </label>
+                <span className="text-xs text-muted-foreground ml-auto">Abre uma vez e some</span>
               </div>
             )}
           </CardContent>

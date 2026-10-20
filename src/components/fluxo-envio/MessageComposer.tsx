@@ -15,7 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
-import SequenceSteps, { cleanStepPoll, stepDelaySeconds, validateStep, type SeqStep } from './SequenceSteps';
+import SequenceSteps, { canViewOnce, viewOnceEnabledFor, cleanStepPoll, stepDelaySeconds, validateStep, type SeqStep } from './SequenceSteps';
 
 interface FeGroup {
   id: string;
@@ -42,6 +42,7 @@ export default function MessageComposer() {
   const [contentText, setContentText] = useState('');
   const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
   const [pollMultiple, setPollMultiple] = useState(false);
+  const [viewOnce, setViewOnce] = useState(false);
   const [mediaUrl, setMediaUrl] = useState('');
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -295,6 +296,7 @@ export default function MessageComposer() {
         content_type: contentType,
         content_text: contentText || null,
         media_url: mediaUrl || null,
+        view_once: viewOnceEnabledFor(tenant.id) && canViewOnce(contentType) && viewOnce,
         poll_options: contentType === 'poll' ? cleanPollOptions() : null,
         poll_selectable_count: contentType === 'poll' ? (pollMultiple ? cleanPollOptions().length : 1) : null,
         status: sendMode === 'scheduled' ? 'pending' : 'sending',
@@ -328,6 +330,7 @@ export default function MessageComposer() {
             content_type: st.contentType,
             content_text: st.text || null,
             media_url: st.mediaUrl || null,
+            view_once: viewOnceEnabledFor(tenant.id) && canViewOnce(st.contentType) && st.viewOnce,
             poll_options: st.contentType === 'poll' ? cleanStepPoll(st) : null,
             poll_selectable_count: st.contentType === 'poll' ? (st.pollMultiple ? cleanStepPoll(st).length : 1) : null,
             status: 'pending',
@@ -409,6 +412,7 @@ export default function MessageComposer() {
     setContentType(m.content_type);
     setContentText(m.content_text || '');
     setMediaUrl(m.media_url || '');
+    setViewOnce(!!m.view_once);
     if (m.content_type === 'poll') {
       const opts: string[] = Array.isArray(m.poll_options) ? m.poll_options : [];
       setPollOptions(opts.length >= 2 ? opts : ['', '']);
@@ -434,6 +438,7 @@ export default function MessageComposer() {
         content_type: contentType,
         content_text: contentText || null,
         media_url: mediaUrl || null,
+        ...(viewOnceEnabledFor(tenant?.id) ? { view_once: canViewOnce(contentType) && viewOnce } : {}),
         poll_options: contentType === 'poll' ? cleanPollOptions() : null,
         poll_selectable_count: contentType === 'poll' ? (pollMultiple ? cleanPollOptions().length : 1) : null,
         scheduled_at: sendMode === 'scheduled' && scheduledAt ? new Date(scheduledAt).toISOString() : null,
@@ -443,6 +448,7 @@ export default function MessageComposer() {
       toast({ title: 'Mensagem atualizada!' });
       setEditingMessage(null);
       setContentText('');
+      setViewOnce(false);
       resetPoll();
       clearMedia();
       fetchData();
@@ -489,7 +495,7 @@ export default function MessageComposer() {
                   { key: 'poll', label: 'Enquete' },
                 ] as const).map(t => (
                   <Button key={t.key} variant={contentType === t.key ? 'default' : 'outline'} size="sm"
-                    onClick={() => { setContentType(t.key); clearMedia(); setMentionAll(false); }}>
+                    onClick={() => { setContentType(t.key); clearMedia(); setMentionAll(false); if (!canViewOnce(t.key)) setViewOnce(false); }}>
                     {contentTypeIcon[t.key]}
                     <span className="ml-1">{t.label}</span>
                   </Button>
@@ -550,6 +556,18 @@ export default function MessageComposer() {
 
 
 
+
+            {/* Visualização única (só imagem, vídeo e áudio) */}
+            {viewOnceEnabledFor(tenant?.id) && canViewOnce(contentType) && (
+              <div className="flex items-center gap-2 p-2 rounded-lg border border-border bg-muted/30">
+                <Checkbox checked={viewOnce} onCheckedChange={(v) => setViewOnce(!!v)} id="view-once" />
+                <label htmlFor="view-once" className="text-sm font-medium text-foreground flex items-center gap-1.5 cursor-pointer">
+                  <Eye className="h-4 w-4 text-primary" />
+                  Visualização única
+                </label>
+                <span className="text-xs text-muted-foreground ml-auto">Abre uma vez e some</span>
+              </div>
+            )}
 
             {/* File upload for media */}
             {contentType !== 'text' && contentType !== 'poll' && (
@@ -752,6 +770,7 @@ export default function MessageComposer() {
                     <div className="flex items-center gap-2 mb-1">
                       {contentTypeIcon[m.content_type as keyof typeof contentTypeIcon]}
                       <Badge className={statusColors[m.status] || ''}>{m.status}</Badge>
+                      {m.view_once && <Badge variant="outline" className="gap-1"><Eye className="h-3 w-3" />Visualização única</Badge>}
                       <span className="text-xs text-muted-foreground ml-auto">
                         {new Date(m.created_at).toLocaleString('pt-BR')}
                       </span>
