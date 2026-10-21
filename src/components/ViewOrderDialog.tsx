@@ -233,7 +233,7 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
 
   // Mostrar botão de sincronização de endereço sempre que o pedido tiver endereço preenchido
   // (independente de já ter sido sincronizado com o Bling)
-  const hasAddress = !!(order.customer?.street || order.customer?.cep);
+  const hasAddress = !!(order.customer?.street || order.customer?.cep || (order as any).customer_street || (order as any).customer_cep);
   const hasBlingIntegration = !!(order.bling_order_id || order.customer?.bling_contact_id || hasAddress);
 
   const syncAddressWithBling = async () => {
@@ -276,8 +276,20 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
   const customerName = !isInvalidName(order.customer?.name)
     ? (order.customer!.name as string)
     : (!isInvalidName((order as any).customer_name) ? (order as any).customer_name : 'Cliente não identificado');
-  const customerAddress = order.customer ? 
-    `${order.customer.street || ''}, ${order.customer.number || ''}${order.customer.complement ? `, ${order.customer.complement}` : ''}, ${order.customer.neighborhood || ''} - ${order.customer.city || ''} - ${order.customer.state || ''}, CEP: ${order.customer.cep || ''}` 
+  // O endereço gravado NO PEDIDO (o que a cliente informou ao comprar) tem prioridade; o cadastro do cliente entra como reserva.
+  // Antes só o cadastro era lido: se o vínculo pelo telefone falhava, aparecia "Endereço não cadastrado" mesmo com o endereço no pedido.
+  const o: any = order;
+  const addr = {
+    street: o.customer_street || order.customer?.street || '',
+    number: o.customer_number || order.customer?.number || '',
+    complement: o.customer_complement || order.customer?.complement || '',
+    neighborhood: o.customer_neighborhood || order.customer?.neighborhood || '',
+    city: o.customer_city || order.customer?.city || '',
+    state: o.customer_state || order.customer?.state || '',
+    cep: o.customer_cep || order.customer?.cep || '',
+  };
+  const customerAddress = (addr.street || addr.cep)
+    ? `${addr.street}, ${addr.number}${addr.complement ? `, ${addr.complement}` : ''}, ${addr.neighborhood} - ${addr.city} - ${addr.state}, CEP: ${addr.cep}`
     : 'Endereço não cadastrado';
 
   const totalItems = order.cart_items?.reduce((sum, item) => sum + item.qty, 0) || 0;
