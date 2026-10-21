@@ -153,7 +153,14 @@ Deno.serve(async (req) => {
 
     const now = new Date();
 
-    if (type === "charge.paid" || type === "invoice.paid" || type === "subscription.charged") {
+    // O Pagar.me manda invoice.paid E charge.paid para a MESMA mensalidade (com ids diferentes). Estender nos dois somava
+    // 2 meses por pagamento (Biquíni da Thay, 19/10). Só o charge.paid estende; os outros só ficam no log.
+    if (type === "invoice.paid" || type === "subscription.charged") {
+      await supabase.from("webhook_logs").insert({ webhook_type: `pagarme_subscription:${type}:sem_acao`, status_code: 200, tenant_id: tenantId, payload: { id: data?.id } } as any);
+      return json({ ok: true, ignored: type });
+    }
+
+    if (type === "charge.paid") {
       // idempotência por charge id
       if (charge?.id && local?.last_charge_id === charge.id) {
         return json({ ok: true, idempotent: true });
