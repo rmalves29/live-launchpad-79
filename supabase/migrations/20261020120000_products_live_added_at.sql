@@ -3,8 +3,9 @@
 -- então qualquer venda/estoque mexia a ordem e os produtos recém-ativados apareciam no topo.
 alter table public.products add column if not exists live_added_at timestamptz;
 
--- Sem backfill de propósito: produtos que já estavam na live ficam com live_added_at nulo e continuam na ordem de hoje (no começo);
--- só quem for ativado a partir de agora recebe a data e entra no fim.
+-- Backfill (aplicado à parte, com session_replication_role = replica para não acionar auditoria nem mexer em updated_at):
+--   update public.products set live_added_at = created_at where live_added_at is null and sale_type in ('LIVE','AMBOS');
+-- Assim a ordem de hoje vira a ordem de cadastro, fixa; só quem for ativado a partir de agora entra no fim.
 
 create or replace function public.products_set_live_added_at()
 returns trigger language plpgsql set search_path = public as $$

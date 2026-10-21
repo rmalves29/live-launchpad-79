@@ -230,11 +230,10 @@ async function catalog(body: any, tenant: any) {
     .in('sale_type', ['LIVE', 'AMBOS'])
     .gt('stock', 0);
   if (q) query = query.or(`code.ilike.%${q}%,name.ilike.%${q}%`);
+  // Ordem FIXA da vitrine: quem entrou na live primeiro aparece primeiro; o que foi cadastrado/ativado agora vai para o fim.
+  // Só depende de live_added_at (gravado quando o produto entra na live) e do id: estoque, preço e venda não mexem na posição.
   const { data: rows, count, error } = await query
-    .order('is_live', { ascending: false })
-    // Quem entrou na live agora vai para o fim: live_added_at nulo (já estava na live) vem primeiro, na ordem de sempre.
-    .order('live_added_at', { ascending: true, nullsFirst: true })
-    .order('updated_at', { ascending: false })
+    .order('live_added_at', { ascending: true })
     .order('id', { ascending: true })
     .range(offset, offset + limit - 1);
   if (error) return fail('Não foi possível carregar a vitrine.', 'CATALOG_ERROR');
