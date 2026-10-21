@@ -232,7 +232,10 @@ async function catalog(body: any, tenant: any) {
   if (q) query = query.or(`code.ilike.%${q}%,name.ilike.%${q}%`);
   const { data: rows, count, error } = await query
     .order('is_live', { ascending: false })
+    // Quem entrou na live agora vai para o fim: live_added_at nulo (já estava na live) vem primeiro, na ordem de sempre.
+    .order('live_added_at', { ascending: true, nullsFirst: true })
     .order('updated_at', { ascending: false })
+    .order('id', { ascending: true })
     .range(offset, offset + limit - 1);
   if (error) return fail('Não foi possível carregar a vitrine.', 'CATALOG_ERROR');
 
