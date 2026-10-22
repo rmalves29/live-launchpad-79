@@ -56,7 +56,7 @@
 .ls-root .acts{display:flex;gap:6px}
 .ls-root .flash{margin:4px 16px 10px;padding:7px 8px;border-radius:12px;border:1.5px solid #e5484d;background:#fdecec}
 .ls-root .flash .fh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
-.ls-root .flash .fh span{font-size:12px;font-weight:700;color:#b42318}
+.ls-root .flash .fh span{font-size:16px;font-weight:800;color:#b42318;letter-spacing:.2px;animation:flashblink 1s steps(1,end) infinite}
 .ls-root .flash .clk{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:6px;background:#fff;border:1px solid #e5484d;color:#b42318;font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;animation:flashblink 1s steps(1,end) infinite}
 .ls-root .flash .clk svg{width:14px;height:14px}
 .ls-root .flash .fb{display:flex;align-items:center;gap:8px}
@@ -68,7 +68,7 @@
 .ls-root .flash .ft .pc{font-size:11px;font-weight:700;color:#b42318;margin-left:4px}
 .ls-root .flash .buy{min-width:84px;height:36px}
 @keyframes flashblink{0%{opacity:1}50%{opacity:.3}100%{opacity:1}}
-@media (prefers-reduced-motion:reduce){.ls-root .flash .clk{animation:none}}
+@media (prefers-reduced-motion:reduce){.ls-root .flash .clk,.ls-root .flash .fh span{animation:none}}
 .ls-root .sq{width:42px;height:38px;border-radius:10px;background:var(--bg);display:grid;place-items:center}
 .ls-root .sq svg{width:22px;height:22px}
 .ls-root .buy{min-width:92px;height:38px;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-weight:700;padding:0 14px}
