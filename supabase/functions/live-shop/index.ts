@@ -69,7 +69,7 @@ async function getTenant(slugRaw: unknown) {
   if (!slug) return null;
   const { data } = await sb
     .from('tenants')
-    .select('id, name, slug, logo_url, primary_color, is_active, live_reserve_mode, live_cart_minutes, live_shop_enabled, live_shop_close_at, live_open_order')
+    .select('id, name, slug, logo_url, primary_color, is_active, live_reserve_mode, live_cart_minutes, live_shop_enabled, live_shop_close_at, live_open_order, enable_live')
     .eq('slug', slug)
     .eq('is_active', true)
     .maybeSingle();
@@ -859,7 +859,8 @@ Deno.serve(async (req) => {
     // Desativada à mão OU a hora agendada para sair do ar já passou (vale na hora, sem depender do cron)
     const closeAtMs = tenant.live_shop_close_at ? Date.parse(tenant.live_shop_close_at) : NaN;
     const closedBySchedule = Number.isFinite(closeAtMs) && Date.now() >= closeAtMs;
-    if (tenant.live_shop_enabled === false || closedBySchedule) return fail('A vitrine da live está indisponível no momento.', 'LIVE_DISABLED');
+    // enable_live = módulo Live liberado para a empresa (tela Empresas): desligado, o link público também sai do ar
+    if (tenant.live_shop_enabled === false || tenant.enable_live === false || closedBySchedule) return fail('A vitrine da live está indisponível no momento.', 'LIVE_DISABLED');
     switch (body.action) {
       case 'catalog': return await catalog(body, tenant);
       case 'catalog_version': return json({ ok: true, version: await catalogVersion(tenant) });

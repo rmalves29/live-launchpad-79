@@ -72,13 +72,33 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       label: 'Principal',
       entries: [
         { type: 'item', item: { path: '/pedidos', label: 'Pedidos', icon: ShoppingBag } },
-        { type: 'item', item: { path: '/pedidos-manual', label: 'Pedido Manual', icon: PlusCircle } },
+        // Com a Live desligada o menu "Live" some; o Pedido Manual continua acessível aqui.
+        ...(!enableLive ? [{ type: 'item' as const, item: { path: '/pedidos-manual', label: 'Pedido Manual', icon: PlusCircle } }] : []),
         ...(tenant?.slug
           ? [{ type: 'item' as const, item: { path: `/t/${tenant.slug}/checkout`, label: 'Checkout', icon: ShoppingCart } }]
           : []),
-        ...(enableLive ? [{ type: 'item' as const, item: { path: '/live', label: 'Live', icon: Radio } }] : []),
-        { type: 'item', item: { path: '/loja-da-live', label: 'Loja da Live', icon: Store } },
         { type: 'item', item: { path: '/sorteio', label: 'Sorteio', icon: Trophy } },
+      ],
+    },
+    // Menu "Live": só aparece para empresas com a Live liberada (tenants.enable_live)
+    ...(enableLive
+      ? [{
+          label: 'Live',
+          entries: [
+            { type: 'item' as const, item: { path: '/loja-da-live', label: 'Loja da Live', icon: Store } },
+            { type: 'item' as const, item: { path: '/live', label: 'Live', icon: Radio } },
+            { type: 'item' as const, item: { path: '/pedidos-manual', label: 'Pedido Manual', icon: PlusCircle } },
+          ],
+        }]
+      : []),
+    // Menu "Grupo VIP": SendFlow só com tenants.enable_sendflow; o Fluxo de Envio fica sempre disponível
+    {
+      label: 'Grupo VIP',
+      entries: [
+        ...(enableSendflow
+          ? [{ type: 'item' as const, item: { path: '/sendflow', label: 'SendFlow', icon: Send } }]
+          : []),
+        { type: 'item', item: { path: '/fluxo-envio/painel', label: 'Fluxo de Envio', icon: GitBranch } },
       ],
     },
     {
@@ -93,10 +113,6 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
     {
       label: 'Comunicação',
       entries: [
-        ...(enableSendflow
-          ? [{ type: 'item' as const, item: { path: '/sendflow', label: 'SendFlow', icon: Send } }]
-          : []),
-        { type: 'item', item: { path: '/fluxo-envio/painel', label: 'Fluxo de Envio', icon: GitBranch } },
         { type: 'item', item: { path: '/comunicacao/push', label: 'Push', icon: Bell } },
         // Super admin gerencia os vídeos; as clientes assistem na Central de Ajuda (também no celular, onde não há barra superior)
         ...(isSuperAdmin

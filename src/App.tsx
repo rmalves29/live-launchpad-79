@@ -13,6 +13,7 @@ import TenantAuth from "./pages/TenantAuth";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import RequireAuth from "./components/RequireAuth";
 import RequireTenantAuth from "./components/RequireTenantAuth";
+import { FeatureGate } from "./components/FeatureGate";
 import { TenantProvider } from "@/contexts/TenantContext";
 import { TenantLoader } from "@/components/TenantLoader";
 import { useTenantContext } from "@/contexts/TenantContext";
@@ -185,7 +186,7 @@ const AppContent = () => {
           <RequireTenantAuth><PedidosManual /></RequireTenantAuth>
         } />
         <Route path="/live" element={
-          <RequireTenantAuth><Live /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="live"><Live /></FeatureGate></RequireTenantAuth>
         } />
         <Route path="/pedidos" element={
           <RequireTenantAuth><Pedidos /></RequireTenantAuth>
@@ -224,10 +225,10 @@ const AppContent = () => {
           <RequireTenantAuth><FilaEspera /></RequireTenantAuth>
         } />
         <Route path="/loja-da-live" element={
-          <RequireTenantAuth><LojaDaLive /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="live"><LojaDaLive /></FeatureGate></RequireTenantAuth>
         } />
         <Route path="/sendflow" element={
-          <RequireTenantAuth><SendFlow /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="sendflow"><SendFlow /></FeatureGate></RequireTenantAuth>
         } />
         
         {/* Rota para etiquetas */}
