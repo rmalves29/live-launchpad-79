@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/hooks/use-toast';
-import { ChevronDown, ChevronRight, Loader2, Package, Search, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, Package, Pencil, Search, X } from 'lucide-react';
+import { LiveProductEditDialog } from './LiveProductEditDialog';
 
 // Um produto está "na live" quando o tipo de venda é LIVE ou AMBOS (é o que a vitrine do link usa).
 // Marcar = vira AMBOS (continua no bazar); desmarcar = vira BAZAR (sai da live).
@@ -58,6 +59,8 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
   const [pending, setPending] = useState<Map<number, boolean>>(new Map());
   // estado salvo de tudo que já apareceu na tela (vale mesmo depois de trocar de busca/página)
   const [known, setKnown] = useState<Map<number, Row>>(new Map());
+  // produto aberto no diálogo de edição (sem sair da página)
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => { setDebounced(search.trim()); setPage(0); }, 300);
@@ -297,6 +300,7 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
             <span className="hidden w-20 text-right sm:block">Estoque</span>
             <span className="hidden w-24 text-right sm:block">Preço</span>
             <span className="w-24 text-right">Na live?</span>
+            <span className="w-8" aria-hidden="true" />
           </div>
 
           {loading ? (
@@ -343,6 +347,9 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
                         {st === 'indeterminate' && <Badge className="bg-amber-500 hover:bg-amber-500">Parcial</Badge>}
                         {st === false && <Badge variant="outline">Fora</Badge>}
                       </span>
+                      <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0" aria-label={`Editar ${r.code || r.name}`} onClick={() => setEditingId(r.id)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
                     </div>
 
                     {hasKids && isOpen && (
@@ -363,6 +370,9 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
                               <span className="w-24 text-right">
                                 {on ? <Badge className="bg-emerald-600 hover:bg-emerald-600">Na live</Badge> : <Badge variant="outline">Fora</Badge>}
                               </span>
+                              <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0" aria-label={`Editar ${r.name} ${c.label}`} onClick={() => setEditingId(c.id)}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
                             </li>
                           );
                         })}
@@ -384,6 +394,13 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
           </div>
         </div>
       </Card>
+
+      <LiveProductEditDialog
+        productId={editingId}
+        open={editingId !== null}
+        onOpenChange={(o) => { if (!o) setEditingId(null); }}
+        onSaved={() => { load(); onChanged?.(); }}
+      />
 
       <div className="sticky bottom-0 -mx-1 flex items-center justify-end gap-2 border-t bg-background/95 px-1 py-3 backdrop-blur">
         {dirty && (

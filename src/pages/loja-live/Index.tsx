@@ -17,6 +17,7 @@ import { GiftsManager } from '@/components/GiftsManager';
 import { ShippingOptionsManager } from '@/components/ShippingOptionsManager';
 import WhatsAppMessages from './WhatsAppMessages';
 import { LiveProductsManager } from './LiveProductsManager';
+import { LiveOrdersManager } from './LiveOrdersManager';
 import { AlertTriangle, CalendarClock, CheckCircle2, Copy, ExternalLink, Store } from 'lucide-react';
 import { liveShopUrl } from '@/lib/live-shop';
 
@@ -208,6 +209,7 @@ export default function LojaDaLive() {
           <TabsTrigger value="coupons">Cupons</TabsTrigger>
           <TabsTrigger value="gifts">Brindes</TabsTrigger>
           <TabsTrigger value="shipping">Frete</TabsTrigger>
+          <TabsTrigger value="orders">Pedidos</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
           {isSuperAdmin && <TabsTrigger value="tenants">Links de todas as empresas</TabsTrigger>}
         </TabsList>
@@ -361,6 +363,8 @@ export default function LojaDaLive() {
           </p>
           <ShippingOptionsManager channel="live" />
         </TabsContent>
+
+        <TabsContent value="orders" className="mt-4"><LiveOrdersManager /></TabsContent>
 
         <TabsContent value="whatsapp" className="mt-4"><WhatsAppMessages /></TabsContent>
 
