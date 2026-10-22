@@ -36,10 +36,14 @@ export type Database = {
         Row: {
           agendado_em: string | null
           aviso_rafael_5m_em: string | null
+          aviso_rafael_em: string | null
           canal_venda: string | null
           cancelado_em: string | null
+          cliente_confirmacao_em: string | null
+          cliente_confirmacao_req_id: number | null
           cliente_email: string | null
           cliente_envio_status: string | null
+          cliente_minutos_antes: number
           cliente_nome: string
           cliente_req_id: number | null
           cliente_telefone: string
@@ -93,10 +97,14 @@ export type Database = {
         Insert: {
           agendado_em?: string | null
           aviso_rafael_5m_em?: string | null
+          aviso_rafael_em?: string | null
           canal_venda?: string | null
           cancelado_em?: string | null
+          cliente_confirmacao_em?: string | null
+          cliente_confirmacao_req_id?: number | null
           cliente_email?: string | null
           cliente_envio_status?: string | null
+          cliente_minutos_antes?: number
           cliente_nome: string
           cliente_req_id?: number | null
           cliente_telefone: string
@@ -150,10 +158,14 @@ export type Database = {
         Update: {
           agendado_em?: string | null
           aviso_rafael_5m_em?: string | null
+          aviso_rafael_em?: string | null
           canal_venda?: string | null
           cancelado_em?: string | null
+          cliente_confirmacao_em?: string | null
+          cliente_confirmacao_req_id?: number | null
           cliente_email?: string | null
           cliente_envio_status?: string | null
+          cliente_minutos_antes?: number
           cliente_nome?: string
           cliente_req_id?: number | null
           cliente_telefone?: string
@@ -404,6 +416,150 @@ export type Database = {
           storage_path?: string
         }
         Relationships: []
+      }
+      assinaturas_pendentes: {
+        Row: {
+          aceite_termos_em: string
+          asaas_customer_id: string | null
+          asaas_last_payment_id: string | null
+          asaas_payment_link_id: string | null
+          asaas_subscription_id: string | null
+          attribution: Json
+          card_brand: string | null
+          card_last4: string | null
+          checkout_url: string | null
+          created_at: string
+          documento: string
+          documento_tipo: string
+          email: string
+          event_id: string | null
+          expires_at: string
+          falha_motivo: string | null
+          id: string
+          implantacao_valor: number
+          ip_hash: string | null
+          link_senha_enviado_em: string | null
+          loja_nome: string
+          nome: string
+          pagarme_card_id: string | null
+          pagarme_code: string | null
+          pagarme_customer_code: string | null
+          pagarme_customer_id: string | null
+          pagarme_order_id: string | null
+          pagarme_payment_link_id: string | null
+          pagarme_subscription_id: string | null
+          paid_at: string | null
+          plano_preco: number
+          provisioned_at: string | null
+          status: string
+          tenant_id: string | null
+          tentativas_pagamento: number
+          token: string
+          updated_at: string
+          user_agent: string | null
+          user_id: string | null
+          whatsapp: string
+        }
+        Insert: {
+          aceite_termos_em: string
+          asaas_customer_id?: string | null
+          asaas_last_payment_id?: string | null
+          asaas_payment_link_id?: string | null
+          asaas_subscription_id?: string | null
+          attribution?: Json
+          card_brand?: string | null
+          card_last4?: string | null
+          checkout_url?: string | null
+          created_at?: string
+          documento: string
+          documento_tipo: string
+          email: string
+          event_id?: string | null
+          expires_at?: string
+          falha_motivo?: string | null
+          id?: string
+          implantacao_valor?: number
+          ip_hash?: string | null
+          link_senha_enviado_em?: string | null
+          loja_nome: string
+          nome: string
+          pagarme_card_id?: string | null
+          pagarme_code?: string | null
+          pagarme_customer_code?: string | null
+          pagarme_customer_id?: string | null
+          pagarme_order_id?: string | null
+          pagarme_payment_link_id?: string | null
+          pagarme_subscription_id?: string | null
+          paid_at?: string | null
+          plano_preco?: number
+          provisioned_at?: string | null
+          status?: string
+          tenant_id?: string | null
+          tentativas_pagamento?: number
+          token: string
+          updated_at?: string
+          user_agent?: string | null
+          user_id?: string | null
+          whatsapp: string
+        }
+        Update: {
+          aceite_termos_em?: string
+          asaas_customer_id?: string | null
+          asaas_last_payment_id?: string | null
+          asaas_payment_link_id?: string | null
+          asaas_subscription_id?: string | null
+          attribution?: Json
+          card_brand?: string | null
+          card_last4?: string | null
+          checkout_url?: string | null
+          created_at?: string
+          documento?: string
+          documento_tipo?: string
+          email?: string
+          event_id?: string | null
+          expires_at?: string
+          falha_motivo?: string | null
+          id?: string
+          implantacao_valor?: number
+          ip_hash?: string | null
+          link_senha_enviado_em?: string | null
+          loja_nome?: string
+          nome?: string
+          pagarme_card_id?: string | null
+          pagarme_code?: string | null
+          pagarme_customer_code?: string | null
+          pagarme_customer_id?: string | null
+          pagarme_order_id?: string | null
+          pagarme_payment_link_id?: string | null
+          pagarme_subscription_id?: string | null
+          paid_at?: string | null
+          plano_preco?: number
+          provisioned_at?: string | null
+          status?: string
+          tenant_id?: string | null
+          tentativas_pagamento?: number
+          token?: string
+          updated_at?: string
+          user_agent?: string | null
+          user_id?: string | null
+          whatsapp?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assinaturas_pendentes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assinaturas_pendentes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       audit_logs: {
         Row: {
@@ -1515,6 +1671,7 @@ export type Database = {
           status: string
           tenant_id: string
           updated_at: string | null
+          view_once: boolean
           wa_message_id: string | null
         }
         Insert: {
@@ -1537,6 +1694,7 @@ export type Database = {
           status?: string
           tenant_id: string
           updated_at?: string | null
+          view_once?: boolean
           wa_message_id?: string | null
         }
         Update: {
@@ -1559,6 +1717,7 @@ export type Database = {
           status?: string
           tenant_id?: string
           updated_at?: string | null
+          view_once?: boolean
           wa_message_id?: string | null
         }
         Relationships: [
@@ -2104,6 +2263,54 @@ export type Database = {
           },
           {
             foreignKeyName: "integration_appmax_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      integration_asaas: {
+        Row: {
+          api_key: string | null
+          created_at: string
+          environment: string
+          id: string
+          is_active: boolean
+          tenant_id: string
+          updated_at: string
+          webhook_token: string | null
+        }
+        Insert: {
+          api_key?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          tenant_id: string
+          updated_at?: string
+          webhook_token?: string | null
+        }
+        Update: {
+          api_key?: string | null
+          created_at?: string
+          environment?: string
+          id?: string
+          is_active?: boolean
+          tenant_id?: string
+          updated_at?: string
+          webhook_token?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_asaas_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integration_asaas_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: true
             referencedRelation: "tenants_public"
@@ -3071,6 +3278,61 @@ export type Database = {
           },
         ]
       }
+      live_flash_offers: {
+        Row: {
+          created_at: string
+          ends_at: string
+          flash_price: number
+          id: string
+          product_id: number
+          starts_at: string
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          ends_at: string
+          flash_price: number
+          id?: string
+          product_id: number
+          starts_at?: string
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          ends_at?: string
+          flash_price?: number
+          id?: string
+          product_id?: number
+          starts_at?: string
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "live_flash_offers_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "live_flash_offers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "live_flash_offers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       live_shop_whatsapp: {
         Row: {
           content: string | null
@@ -3730,6 +3992,7 @@ export type Database = {
           image_url: string | null
           is_active: boolean
           is_live: boolean | null
+          live_added_at: string | null
           name: string
           observation: string | null
           parent_product_id: number | null
@@ -3752,6 +4015,7 @@ export type Database = {
           image_url?: string | null
           is_active?: boolean
           is_live?: boolean | null
+          live_added_at?: string | null
           name: string
           observation?: string | null
           parent_product_id?: number | null
@@ -3774,6 +4038,7 @@ export type Database = {
           image_url?: string | null
           is_active?: boolean
           is_live?: boolean | null
+          live_added_at?: string | null
           name?: string
           observation?: string | null
           parent_product_id?: number | null
@@ -4877,6 +5142,7 @@ export type Database = {
           created_at: string
           email: string | null
           enable_live: boolean
+          enable_loja_live: boolean
           enable_sendflow: boolean
           enabled_integrations: Json | null
           id: string
@@ -4930,6 +5196,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           enable_live?: boolean
+          enable_loja_live?: boolean
           enable_sendflow?: boolean
           enabled_integrations?: Json | null
           id?: string
@@ -4983,6 +5250,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           enable_live?: boolean
+          enable_loja_live?: boolean
           enable_sendflow?: boolean
           enabled_integrations?: Json | null
           id?: string
@@ -5013,51 +5281,6 @@ export type Database = {
           waitlist_enabled?: boolean
           waitlist_reserve_minutes?: number
           whatsapp_provider?: string
-        }
-        Relationships: []
-      }
-      tmp_admin_cfg: {
-        Row: {
-          phone: string | null
-          token: string | null
-          url: string | null
-        }
-        Insert: {
-          phone?: string | null
-          token?: string | null
-          url?: string | null
-        }
-        Update: {
-          phone?: string | null
-          token?: string | null
-          url?: string | null
-        }
-        Relationships: []
-      }
-      tmp_admin_queue: {
-        Row: {
-          jid: string
-          nome: string | null
-          note: string | null
-          req_id: number | null
-          state: number | null
-          tries: number | null
-        }
-        Insert: {
-          jid: string
-          nome?: string | null
-          note?: string | null
-          req_id?: number | null
-          state?: number | null
-          tries?: number | null
-        }
-        Update: {
-          jid?: string
-          nome?: string | null
-          note?: string | null
-          req_id?: number | null
-          state?: number | null
-          tries?: number | null
         }
         Relationships: []
       }
@@ -5748,6 +5971,10 @@ export type Database = {
         Args: { r: Database["public"]["Tables"]["agenda_reunioes"]["Row"] }
         Returns: string
       }
+      agenda_msg_confirmacao: {
+        Args: { r: Database["public"]["Tables"]["agenda_reunioes"]["Row"] }
+        Returns: string
+      }
       agenda_site_dia: { Args: { p: string }; Returns: string }
       agenda_site_post: {
         Args: { p_phone: string; p_text: string }
@@ -5865,6 +6092,7 @@ export type Database = {
         Args: { tenant_id_param: string }
         Returns: {
           enable_live: boolean
+          enable_loja_live: boolean
           enable_sendflow: boolean
           id: string
           is_active: boolean
@@ -6044,6 +6272,7 @@ export type Database = {
         Args: never
         Returns: {
           enable_live: boolean
+          enable_loja_live: boolean
           enable_sendflow: boolean
           id: string
           is_active: boolean
@@ -6107,10 +6336,14 @@ export type Database = {
         Returns: {
           agendado_em: string | null
           aviso_rafael_5m_em: string | null
+          aviso_rafael_em: string | null
           canal_venda: string | null
           cancelado_em: string | null
+          cliente_confirmacao_em: string | null
+          cliente_confirmacao_req_id: number | null
           cliente_email: string | null
           cliente_envio_status: string | null
+          cliente_minutos_antes: number
           cliente_nome: string
           cliente_req_id: number | null
           cliente_telefone: string
@@ -6170,7 +6403,6 @@ export type Database = {
       }
       tenant_has_access: { Args: { tenant_uuid: string }; Returns: boolean }
       text_to_bytea: { Args: { data: string }; Returns: string }
-      tmp_admin_tick: { Args: never; Returns: undefined }
       track_announcement_view: {
         Args: {
           p_announcement_id: string
