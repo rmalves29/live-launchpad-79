@@ -860,10 +860,14 @@ export default function LiveShop() {
         const mm = String(Math.floor((flashLeft % 3600) / 60)).padStart(2, '0');
         const ss = String(flashLeft % 60).padStart(2, '0');
         return (
-          <div className="flash">
+          <div className={`flash${flashLeft <= 60 ? ' urgent' : ''}`}>
             <div className="fh">
-              <span>Oferta relâmpago</span>
-              <div className="clk" role="timer" aria-label="Tempo restante da oferta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2M9.5 2.5h5" /></svg>{hh}:{mm}:{ss}</div>
+              <span>Oferta relâmpago{flashLeft <= 60 ? <em>Acaba já!</em> : null}</span>
+              <div className="clk" role="timer" aria-label="Tempo restante da oferta">
+                <div className="u"><b>{hh}</b><i>h</i></div>
+                <div className="u"><b>{mm}</b><i>min</i></div>
+                <div className="u sec"><b>{ss}</b><i>seg</i></div>
+              </div>
             </div>
             <div className="fb">
               {f.image_url ? <img src={f.image_url} alt={f.name} width={46} height={46} /> : <div className="fi" />}
