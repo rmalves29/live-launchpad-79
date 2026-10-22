@@ -110,13 +110,6 @@ export function LiveOrdersManager() {
 
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  function paidLabel(o: any) {
-    if (!o.is_paid || !o.paid_at) return null;
-    const paid = formatBrasiliaDateTime(o.paid_at); // dd/MM/yyyy HH:mm
-    const sameDay = paid.slice(0, 10) === formatBrasiliaDate(o.event_date);
-    return `Pago ${sameDay ? paid.slice(11) : `${paid.slice(0, 5)} ${paid.slice(11)}`}`;
-  }
-
   return (
     <Card className="p-4 space-y-3">
       <div>
@@ -162,7 +155,6 @@ export function LiveOrdersManager() {
           <ul className="divide-y">
             {orders.map((o) => {
               const itemsQty = (o.cart_items || []).reduce((s: number, i: any) => s + (Number(i.qty) || 0), 0);
-              const paid = paidLabel(o);
               return (
                 <li key={o.id} className="flex items-center gap-3 px-3 py-2">
                   <span className="w-16 text-sm font-mono">#{o.tenant_order_number ?? o.id}</span>
@@ -175,7 +167,12 @@ export function LiveOrdersManager() {
                   <span className="hidden w-24 text-right text-sm tabular-nums sm:block">{money(o.total_amount)}</span>
                   <span className="w-28 text-right">
                     {o.is_cancelled ? <Badge variant="outline">Cancelado</Badge>
-                      : o.is_paid ? <Badge className="bg-emerald-600 hover:bg-emerald-600">{paid || 'Pago'}</Badge>
+                      : o.is_paid ? (
+                        <>
+                          <Badge className="bg-emerald-600 hover:bg-emerald-600">Pago</Badge>
+                          {o.paid_at && <span className="mt-0.5 block text-[11px] leading-tight text-emerald-700">{formatBrasiliaDateTime(o.paid_at).slice(0, 5)} às {formatBrasiliaDateTime(o.paid_at).slice(11)}</span>}
+                        </>
+                      )
                       : <Badge className="bg-amber-500 hover:bg-amber-500">Pendente</Badge>}
                   </span>
                   <span className="flex w-20 justify-end gap-1">

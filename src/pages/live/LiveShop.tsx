@@ -1253,7 +1253,7 @@ export default function LiveShop() {
 
   return (
     <div className="ls-root" style={rootStyle}>
-      <div className="wrap" style={{ minHeight: '100vh' }}>
+      <div className="wrap" style={{ minHeight: '100vh', paddingBottom: cartCount > 0 && screen === 'shop' ? 'calc(110px + env(safe-area-inset-bottom, 0px))' : undefined }}>
         {loading ? (
           <ShopSkeleton />
         ) : error ? (
