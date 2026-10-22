@@ -47,17 +47,18 @@ async function initSentry() {
 
 // Após nova publicação, abas abertas pedem arquivos antigos que não existem mais.
 // Recarrega a página uma vez (no máximo a cada 10s) para buscar a versão nova.
-function reloadOnStaleChunk() {
+function reloadOnStaleChunk(): boolean {
   try {
     const last = Number(sessionStorage.getItem("chunk_reload_at") || 0);
-    if (Date.now() - last < 10000) return;
+    if (Date.now() - last < 10000) return false;
     sessionStorage.setItem("chunk_reload_at", String(Date.now()));
   } catch {}
   window.location.reload();
+  return true;
 }
 window.addEventListener("vite:preloadError", (e) => {
-  e.preventDefault();
-  reloadOnStaleChunk();
+  // Só suprime o erro se de fato for recarregar; senão o import resolve "undefined" e quebra a tela.
+  if (reloadOnStaleChunk()) e.preventDefault();
 });
 window.addEventListener("unhandledrejection", (e) => {
   const msg = String((e as PromiseRejectionEvent).reason?.message || "");
