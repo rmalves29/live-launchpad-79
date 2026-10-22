@@ -21,8 +21,12 @@ type StatusFilter = 'all' | 'paid' | 'unpaid' | 'cancelled';
 
 const money = (v: number | null | undefined) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+type Stats = { sold: number; paid: number; soldN: number; paidN: number };
+const EMPTY_STATS: Stats = { sold: 0, paid: 0, soldN: 0, paidN: 0 };
+
 export function LiveOrdersManager() {
   const { tenant } = useTenant();
+  const [stats, setStats] = useState<Stats>(EMPTY_STATS);
   const [orders, setOrders] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
@@ -45,32 +49,54 @@ export function LiveOrdersManager() {
     if (!tenant?.id) return;
     setLoading(true);
     try {
-      let query = supabaseTenant
-        .from('orders')
-        .select('*', { count: 'exact' })
-        .in('event_type', LIVE_EVENTS)
-        .order('created_at', { ascending: false });
-      if (status === 'paid') query = query.eq('is_paid', true).eq('is_cancelled', false);
-      if (status === 'unpaid') query = query.eq('is_paid', false).eq('is_cancelled', false);
-      if (status === 'cancelled') query = query.eq('is_cancelled', true);
-      if (date) query = query.eq('event_date', date);
-
+      // Busca por texto (número do pedido, celular ou nome do cliente), resolvida uma vez: vale para a lista e para os cards.
+      let orClause: string | null = null;
       const q = debounced.replace(/[%_\\,()]/g, ' ').trim().slice(0, 40);
       if (q) {
         const digits = q.replace(/\D/g, '');
-        // Número do pedido, telefone ou nome do cliente
         const { data: byName } = await supabaseTenant.from('customers').select('phone').ilike('name', `%${q}%`).limit(100);
         const phones = ((byName as any[]) || []).map((c) => c.phone).filter(Boolean);
         const parts: string[] = [];
         if (digits) parts.push(`customer_phone.ilike.%${digits}%`);
         if (digits && digits.length <= 9) parts.push(`tenant_order_number.eq.${digits}`);
         if (phones.length) parts.push(`customer_phone.in.(${phones.join(',')})`);
-        if (parts.length === 0) { setOrders([]); setTotal(0); setLoading(false); return; }
-        query = query.or(parts.join(','));
+        if (parts.length === 0) { setOrders([]); setTotal(0); setStats(EMPTY_STATS); setLoading(false); return; }
+        orClause = parts.join(',');
       }
+      // Mesmos filtros (tipo de pedido, status, data e busca) para a lista e para os totais.
+      const withFilters = (qb: any) => {
+        let x = qb.in('event_type', LIVE_EVENTS);
+        if (status === 'paid') x = x.eq('is_paid', true).eq('is_cancelled', false);
+        if (status === 'unpaid') x = x.eq('is_paid', false).eq('is_cancelled', false);
+        if (status === 'cancelled') x = x.eq('is_cancelled', true);
+        if (date) x = x.eq('event_date', date);
+        if (orClause) x = x.or(orClause);
+        return x;
+      };
 
-      const { data, count, error } = await query.range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+      // Totais de TODOS os pedidos do filtro (não só da página). Cancelados não entram, a não ser no filtro "Cancelados".
+      const statsP = (async () => {
+        const s = { ...EMPTY_STATS };
+        for (let from = 0; from < 20000; from += 1000) {
+          const { data: rows, error: se } = await withFilters(supabaseTenant.from('orders').select('total_amount, is_paid, is_cancelled'))
+            .order('id', { ascending: true }).range(from, from + 999);
+          if (se) throw se;
+          for (const r of (rows as any[]) || []) {
+            if (r.is_cancelled && status !== 'cancelled') continue;
+            const v = Number(r.total_amount) || 0;
+            s.sold += v; s.soldN += 1;
+            if (r.is_paid && !r.is_cancelled) { s.paid += v; s.paidN += 1; }
+          }
+          if (!rows || (rows as any[]).length < 1000) break;
+        }
+        setStats(s);
+      })();
+
+      const { data, count, error } = await withFilters(supabaseTenant.from('orders').select('*', { count: 'exact' }))
+        .order('created_at', { ascending: false })
+        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
       if (error) throw error;
+      await statsP;
       const list: any[] = data || [];
       setTotal(count ?? list.length);
       if (list.length === 0) { setOrders([]); return; }
@@ -138,6 +164,22 @@ export function LiveOrdersManager() {
           ))}
         </div>
       </div>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        {([
+          ['Valor vendido', money(stats.sold), 'text-foreground'],
+          ['Valor pago', money(stats.paid), 'text-emerald-700'],
+          ['Pedidos vendidos', String(stats.soldN), 'text-foreground'],
+          ['Pedidos pagos', String(stats.paidN), 'text-emerald-700'],
+          ['Ticket médio', money(stats.paidN > 0 ? stats.paid / stats.paidN : 0), 'text-foreground'],
+        ] as [string, string, string][]).map(([label, value, tone]) => (
+          <div key={label} className="rounded-lg bg-muted/40 p-3">
+            <p className="text-xs text-muted-foreground">{label}</p>
+            <p className={`mt-0.5 text-lg font-semibold tabular-nums ${tone} ${loading ? 'opacity-50' : ''}`}>{value}</p>
+          </div>
+        ))}
+      </div>
+      <p className="-mt-1 text-[11px] text-muted-foreground">Os cards seguem os filtros acima (busca, data e status) e não contam pedidos cancelados. Ticket médio = valor pago ÷ pedidos pagos.</p>
 
       <div className="rounded-lg border">
         <div className="flex items-center gap-3 border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
