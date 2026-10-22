@@ -8,8 +8,16 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/hooks/use-toast';
-import { ChevronDown, ChevronRight, Loader2, Package, Pencil, Search, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, Package, Pencil, Search, X, Zap } from 'lucide-react';
 import { LiveProductEditDialog } from './LiveProductEditDialog';
+import { LiveFlashOfferDialog, type FlashTarget } from './LiveFlashOfferDialog';
+
+type ActiveOffer = { id: string; product_id: number; flash_price: number; ends_at: string; product: { name: string; code: string | null } | null };
+
+const hms = (s: number) => {
+  const x = Math.max(0, s);
+  return [Math.floor(x / 3600), Math.floor((x % 3600) / 60), x % 60].map((n) => String(n).padStart(2, '0')).join(':');
+};
 
 // Um produto está "na live" quando o tipo de venda é LIVE ou AMBOS (é o que a vitrine do link usa).
 // Marcar = vira AMBOS (continua no bazar); desmarcar = vira BAZAR (sai da live).
@@ -61,6 +69,41 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
   const [known, setKnown] = useState<Map<number, Row>>(new Map());
   // produto aberto no diálogo de edição (sem sair da página)
   const [editingId, setEditingId] = useState<number | null>(null);
+  // oferta relâmpago: a que está no ar e o produto escolhido para disparar uma nova
+  const [offer, setOffer] = useState<ActiveOffer | null>(null);
+  const [offerTarget, setOfferTarget] = useState<FlashTarget | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [endingOffer, setEndingOffer] = useState(false);
+
+  const loadOffer = useCallback(async () => {
+    if (!tenant?.id) return;
+    const { data } = await supabase
+      .from('live_flash_offers' as any)
+      .select('id, product_id, flash_price, ends_at, product:products(name, code)')
+      .eq('tenant_id', tenant.id)
+      .eq('status', 'active')
+      .gt('ends_at', new Date().toISOString())
+      .maybeSingle();
+    setOffer((data as any) || null);
+  }, [tenant?.id]);
+  useEffect(() => { loadOffer(); }, [loadOffer]);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  // oferta que chegou ao fim some da faixa sozinha
+  const offerLeft = offer ? Math.floor((Date.parse(offer.ends_at) - now) / 1000) : 0;
+  useEffect(() => { if (offer && offerLeft <= 0) setOffer(null); }, [offer, offerLeft]);
+
+  async function endOffer() {
+    if (!offer) return;
+    setEndingOffer(true);
+    const { error } = await supabase.from('live_flash_offers' as any).update({ status: 'cancelled' } as any).eq('id', offer.id);
+    setEndingOffer(false);
+    if (error) { toast({ title: 'Erro ao encerrar a oferta', description: error.message, variant: 'destructive' }); return; }
+    setOffer(null);
+    toast({ title: 'Oferta encerrada', description: 'O produto voltou ao preço normal na vitrine.' });
+  }
 
   useEffect(() => {
     const t = setTimeout(() => { setDebounced(search.trim()); setPage(0); }, 300);
@@ -261,6 +304,16 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
           {inLiveCount !== null && <Badge variant="secondary">{inLiveCount} na live</Badge>}
         </div>
 
+        {offer && offerLeft > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <span className="flex items-center gap-1.5">
+              <Zap className="h-4 w-4" />
+              Oferta no ar: <b>{offer.product?.name || `produto #${offer.product_id}`}</b> por {money(Number(offer.flash_price))} · termina em <b className="tabular-nums">{hms(offerLeft)}</b>
+            </span>
+            <Button size="sm" variant="outline" disabled={endingOffer} onClick={endOffer}>Encerrar agora</Button>
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative flex-1 min-w-[220px]">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -300,7 +353,7 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
             <span className="hidden w-20 text-right sm:block">Estoque</span>
             <span className="hidden w-24 text-right sm:block">Preço</span>
             <span className="w-24 text-right">Na live?</span>
-            <span className="w-8" aria-hidden="true" />
+            <span className="w-[72px]" aria-hidden="true" />
           </div>
 
           {loading ? (
@@ -347,6 +400,15 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
                         {st === 'indeterminate' && <Badge className="bg-amber-500 hover:bg-amber-500">Parcial</Badge>}
                         {st === false && <Badge variant="outline">Fora</Badge>}
                       </span>
+                      <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0" aria-label={`Oferta relâmpago de ${r.code || r.name}`}
+                        title={r.inLive && (r.stock ?? 0) > 0 ? 'Oferta relâmpago' : 'Coloque o produto na live (e com estoque) para fazer oferta relâmpago'}
+                        disabled={!r.inLive || (r.stock ?? 0) <= 0}
+                        onClick={() => {
+                          if (offer && offerLeft > 0) { toast({ title: 'Já existe uma oferta no ar', description: 'Encerre a oferta atual antes de disparar outra.', variant: 'destructive' }); return; }
+                          setOfferTarget({ id: r.id, name: r.name, code: r.code, price: r.price, stock: r.stock, inLive: r.inLive });
+                        }}>
+                        <Zap className={`h-4 w-4 ${offer && offer.product_id === r.id && offerLeft > 0 ? 'text-red-600' : ''}`} />
+                      </Button>
                       <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0" aria-label={`Editar ${r.code || r.name}`} onClick={() => setEditingId(r.id)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -394,6 +456,13 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
           </div>
         </div>
       </Card>
+
+      <LiveFlashOfferDialog
+        target={offerTarget}
+        open={offerTarget !== null}
+        onOpenChange={(o) => { if (!o) setOfferTarget(null); }}
+        onStarted={loadOffer}
+      />
 
       <LiveProductEditDialog
         productId={editingId}

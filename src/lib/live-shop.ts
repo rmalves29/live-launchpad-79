@@ -48,6 +48,8 @@ export interface LiveCatalogMeta {
   shipping_hints: Array<{ name: string; price: number; free_min: number | null; pickup: boolean }>;
   payment: { pix: boolean; card: boolean; pix_discount_percent: number; requires_email?: boolean; card_installments?: { max: number; max_without_interest: number; min_value: number } | null };
   settings: { reserve_mode: 'order' | 'cart'; cart_minutes: number; close_at?: string | null; open_order?: boolean };
+  /** Oferta relâmpago no ar: o card traz o preço da oferta; "now" é o relógio do servidor (para a contagem não depender do aparelho). */
+  flash?: { item: LiveProduct; price: number; ends_at: string; now: string } | null;
 }
 
 export interface LiveCustomer {

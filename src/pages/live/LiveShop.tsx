@@ -190,6 +190,7 @@ export default function LiveShop() {
 
   // ------------------------------------------------ carga inicial
   const versionRef = useRef<string | null>(null);
+  const clockOffset = useRef(0);
   const loadCatalog = useCallback(async (opts: { offset?: number; q?: string; append?: boolean } = {}) => {
     const offset = opts.offset ?? 0;
     try {
@@ -209,7 +210,9 @@ export default function LiveShop() {
       setError(null);
       if (res.version) versionRef.current = res.version;
       if (res.tenant) {
-        setMeta({ tenant: res.tenant, coupons: res.coupons || [], gifts: res.gifts || [], shipping_hints: res.shipping_hints || [], payment: res.payment, settings: res.settings });
+        setMeta({ tenant: res.tenant, coupons: res.coupons || [], gifts: res.gifts || [], shipping_hints: res.shipping_hints || [], payment: res.payment, settings: res.settings, flash: res.flash || null });
+        // diferença entre o relógio do servidor e o do aparelho (a contagem da oferta usa o do servidor)
+        if (res.flash?.now) clockOffset.current = new Date(res.flash.now).getTime() - Date.now();
         if (!res.payment.pix && res.payment.card) setPay('card');
       }
       setTotal(res.total || 0);
@@ -291,6 +294,38 @@ export default function LiveShop() {
     document.addEventListener('visibilitychange', onVisible);
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
   }, [slug, loadCatalog]);
+
+  // Oferta relâmpago: contagem pelo relógio do servidor; ao zerar, recarrega a vitrine (o preço volta ao normal).
+  const flash = meta?.flash || null;
+  const flashLeft = flash ? Math.floor((Date.parse(flash.ends_at) - (tick + clockOffset.current)) / 1000) : 0;
+  const flashEndedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!flash || flashLeft > 0 || flashEndedFor.current === flash.ends_at) return;
+    flashEndedFor.current = flash.ends_at;
+    loadCatalog({ q: queryRef.current });
+  }, [flash, flashLeft, loadCatalog]);
+
+  // Preço do carrinho acompanha a vitrine: quando a oferta acaba (ou começa), as peças dela voltam/passam ao preço certo.
+  useEffect(() => {
+    if (!products.length) return;
+    setCart((prev) => {
+      let changed = false;
+      const next = prev.map((l) => {
+        let price: number | null = null;
+        let was: number | null = null;
+        for (const p of products) {
+          if (p.variants.length) {
+            const v = p.variants.find((x) => x.id === l.product_id);
+            if (v) { price = v.price; was = v.was; break; }
+          } else if (p.id === l.product_id) { price = p.price; was = p.was; break; }
+        }
+        if (price === null || (price === l.price && was === l.was)) return l;
+        changed = true;
+        return { ...l, price, was };
+      });
+      return changed ? next : prev;
+    });
+  }, [products]);
 
   // reconhece o aparelho: se já comprou aqui, lembra o telefone (nunca por IP)
   useEffect(() => {
@@ -817,6 +852,32 @@ export default function LiveShop() {
           />
         </div>
       ) : null}
+
+      {flash && flashLeft > 0 && !query && (() => {
+        const f = flash.item;
+        const off = pct(f.price, f.was);
+        const hh = String(Math.floor(flashLeft / 3600)).padStart(2, '0');
+        const mm = String(Math.floor((flashLeft % 3600) / 60)).padStart(2, '0');
+        const ss = String(flashLeft % 60).padStart(2, '0');
+        return (
+          <div className="flash">
+            <div className="fh">
+              <span>Oferta relâmpago</span>
+              <div className="clk" role="timer" aria-label="Tempo restante da oferta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2M9.5 2.5h5" /></svg>{hh}:{mm}:{ss}</div>
+            </div>
+            <div className="fb">
+              {f.image_url ? <img src={f.image_url} alt={f.name} width={46} height={46} /> : <div className="fi" />}
+              <div className="ft">
+                <div className="t">{f.name}</div>
+                {f.was ? <s>{brl(f.was)}</s> : null}
+                <strong>{f.price_from ? 'a partir de ' : ''}{brl(f.price)}</strong>
+                {off > 0 ? <span className="pc">-{off}%</span> : null}
+              </div>
+              <button className="buy" onClick={() => onAdd(f, 'buy')} type="button">Comprar</button>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="list">
         {products.map((p, i) => {
