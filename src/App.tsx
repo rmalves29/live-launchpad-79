@@ -17,7 +17,11 @@ import { FeatureGate } from "./components/FeatureGate";
 import { TenantProvider } from "@/contexts/TenantContext";
 import { TenantLoader } from "@/components/TenantLoader";
 import { useTenantContext } from "@/contexts/TenantContext";
-const WhatsAppSupportButton = lazy(() => import("@/components/WhatsAppSupportButton").then((m) => ({ default: m.WhatsAppSupportButton })));
+const WhatsAppSupportButton = lazy(() =>
+  import("@/components/WhatsAppSupportButton")
+    .then((m) => ({ default: m?.WhatsAppSupportButton ?? (() => null) }))
+    .catch(() => ({ default: () => null }))
+);
 
 // Balão de suporte: fica de fora da Loja da Live (/t/:slug/live) e carrega sob demanda nas demais telas.
 const SupportButtonGate = () => {
