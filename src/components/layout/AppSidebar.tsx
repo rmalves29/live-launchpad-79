@@ -58,6 +58,8 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const location = useLocation();
 
   const enableLive = tenant?.enable_live ?? true;
+  const enableLoja = tenant?.enable_loja_live ?? true;
+  const showLiveMenu = enableLive || enableLoja;
   const enableSendflow = tenant?.enable_sendflow ?? true;
   const isSuperAdmin = profile?.role === 'super_admin';
   const isRafael = user?.email === 'rafael@maniadmulher.com';
@@ -72,21 +74,21 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       label: 'Principal',
       entries: [
         { type: 'item', item: { path: '/pedidos', label: 'Pedidos', icon: ShoppingBag } },
-        // Com a Live desligada o menu "Live" some; o Pedido Manual continua acessível aqui.
-        ...(!enableLive ? [{ type: 'item' as const, item: { path: '/pedidos-manual', label: 'Pedido Manual', icon: PlusCircle } }] : []),
+        // Com Live e Loja da Live desligadas o menu "Live" some; o Pedido Manual continua acessível aqui.
+        ...(!showLiveMenu ? [{ type: 'item' as const, item: { path: '/pedidos-manual', label: 'Pedido Manual', icon: PlusCircle } }] : []),
         ...(tenant?.slug
           ? [{ type: 'item' as const, item: { path: `/t/${tenant.slug}/checkout`, label: 'Checkout', icon: ShoppingCart } }]
           : []),
         { type: 'item', item: { path: '/sorteio', label: 'Sorteio', icon: Trophy } },
       ],
     },
-    // Menu "Live": só aparece para empresas com a Live liberada (tenants.enable_live)
-    ...(enableLive
+    // Menu "Live": cada item tem a sua flag por empresa (tenants.enable_loja_live e tenants.enable_live)
+    ...(showLiveMenu
       ? [{
           label: 'Live',
           entries: [
-            { type: 'item' as const, item: { path: '/loja-da-live', label: 'Loja da Live', icon: Store } },
-            { type: 'item' as const, item: { path: '/live', label: 'Live', icon: Radio } },
+            ...(enableLoja ? [{ type: 'item' as const, item: { path: '/loja-da-live', label: 'Loja da Live', icon: Store } }] : []),
+            ...(enableLive ? [{ type: 'item' as const, item: { path: '/live', label: 'Live', icon: Radio } }] : []),
             { type: 'item' as const, item: { path: '/pedidos-manual', label: 'Pedido Manual', icon: PlusCircle } },
           ],
         }]

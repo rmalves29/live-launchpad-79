@@ -5,11 +5,12 @@ import { useTenant } from '@/hooks/useTenant';
 // Bloqueia a página quando o módulo está desligado para a empresa (tenants.enable_live / enable_sendflow).
 // Esconder o item do menu não basta: quem digita o endereço direto também é mandado de volta aos Pedidos.
 // Super admin sempre entra (precisa testar e ajustar qualquer empresa).
-export function FeatureGate({ feature, children }: { feature: 'live' | 'sendflow'; children: React.ReactNode }) {
+export function FeatureGate({ feature, children }: { feature: 'live' | 'loja' | 'sendflow'; children: React.ReactNode }) {
   const { tenant, loading } = useTenant();
   const { profile } = useAuth();
   if (loading || !tenant) return <>{children}</>;
   if (profile?.role === 'super_admin') return <>{children}</>;
-  const enabled = feature === 'live' ? tenant.enable_live ?? true : tenant.enable_sendflow ?? true;
+  const flag = feature === 'live' ? tenant.enable_live : feature === 'loja' ? tenant.enable_loja_live : tenant.enable_sendflow;
+  const enabled = flag ?? true;
   return enabled ? <>{children}</> : <Navigate to="/pedidos" replace />;
 }

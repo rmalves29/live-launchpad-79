@@ -25,6 +25,9 @@ interface Tenant {
   admin_email?: string;
   admin_user_id?: string;
   enabled_integrations?: Record<string, boolean> | null;
+  enable_live?: boolean;
+  enable_loja_live?: boolean;
+  enable_sendflow?: boolean;
 }
 
 interface TenantCredential {
@@ -59,6 +62,7 @@ export default function TenantsManager() {
     adminEmail: "",
     adminPassword: "",
     enable_live: true,
+    enable_loja_live: true,
     enable_sendflow: true,
     max_whatsapp_groups: null as number | null,
     enabled_integrations: {} as Record<string, boolean>,
@@ -182,6 +186,7 @@ export default function TenantsManager() {
           slug: uniqueSlug,
           is_active: true,
           enable_live: formData.enable_live,
+          enable_loja_live: formData.enable_loja_live,
           enable_sendflow: formData.enable_sendflow,
           max_whatsapp_groups: formData.max_whatsapp_groups,
           enabled_integrations: formData.enabled_integrations as any
@@ -235,6 +240,7 @@ export default function TenantsManager() {
         adminEmail: "", 
         adminPassword: "",
         enable_live: true,
+        enable_loja_live: true,
         enable_sendflow: true,
         max_whatsapp_groups: null,
         enabled_integrations: defaultEnabledIntegrations(),
@@ -267,6 +273,9 @@ export default function TenantsManager() {
         .from("tenants")
         .update({
           name: formData.name,
+          enable_live: formData.enable_live,
+          enable_loja_live: formData.enable_loja_live,
+          enable_sendflow: formData.enable_sendflow,
           enabled_integrations: formData.enabled_integrations as any,
         })
         .eq("id", editingTenant.id);
@@ -325,6 +334,7 @@ export default function TenantsManager() {
         adminEmail: "", 
         adminPassword: "",
         enable_live: true,
+        enable_loja_live: true,
         enable_sendflow: true,
         max_whatsapp_groups: null,
         enabled_integrations: defaultEnabledIntegrations(),
@@ -418,6 +428,7 @@ export default function TenantsManager() {
       adminEmail: "", 
       adminPassword: "",
       enable_live: true,
+      enable_loja_live: true,
       enable_sendflow: true,
       max_whatsapp_groups: null,
       enabled_integrations: defaultEnabledIntegrations(),
@@ -501,6 +512,22 @@ export default function TenantsManager() {
                     id="enable_live"
                     checked={formData.enable_live}
                     onChange={(e) => setFormData({ ...formData, enable_live: e.target.checked })}
+                    className="h-4 w-4"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="enable_loja_live">Habilitar Loja da Live</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Permite que a empresa acesse a Loja da Live e o link público da vitrine
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    id="enable_loja_live"
+                    checked={formData.enable_loja_live}
+                    onChange={(e) => setFormData({ ...formData, enable_loja_live: e.target.checked })}
                     className="h-4 w-4"
                   />
                 </div>
@@ -623,8 +650,9 @@ export default function TenantsManager() {
                             slug: tenant.slug,
                             adminEmail: credential?.email || "",
                             adminPassword: "",
-                            enable_live: true,
-                            enable_sendflow: true,
+                            enable_live: tenant.enable_live ?? true,
+                            enable_loja_live: tenant.enable_loja_live ?? true,
+                            enable_sendflow: tenant.enable_sendflow ?? true,
                             max_whatsapp_groups: null,
                             enabled_integrations: {
                               ...defaultEnabledIntegrations(),
@@ -679,6 +707,30 @@ export default function TenantsManager() {
                             onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })}
                             placeholder="Nova senha (opcional)"
                           />
+                        </div>
+
+                        <div className="space-y-2">
+                          <h3 className="font-semibold">Funcionalidades da empresa</h3>
+                          <p className="text-xs text-muted-foreground">
+                            Desligado, o item some do menu da empresa, a página deixa de abrir e (na Loja da Live) o link público sai do ar. Vale depois que a pessoa recarregar o sistema.
+                          </p>
+                          {([
+                            ['enable_live', 'Live', 'Menu Live > Live (/live)'],
+                            ['enable_loja_live', 'Loja da Live', 'Menu Live > Loja da Live (/loja-da-live) e o link público da vitrine'],
+                            ['enable_sendflow', 'SendFlow', 'Menu Grupo VIP > SendFlow (/sendflow)'],
+                          ] as const).map(([key, label, hint]) => (
+                            <div key={key} className="flex items-center justify-between rounded-lg border p-3">
+                              <div className="space-y-0.5">
+                                <Label htmlFor={`edit_${key}`}>{label}</Label>
+                                <p className="text-xs text-muted-foreground">{hint}</p>
+                              </div>
+                              <Switch
+                                id={`edit_${key}`}
+                                checked={formData[key]}
+                                onCheckedChange={(v) => setFormData({ ...formData, [key]: v })}
+                              />
+                            </div>
+                          ))}
                         </div>
 
                         <IntegrationsToggleSection

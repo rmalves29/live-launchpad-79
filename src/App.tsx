@@ -225,7 +225,7 @@ const AppContent = () => {
           <RequireTenantAuth><FilaEspera /></RequireTenantAuth>
         } />
         <Route path="/loja-da-live" element={
-          <RequireTenantAuth><FeatureGate feature="live"><LojaDaLive /></FeatureGate></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="loja"><LojaDaLive /></FeatureGate></RequireTenantAuth>
         } />
         <Route path="/sendflow" element={
           <RequireTenantAuth><FeatureGate feature="sendflow"><SendFlow /></FeatureGate></RequireTenantAuth>
