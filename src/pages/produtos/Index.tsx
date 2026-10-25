@@ -115,6 +115,7 @@ const Produtos = () => {
 
   const [formData, setFormData] = useState({
     code: '',
+    sku_erp: '',
     name: '',
     price: '',
     promotional_price: '',
@@ -328,6 +329,7 @@ const Produtos = () => {
 
       const productData = {
         code: formData.code,
+        sku_erp: formData.sku_erp.trim() || null,
         name: formData.name,
         price: parseFloat(formData.price),
         promotional_price: formData.promotional_price ? parseFloat(formData.promotional_price) : null,
@@ -427,6 +429,7 @@ const Produtos = () => {
       setEditingProduct(null);
       setFormData({
         code: '',
+        sku_erp: '',
         name: '',
         price: '',
         promotional_price: '',
@@ -510,6 +513,7 @@ const Produtos = () => {
     const saleType = product.sale_type || 'BAZAR';
     setFormData({
         code: product.code,
+        sku_erp: (product as any).sku_erp || '',
         name: product.name,
         price: product.price.toString(),
         promotional_price: product.promotional_price?.toString() || '',
@@ -1341,6 +1345,19 @@ const Produtos = () => {
                     onChange={(e) => setFormData({ ...formData, code: e.target.value })}
                     placeholder="Ex: C001"
                   />
+                </div>
+
+                <div>
+                  <Label htmlFor="sku_erp">SKU ERP (código no Bling)</Label>
+                  <Input
+                    id="sku_erp"
+                    value={formData.sku_erp}
+                    onChange={(e) => setFormData({ ...formData, sku_erp: e.target.value })}
+                    placeholder="Opcional. Ex: 70021"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    É o código deste produto no Bling. O código acima (C...) continua sendo o que a cliente digita na live e no grupo.
+                  </p>
                 </div>
                 
                 <div>

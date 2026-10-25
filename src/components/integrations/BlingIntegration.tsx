@@ -579,7 +579,7 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
               </code>
               <br />
               <span className="text-sm text-muted-foreground mt-1 block">
-                Eventos recomendados: pedido.atualizado, pedido.criado
+                Recursos para marcar na aba Webhooks do aplicativo: pedidos, produtos e estoque. Com produtos e estoque marcados, mudanças feitas no Bling (nome, variações, estoque do depósito escolhido) chegam sozinhas ao Cartzy.
               </span>
             </AlertDescription>
           </Alert>

@@ -1,10 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { erpCanConfirmPostage } from "../_shared/postage-confirmation.ts";
+import { findIntegrationBySignature, syncProductEvent, syncStockEvent, validToken } from "../_shared/bling-product-sync.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-bling-signature',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-bling-signature, x-bling-signature-256',
 };
 
 const BLING_API_URL = 'https://api.bling.com.br/Api/v3';
@@ -129,7 +130,44 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    const body = await req.json();
+    const rawBody = await req.text();
+    const body = JSON.parse(rawBody);
+
+    // ---- Avisos de PRODUTO e ESTOQUE (Bling → Cartzy) ----
+    // Exigem assinatura válida (X-Bling-Signature-256 = HMAC-SHA256 do corpo com o client secret do aplicativo da empresa).
+    // Respondem 2xx na hora (o Bling espera até 5 s) e processam em segundo plano.
+    const resource = String(body?.event || "").split(".")[0];
+    if (["product", "stock", "virtual_stock"].includes(resource)) {
+      const integ = await findIntegrationBySignature(supabase, rawBody, req.headers.get("x-bling-signature-256"));
+      if (!integ) {
+        await supabase.from('webhook_logs').insert({ webhook_type: `bling_${resource}:assinatura_invalida`, status_code: 401, payload: { event: body?.event, eventId: body?.eventId, companyId: body?.companyId } } as any);
+        return new Response(JSON.stringify({ error: 'invalid signature' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+      const eventId = String(body?.eventId || "");
+      const work = (async () => {
+        let result = "";
+        try {
+          if (eventId) {
+            const { error: dup } = await supabase.from('bling_webhook_events').insert({ event_id: eventId, tenant_id: integ.tenant_id, event: body.event });
+            if (dup && (dup as any).code === '23505') return; // aviso repetido: já tratado
+            if (Math.random() < 0.02) await supabase.from('bling_webhook_events').delete().lt('created_at', new Date(Date.now() - 7 * 86400000).toISOString());
+          }
+          const token = await validToken(supabase, integ);
+          if (!token) result = "token_expirado";
+          else if (resource === "stock") result = await syncStockEvent(supabase, integ, token, body.data);
+          else if (resource === "product") result = await syncProductEvent(supabase, integ, token, String(body.event), body.data);
+          else result = "ignorado"; // virtual_stock: o saldo que usamos vem do evento stock
+        } catch (e) {
+          result = `erro:${String((e as any)?.message || e)}`;
+          console.error('[bling-webhook] product/stock sync error:', e);
+        }
+        if (eventId) await supabase.from('bling_webhook_events').update({ result }).eq('event_id', eventId);
+        console.log(`[bling-webhook] ${body.event} tenant=${integ.tenant_id} -> ${result}`);
+      })();
+      // @ts-ignore EdgeRuntime existe no ambiente de funções do Supabase
+      if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(work); else await work;
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
     
     console.log('[bling-webhook] Received webhook:', JSON.stringify(body, null, 2));
 
