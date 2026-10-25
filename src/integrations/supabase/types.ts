@@ -670,6 +670,45 @@ export type Database = {
         }
         Relationships: []
       }
+      bling_webhook_events: {
+        Row: {
+          created_at: string
+          event: string | null
+          event_id: string
+          result: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          event?: string | null
+          event_id: string
+          result?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          event?: string | null
+          event_id?: string
+          result?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bling_webhook_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bling_webhook_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cart_items: {
         Row: {
           cart_id: number
@@ -2372,6 +2411,8 @@ export type Database = {
       integration_bling: {
         Row: {
           access_token: string | null
+          bling_deposit_id: number | null
+          bling_deposit_name: string | null
           bling_store_id: number | null
           bling_store_name: string | null
           client_id: string | null
@@ -2405,6 +2446,8 @@ export type Database = {
         }
         Insert: {
           access_token?: string | null
+          bling_deposit_id?: number | null
+          bling_deposit_name?: string | null
           bling_store_id?: number | null
           bling_store_name?: string | null
           client_id?: string | null
@@ -2438,6 +2481,8 @@ export type Database = {
         }
         Update: {
           access_token?: string | null
+          bling_deposit_id?: number | null
+          bling_deposit_name?: string | null
           bling_store_id?: number | null
           bling_store_name?: string | null
           client_id?: string | null
@@ -5975,6 +6020,7 @@ export type Database = {
         Args: { r: Database["public"]["Tables"]["agenda_reunioes"]["Row"] }
         Returns: string
       }
+      agenda_resumo_dia: { Args: { p_dia?: string }; Returns: string }
       agenda_site_dia: { Args: { p: string }; Returns: string }
       agenda_site_post: {
         Args: { p_phone: string; p_text: string }
