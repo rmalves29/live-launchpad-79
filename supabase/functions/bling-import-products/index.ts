@@ -115,8 +115,10 @@ serve(async (req) => {
       const page = Math.max(1, Math.floor(Number(body.page) || 1));
       const search = String(body.search || "").trim().slice(0, 80);
       const storeId = Number(body.store_id) || 0;
-      // criterio=2: só ativos. Variações (filhos) são ignoradas aqui: chegam junto do produto pai.
+      // só_estoque (padrão): lista apenas o que tem saldo no depósito escolhido. Desligado: todos os produtos ativos do Bling.
+      const onlyStock = body.only_stock !== false;
       let path = `/produtos?pagina=${page}&limite=${PAGE_SIZE}&criterio=2`;
+      if (onlyStock) path += `&filtroSaldoEstoque=1&filtroSaldoEstoqueDeposito=${depositId}`;
       if (search) path += `&nome=${encodeURIComponent(search)}`;
       if (storeId) path += `&idLoja=${storeId}`;
       const list = await blingGet(token, path);
@@ -125,7 +127,22 @@ serve(async (req) => {
         return json({ error: msg }, list.status === 401 ? 401 : 400);
       }
       const raw: any[] = list.data?.data || [];
-      const rows = raw.filter((p) => !p.idProdutoPai && String(p.nome || "").trim() && String(p.codigo || "").trim());
+      const named = (p: any) => String(p.nome || "").trim() && String(p.codigo || "").trim();
+      let rows: any[] = raw.filter((p) => !p.idProdutoPai && named(p)).map((p) => ({ ...p, children_count: null as number | null }));
+
+      // Com filtro de saldo, o Bling devolve as variações (filhos) e não o pai: montamos a linha do pai a partir dos filhos.
+      if (onlyStock) {
+        const kids = raw.filter((p) => p.idProdutoPai);
+        const perParent = new Map<number, number>();
+        for (const k of kids) perParent.set(Number(k.idProdutoPai), (perParent.get(Number(k.idProdutoPai)) || 0) + 1);
+        const parentIds = [...perParent.keys()].filter((pid) => !rows.some((r) => Number(r.id) === pid));
+        if (parentIds.length) {
+          const pr = await blingGet(token, `/produtos?limite=${PAGE_SIZE}&criterio=5&${parentIds.map((i) => `idsProdutos[]=${i}`).join("&")}`);
+          for (const p of pr.data?.data || []) {
+            if (named(p)) rows.push({ ...p, children_count: perParent.get(Number(p.id)) || 0 });
+          }
+        }
+      }
       const ignored = raw.length - rows.length;
 
       // o que já existe no Cartzy
@@ -133,9 +150,10 @@ serve(async (req) => {
       const codes = rows.map((p) => String(p.codigo).trim());
       const byId = new Map<number, any>(), byCode = new Map<string, any>();
       if (rows.length) {
+        const quoted = codes.map((c) => `"${c.replace(/"/g, "")}"`).join(",");
         const { data: linked } = await supabase.from("products").select("id, code, sku_erp, bling_product_id").eq("tenant_id", tenantId).in("bling_product_id", ids);
         for (const p of linked || []) byId.set(Number(p.bling_product_id), p);
-        const { data: sameCode } = await supabase.from("products").select("id, code, sku_erp, bling_product_id").eq("tenant_id", tenantId).or(`code.in.(${codes.map((c) => `"${c.replace(/"/g, "")}"`).join(",")}),sku_erp.in.(${codes.map((c) => `"${c.replace(/"/g, "")}"`).join(",")})`);
+        const { data: sameCode } = await supabase.from("products").select("id, code, sku_erp, bling_product_id").eq("tenant_id", tenantId).or(`code.in.(${quoted}),sku_erp.in.(${quoted})`);
         for (const p of sameCode || []) { if (p.code) byCode.set(String(p.code).toLowerCase(), p); if (p.sku_erp) byCode.set(String(p.sku_erp).toLowerCase(), p); }
       }
 
@@ -153,12 +171,13 @@ serve(async (req) => {
           preco: Number(p.preco) || 0,
           formato: p.formato || "S",
           saldo: p.formato === "V" ? null : balances.get(id) ?? 0,
+          children_count: p.children_count,
           imagem: p.imagemURL || null,
           status: linkedRow ? "vinculado" : sameRow ? "existe" : "novo",
           cartzy_id: linkedRow?.id ?? sameRow?.id ?? null,
         };
       });
-      return json({ ok: true, page, has_more: raw.length >= PAGE_SIZE, ignored, deposit_id: depositId, rows: out });
+      return json({ ok: true, page, has_more: raw.length >= PAGE_SIZE, ignored, deposit_id: depositId, only_stock: onlyStock, rows: out });
     }
 
     // ======================= IMPORTAÇÃO =======================

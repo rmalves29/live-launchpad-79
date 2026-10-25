@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
-import { Download, Loader2, Search, Info } from 'lucide-react';
+import { Download, Loader2, Search, Info, Package, ZoomIn } from 'lucide-react';
 
 interface Props {
   tenantId: string;
@@ -28,6 +28,7 @@ interface PreviewRow {
   preco: number;
   formato: string;
   saldo: number | null;
+  children_count?: number | null;
   imagem: string | null;
   status: 'novo' | 'existe' | 'vinculado';
   cartzy_id: number | null;
@@ -55,6 +56,9 @@ export default function BlingProductsImportPanel({ tenantId, depositName, stores
   const [search, setSearch] = useState('');
   const [storeId, setStoreId] = useState('');
   const [saleType, setSaleType] = useState<'BAZAR' | 'LIVE' | 'AMBOS'>('AMBOS');
+  const [onlyStock, setOnlyStock] = useState(true);
+  // foto ampliada ao passar o mouse na lupa (fixa na tela, para não ser cortada pela rolagem da lista)
+  const [zoom, setZoom] = useState<{ src: string; top: number; left: number } | null>(null);
   const [rows, setRows] = useState<PreviewRow[]>([]);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -67,8 +71,17 @@ export default function BlingProductsImportPanel({ tenantId, depositName, stores
   async function load(nextPage: number, append: boolean) {
     setLoading(true);
     try {
-      const data = await call({ tenant_id: tenantId, action: 'preview', page: nextPage, search, store_id: storeId ? Number(storeId) : null });
-      setRows((prev) => (append ? [...prev, ...data.rows] : data.rows));
+      const data = await call({ tenant_id: tenantId, action: 'preview', page: nextPage, search, store_id: storeId ? Number(storeId) : null, only_stock: onlyStock });
+      setRows((prev) => {
+        if (!append) return data.rows as PreviewRow[];
+        // o mesmo produto pai pode voltar em páginas diferentes (as variações caem em páginas distintas): junta em vez de repetir
+        const map = new Map<number, PreviewRow>(prev.map((r) => [r.bling_id, r]));
+        for (const r of data.rows as PreviewRow[]) {
+          const before = map.get(r.bling_id);
+          map.set(r.bling_id, before && before.children_count != null && r.children_count != null ? { ...r, children_count: before.children_count + r.children_count } : r);
+        }
+        return Array.from(map.values());
+      });
       setPage(nextPage);
       setHasMore(!!data.has_more);
       if (!append) { setSelected(new Set()); setResults({}); }
@@ -146,6 +159,12 @@ export default function BlingProductsImportPanel({ tenantId, depositName, stores
           </div>
         </div>
 
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <Checkbox checked={onlyStock} onCheckedChange={(v) => setOnlyStock(v === true)} aria-label="Só produtos com estoque no depósito" />
+          Só produtos com estoque no depósito{depositName ? <> <strong>{depositName}</strong></> : null}
+          <span className="text-xs text-muted-foreground">(desmarque para ver todos os produtos ativos)</span>
+        </label>
+
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => load(1, false)} disabled={loading || importing || !depositName} variant="outline">
             {loading && page === 0 ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
@@ -189,7 +208,7 @@ export default function BlingProductsImportPanel({ tenantId, depositName, stores
               <span className="w-16 text-right">Estoque</span>
               <span className="w-28 text-right">Situação</span>
             </div>
-            <ul className="divide-y max-h-[420px] overflow-auto">
+            <ul className="divide-y max-h-[520px] overflow-auto">
               {rows.map((r) => {
                 const res = results[r.bling_id];
                 const done = res?.status === 'criado' || res?.status === 'vinculado' || res?.status === 'ja_vinculado';
@@ -197,11 +216,30 @@ export default function BlingProductsImportPanel({ tenantId, depositName, stores
                 return (
                   <li key={r.bling_id} className="flex items-center gap-3 px-3 py-2">
                     <Checkbox checked={selected.has(r.bling_id)} onCheckedChange={() => toggle(r.bling_id)} disabled={disabled} aria-label={`Selecionar ${r.nome}`} />
+                    <div
+                      className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md border bg-white"
+                      onMouseEnter={(e) => {
+                        if (!r.imagem) return;
+                        const b = e.currentTarget.getBoundingClientRect();
+                        const size = 300;
+                        setZoom({ src: r.imagem, left: Math.min(b.right + 8, window.innerWidth - size - 8), top: Math.max(8, Math.min(b.top - 20, window.innerHeight - size - 8)) });
+                      }}
+                      onMouseLeave={() => setZoom(null)}
+                    >
+                      {r.imagem ? (
+                        <>
+                          <img src={r.imagem} alt="" loading="lazy" className="h-full w-full object-contain" />
+                          <span className="absolute bottom-0 right-0 rounded-tl bg-black/60 p-0.5 text-white"><ZoomIn className="h-3 w-3" /></span>
+                        </>
+                      ) : (
+                        <div className="grid h-full w-full place-items-center bg-muted"><Package className="h-5 w-5 text-muted-foreground" /></div>
+                      )}
+                    </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{r.nome}</p>
                       <p className="truncate text-xs text-muted-foreground">
                         <span className="font-mono">{r.codigo}</span>
-                        {r.formato === 'V' && <span className="ml-2 text-primary">com variações</span>}
+                        {r.formato === 'V' && <span className="ml-2 text-primary">com variações{r.children_count ? ` (${r.children_count} com estoque)` : ''}</span>}
                         {res?.children ? <span className="ml-2">· {res.children} variação(ões) criada(s)</span> : null}
                         {res?.note ? <span className="ml-2 text-amber-700">· {res.note}</span> : null}
                         {res?.status === 'erro' ? <span className="ml-2 text-destructive">· {res.error}</span> : null}
@@ -221,6 +259,12 @@ export default function BlingProductsImportPanel({ tenantId, depositName, stores
                 );
               })}
             </ul>
+          </div>
+        )}
+
+        {zoom && (
+          <div className="pointer-events-none fixed z-[100] rounded-lg border bg-white p-1 shadow-xl" style={{ top: zoom.top, left: zoom.left, width: 300, height: 300 }}>
+            <img src={zoom.src} alt="" className="h-full w-full object-contain" />
           </div>
         )}
 
