@@ -50,6 +50,7 @@ interface Product {
 
 interface VariationRow {
   id?: number;
+  color: string;
   size: string;
   code: string;
   price: string;
@@ -61,6 +62,8 @@ const PRESET_SIZES = ['PP', 'P', 'M', 'G', 'GG'] as const;
 const padVar = (n: number) => String(n).padStart(2, '0');
 const buildVariationCode = (parentCode: string, index: number) =>
   `${(parentCode || '').trim()}-${padVar(index + 1)}`;
+const variationLabel = (v: { color?: string; size?: string }) =>
+  [v.color?.trim(), v.size?.trim()].filter(Boolean).join(' / ');
 
 interface ImportRow {
   codigo: string;
@@ -308,19 +311,23 @@ const Produtos = () => {
 
       // Validar variações
       const cleanVariations = variations
-        .map((v) => ({ ...v, size: v.size.trim(), code: v.code.trim() }))
-        .filter((v) => v.size || v.code);
+        .map((v) => ({ ...v, color: v.color.trim(), size: v.size.trim(), code: v.code.trim() }))
+        .filter((v) => v.color || v.size || v.code);
       const hasVars = cleanVariations.length > 0;
       for (const v of cleanVariations) {
-        if (!v.size) {
-          throw new Error('Cada variação precisa de um tamanho.');
+        if (!v.color && !v.size) {
+          throw new Error('Cada variação precisa de cor e/ou tamanho.');
         }
         if (!v.code) {
-          throw new Error(`Variação "${v.size}" está sem código.`);
+          throw new Error(`Variação "${variationLabel(v)}" está sem código.`);
         }
         if (!v.price || isNaN(parseFloat(v.price))) {
-          throw new Error(`Variação "${v.size}" está sem preço válido.`);
+          throw new Error(`Variação "${variationLabel(v)}" está sem preço válido.`);
         }
+      }
+      const varPairs = cleanVariations.map((v) => `${v.color.toLowerCase()}|${v.size.toLowerCase()}`);
+      if (new Set(varPairs).size !== varPairs.length) {
+        throw new Error('Há variações repetidas (mesma cor e tamanho).');
       }
       const varCodes = cleanVariations.map((v) => v.code.toLowerCase());
       if (new Set(varCodes).size !== varCodes.length) {
@@ -336,8 +343,9 @@ const Produtos = () => {
         observation: formData.observation.trim() || null,
         // Quando há variações, o estoque real fica nas variações; o pai vira "template"
         stock: hasVars ? 0 : (parseInt(formData.stock) || 0),
-        color: formData.color || null,
-        size: formData.size || null,
+        // Com variações, cor e tamanho ficam em cada variação (filho), não no pai
+        color: hasVars ? null : formData.color || null,
+        size: hasVars ? null : formData.size || null,
         image_url: imageUrl,
         // Respeita a escolha do usuário — o pai pode ficar ativo mesmo com variações
         is_active: formData.is_active,
@@ -390,13 +398,13 @@ const Produtos = () => {
             tenant_id: currentTenantId,
             parent_product_id: parentId,
             code: v.code,
-            name: `${formData.name} - ${v.size}`,
+            name: `${formData.name} - ${variationLabel(v)}`,
             price: parseFloat(v.price),
             promotional_price: v.promotional_price ? parseFloat(v.promotional_price) : null,
             observation: formData.observation.trim() || null,
             stock: parseInt(v.stock) || 0,
-            color: formData.color || null,
-            size: v.size,
+            color: v.color || null,
+            size: v.size || null,
             image_url: imageUrl,
             is_active: formData.is_active,
             is_live: formData.is_live,
@@ -534,7 +542,7 @@ const Produtos = () => {
     try {
       const { data: children, error } = await supabaseTenant
         .from('products')
-        .select('id, code, size, price, promotional_price, stock')
+        .select('id, code, color, size, price, promotional_price, stock')
         .eq('parent_product_id', product.id)
         .order('id', { ascending: true });
       if (error) throw error;
@@ -542,6 +550,7 @@ const Produtos = () => {
         setVariations(
           (children as any[]).map((c) => ({
             id: c.id,
+            color: c.color || '',
             size: c.size || '',
             code: c.code,
             price: c.price?.toString() ?? '',
@@ -558,17 +567,23 @@ const Produtos = () => {
   };
 
   // Helpers de variações
-  const addVariation = (size: string) => {
+  const addVariation = (size: string = '', color: string = '') => {
     const trimmed = size.trim().toUpperCase();
-    if (!trimmed) return;
-    if (variations.some((v) => v.size.toUpperCase() === trimmed)) {
-      toast({ title: 'Tamanho já adicionado', description: trimmed });
+    const trimmedColor = color.trim();
+    if (
+      (trimmed || trimmedColor) &&
+      variations.some(
+        (v) => v.size.trim().toUpperCase() === trimmed && v.color.trim().toLowerCase() === trimmedColor.toLowerCase()
+      )
+    ) {
+      toast({ title: 'Variação já adicionada', description: variationLabel({ color: trimmedColor, size: trimmed }) });
       return;
     }
     const newIndex = variations.length;
     setVariations([
       ...variations,
       {
+        color: trimmedColor,
         size: trimmed,
         code: buildVariationCode(formData.code, newIndex),
         price: formData.price,
@@ -1449,9 +1464,10 @@ const Produtos = () => {
                   )}
                 </div>
 
+                {variations.length === 0 && (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="color">Variação 1 (Cor)</Label>
+                    <Label htmlFor="color">Cor</Label>
                     <Input
                       id="color"
                       value={formData.color}
@@ -1461,7 +1477,7 @@ const Produtos = () => {
                   </div>
                   
                   <div>
-                    <Label htmlFor="size">Variação 2 (Tamanho)</Label>
+                    <Label htmlFor="size">Tamanho</Label>
                     <Input
                       id="size"
                       value={formData.size}
@@ -1470,20 +1486,24 @@ const Produtos = () => {
                     />
                   </div>
                 </div>
+                )}
 
-                {/* Variações de Tamanho */}
+                {/* Variações (cor e/ou tamanho) */}
                 <div className="rounded-lg border p-4 space-y-3 bg-muted/30">
                   <div className="flex items-center gap-2">
                     <Layers className="h-4 w-4 text-primary" />
-                    <Label className="text-sm font-semibold">Variações de tamanho</Label>
+                    <Label className="text-sm font-semibold">Variações (cor e tamanho)</Label>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Cada tamanho vira um SKU próprio (ex: <code className="font-mono">{formData.code || 'P001'}-01</code>) com estoque e preço individuais. Preços são pré-preenchidos a partir do produto principal.
+                    Cada variação vira um SKU próprio (ex: <code className="font-mono">{formData.code || 'P001'}-01</code>) com estoque e preço individuais, e pode ter cor, tamanho ou os dois. Preços são pré-preenchidos a partir do produto principal.
                   </p>
 
                   <div className="flex flex-wrap gap-2">
+                    <Button type="button" size="sm" variant="default" onClick={() => addVariation()}>
+                      + Adicionar variação
+                    </Button>
                     {PRESET_SIZES.map((sz) => {
-                      const already = variations.some((v) => v.size.toUpperCase() === sz);
+                      const already = variations.some((v) => !v.color.trim() && v.size.toUpperCase() === sz);
                       return (
                         <Button
                           key={sz}
@@ -1497,26 +1517,14 @@ const Produtos = () => {
                         </Button>
                       );
                     })}
-                    <div className="flex items-center gap-1">
-                      <Input
-                        placeholder="Tamanho custom (ex: 38, U)"
-                        className="h-8 w-40"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            addVariation((e.target as HTMLInputElement).value);
-                            (e.target as HTMLInputElement).value = '';
-                          }
-                        }}
-                      />
-                    </div>
                   </div>
 
                   {variations.length > 0 && (
                     <div className="space-y-2">
                       <div className="grid grid-cols-12 gap-2 text-[11px] font-medium text-muted-foreground px-1">
-                        <div className="col-span-2">Tamanho</div>
-                        <div className="col-span-3">Código</div>
+                        <div className="col-span-2">Cor</div>
+                        <div className="col-span-1">Tam.</div>
+                        <div className="col-span-2">Código</div>
                         <div className="col-span-2">Preço</div>
                         <div className="col-span-2">Promo</div>
                         <div className="col-span-2">Estoque</div>
@@ -1526,11 +1534,18 @@ const Produtos = () => {
                         <div key={i} className="grid grid-cols-12 gap-2 items-center">
                           <Input
                             className="col-span-2 h-9"
+                            placeholder="Ex: Prata"
+                            value={v.color}
+                            onChange={(e) => updateVariation(i, { color: e.target.value })}
+                          />
+                          <Input
+                            className="col-span-1 h-9 px-2"
+                            placeholder="M"
                             value={v.size}
                             onChange={(e) => updateVariation(i, { size: e.target.value.toUpperCase() })}
                           />
                           <Input
-                            className="col-span-3 h-9 font-mono text-xs"
+                            className="col-span-2 h-9 font-mono text-xs"
                             value={v.code}
                             onChange={(e) => updateVariation(i, { code: e.target.value })}
                           />
