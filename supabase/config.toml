@@ -4,3 +4,6 @@ verify_jwt = false
 
 [functions.assinar-site]
 verify_jwt = false
+
+[functions.bling-deposits]
+verify_jwt = false

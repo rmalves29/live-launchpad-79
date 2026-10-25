@@ -64,6 +64,8 @@ interface BlingIntegrationData {
   last_sync_at: string | null;
   bling_store_id: number | null;
   bling_store_name: string | null;
+  bling_deposit_id?: number | null;
+  bling_deposit_name?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -72,6 +74,13 @@ interface BlingStore {
   id: number;
   descricao: string;
   tipo: string;
+}
+
+interface BlingDeposit {
+  id: number;
+  descricao: string;
+  padrao: boolean;
+  desconsiderarSaldo: boolean;
 }
 
 interface OAuthStatus {
@@ -135,8 +144,10 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
   const [scopeError, setScopeError] = useState<string | null>(null);
   const [storeId, setStoreId] = useState<number | null>(null);
   const [storeName, setStoreName] = useState<string | null>(null);
-  const [manualStoreId, setManualStoreId] = useState('');
-  const [manualStoreName, setManualStoreName] = useState('');
+  const [depositId, setDepositId] = useState<number | null>(null);
+  const [depositName, setDepositName] = useState<string | null>(null);
+  const [showCreateDeposit, setShowCreateDeposit] = useState(false);
+  const [newDepositName, setNewDepositName] = useState('');
   const [modules, setModules] = useState<Record<string, boolean>>({
     sync_orders: true,
     sync_products: true,
@@ -181,8 +192,8 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
         setClientSecret(data.client_secret || '');
         setStoreId(data.bling_store_id);
         setStoreName(data.bling_store_name);
-        setManualStoreId(data.bling_store_id?.toString() || '');
-        setManualStoreName(data.bling_store_name || '');
+        setDepositId((data as any).bling_deposit_id ?? null);
+        setDepositName((data as any).bling_deposit_name ?? null);
         setModules({
           sync_orders: data.sync_orders,
           sync_products: data.sync_products,
@@ -254,6 +265,38 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
     enabled: !!tenantId && !!integration?.access_token && !!integration?.is_active,
   });
 
+  // Depósitos do Bling da empresa (lista para o cliente escolher de onde o estoque sai)
+  const { data: blingDeposits, isLoading: depositsLoading, error: depositsError, refetch: refetchDeposits } = useQuery({
+    queryKey: ['bling-deposits', tenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('bling-deposits', { body: { tenant_id: tenantId, action: 'list' } });
+      if (error) throw new Error(error.message || 'Falha ao buscar depósitos');
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return ((data as any)?.deposits || []) as BlingDeposit[];
+    },
+    enabled: !!tenantId && !!integration?.access_token && !!integration?.is_active,
+    retry: false,
+  });
+
+  // Cria um depósito novo no Bling e já seleciona
+  const createDepositMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const { data, error } = await supabase.functions.invoke('bling-deposits', { body: { tenant_id: tenantId, action: 'create', name } });
+      if (error) throw new Error(error.message || 'Falha ao criar depósito');
+      if ((data as any)?.error) throw new Error((data as any).error);
+      return (data as any).deposit as { id: number; descricao: string };
+    },
+    onSuccess: async (dep) => {
+      await refetchDeposits();
+      setDepositId(Number(dep.id));
+      setDepositName(dep.descricao);
+      setShowCreateDeposit(false);
+      setNewDepositName('');
+      toast.success(`Depósito "${dep.descricao}" criado no Bling. Clique em "Salvar Configuração" para confirmar a escolha.`);
+    },
+    onError: (e: any) => toast.error(e?.message || 'Erro ao criar depósito'),
+  });
+
   // Mutation para salvar/atualizar credenciais
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -270,6 +313,8 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
         sync_logistics: modules.sync_logistics,
         bling_store_id: storeId,
         bling_store_name: storeName,
+        bling_deposit_id: depositId,
+        bling_deposit_name: depositName,
         updated_at: getBrasiliaDateTimeISO(),
       };
 
@@ -718,123 +763,99 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
         </Card>
       )}
 
-      {/* Configuração da Loja Bling */}
+      {/* Loja e depósito */}
       {isAuthorized && !isExpired && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <Store className="h-5 w-5" />
-              Canal de Venda (Loja)
+              Loja e depósito
             </CardTitle>
             <CardDescription>
-              Vincule os pedidos a um canal de venda específico no Bling para facilitar a filtragem
+              A loja identifica as vendas do Cartzy no Bling. O depósito é onde o estoque é lançado, baixado e importado.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Entrada manual do ID */}
-            <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
-              <div className="flex items-center gap-2">
-                <Store className="h-4 w-4 text-primary" />
-                <Label className="font-medium">Configuração Manual</Label>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Insira o ID e nome da loja diretamente (encontrado em Preferências → Integrações → Lojas Virtuais no Bling)
-              </p>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="manual_store_id">ID da Loja</Label>
-                  <Input
-                    id="manual_store_id"
-                    type="text"
-                    placeholder="Ex: 205905895"
-                    value={manualStoreId}
-                    onChange={(e) => setManualStoreId(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="manual_store_name">Nome da Loja</Label>
-                  <Input
-                    id="manual_store_name"
-                    type="text"
-                    placeholder="Ex: Cartzy"
-                    value={manualStoreName}
-                    onChange={(e) => setManualStoreName(e.target.value)}
-                  />
-                </div>
-              </div>
-              <Button
-                onClick={() => {
-                  const id = manualStoreId ? Number(manualStoreId) : null;
-                  const name = manualStoreName || null;
-                  setStoreId(id);
-                  setStoreName(name);
-                  toast.success(`Loja "${name}" (ID: ${id}) será salva ao clicar em "Salvar Configuração"`);
-                }}
-                disabled={!manualStoreId}
-                variant="outline"
-                size="sm"
-              >
-                <CheckCircle2 className="h-4 w-4 mr-2" />
-                Aplicar ID Manual
-              </Button>
-            </div>
-
-            <Separator />
-
-            {/* Seleção via API */}
+          <CardContent className="space-y-5">
             <div className="space-y-2">
-              <Label>Ou selecione da lista de canais (via API)</Label>
+              <Label htmlFor="bling_store">Loja (canal de venda)</Label>
               <div className="flex gap-2">
                 <select
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  id="bling_store"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   value={storeId || ''}
                   onChange={(e) => {
                     const selectedId = e.target.value ? Number(e.target.value) : null;
                     setStoreId(selectedId);
-                    const selectedStore = blingStores?.find(s => s.id === selectedId);
-                    setStoreName(selectedStore?.descricao || null);
-                    setManualStoreId(selectedId?.toString() || '');
-                    setManualStoreName(selectedStore?.descricao || '');
+                    setStoreName(blingStores?.find((st) => st.id === selectedId)?.descricao || null);
                   }}
                 >
-                  <option value="">Nenhum (não vincular)</option>
+                  <option value="">Nenhuma (não vincular)</option>
                   {blingStores?.map((store) => (
                     <option key={store.id} value={store.id}>
                       {store.descricao} ({store.tipo})
                     </option>
                   ))}
                 </select>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => refetchStores()}
-                  disabled={storesLoading}
-                >
-                  {storesLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
+                <Button variant="outline" size="icon" onClick={() => refetchStores()} disabled={storesLoading} aria-label="Atualizar lojas">
+                  {storesLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 </Button>
               </div>
             </div>
 
-            {storeName && storeId && (
+            <div className="space-y-2">
+              <Label htmlFor="bling_deposit">Depósito do estoque</Label>
+              <div className="flex gap-2">
+                <select
+                  id="bling_deposit"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={depositId || ''}
+                  onChange={(e) => {
+                    const selectedId = e.target.value ? Number(e.target.value) : null;
+                    setDepositId(selectedId);
+                    setDepositName(blingDeposits?.find((d) => d.id === selectedId)?.descricao || null);
+                  }}
+                >
+                  <option value="">Escolha um depósito</option>
+                  {blingDeposits?.map((d) => (
+                    <option key={d.id} value={d.id} disabled={d.desconsiderarSaldo}>
+                      {d.descricao}{d.padrao ? ' (padrão do Bling)' : ''}{d.desconsiderarSaldo ? ' — não conta saldo' : ''}
+                    </option>
+                  ))}
+                </select>
+                <Button variant="outline" size="icon" onClick={() => refetchDeposits()} disabled={depositsLoading} aria-label="Atualizar depósitos">
+                  {depositsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                </Button>
+              </div>
+              {depositsError && <p className="text-sm text-destructive">{(depositsError as Error).message}</p>}
+
+              {showCreateDeposit ? (
+                <div className="flex gap-2">
+                  <Input value={newDepositName} onChange={(e) => setNewDepositName(e.target.value)} placeholder="Nome do novo depósito (ex.: Cartzy)" aria-label="Nome do novo depósito" />
+                  <Button onClick={() => createDepositMutation.mutate(newDepositName.trim())} disabled={createDepositMutation.isPending || newDepositName.trim().length < 2}>
+                    {createDepositMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                    Criar no Bling
+                  </Button>
+                  <Button variant="ghost" onClick={() => { setShowCreateDeposit(false); setNewDepositName(''); }}>Cancelar</Button>
+                </div>
+              ) : (
+                <Button variant="link" className="h-auto p-0 text-sm" onClick={() => setShowCreateDeposit(true)}>
+                  Criar um depósito novo no Bling
+                </Button>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Depósitos marcados "não conta saldo" (como os de Fulfillment) não podem ser escolhidos. O depósito padrão do Bling não é alterado.
+              </p>
+            </div>
+
+            {(storeName && storeId) || (depositName && depositId) ? (
               <Alert className="border-green-500 bg-green-50 dark:bg-green-950">
                 <CheckCircle2 className="h-4 w-4 text-green-600" />
                 <AlertDescription className="text-green-800 dark:text-green-200">
-                  Loja configurada: <strong>{storeName}</strong> (ID: {storeId})
+                  {storeName && storeId ? <>Loja: <strong>{storeName}</strong>. </> : null}
+                  {depositName && depositId ? <>Depósito: <strong>{depositName}</strong>.</> : null}
                 </AlertDescription>
               </Alert>
-            )}
-
-            <Alert>
-              <Info className="h-4 w-4" />
-              <AlertDescription>
-                Quando configurado, todos os pedidos sincronizados serão vinculados a este canal de venda.
-                Você poderá filtrar no Bling por "N° do pedido na loja virtual".
-              </AlertDescription>
-            </Alert>
+            ) : null}
           </CardContent>
         </Card>
       )}
