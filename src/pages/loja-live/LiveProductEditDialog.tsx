@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenant } from '@/hooks/useTenant';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -35,8 +35,12 @@ export function LiveProductEditDialog({ productId, open, onOpenChange, onSaved }
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const onOpenChangeRef = useRef(onOpenChange);
+  useEffect(() => { onOpenChangeRef.current = onOpenChange; }, [onOpenChange]);
+
   useEffect(() => {
-    if (!open || !productId || !tenant?.id) return;
+    if (!open) { setForm(EMPTY); return; }
+    if (!productId || !tenant?.id) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -50,7 +54,7 @@ export function LiveProductEditDialog({ productId, open, onOpenChange, onSaved }
       setLoading(false);
       if (error || !data) {
         toast({ title: 'Não foi possível abrir o produto', description: error?.message, variant: 'destructive' });
-        onOpenChange(false);
+        onOpenChangeRef.current(false);
         return;
       }
       const d: any = data;
@@ -62,7 +66,7 @@ export function LiveProductEditDialog({ productId, open, onOpenChange, onSaved }
       });
     })();
     return () => { cancelled = true; };
-  }, [open, productId, tenant?.id, onOpenChange]);
+  }, [open, productId, tenant?.id]);
 
   const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
 

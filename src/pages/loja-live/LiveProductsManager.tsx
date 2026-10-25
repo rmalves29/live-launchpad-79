@@ -291,6 +291,10 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const dirty = pending.size > 0;
 
+  const handleEditOpenChange = useCallback((o: boolean) => { if (!o) setEditingId(null); }, []);
+  const handleEditSaved = useCallback(() => { load(); onChanged?.(); }, [load, onChanged]);
+  const handleOfferOpenChange = useCallback((o: boolean) => { if (!o) setOfferTarget(null); }, []);
+
   return (
     <div className="space-y-3">
       <Card className="p-4 space-y-3">
@@ -460,15 +464,15 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
       <LiveFlashOfferDialog
         target={offerTarget}
         open={offerTarget !== null}
-        onOpenChange={(o) => { if (!o) setOfferTarget(null); }}
+        onOpenChange={handleOfferOpenChange}
         onStarted={loadOffer}
       />
 
       <LiveProductEditDialog
         productId={editingId}
         open={editingId !== null}
-        onOpenChange={(o) => { if (!o) setEditingId(null); }}
-        onSaved={() => { load(); onChanged?.(); }}
+        onOpenChange={handleEditOpenChange}
+        onSaved={handleEditSaved}
       />
 
       <div className="sticky bottom-0 -mx-1 flex items-center justify-end gap-2 border-t bg-background/95 px-1 py-3 backdrop-blur">
