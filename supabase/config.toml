@@ -7,3 +7,6 @@ verify_jwt = false
 
 [functions.bling-deposits]
 verify_jwt = false
+
+[functions.bling-import-products]
+verify_jwt = false

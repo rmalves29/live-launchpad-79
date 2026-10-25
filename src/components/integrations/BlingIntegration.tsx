@@ -22,6 +22,7 @@ import BlingProductsSyncPanel from './BlingProductsSyncPanel';
 import BlingFiscalSettings from './BlingFiscalSettings';
 import BlingBulkAddressSync from './BlingBulkAddressSync';
 import BlingPaymentSettings from './BlingPaymentSettings';
+import BlingProductsImportPanel from './BlingProductsImportPanel';
 import { 
   Loader2, 
   Save, 
@@ -858,6 +859,15 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
             ) : null}
           </CardContent>
         </Card>
+      )}
+
+      {/* Importar produtos do Bling para o Cartzy */}
+      {isAuthorized && !isExpired && (
+        <BlingProductsImportPanel
+          tenantId={tenantId}
+          depositName={(integration as any)?.bling_deposit_id ? ((integration as any)?.bling_deposit_name || 'depósito escolhido') : null}
+          stores={blingStores}
+        />
       )}
 
       {/* Painel de Sincronização de Pedidos */}
