@@ -49,7 +49,7 @@ async function getValidAccessToken(supabase: any, integration: any): Promise<str
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
-            'Authorization': `Basic ${credentials}`,
+            'enable-jwt': '1', 'Authorization': `Basic ${credentials}`,
           },
           body: new URLSearchParams({
             grant_type: 'refresh_token',
@@ -86,7 +86,7 @@ async function fetchBlingOrderTracking(
       `${BLING_API_URL}/pedidos/vendas/${blingOrderId}`,
       {
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
+          'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/json',
         },
       }

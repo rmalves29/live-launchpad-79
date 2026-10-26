@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
 
     // 2. Descobre depósito padrão no Bling
     const depRes = await fetch(`${BLING_API}/depositos?limite=100`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      headers: { 'enable-jwt': '1', Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
     if (!depRes.ok) {
       const t = await depRes.text();
@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
       for (const item of body.rebalance_codes) {
         try {
           const findRes = await fetch(`${BLING_API}/produtos?pagina=1&limite=5&codigo=${encodeURIComponent(item.code)}`, {
-            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+            headers: { 'enable-jwt': '1', Authorization: `Bearer ${token}`, Accept: 'application/json' },
           });
           const findText = await findRes.text();
           let findJson: any = {};
@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
             attempt++;
             const r = await fetch(`${BLING_API}/estoques`, {
               method: 'POST',
-              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+              headers: { 'enable-jwt': '1', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
               body: JSON.stringify({
                 deposito: { id: depositoId },
                 operacao: 'B',
@@ -197,7 +197,7 @@ Deno.serve(async (req) => {
           const r = await fetch(`${BLING_API}/estoques`, {
             method: 'POST',
             headers: {
-              Authorization: `Bearer ${token}`,
+              'enable-jwt': '1', Authorization: `Bearer ${token}`,
               'Content-Type': 'application/json',
               Accept: 'application/json',
             },

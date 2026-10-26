@@ -172,7 +172,7 @@ async function findExistingBlingSaleOrderIdByNumero(accessToken: string, numero:
       `${BLING_API_URL}/pedidos/vendas?pagina=1&limite=1&numero=${encodeURIComponent(String(numero))}&idLoja=${storeId}`,
       {
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
+          'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/json',
         },
       },
@@ -198,7 +198,7 @@ async function findExistingBlingSaleOrderIdByNumero(accessToken: string, numero:
     `${BLING_API_URL}/pedidos/vendas?pagina=1&limite=1&numero=${encodeURIComponent(String(numero))}`,
     {
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
+        'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
         'Accept': 'application/json',
       },
     },
@@ -240,7 +240,7 @@ async function updateBlingProductFiscalData(
       {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
+          'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/json',
         },
       },
@@ -284,7 +284,7 @@ async function updateBlingProductFiscalData(
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
+          'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/json',
         },
         body: JSON.stringify(payload),
@@ -307,7 +307,7 @@ async function findBlingProductByCode(accessToken: string, codigo: string): Prom
       `${BLING_API_URL}/produtos?pagina=1&limite=1&codigo=${encodeURIComponent(codigo)}`,
       {
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
+          'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/json',
         },
       },
@@ -355,7 +355,7 @@ async function ensureBlingNoStockServiceProduct(accessToken: string): Promise<nu
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
+        'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
         'Accept': 'application/json',
       },
       body: JSON.stringify(payload),
@@ -393,7 +393,7 @@ async function refreshBlingToken(supabase: any, integration: any): Promise<strin
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${credentials}`,
+        'enable-jwt': '1', 'Authorization': `Basic ${credentials}`,
       },
       body: new URLSearchParams({
         grant_type: 'refresh_token',
@@ -504,7 +504,7 @@ async function updateBlingContactAddress(
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`,
+            'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
             'Accept': 'application/json',
           },
           body: JSON.stringify(payload),
@@ -650,7 +650,7 @@ async function getOrCreateBlingContactId(
         `${BLING_API_URL}/contatos?pagina=1&limite=5&numeroDocumento=${encodeURIComponent(customerCpf)}`,
         {
           headers: {
-            'Authorization': `Bearer ${accessToken}`,
+            'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
             'Accept': 'application/json',
           },
         },
@@ -682,7 +682,7 @@ async function getOrCreateBlingContactId(
         `${BLING_API_URL}/contatos?pagina=1&limite=1&pesquisa=${encodeURIComponent(phone || customerName)}`,
         {
           headers: {
-            'Authorization': `Bearer ${accessToken}`,
+            'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
             'Accept': 'application/json',
           },
         },
@@ -764,7 +764,7 @@ async function getOrCreateBlingContactId(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
+        'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
         'Accept': 'application/json',
       },
       body: JSON.stringify(payload),
@@ -796,7 +796,7 @@ async function getOrCreateBlingContactId(
               `${BLING_API_URL}/contatos?pagina=1&limite=5&pesquisa=${encodeURIComponent(existingName)}`,
               {
                 headers: {
-                  'Authorization': `Bearer ${accessToken}`,
+                  'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
                   'Accept': 'application/json',
                 },
               },
@@ -843,7 +843,7 @@ async function getOrCreateBlingContactId(
             `${BLING_API_URL}/contatos?pagina=1&limite=1&pesquisa=${encodeURIComponent(customerCpf)}`,
             {
               headers: {
-                'Authorization': `Bearer ${accessToken}`,
+                'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
                 'Accept': 'application/json',
               },
             },
@@ -1032,7 +1032,7 @@ async function resolveBlingFrenetShippingDetails(
       {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
+          'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
         },
       },
       { maxAttempts: 3, label: 'list-frenet-logistics' }
@@ -1057,7 +1057,7 @@ async function resolveBlingFrenetShippingDetails(
           {
             method: 'GET',
             headers: {
-              'Authorization': `Bearer ${accessToken}`,
+              'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
             },
           },
           { maxAttempts: 3, label: `get-frenet-logistic-${logistic.id}` }
@@ -1702,7 +1702,7 @@ async function sendOrderToBling(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
+        'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
       },
       body: JSON.stringify(blingOrder),
     },
@@ -1792,7 +1792,7 @@ async function fetchOrdersFromBling(accessToken: string, page = 1, limit = 100):
     `${BLING_API_URL}/pedidos/vendas?pagina=${page}&limite=${limit}`,
     {
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
+        'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
       },
     },
     { label: 'fetch-orders' }
@@ -1884,7 +1884,7 @@ serve(async (req) => {
                 `${BLING_API_URL}/pedidos/vendas/${order.bling_order_id}`,
                 {
                   headers: {
-                    'Authorization': `Bearer ${validToken}`,
+                    'enable-jwt': '1', 'Authorization': `Bearer ${validToken}`,
                     'Accept': 'application/json',
                   },
                 },
@@ -2599,7 +2599,7 @@ serve(async (req) => {
               `${BLING_API_URL}/pedidos/vendas/${order.bling_order_id}`,
               {
                 headers: {
-                  'Authorization': `Bearer ${accessToken}`,
+                  'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
                   'Accept': 'application/json',
                 },
               },

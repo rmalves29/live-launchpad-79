@@ -35,7 +35,7 @@ serve(async (req) => {
       .maybeSingle();
     if (!integ?.access_token || !integ.is_active) return json({ error: "Bling não autorizado ou inativo para esta empresa." }, 400);
 
-    const headers = { Authorization: `Bearer ${integ.access_token}`, Accept: "application/json", "Content-Type": "application/json" };
+    const headers = { 'enable-jwt': '1', Authorization: `Bearer ${integ.access_token}`, Accept: "application/json", "Content-Type": "application/json" };
 
     if (action === "create") {
       const name = String(body.name || "").trim().slice(0, 100);

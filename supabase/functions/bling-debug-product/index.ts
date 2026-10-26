@@ -13,10 +13,10 @@ serve(async (req) => {
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   const { data: integ } = await supabase.from('integration_bling').select('access_token').eq('tenant_id', tenant_id).maybeSingle();
   const token = integ!.access_token;
-  const searchRes = await fetch(`${BLING_API_URL}/produtos?codigo=${encodeURIComponent(code)}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+  const searchRes = await fetch(`${BLING_API_URL}/produtos?codigo=${encodeURIComponent(code)}`, { headers: { 'enable-jwt': '1', Authorization: `Bearer ${token}`, Accept: 'application/json' } });
   const searchJson = await searchRes.json();
   const id = searchJson?.data?.[0]?.id;
-  const detRes = await fetch(`${BLING_API_URL}/produtos/${id}`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+  const detRes = await fetch(`${BLING_API_URL}/produtos/${id}`, { headers: { 'enable-jwt': '1', Authorization: `Bearer ${token}`, Accept: 'application/json' } });
   const detJson = await detRes.json();
   return new Response(JSON.stringify({ search: searchJson, detail: detJson }, null, 2), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 });

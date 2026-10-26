@@ -89,7 +89,7 @@ serve(async (req) => {
             const credentials = btoa(`${blingConfig.client_id}:${blingConfig.client_secret}`);
             const refreshRes = await fetch('https://api.bling.com.br/Api/v3/oauth/token', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': `Basic ${credentials}` },
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'enable-jwt': '1', 'Authorization': `Basic ${credentials}` },
               body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: blingConfig.refresh_token }),
             });
             if (refreshRes.ok) {
@@ -110,7 +110,7 @@ serve(async (req) => {
     }
 
     const blingHeaders = {
-      'Authorization': `Bearer ${accessToken}`,
+      'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     };
 

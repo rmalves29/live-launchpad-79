@@ -28,7 +28,7 @@ async function refreshToken(supabase: any, integ: any): Promise<string | null> {
   try {
     const res = await fetch(`${BLING}/oauth/token`, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", Authorization: `Basic ${btoa(`${integ.client_id}:${integ.client_secret}`)}` },
+      headers: { "Content-Type": "application/x-www-form-urlencoded", 'enable-jwt': '1', Authorization: `Basic ${btoa(`${integ.client_id}:${integ.client_secret}`)}` },
       body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: integ.refresh_token }),
     });
     if (!res.ok) return null;
@@ -56,7 +56,7 @@ async function validToken(supabase: any, integ: any): Promise<string | null> {
 async function blingGet(token: string, path: string): Promise<{ ok: boolean; status: number; data: any }> {
   for (let attempt = 1; attempt <= 4; attempt++) {
     await sleep(380);
-    const res = await fetch(`${BLING}${path}`, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+    const res = await fetch(`${BLING}${path}`, { headers: { 'enable-jwt': '1', Authorization: `Bearer ${token}`, Accept: "application/json" } });
     if (res.status === 429 && attempt < 4) { await sleep(1200 * attempt); continue; }
     const data = await res.json().catch(() => ({}));
     return { ok: res.ok, status: res.status, data };

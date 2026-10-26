@@ -68,7 +68,7 @@ async function updateExistingBlingProduct(
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
+        'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
         'Accept': 'application/json',
       },
       body: JSON.stringify(productData),
@@ -89,7 +89,7 @@ async function findExistingBlingProductByCodigo(accessToken: string, codigo: str
     try {
       const res = await fetch(url, {
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
+          'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
           'Accept': 'application/json',
         },
       });
@@ -120,7 +120,7 @@ async function findExistingBlingProductByCodigo(accessToken: string, codigo: str
   for (let page = 1; page <= 5; page++) {
     const res = await fetch(`${BLING_API_URL}/produtos?pagina=${page}&limite=100`, {
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
+        'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
         'Accept': 'application/json',
       },
     });
@@ -174,7 +174,7 @@ async function refreshBlingToken(supabase: any, integration: any): Promise<strin
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${credentials}`,
+        'enable-jwt': '1', 'Authorization': `Basic ${credentials}`,
       },
       body: new URLSearchParams({
         grant_type: 'refresh_token',
@@ -262,7 +262,7 @@ async function linkProductToStore(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
+        'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
         'Accept': 'application/json',
       },
       body: JSON.stringify(payload),
@@ -407,7 +407,7 @@ async function sendProductToBling(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`,
+      'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
       'Accept': 'application/json',
     },
     body: JSON.stringify(blingProduct),
@@ -500,7 +500,7 @@ async function fetchProductsFromBling(accessToken: string, page = 1, limit = 100
     `${BLING_API_URL}/produtos?pagina=${page}&limite=${limit}`,
     {
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
+        'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
         'Accept': 'application/json',
       },
     }

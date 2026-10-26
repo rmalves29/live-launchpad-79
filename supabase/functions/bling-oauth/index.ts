@@ -157,7 +157,7 @@ serve(async (req) => {
       const tokenResponse = await fetch(BLING_TOKEN_URL, {
         method: "POST",
         headers: {
-          "Authorization": `Basic ${credentials}`,
+          'enable-jwt': '1', "Authorization": `Basic ${credentials}`,
           "Content-Type": "application/x-www-form-urlencoded",
           "Accept": "application/json",
         },

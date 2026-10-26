@@ -54,7 +54,7 @@ serve(async (req) => {
       try {
         // Step 1: find product by code
         const searchRes = await fetch(`${BLING_API_URL}/produtos?codigo=${encodeURIComponent(p.code)}`, {
-          headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+          headers: { 'enable-jwt': '1', 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
         });
         await delay(350);
         if (!searchRes.ok) {
@@ -72,7 +72,7 @@ serve(async (req) => {
 
         // Step 2: get full product details
         const detRes = await fetch(`${BLING_API_URL}/produtos/${match.id}`, {
-          headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+          headers: { 'enable-jwt': '1', 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
         });
         await delay(350);
         if (!detRes.ok) {

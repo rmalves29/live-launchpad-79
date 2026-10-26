@@ -74,7 +74,7 @@ serve(async (req) => {
     console.log('[bling-list-stores] Buscando canais de venda...');
     const canaisRes = await fetch(`${BLING_API_URL}/canais-venda?pagina=1&limite=100`, {
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
+        'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
         'Accept': 'application/json',
       },
     });
@@ -83,7 +83,7 @@ serve(async (req) => {
     // Buscar situações de módulos
     const situacoesRes = await fetch(`${BLING_API_URL}/situacoes/modulos`, {
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
+        'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
         'Accept': 'application/json',
       },
     });
