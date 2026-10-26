@@ -98,6 +98,39 @@ function parseVariation(raw: string) {
   return { color, size, label: values.length ? values.join(" / ") : String(raw || "").trim() };
 }
 
+// Produto excluído no Bling: no Cartzy fica desativado (pedidos antigos continuam mostrando) e com estoque zerado.
+// Se for o produto pai, as variações (filhos) também são desativadas e zeradas.
+async function retireLinkedProducts(supabase: any, tenantId: string, blingIds: number[]): Promise<number> {
+  const now = new Date().toISOString();
+  const patch = { is_active: false, stock: 0, updated_at: now };
+  const { data: rows } = await supabase.from("products").update(patch).eq("tenant_id", tenantId).in("bling_product_id", blingIds).select("id");
+  const ids = (rows || []).map((r: any) => r.id);
+  if (ids.length) await supabase.from("products").update(patch).eq("tenant_id", tenantId).in("parent_product_id", ids);
+  return ids.length;
+}
+
+// Varredura: produtos ligados ao Bling que não existem mais lá (excluídos sem aviso) são desativados e zerados.
+export async function sweepDeletedProducts(supabase: any, integ: any, token: string, maxChecks = 150): Promise<{ checked: number; retired: number }> {
+  const tenantId = integ.tenant_id;
+  const { data: linked } = await supabase.from("products").select("bling_product_id").eq("tenant_id", tenantId).not("bling_product_id", "is", null).or("is_active.eq.true,stock.gt.0").limit(maxChecks);
+  const ids = [...new Set<number>((linked || []).map((p: any) => Number(p.bling_product_id)))];
+  const gone: number[] = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const batch = ids.slice(i, i + 100);
+    const r = await blingGet(token, `/produtos?limit=100&criterio=5&tipo=T&${batch.map((x) => `idsProdutos[]=${x}`).join("&")}`);
+    if (!r.ok) continue;
+    const found = new Set<number>((r.data?.data || []).map((p: any) => Number(p.id)));
+    for (const id of batch) {
+      if (found.has(id)) continue;
+      // não apareceu na lista: confirma direto; 404 = excluído
+      const one = await blingGet(token, `/produtos/${id}`);
+      if (one.status === 404) gone.push(id);
+    }
+  }
+  const retired = gone.length ? await retireLinkedProducts(supabase, tenantId, gone) : 0;
+  return { checked: ids.length, retired };
+}
+
 // ---------- aviso de ESTOQUE ----------
 export async function syncStockEvent(supabase: any, integ: any, token: string, data: any): Promise<string> {
   const blingId = Number(data?.produto?.id ?? data?.idProduto ?? data?.id);
@@ -126,8 +159,8 @@ export async function syncProductEvent(supabase: any, integ: any, token: string,
   const now = new Date().toISOString();
 
   if (eventName.endsWith(".deleted")) {
-    const { data: gone } = await supabase.from("products").update({ is_active: false, updated_at: now }).eq("tenant_id", tenantId).eq("bling_product_id", evId).select("id");
-    return gone?.length ? "produto_desativado" : "produto_nao_vinculado";
+    const n = await retireLinkedProducts(supabase, tenantId, [evId]);
+    return n ? `produto_desativado_estoque_zerado (${n})` : "produto_nao_vinculado";
   }
 
   const det = await blingGet(token, `/produtos/${evId}`);
@@ -212,7 +245,7 @@ export async function syncProductEvent(supabase: any, integ: any, token: string,
     const blingIds = new Set(blingKids.map((k) => Number(k.id)));
     for (const [bid, local] of byBling) {
       if (!blingIds.has(bid) && local.is_active) {
-        await supabase.from("products").update({ is_active: false, updated_at: now }).eq("id", local.id);
+        await supabase.from("products").update({ is_active: false, stock: 0, updated_at: now }).eq("id", local.id);
         changes.push(`variacao ${local.sku_erp || bid} desativada`);
       }
     }
