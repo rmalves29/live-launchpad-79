@@ -115,11 +115,11 @@ export async function sweepDeletedProducts(supabase: any, integ: any, token: str
   const tenantId = integ.tenant_id;
   const deleted: number[] = [];
   for (let page = 1; page <= maxPages; page++) {
-    const r = await blingGet(token, `/produtos?limit=100&pagina=${page}&criterio=4&tipo=T`);
+    const r = await blingGet(token, `/produtos?limite=100&pagina=${page}&criterio=4&tipo=T`);
     if (!r.ok) break;
     const rows: any[] = r.data?.data || [];
     for (const p of rows) deleted.push(Number(p.id));
-    if (rows.length < 100) break;
+    if (!rows.length) break; // o Bling pode devolver menos de 100 por página: só para quando vier vazia
   }
   let retired = 0;
   for (let i = 0; i < deleted.length; i += 200) {
@@ -175,6 +175,11 @@ export async function syncProductEvent(supabase: any, integ: any, token: string,
     root = pr.data?.data || {};
   }
   const rootId = Number(root?.id) || evId;
+  // situacao "E" = excluído no Bling (o produto continua legível na API): desativa e zera, como no aviso .deleted
+  if (root.situacao === "E") {
+    const n = await retireLinkedProducts(supabase, tenantId, [rootId]);
+    return n ? `produto_excluido_no_bling: desativado e estoque zerado (${n})` : "produto_nao_vinculado";
+  }
 
   const { data: localRoot } = await supabase.from("products").select("id, name, is_active, sku_erp, sale_type, image_url").eq("tenant_id", tenantId).eq("bling_product_id", rootId).maybeSingle();
   if (!localRoot) return "produto_nao_vinculado";
