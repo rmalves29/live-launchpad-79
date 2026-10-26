@@ -109,26 +109,27 @@ async function retireLinkedProducts(supabase: any, tenantId: string, blingIds: n
   return ids.length;
 }
 
-// Varredura: produtos ligados ao Bling que não existem mais lá (excluídos sem aviso) são desativados e zerados.
-export async function sweepDeletedProducts(supabase: any, integ: any, token: string, maxChecks = 150): Promise<{ checked: number; retired: number }> {
+// Varredura: pede ao Bling a lista de produtos EXCLUÍDOS (criterio=4) e desativa/zera no Cartzy os que estão ligados.
+// Cobre exclusões cujo aviso (product.deleted) não chegou. Percorre a lista inteira, não só uma amostra.
+export async function sweepDeletedProducts(supabase: any, integ: any, token: string, maxPages = 40): Promise<{ excluidos_no_bling: number; retired: number }> {
   const tenantId = integ.tenant_id;
-  const { data: linked } = await supabase.from("products").select("bling_product_id").eq("tenant_id", tenantId).not("bling_product_id", "is", null).or("is_active.eq.true,stock.gt.0").limit(maxChecks);
-  const ids = [...new Set<number>((linked || []).map((p: any) => Number(p.bling_product_id)))];
-  const gone: number[] = [];
-  for (let i = 0; i < ids.length; i += 100) {
-    const batch = ids.slice(i, i + 100);
-    const r = await blingGet(token, `/produtos?limit=100&criterio=5&tipo=T&${batch.map((x) => `idsProdutos[]=${x}`).join("&")}`);
-    if (!r.ok) continue;
-    const found = new Set<number>((r.data?.data || []).map((p: any) => Number(p.id)));
-    for (const id of batch) {
-      if (found.has(id)) continue;
-      // não apareceu na lista: confirma direto; 404 = excluído
-      const one = await blingGet(token, `/produtos/${id}`);
-      if (one.status === 404) gone.push(id);
-    }
+  const deleted: number[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const r = await blingGet(token, `/produtos?limit=100&pagina=${page}&criterio=4&tipo=T`);
+    if (!r.ok) break;
+    const rows: any[] = r.data?.data || [];
+    for (const p of rows) deleted.push(Number(p.id));
+    if (rows.length < 100) break;
   }
-  const retired = gone.length ? await retireLinkedProducts(supabase, tenantId, gone) : 0;
-  return { checked: ids.length, retired };
+  let retired = 0;
+  for (let i = 0; i < deleted.length; i += 200) {
+    const chunk = deleted.slice(i, i + 200);
+    // só mexe no que ainda está ativo ou com estoque (evita regravar tudo a cada hora)
+    const { data: pend } = await supabase.from("products").select("bling_product_id").eq("tenant_id", tenantId).in("bling_product_id", chunk).or("is_active.eq.true,stock.gt.0");
+    const ids = [...new Set<number>((pend || []).map((p: any) => Number(p.bling_product_id)))];
+    if (ids.length) retired += await retireLinkedProducts(supabase, tenantId, ids);
+  }
+  return { excluidos_no_bling: deleted.length, retired };
 }
 
 // ---------- aviso de ESTOQUE ----------
