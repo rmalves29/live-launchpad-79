@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import type { DateRange } from 'react-day-picker';
 import { supabaseTenant } from '@/lib/supabase-tenant';
@@ -209,11 +209,18 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
       return () => { alive = false; };
     }, [debouncedProductSearch]);
 
+    // Contador de carregamentos (descarta respostas atrasadas) e indicador de "restante ainda carregando" (totais parciais)
+    const loadSeqRef = useRef(0);
+    const [loadingRest, setLoadingRest] = useState(false);
+
     const loadOrders = async () => {
       const perfStart = performance.now();
       const perf: Record<string, number> = {};
+      const mySeq = loadSeqRef.current + 1; // o número deste carregamento (a etapa 1 incrementa o contador)
+      const seqAtEnd = () => loadSeqRef.current === mySeq;
       try {
         setLoading(true);
+        setLoadingRest(false);
         
         // 1. Buscar pedidos com filtros aplicados (paginado — sem limite fixo que
         //    corta os resultados e distorce as somas/contagens exibidas na tela)
@@ -269,101 +276,98 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
           return query;
         };
 
-        // Paginação de pedidos em PARALELO: busca a 1ª página com contagem exata
-        // para saber quantas páginas existem, depois dispara todas de uma vez
-        // (em vez de esperar uma página terminar para pedir a próxima).
+        // Carregamento em DUAS etapas para a tela aparecer logo:
+        //  1) uma fatia pequena (os 100 pedidos mais recentes, com contagem exata) + os clientes deles → a lista já aparece;
+        //  2) o restante em páginas paralelas (totais e busca precisam de todos) → a lista e os totais se completam.
+        const FIRST_PAGE_SIZE = 100;
         const ORDERS_PAGE_SIZE = 1000;
         const ORDERS_HARD_CAP = 50000; // segurança contra loop infinito
-        const { data: firstOrdersPage, count: ordersTotalCount, error: firstOrdersError } = await buildOrdersQuery(true)
-          .range(0, ORDERS_PAGE_SIZE - 1);
-        if (firstOrdersError) throw firstOrdersError;
-        perf.primeiraPaginaPedidos = Math.round(performance.now() - perfStart);
-
-        // Sem contagem não dá para saber se há mais páginas: nunca mostrar totais cortados em silêncio.
-        if (ordersTotalCount == null && (firstOrdersPage?.length ?? 0) >= ORDERS_PAGE_SIZE) {
-          console.warn('[pedidos] contagem exata indisponível; carregando páginas até esgotar');
-        }
-
-        let orderData: any[] = firstOrdersPage || [];
-        if (ordersTotalCount == null && orderData.length >= ORDERS_PAGE_SIZE) {
-          let off = ORDERS_PAGE_SIZE;
-          while (off < ORDERS_HARD_CAP) {
-            const { data: page, error: pageError } = await buildOrdersQuery().range(off, off + ORDERS_PAGE_SIZE - 1);
-            if (pageError) throw pageError;
-            if (!page || page.length === 0) break;
-            orderData = orderData.concat(page);
-            if (page.length < ORDERS_PAGE_SIZE) break;
-            off += ORDERS_PAGE_SIZE;
-          }
-        }
-        const ordersTotal = Math.min(ordersTotalCount ?? orderData.length, ORDERS_HARD_CAP);
-        // Páginas restantes em paralelo só quando a contagem exata existe (sem ela, o plano B acima já paginou)
-        if (ordersTotalCount != null && ordersTotal > ORDERS_PAGE_SIZE) {
-          const remainingOffsets: number[] = [];
-          for (let off = ORDERS_PAGE_SIZE; off < ordersTotal; off += ORDERS_PAGE_SIZE) {
-            remainingOffsets.push(off);
-          }
-          const remainingPages = await Promise.all(
-            remainingOffsets.map(off => buildOrdersQuery().range(off, off + ORDERS_PAGE_SIZE - 1))
-          );
-          for (const { data: page, error: pageError } of remainingPages) {
-            if (pageError) throw pageError;
-            if (page) orderData = orderData.concat(page);
-          }
-        }
-
-        perf.todosPedidos = Math.round(performance.now() - perfStart);
-        if (!orderData || orderData.length === 0) {
-          setOrders([]);
-          return;
-        }
-
-        // 2. BATCH LOADING: Buscar todos os dados relacionados de uma vez
-
-        // Extrair IDs únicos para batch queries
-        const uniquePhones = [...new Set(orderData.map(o => o.customer_phone))];
-        const normalizedUniquePhones = [...new Set([...uniquePhones, ...uniquePhones.map(p => normalizeForStorage(p))])];
-        const cartIds = orderData.filter(o => o.cart_id).map(o => o.cart_id!);
-        const uniqueCartIds = [...new Set(cartIds)];
+        const seq = ++loadSeqRef.current;
+        const stale = () => seq !== loadSeqRef.current; // outro carregamento começou (filtro mudou): descarta este
 
         // Clientes em lotes pequenos e em paralelo (uma lista gigante no endereço da consulta deixa tudo lento).
-        // Os itens do carrinho NÃO são mais carregados para todos os pedidos (eram milhares de linhas com junção de produto):
-        // abrir o pedido, imprimir e buscar por produto buscam só o que precisam.
-        const CUSTOMER_CHUNK = 150;
-        const phoneChunks: string[][] = [];
-        for (let i = 0; i < normalizedUniquePhones.length; i += CUSTOMER_CHUNK) {
-          phoneChunks.push(normalizedUniquePhones.slice(i, i + CUSTOMER_CHUNK));
-        }
-        const customerPages = await Promise.all(
-          phoneChunks.map(chunk =>
-            supabaseTenant
-              .from('customers')
-              .select('phone, name, cpf, street, number, complement, neighborhood, city, state, cep, instagram, bling_contact_id')
-              .in('phone', chunk)
-          )
-        );
-        const allCustomers: any[] = customerPages.flatMap(r => (r.data as any[]) || []);
-        perf.clientes = Math.round(performance.now() - perfStart);
-
-        // Criar mapa de clientes por telefone para lookup O(1)
-        // Usa telefone normalizado para garantir match mesmo com diferenças de formato
+        // Os itens do carrinho NÃO são carregados para todos os pedidos: abrir, imprimir e buscar por produto buscam só o que precisam.
         const customerMap = new Map<string, any>();
-        allCustomers.forEach(c => {
-          customerMap.set(c.phone, c);
-          customerMap.set(normalizeForStorage(c.phone), c);
-        });
-
-        // 3. Montar resultado final com lookups O(1)
-        const ordersWithDetails = orderData.map(order => ({
+        const askedPhones = new Set<string>();
+        const loadCustomersFor = async (rows: any[]) => {
+          const phones = [...new Set(rows.map(o => o.customer_phone))];
+          const wanted = [...new Set([...phones, ...phones.map(ph => normalizeForStorage(ph))])]
+            .filter(ph => ph && !askedPhones.has(ph)) as string[];
+          wanted.forEach(ph => askedPhones.add(ph));
+          const CUSTOMER_CHUNK = 150;
+          const chunks: string[][] = [];
+          for (let i = 0; i < wanted.length; i += CUSTOMER_CHUNK) chunks.push(wanted.slice(i, i + CUSTOMER_CHUNK));
+          const pages = await Promise.all(
+            chunks.map(chunk =>
+              supabaseTenant
+                .from('customers')
+                .select('phone, name, cpf, street, number, complement, neighborhood, city, state, cep, instagram, bling_contact_id')
+                .in('phone', chunk)
+            )
+          );
+          pages.flatMap(r => ((r as any).data as any[]) || []).forEach(c => {
+            customerMap.set(c.phone, c);
+            customerMap.set(normalizeForStorage(c.phone), c);
+          });
+        };
+        const withDetails = (rows: any[]) => rows.map(order => ({
           ...order,
           customer: customerMap.get(order.customer_phone) || customerMap.get(normalizeForStorage(order.customer_phone)) || undefined,
-          cart_items: [] as any[]
+          cart_items: [] as any[],
         }));
 
-        setOrders(ordersWithDetails);
+        // Etapa 1
+        const { data: firstOrdersPage, count: ordersTotalCount, error: firstOrdersError } = await buildOrdersQuery(true)
+          .range(0, FIRST_PAGE_SIZE - 1);
+        if (firstOrdersError) throw firstOrdersError;
+        let orderData: any[] = firstOrdersPage || [];
+        if (orderData.length === 0) {
+          if (!stale()) setOrders([]);
+          return;
+        }
+        const ordersTotal = Math.min(ordersTotalCount ?? orderData.length, ORDERS_HARD_CAP);
+        const hasMore = ordersTotalCount != null ? ordersTotal > FIRST_PAGE_SIZE : orderData.length >= FIRST_PAGE_SIZE;
+        await loadCustomersFor(orderData);
+        if (stale()) return;
+        setOrders(withDetails(orderData));
+        setLoading(false);
+        perf.listaVisivel = Math.round(performance.now() - perfStart);
+        if (hasMore) setLoadingRest(true);
+
+        // Etapa 2
+        if (hasMore) {
+          if (ordersTotalCount != null) {
+            const offsets: number[] = [];
+            for (let off = FIRST_PAGE_SIZE; off < ordersTotal; off += ORDERS_PAGE_SIZE) offsets.push(off);
+            const pages = await Promise.all(offsets.map(off => buildOrdersQuery().range(off, off + ORDERS_PAGE_SIZE - 1)));
+            for (const { data: page, error: pageError } of pages) {
+              if (pageError) throw pageError;
+              if (page) orderData = orderData.concat(page);
+            }
+          } else {
+            // Sem contagem exata: pagina em sequência até esgotar (nunca mostrar totais cortados em silêncio)
+            console.warn('[pedidos] contagem exata indisponível; carregando páginas até esgotar');
+            let off = FIRST_PAGE_SIZE;
+            while (off < ORDERS_HARD_CAP) {
+              const { data: page, error: pageError } = await buildOrdersQuery().range(off, off + ORDERS_PAGE_SIZE - 1);
+              if (pageError) throw pageError;
+              if (!page || page.length === 0) break;
+              orderData = orderData.concat(page);
+              if (page.length < ORDERS_PAGE_SIZE) break;
+              off += ORDERS_PAGE_SIZE;
+            }
+          }
+          perf.todosPedidos = Math.round(performance.now() - perfStart);
+          if (stale()) return;
+          await loadCustomersFor(orderData);
+          if (stale()) return;
+          setOrders(withDetails(orderData));
+        }
+
+        const uniquePhones = [...new Set(orderData.map(o => o.customer_phone))];
         perf.total = Math.round(performance.now() - perfStart);
         // Medição para diagnóstico de lentidão: tempos acumulados (ms) desde o início do carregamento
-        console.info(`[pedidos] ${orderData.length} pedidos | ${normalizedUniquePhones.length} telefones | tempos acumulados (ms):`, JSON.stringify(perf));
+        console.info(`[pedidos] ${orderData.length} pedidos | ${uniquePhones.length} telefones | tempos acumulados (ms):`, JSON.stringify(perf));
 
         // Tag "1ª Compra": descobre qual foi o 1º pedido pago de cada cliente (não bloqueia a tela)
         const tenantIdForTag = supabaseTenant.getTenantId();
@@ -385,7 +389,10 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
           variant: 'destructive'
         });
       } finally {
-        setLoading(false);
+        if (seqAtEnd()) {
+          setLoading(false);
+          setLoadingRest(false);
+        }
       }
     };
 
@@ -1836,18 +1843,18 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <div className="text-sm text-muted-foreground">Total de vendas</div>
-                  <div className="text-lg font-semibold">{formatCurrencyLocal(totalSalesValue)}</div>
-                  <div className="text-xs text-muted-foreground">({totalOrdersCount} pedidos)</div>
+                  <div className="text-lg font-semibold">{loadingRest ? <span className="text-sm text-muted-foreground">calculando…</span> : formatCurrencyLocal(totalSalesValue)}</div>
+                  <div className="text-xs text-muted-foreground">{loadingRest ? 'carregando o restante dos pedidos…' : `(${totalOrdersCount} pedidos)`}</div>
                 </div>
                 <div>
                   <div className="text-sm text-muted-foreground">Total Pago</div>
-                  <div className="text-lg font-semibold text-emerald-600">{formatCurrencyLocal(totalPaidValue)}</div>
-                  <div className="text-xs text-muted-foreground">Pagos: <span className="text-emerald-700 font-medium">{paidOrdersCount}</span>  |  Não pagos: <span className="text-red-600 font-medium">{unpaidOrdersCount}</span></div>
+                  <div className="text-lg font-semibold text-emerald-600">{loadingRest ? <span className="text-sm text-muted-foreground">calculando…</span> : formatCurrencyLocal(totalPaidValue)}</div>
+                  <div className="text-xs text-muted-foreground">{loadingRest ? ' ' : <>Pagos: <span className="text-emerald-700 font-medium">{paidOrdersCount}</span>  |  Não pagos: <span className="text-red-600 font-medium">{unpaidOrdersCount}</span></>}</div>
                 </div>
                 <div>
                   <div className="text-sm text-muted-foreground">% Pedidos Pagos</div>
-                  <div className="text-lg font-semibold">{percentPaid.toFixed(1)}%</div>
-                  <div className="text-xs text-muted-foreground">Ticket médio: {formatCurrencyLocal(ticketMedio)}</div>
+                  <div className="text-lg font-semibold">{loadingRest ? <span className="text-sm text-muted-foreground">calculando…</span> : `${percentPaid.toFixed(1)}%`}</div>
+                  <div className="text-xs text-muted-foreground">{loadingRest ? ' ' : `Ticket médio: ${formatCurrencyLocal(ticketMedio)}`}</div>
                 </div>
               </div>
             </div>
@@ -2330,10 +2337,11 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
               <div className="p-4 border-t bg-muted/30">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div className="text-sm text-muted-foreground">
+                    {loadingRest ? 'Carregando o restante dos pedidos… (totais e contagem ainda parciais)' : <>
                     Mostrando {startIndex + 1}-{Math.min(endIndex, filteredOrders.length)} de {filteredOrders.length} pedidos | 
                     Pagos: {paidOrdersCount} | 
                     Pendentes: {unpaidOrdersCount} |
-                    Total: {formatCurrencyLocal(totalSalesValue)}
+                    Total: {formatCurrencyLocal(totalSalesValue)}</>}
                   </div>
                   
                   <div className="flex items-center gap-2">
