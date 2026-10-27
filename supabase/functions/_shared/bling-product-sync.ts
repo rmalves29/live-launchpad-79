@@ -1,3 +1,4 @@
+import { makeProductCodeAllocator } from "./next-product-code.ts";
 // Sincronização Bling → Cartzy disparada pelos avisos (webhooks) de produto e de estoque.
 // Regras:
 //  - Só mexe em produto que já está vinculado (products.bling_product_id). Nunca cria produto solto nem apaga nada.
@@ -225,10 +226,8 @@ export async function syncProductEvent(supabase: any, integ: any, token: string,
           changes.push(`variacao ${kcode || kid} atualizada`);
         }
       } else {
-        // variação nova no Bling: cria o filho (código provisório igual ao do Bling; sufixo se já existir)
-        let code = (kcode || `${codigo}-${kid}`).slice(0, 40);
-        const { data: taken } = await supabase.from("products").select("id").eq("tenant_id", tenantId).eq("code", code).maybeSingle();
-        if (taken) code = `${code.slice(0, 32)}-BL${String(kid).slice(-5)}`;
+        // variação nova no Bling: cria o filho com o próximo SKU do sistema (C###); o código do Bling vai em sku_erp
+        const code = (await makeProductCodeAllocator(supabase, tenantId))();
         const { error } = await supabase.from("products").insert({
           tenant_id: tenantId,
           code,

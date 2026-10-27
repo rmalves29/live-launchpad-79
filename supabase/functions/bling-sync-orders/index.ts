@@ -2085,14 +2085,14 @@ serve(async (req) => {
           // Buscar cart_items com JOIN em products para pegar código atualizado e bling_product_id
           const { data: items, error: itemsError } = await supabase
             .from('cart_items')
-            .select('*, products:product_id(code, name, bling_product_id)')
+            .select('*, products:product_id(code, sku_erp, name, bling_product_id)')
             .eq('cart_id', order.cart_id);
 
           if (!itemsError && items) {
             // Mapear para usar código/nome atualizado do produto e bling_product_id quando disponível
             cartItems = items.map((item: any) => ({
               ...item,
-              product_code: item.products?.code || item.product_code,
+              product_code: item.products?.sku_erp || item.products?.code || item.product_code,
               product_name: item.products?.name || item.product_name,
               bling_product_id: item.products?.bling_product_id || null,
             }));
@@ -2227,12 +2227,12 @@ serve(async (req) => {
         if (forceOrder.cart_id) {
           const { data: items } = await supabase
             .from('cart_items')
-            .select('*, products:product_id(code, name, bling_product_id)')
+            .select('*, products:product_id(code, sku_erp, name, bling_product_id)')
             .eq('cart_id', forceOrder.cart_id);
           if (items) {
             forceCartItems = items.map((item: any) => ({
               ...item,
-              product_code: item.products?.code || item.product_code,
+              product_code: item.products?.sku_erp || item.products?.code || item.product_code,
               product_name: item.products?.name || item.product_name,
               bling_product_id: item.products?.bling_product_id || null,
             }));
@@ -2424,13 +2424,13 @@ serve(async (req) => {
               // Buscar cart_items com JOIN em products para pegar código atualizado e bling_product_id
               const { data: items } = await supabase
                 .from('cart_items')
-                .select('*, products:product_id(code, name, bling_product_id)')
+                .select('*, products:product_id(code, sku_erp, name, bling_product_id)')
                 .eq('cart_id', order.cart_id);
               
               // Mapear para usar código/nome atualizado do produto e bling_product_id quando disponível
               cartItems = (items || []).map((item: any) => ({
                 ...item,
-                product_code: item.products?.code || item.product_code,
+                product_code: item.products?.sku_erp || item.products?.code || item.product_code,
                 product_name: item.products?.name || item.product_name,
                 bling_product_id: item.products?.bling_product_id || null,
               }));

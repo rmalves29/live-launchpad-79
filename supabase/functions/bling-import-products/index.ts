@@ -9,6 +9,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authorizeTenantCaller, guardResponse } from "../_shared/auth-guard.ts";
+import { makeProductCodeAllocator } from "../_shared/next-product-code.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -186,15 +187,8 @@ serve(async (req) => {
       if (!ids.length) return json({ error: "Nenhum produto selecionado." }, 400);
       const saleType = ["BAZAR", "LIVE", "AMBOS"].includes(String(body.sale_type)) ? String(body.sale_type) : "AMBOS";
 
-      const codeTaken = async (c: string) => {
-        const { data } = await supabase.from("products").select("id").eq("tenant_id", tenantId).eq("code", c).maybeSingle();
-        return !!data;
-      };
-      const uniqueCode = async (codigo: string, blingId: number) => {
-        let c = codigo.slice(0, 40);
-        if (await codeTaken(c)) c = `${c.slice(0, 32)}-BL${String(blingId).slice(-5)}`;
-        return c;
-      };
+      // SKU do sistema (code) = próxima sequência C001, C002...; o código do Bling fica só em sku_erp
+      const nextCode = await makeProductCodeAllocator(supabase, tenantId);
       // mesmo código/SKU de um produto do Cartzy que ainda não tem ID do Bling: só vincula
       const findLinkable = async (codigo: string) => {
         const c = codigo.replace(/"/g, "");
@@ -235,7 +229,7 @@ serve(async (req) => {
 
           const { data: parentRow, error: pErr } = await supabase.from("products").insert({
             tenant_id: tenantId,
-            code: await uniqueCode(codigo, id),
+            code: nextCode(),
             name: nome.slice(0, 200),
             price: parentPrice,
             stock: isParent ? 0 : stockOf(id), // pai de variações fica sem estoque: ele fica oculto para venda
@@ -256,7 +250,7 @@ serve(async (req) => {
               const childImg = n.midia?.imagens?.externas?.[0]?.link || image;
               const { error: cErr } = await supabase.from("products").insert({
                 tenant_id: tenantId,
-                code: await uniqueCode(ncode, nid),
+                code: nextCode(),
                 name: `${nome} - ${v.label || ncode}`.slice(0, 200),
                 price: Number(n.preco) || parentPrice,
                 stock: stockOf(nid),

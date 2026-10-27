@@ -322,7 +322,7 @@ async function sendProductToBling(
   // IMPORTANT: Always include unidade to prevent missing UN in Bling
   const blingProduct: any = {
     nome: product.name,
-    codigo: product.code || product.sku || `PROD-${product.id}`,
+    codigo: product.sku_erp || product.code || product.sku || `PROD-${product.id}`,
     tipo: 'P', // P = Produto, S = Serviço
     situacao: product.is_active !== false ? 'A' : 'I', // A = Ativo, I = Inativo
     formato: 'S', // S = Simples, V = Com variação, E = Com composição
