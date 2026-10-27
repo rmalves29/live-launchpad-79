@@ -210,6 +210,8 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
     }, [debouncedProductSearch]);
 
     const loadOrders = async () => {
+      const perfStart = performance.now();
+      const perf: Record<string, number> = {};
       try {
         setLoading(true);
         
@@ -275,6 +277,7 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
         const { data: firstOrdersPage, count: ordersTotalCount, error: firstOrdersError } = await buildOrdersQuery(true)
           .range(0, ORDERS_PAGE_SIZE - 1);
         if (firstOrdersError) throw firstOrdersError;
+        perf.primeiraPaginaPedidos = Math.round(performance.now() - perfStart);
 
         // Sem contagem não dá para saber se há mais páginas: nunca mostrar totais cortados em silêncio.
         if (ordersTotalCount == null && (firstOrdersPage?.length ?? 0) >= ORDERS_PAGE_SIZE) {
@@ -309,6 +312,7 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
           }
         }
 
+        perf.todosPedidos = Math.round(performance.now() - perfStart);
         if (!orderData || orderData.length === 0) {
           setOrders([]);
           return;
@@ -339,6 +343,7 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
           )
         );
         const allCustomers: any[] = customerPages.flatMap(r => (r.data as any[]) || []);
+        perf.clientes = Math.round(performance.now() - perfStart);
 
         // Criar mapa de clientes por telefone para lookup O(1)
         // Usa telefone normalizado para garantir match mesmo com diferenças de formato
@@ -356,6 +361,9 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
         }));
 
         setOrders(ordersWithDetails);
+        perf.total = Math.round(performance.now() - perfStart);
+        // Medição para diagnóstico de lentidão: tempos acumulados (ms) desde o início do carregamento
+        console.info(`[pedidos] ${orderData.length} pedidos | ${normalizedUniquePhones.length} telefones | tempos acumulados (ms):`, JSON.stringify(perf));
 
         // Tag "1ª Compra": descobre qual foi o 1º pedido pago de cada cliente (não bloqueia a tela)
         const tenantIdForTag = supabaseTenant.getTenantId();
