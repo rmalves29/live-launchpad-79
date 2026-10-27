@@ -9,6 +9,7 @@ import { getLatestWhatsAppTemplate, saveWhatsAppTemplate } from '@/lib/whatsapp-
 import SendingControl from '@/components/SendingControl';
 import SendingProgressLive from '@/components/SendingProgressLive';
 import SendflowTodayHistory from '@/components/sendflow/SendflowTodayHistory';
+import ScheduledSendsList from '@/components/sendflow/ScheduledSendsList';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -1372,6 +1373,8 @@ export default function SendFlow() {
           </CardContent>
         </Card>
       )}
+
+      <ScheduledSendsList key={String(lastJobWasScheduled) + (lastJobGroups?.length ?? 0)} />
 
       <SendflowTodayHistory />
     </div>
