@@ -97,6 +97,16 @@ export default function Cobranca() {
   const [minPurchaseCount, setMinPurchaseCount] = useState('');
   const [purchaseStats, setPurchaseStats] = useState<Map<string, { count: number; last: number }> | null>(null);
   const [loadingStats, setLoadingStats] = useState(false);
+  // Não enviar para quem já recebeu mensagem em massa nos últimos X dias
+  const [skipRecentDays, setSkipRecentDays] = useState('');
+  const [recentBulkPhones, setRecentBulkPhones] = useState<{ days: number; phones: Set<string> } | null>(null);
+  const [loadingRecent, setLoadingRecent] = useState(false);
+  // Limite máximo de mensagens por envio: a lista é cortada nesse número
+  const [maxMessages, setMaxMessages] = useState('');
+  const maxMessagesNum = Math.floor(Number(maxMessages));
+  const hasMaxMessages = maxMessages.trim() !== '' && Number.isFinite(maxMessagesNum) && maxMessagesNum > 0;
+  const recentDaysNum = Number(skipRecentDays);
+  const hasRecentFilter = skipRecentDays.trim() !== '' && Number.isFinite(recentDaysNum) && recentDaysNum > 0;
   const daysFilter = Number(minDaysSinceLastPurchase);
   const countFilter = Number(minPurchaseCount);
   const hasDaysFilter = minDaysSinceLastPurchase.trim() !== '' && Number.isFinite(daysFilter) && daysFilter >= 0;
@@ -106,7 +116,7 @@ export default function Cobranca() {
   const orderFilterActive = filters.isPaid !== 'all' || filters.eventType !== 'all' || !!filters.orderDate?.from;
 
   // Lista final de destinatários = lista carregada + filtros de histórico de compras
-  const customers = useMemo(() => {
+  const afterHistory = useMemo(() => {
     if (!historyFilterActive) return baseCustomers;
     if (!purchaseStats) return [];
     const now = Date.now();
@@ -122,6 +132,20 @@ export default function Cobranca() {
       return true;
     });
   }, [baseCustomers, historyFilterActive, purchaseStats, hasCountFilter, hasDaysFilter, countFilter, daysFilter]);
+
+  // Tira da lista quem recebeu mensagem em massa nos últimos X dias (enquanto carrega, a lista fica vazia para não enviar sem filtrar)
+  const recentReady = hasRecentFilter && recentBulkPhones?.days === recentDaysNum;
+  const afterRecent = useMemo(() => {
+    if (!hasRecentFilter) return afterHistory;
+    if (!recentReady || !recentBulkPhones) return [];
+    return afterHistory.filter((c) => !recentBulkPhones.phones.has(normalizeForStorage(c.customer_phone || '')));
+  }, [afterHistory, hasRecentFilter, recentReady, recentBulkPhones]);
+  const customers = useMemo(
+    () => (hasMaxMessages ? afterRecent.slice(0, maxMessagesNum) : afterRecent),
+    [afterRecent, hasMaxMessages, maxMessagesNum]
+  );
+  const leftOutByMax = hasMaxMessages ? Math.max(0, afterRecent.length - customers.length) : 0;
+  const removedByRecent = hasRecentFilter && recentReady ? afterHistory.length - afterRecent.length : 0;
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState({ current: 0, total: 0 });
   const [whatsappApiUrl, setWhatsappApiUrl] = useState<string | null>(null);
@@ -606,12 +630,50 @@ export default function Cobranca() {
       loadAllCustomers();
     } else if (orderFilterActive) {
       loadCustomers();
-    } else if (historyFilterActive) {
+    } else if (historyFilterActive || hasRecentFilter || hasMaxMessages) {
       loadAllCustomers();
     } else {
       setBaseCustomers([]);
     }
-  }, [filters, useAllCustomers, historyFilterActive]);
+  }, [filters, useAllCustomers, historyFilterActive, hasRecentFilter, hasMaxMessages]);
+
+  // Telefones que receberam mensagem em massa (não falhada) nos últimos X dias
+  const loadRecentBulk = async (days: number) => {
+    try {
+      setLoadingRecent(true);
+      const since = new Date(Date.now() - days * 86_400_000).toISOString();
+      const PAGE = 1000;
+      let offset = 0;
+      const phones = new Set<string>();
+      while (true) {
+        const { data, error } = await supabaseTenant
+          .from('whatsapp_messages')
+          .select('phone')
+          .eq('type', 'bulk')
+          .gte('sent_at', since)
+          .neq('delivery_status', 'FAILED')
+          .order('id', { ascending: true })
+          .range(offset, offset + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        for (const m of data as any[]) if (m.phone) phones.add(normalizeForStorage(m.phone));
+        if (data.length < PAGE) break;
+        offset += PAGE;
+      }
+      setRecentBulkPhones({ days, phones });
+    } catch (error: any) {
+      console.error('Erro ao carregar envios recentes:', error);
+      toast({ title: 'Erro', description: error?.message || 'Erro ao carregar envios recentes', variant: 'destructive' });
+    } finally {
+      setLoadingRecent(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!hasRecentFilter || !tenant?.id) return;
+    const t = setTimeout(() => loadRecentBulk(recentDaysNum), 400);
+    return () => clearTimeout(t);
+  }, [hasRecentFilter, recentDaysNum, tenant?.id]);
 
   useEffect(() => {
     if (historyFilterActive && !purchaseStats && !loadingStats && tenant?.id) {
@@ -708,7 +770,9 @@ export default function Cobranca() {
             order_date_to: filters.orderDate?.to ? format(filters.orderDate.to, 'yyyy-MM-dd') : '',
             use_all_customers: useAllCustomers,
             min_days_since_last_purchase: hasDaysFilter ? daysFilter : null,
-            min_purchase_count_exclusive: hasCountFilter ? countFilter : null
+            min_purchase_count_exclusive: hasCountFilter ? countFilter : null,
+            skip_recent_days: hasRecentFilter ? recentDaysNum : null,
+            max_messages: hasMaxMessages ? maxMessagesNum : null
           }
         }
       });
@@ -1167,6 +1231,44 @@ export default function Cobranca() {
                   <XIcon className="w-3 h-3 mr-1" /> Limpar filtros de histórico
                 </Button>
               )}
+              <div className="space-y-1.5 pt-2 border-t border-[#e5e7eb]">
+                <Label htmlFor="skipRecentDays" className="text-xs text-muted-foreground">Não enviar para quem recebeu mensagem em massa nos últimos (dias)</Label>
+                <Input
+                  id="skipRecentDays"
+                  type="number"
+                  min="1"
+                  inputMode="numeric"
+                  placeholder="Ex.: 7"
+                  value={skipRecentDays}
+                  onChange={(e) => setSkipRecentDays(e.target.value)}
+                  className="h-10 rounded-lg bg-white border-[#e5e7eb]"
+                />
+                {hasRecentFilter && (
+                  <p className="text-xs text-muted-foreground">
+                    {loadingRecent || !recentReady
+                      ? 'Verificando quem já recebeu…'
+                      : `${removedByRecent} cliente(s) removido(s) da lista por já terem recebido nos últimos ${recentDaysNum} dia(s).`}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1.5 pt-2 border-t border-[#e5e7eb]">
+                <Label htmlFor="maxMessages" className="text-xs text-muted-foreground">Enviar no máximo (mensagens)</Label>
+                <Input
+                  id="maxMessages"
+                  type="number"
+                  min="1"
+                  inputMode="numeric"
+                  placeholder="Ex.: 200"
+                  value={maxMessages}
+                  onChange={(e) => setMaxMessages(e.target.value)}
+                  className="h-10 rounded-lg bg-white border-[#e5e7eb]"
+                />
+                {hasMaxMessages && leftOutByMax > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    O envio para ao chegar em {maxMessagesNum}. {leftOutByMax} cliente(s) ficam para um próximo envio.
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* Resumo: clientes encontrados */}
