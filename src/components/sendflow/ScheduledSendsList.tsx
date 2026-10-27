@@ -9,10 +9,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CalendarClock, Loader2, Pencil, RefreshCw, Square, Package, Users } from 'lucide-react';
+import { CalendarClock, Loader2, Pause, Pencil, Play, RefreshCw, Square, Package, Users } from 'lucide-react';
 
 interface ScheduledJob {
   id: string;
+  status: string;
   total_items: number;
   scheduled_at: string | null;
   job_data: any;
@@ -48,13 +49,14 @@ export default function ScheduledSendsList() {
     try {
       const { data, error } = await supabase
         .from('sending_jobs')
-        .select('id, total_items, scheduled_at, job_data')
+        .select('id, status, total_items, scheduled_at, job_data')
         .eq('tenant_id', tenant.id)
         .eq('job_type', 'sendflow')
-        .eq('status', 'scheduled')
+        .in('status', ['scheduled', 'paused'])
         .order('scheduled_at', { ascending: true });
       if (error) throw error;
-      const list = (data || []) as ScheduledJob[];
+      // pausado só entra aqui se foi pausado a partir de um agendamento
+      const list = ((data || []) as ScheduledJob[]).filter((j) => j.status === 'scheduled' || j.job_data?.paused_from_schedule);
       setJobs(list);
 
       if (list.length) {
@@ -92,12 +94,63 @@ export default function ScheduledSendsList() {
         .from('sending_jobs')
         .update({ status: 'cancelled', updated_at: new Date().toISOString() })
         .eq('id', job.id)
-        .eq('status', 'scheduled');
+        .in('status', ['scheduled', 'paused']);
       if (error) throw error;
       toast.success('Agendamento cancelado');
       setJobs((prev) => prev.filter((j) => j.id !== job.id));
     } catch (e: any) {
       toast.error(e?.message || 'Erro ao cancelar');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const pause = async (job: ScheduledJob) => {
+    setBusyId(job.id);
+    try {
+      const { error } = await supabase
+        .from('sending_jobs')
+        .update({
+          status: 'paused',
+          paused_at: new Date().toISOString(),
+          job_data: { ...(job.job_data || {}), paused_from_schedule: true },
+          updated_at: new Date().toISOString(),
+        } as any)
+        .eq('id', job.id)
+        .eq('status', 'scheduled');
+      if (error) throw error;
+      toast.success('Agendamento pausado. Ele não será enviado até você retomar.');
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao pausar');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const resume = async (job: ScheduledJob) => {
+    const passed = !job.scheduled_at || new Date(job.scheduled_at) <= new Date();
+    if (passed && !window.confirm('O horário agendado já passou. Retomar e enviar agora?')) return;
+    setBusyId(job.id);
+    try {
+      const nowIso = new Date().toISOString();
+      const { paused_from_schedule: _drop, ...rest } = job.job_data || {};
+      const { error } = await supabase
+        .from('sending_jobs')
+        .update({
+          status: 'scheduled',
+          paused_at: null,
+          scheduled_at: passed ? nowIso : job.scheduled_at,
+          job_data: { ...rest, ...(passed ? { scheduled_at: nowIso } : {}) },
+          updated_at: nowIso,
+        } as any)
+        .eq('id', job.id)
+        .eq('status', 'paused');
+      if (error) throw error;
+      toast.success(passed ? 'Retomado: será enviado em instantes' : 'Agendamento retomado');
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao retomar');
     } finally {
       setBusyId(null);
     }
@@ -136,7 +189,7 @@ export default function ScheduledSendsList() {
           updated_at: new Date().toISOString(),
         } as any)
         .eq('id', editing.id)
-        .eq('status', 'scheduled');
+        .in('status', ['scheduled', 'paused']);
       if (error) throw error;
       toast.success('Agendamento atualizado');
       setEditing(null);
@@ -161,7 +214,7 @@ export default function ScheduledSendsList() {
               </div>
               <div>
                 <CardTitle className="text-base">Envios agendados ({jobs.length})</CardTitle>
-                <CardDescription>Aguardando o horário para serem enviados</CardDescription>
+                <CardDescription>Aguardando o horário para serem enviados. Pausados não saem até você retomar.</CardDescription>
               </div>
             </div>
             <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
@@ -175,8 +228,20 @@ export default function ScheduledSendsList() {
             return (
               <div key={job.id} className="rounded-xl border p-3 space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-medium">{fmt(job.scheduled_at)}</div>
+                  <div className="font-medium flex items-center gap-2">
+                    {fmt(job.scheduled_at)}
+                    {job.status === 'paused' && <Badge variant="outline" className="bg-orange-100 text-orange-700">Pausado</Badge>}
+                  </div>
                   <div className="flex gap-2">
+                    {job.status === 'paused' ? (
+                      <Button size="sm" onClick={() => resume(job)} disabled={busyId === job.id}>
+                        <Play className="h-4 w-4 mr-1" /> Retomar
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="outline" onClick={() => pause(job)} disabled={busyId === job.id}>
+                        <Pause className="h-4 w-4 mr-1" /> Pausar
+                      </Button>
+                    )}
                     <Button size="sm" variant="outline" onClick={() => openEdit(job)} disabled={busyId === job.id}>
                       <Pencil className="h-4 w-4 mr-1" /> Editar
                     </Button>
