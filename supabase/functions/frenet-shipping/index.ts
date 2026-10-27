@@ -1,3 +1,4 @@
+import { withQuoteCache } from "../_shared/shipping-quote-cache.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -6,7 +7,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-serve(async (req) => {
+serve(withQuoteCache("frenet", async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
@@ -139,7 +140,7 @@ serve(async (req) => {
     console.error("[frenet-shipping] Error:", error);
     return json({ success: false, error: error.message }, 200);
   }
-});
+}));
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
