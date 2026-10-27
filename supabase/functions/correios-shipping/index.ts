@@ -34,6 +34,7 @@ async function getCorreiosToken(credentials: CorreiosCredentials, tenantId: stri
   const basicAuth = btoa(`${clientId}:${clientSecret}`);
 
   const authResponse = await fetch(authUrl, {
+    signal: AbortSignal.timeout(7000),
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Basic ${basicAuth}` },
     body: JSON.stringify({ numero: cartaoPostagem }),
@@ -73,6 +74,7 @@ async function calcularPreco(token: string, cepOrigem: string, cepDestino: strin
 
   const response = await fetch(`https://api.correios.com.br/preco/v1/nacional/${codigoServico}?${params}`, {
     headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+    signal: AbortSignal.timeout(7000), // Correios lento não pode segurar o frete da cliente: estourou, cai no plano B
   });
 
   if (!response.ok) { console.error("[correios] Price error:", codigoServico, response.status); return null; }
@@ -86,6 +88,7 @@ async function calcularPrazo(token: string, cepOrigem: string, cepDestino: strin
 
   const response = await fetch(`https://api.correios.com.br/prazo/v1/nacional/${codigoServico}?${params}`, {
     headers: { "Authorization": `Bearer ${token}`, "Accept": "application/json" },
+    signal: AbortSignal.timeout(7000), // Correios lento não pode segurar o frete da cliente: estourou, cai no plano B
   });
 
   if (!response.ok) { console.error("[correios] Deadline error:", codigoServico, response.status); return null; }
