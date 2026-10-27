@@ -1324,7 +1324,7 @@ async function sendOrderToBling(
   const blingOrder: any = {
     numero: orderNumber,
     numeroLoja: orderNumber,
-    data: new Date(order.created_at).toISOString().split('T')[0],
+    data: brDate(order.created_at),
     dataPrevista: order.event_date,
     contato: { id: contactId },
     itens: consolidatedItems,
@@ -1665,7 +1665,7 @@ async function sendOrderToBling(
       
       for (let i = 0; i < installments; i++) {
         parcelas.push({
-          dataVencimento: new Date(order.created_at).toISOString().split('T')[0],
+          dataVencimento: brDate(order.created_at),
           valor: Math.round((totalAmount / installments) * 100) / 100,
           formaPagamento: { id: blingPaymentId },
         });
@@ -1804,6 +1804,9 @@ async function fetchOrdersFromBling(accessToken: string, page = 1, limit = 100):
 
   return JSON.parse(text);
 }
+
+// Data (AAAA-MM-DD) no horário de Brasília: pedido feito à noite (após 21h) não pode cair no dia seguinte no Bling.
+const brDate = (d: string | number | Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(d));
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
