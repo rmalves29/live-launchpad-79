@@ -238,102 +238,152 @@ function filterCarrierOptions(options: any[], provider: ShippingProvider) {
   });
 }
 
+// Cache de curta duração (frete e CEP): a cliente que volta à tela, troca de forma de pagamento ou mexe no carrinho
+// e volta ao mesmo valor não espera de novo. Também serve de "aquecimento": o cálculo começa antes de abrir o checkout.
+const SHIP_TTL_MS = 5 * 60 * 1000;
+const shipCache = new Map<string, { ts: number; res: { options: ShippingOption[]; notice?: string } }>();
+const shipInflight = new Map<string, Promise<{ options: ShippingOption[]; notice?: string }>>();
+const cepCache = new Map<string, Promise<{ state: string; city: string }>>();
+let appSettingsCache: { ts: number; p: Promise<any> } | null = null;
+
+function lookupCep(cep: string): Promise<{ state: string; city: string }> {
+  let p = cepCache.get(cep);
+  if (!p) {
+    p = (async () => {
+      try {
+        const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`, { signal: AbortSignal.timeout(4000) });
+        const d = await r.json();
+        return d.erro ? { state: '', city: '' } : { state: d.uf || '', city: d.localidade || '' };
+      } catch {
+        cepCache.delete(cep); // sem ViaCEP agora: tenta de novo na próxima vez
+        return { state: '', city: '' };
+      }
+    })();
+    cepCache.set(cep, p);
+  }
+  return p;
+}
+
+function loadAppSettings(): Promise<any> {
+  if (!appSettingsCache || Date.now() - appSettingsCache.ts > SHIP_TTL_MS) {
+    appSettingsCache = {
+      ts: Date.now(),
+      p: Promise.resolve(
+        supabase.from('app_settings').select('default_weight_kg, default_width_cm, default_height_cm, default_length_cm').limit(1).single(),
+      ).then((r: any) => r.data).catch(() => null),
+    };
+  }
+  return appSettingsCache.p;
+}
+
 export async function calculateLiveShipping(params: {
   tenantId: string;
   cep: string;
   lines: CartLine[];
   cartTotal: number;
+  /** Chamado assim que as opções da própria loja (frete fixo, grátis, retirada) estão prontas, antes das transportadoras. */
+  onPartial?: (options: ShippingOption[]) => void;
 }): Promise<{ options: ShippingOption[]; notice?: string }> {
   const cep = onlyDigits(params.cep);
   if (cep.length !== 8) return { options: [] };
 
-  let state = '';
-  let city = '';
-  try {
-    const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-    const d = await r.json();
-    if (!d.erro) {
-      state = d.uf || '';
-      city = d.localidade || '';
-    }
-  } catch {
-    /* sem ViaCEP: segue só com o que já temos */
-  }
-
-  const custom = await fetchCustomShippingOptions(params.tenantId, state, city, params.cartTotal, 'live');
-  const options: ShippingOption[] = custom.map((o) => ({
-    id: o.id,
-    name: o.name,
-    company: o.company,
-    price: parseFloat(o.custom_price || o.price) || 0,
-    delivery_time: o.delivery_time,
-  }));
-
-  const actives = await getActiveShippingIntegrations(params.tenantId);
-  if (actives.length === 0) return { options };
-
-  const { data: app } = await supabase
-    .from('app_settings')
-    .select('default_weight_kg, default_width_cm, default_height_cm, default_length_cm')
-    .limit(1)
-    .single();
-  const weight = app?.default_weight_kg ?? 0.01;
   const qty = params.lines.reduce((s, l) => s + l.qty, 0);
   const insurance = params.lines.reduce((s, l) => s + l.price * l.qty, 0);
-  const products = [{
-    id: 'consolidated',
-    width: app?.default_width_cm ?? 13,
-    height: app?.default_height_cm ?? 6,
-    length: app?.default_length_cm ?? 16,
-    weight: Math.max(0.01, qty * weight),
-    insurance_value: insurance,
-    quantity: 1,
-  }];
-  const multi = actives.length > 1;
-
-  // Consulta uma integração; se falhar, só ela some e a outra continua aparecendo.
-  const quote = async (active: ActiveShippingIntegration): Promise<{ options: ShippingOption[]; failed: boolean }> => {
-    try {
-      if (active.testFunctionName) {
-        const t = await supabase.functions.invoke(active.testFunctionName, { body: { tenant_id: params.tenantId } });
-        if (t.error || !t.data?.valid) return { options: [], failed: true };
-      }
-
-      const res = await supabase.functions.invoke(active.functionName, {
-        body: { to_postal_code: cep, tenant_id: params.tenantId, products },
-      });
-      const data: any = res.data;
-      if (res.error || data?.success === false || !Array.isArray(data?.shipping_options)) return { options: [], failed: true };
-
-      const display = shippingProviderLabel(active.provider);
-      const carrier = data.shipping_options
-        .filter((o: any) => o && !o.error && o.price)
-        .map((o: any) => {
-          const rawId = String(o.service_id || o.id || Math.random());
-          return {
-            // Com 2 integrações, o id da tela leva o provider para não colidir entre transportadoras
-            id: multi ? `${active.provider}:${rawId}` : rawId,
-            raw_id: rawId,
-            provider: active.provider,
-            name: String(o.service_name || o.name || 'Transportadora'),
-            company: display,
-            price: parseFloat(o.custom_price || o.price || 0) || 0,
-            delivery_time: String(o.delivery_time || '5-10 dias'),
-          } as ShippingOption;
-        });
-      return { options: filterCarrierOptions(carrier, active.provider), failed: false };
-    } catch {
-      return { options: [], failed: true };
-    }
-  };
-
-  const results = await Promise.all(actives.map(quote));
-  let carrierOptions = results.flatMap((r) => r.options);
-  if (multi) carrierOptions = [...carrierOptions].sort((a, b) => a.price - b.price);
-
-  const anyFailed = results.some((r) => r.failed);
-  if (carrierOptions.length === 0 && anyFailed) {
-    return { options, notice: 'Não foi possível consultar a transportadora. Mostrando as opções da loja.' };
+  const key = `${params.tenantId}|${cep}|${qty}|${Math.round(insurance * 100)}|${Math.round(params.cartTotal * 100)}`;
+  const hit = shipCache.get(key);
+  if (hit && Date.now() - hit.ts < SHIP_TTL_MS) {
+    params.onPartial?.(hit.res.options);
+    return hit.res;
   }
-  return { options: [...options, ...carrierOptions] };
+  const running = shipInflight.get(key);
+  if (running) return running;
+
+  const job = (async () => {
+    // Tudo que não depende de uma resposta anterior sai ao mesmo tempo: CEP, integrações ativas e medidas padrão.
+    const cepP = lookupCep(cep);
+    const activesP = getActiveShippingIntegrations(params.tenantId);
+    const appP = loadAppSettings();
+
+    // Opções da própria loja só precisam do estado/cidade; mostram-se na hora, sem esperar as transportadoras.
+    const customP = cepP.then(async ({ state, city }) => {
+      const custom = await fetchCustomShippingOptions(params.tenantId, state, city, params.cartTotal, 'live');
+      const options: ShippingOption[] = custom.map((o) => ({
+        id: o.id,
+        name: o.name,
+        company: o.company,
+        price: parseFloat(o.custom_price || o.price) || 0,
+        delivery_time: o.delivery_time,
+      }));
+      params.onPartial?.(options);
+      return options;
+    });
+
+    const actives = await activesP;
+    if (actives.length === 0) return { options: await customP };
+
+    const app = await appP;
+    const weight = app?.default_weight_kg ?? 0.01;
+    const products = [{
+      id: 'consolidated',
+      width: app?.default_width_cm ?? 13,
+      height: app?.default_height_cm ?? 6,
+      length: app?.default_length_cm ?? 16,
+      weight: Math.max(0.01, qty * weight),
+      insurance_value: insurance,
+      quantity: 1,
+    }];
+    const multi = actives.length > 1;
+
+    // Consulta uma integração; se falhar, só ela some e a outra continua aparecendo.
+    const quote = async (active: ActiveShippingIntegration): Promise<{ options: ShippingOption[]; failed: boolean }> => {
+      try {
+        // (a checagem prévia de credencial foi removida: era uma chamada a mais antes de cada cotação; a própria cotação já acusa erro)
+        const res = await supabase.functions.invoke(active.functionName, {
+          body: { to_postal_code: cep, tenant_id: params.tenantId, products },
+        });
+        const data: any = res.data;
+        if (res.error || data?.success === false || !Array.isArray(data?.shipping_options)) return { options: [], failed: true };
+
+        const display = shippingProviderLabel(active.provider);
+        const carrier = data.shipping_options
+          .filter((o: any) => o && !o.error && o.price)
+          .map((o: any) => {
+            const rawId = String(o.service_id || o.id || Math.random());
+            return {
+              // Com 2 integrações, o id da tela leva o provider para não colidir entre transportadoras
+              id: multi ? `${active.provider}:${rawId}` : rawId,
+              raw_id: rawId,
+              provider: active.provider,
+              name: String(o.service_name || o.name || 'Transportadora'),
+              company: display,
+              price: parseFloat(o.custom_price || o.price || 0) || 0,
+              delivery_time: String(o.delivery_time || '5-10 dias'),
+            } as ShippingOption;
+          });
+        return { options: filterCarrierOptions(carrier, active.provider), failed: false };
+      } catch {
+        return { options: [], failed: true };
+      }
+    };
+
+    const [options, ...results] = await Promise.all([customP, ...actives.map(quote)]);
+    let carrierOptions = results.flatMap((r) => r.options);
+    if (multi) carrierOptions = [...carrierOptions].sort((a, b) => a.price - b.price);
+
+    const anyFailed = results.some((r) => r.failed);
+    if (carrierOptions.length === 0 && anyFailed) {
+      return { options, notice: 'Não foi possível consultar a transportadora. Mostrando as opções da loja.' };
+    }
+    return { options: [...options, ...carrierOptions] };
+  })();
+
+  shipInflight.set(key, job);
+  try {
+    const res = await job;
+    // só guarda no cache o que não foi falha de transportadora (falha passageira não pode ficar valendo por 5 minutos)
+    if (!res.notice) shipCache.set(key, { ts: Date.now(), res });
+    return res;
+  } finally {
+    shipInflight.delete(key);
+  }
 }

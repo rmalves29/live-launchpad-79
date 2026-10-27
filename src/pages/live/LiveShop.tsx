@@ -702,16 +702,28 @@ export default function LiveShop() {
     let alive = true;
     (async () => {
       setShipLoading(true);
-      const res = await calculateLiveShipping({ tenantId: meta.tenant.id, cep: cepForShipping, lines, cartTotal: cartSubtotal(lines) });
+      const apply = (options: ShippingOption[]) => {
+        if (!alive) return;
+        setShipOptions(options);
+        setShipId((prev) => (options.some((o) => o.id === prev) ? prev : options.slice().sort((a, b) => a.price - b.price)[0]?.id || ''));
+      };
+      // As opções da própria loja (frete fixo, grátis, retirada) aparecem na hora; as das transportadoras entram quando chegam.
+      const res = await calculateLiveShipping({ tenantId: meta.tenant.id, cep: cepForShipping, lines, cartTotal: cartSubtotal(lines), onPartial: apply });
       if (!alive) return;
-      setShipOptions(res.options);
+      apply(res.options);
       setShipNotice(res.notice || '');
-      setShipId((prev) => (res.options.some((o) => o.id === prev) ? prev : res.options.slice().sort((a, b) => a.price - b.price)[0]?.id || ''));
       setShipLoading(false);
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen, meta?.tenant.id, cepForShipping, JSON.stringify(lines.map((l) => [l.product_id, l.qty]))]);
+
+  // Aquece o frete enquanto a cliente ainda está na vitrine/carrinho: ao abrir "Finalizar pedido" o valor já está em cache.
+  useEffect(() => {
+    if (screen === 'checkout' || !meta || !cepForShipping || cart.length === 0) return;
+    calculateLiveShipping({ tenantId: meta.tenant.id, cep: cepForShipping, lines: cart, cartTotal: cartSubtotal(cart) }).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, meta?.tenant.id, cepForShipping, JSON.stringify(cart.map((l) => [l.product_id, l.qty]))]);
 
   // ------------------------------------------------ pedido e pagamento
   async function placeOrder(method: 'pix' | 'card' = pay) {
