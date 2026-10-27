@@ -170,6 +170,29 @@ function isServiceEnabled(enabledServices: Record<string, boolean> | null, servi
   return enabledServices[serviceName] !== false;
 }
 
+// Cache por prefixo de CEP (5 primeiros dígitos): CEPs vizinhos têm preço/prazo praticamente iguais, então a
+// segunda cliente da mesma região recebe o frete na hora, sem esperar os Correios. Vale por 3 horas.
+const QUOTE_TTL_MS = 3 * 60 * 60 * 1000;
+
+async function readQuoteCache(supabase: any, tenantId: string, prefix: string, key: string): Promise<any[] | null> {
+  try {
+    const { data } = await supabase.from("shipping_quote_cache").select("options, created_at")
+      .eq("tenant_id", tenantId).eq("provider", "correios").eq("cep_prefix", prefix).eq("weight_key", key).maybeSingle();
+    if (data && Array.isArray(data.options) && data.options.length > 0 && Date.now() - new Date(data.created_at).getTime() < QUOTE_TTL_MS) return data.options;
+  } catch (e) { console.error("[correios] cache read:", (e as Error).message); }
+  return null;
+}
+
+async function writeQuoteCache(supabase: any, tenantId: string, prefix: string, key: string, options: any[]) {
+  try {
+    await supabase.from("shipping_quote_cache").upsert(
+      { tenant_id: tenantId, provider: "correios", cep_prefix: prefix, weight_key: key, options, created_at: new Date().toISOString() },
+      { onConflict: "tenant_id,provider,cep_prefix,weight_key" },
+    );
+    if (Math.random() < 0.02) await supabase.from("shipping_quote_cache").delete().lt("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+  } catch (e) { console.error("[correios] cache write:", (e as Error).message); }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -218,6 +241,17 @@ serve(async (req) => {
     for (const p of productsList) pesoTotal += (p.weight || 0.3) * (p.quantity || 1);
     pesoTotal = Math.max(pesoTotal, 0.3);
 
+    // Chave: origem + faixa de peso (50 g) + serviços habilitados. Mudou a configuração da loja, a chave muda.
+    const enabledKey = Object.entries(enabledServices || {}).filter(([, v]) => v !== false).map(([k]) => k).sort().join(",");
+    const cacheKey = `${cepOrigem}|w${Math.ceil(pesoTotal * 20)}|${enabledKey}`;
+    const cachePrefix = cepDestino.slice(0, 5);
+    const cached = cepDestino.length === 8 ? await readQuoteCache(supabase, tenant_id, cachePrefix, cacheKey) : null;
+    if (cached) {
+      console.log("[correios] cache hit", cachePrefix, cacheKey);
+      return new Response(JSON.stringify({ success: true, shipping_options: cached, provider: "correios", cached: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     let shippingOptions: any[] = [];
 
     // ESTRATÉGIA 1: API CWS autenticada
@@ -261,6 +295,7 @@ serve(async (req) => {
 
         if (shippingOptions.length > 0) {
           console.log("[correios] CWS options:", shippingOptions.length);
+          if (cepDestino.length === 8) await writeQuoteCache(supabase, tenant_id, cachePrefix, cacheKey, shippingOptions);
           return new Response(JSON.stringify({ success: true, shipping_options: shippingOptions, provider: "correios" }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
@@ -280,6 +315,7 @@ serve(async (req) => {
 
     if (shippingOptions.length > 0) {
       console.log("[correios] Public API options:", shippingOptions.length);
+      if (cepDestino.length === 8) await writeQuoteCache(supabase, tenant_id, cachePrefix, cacheKey, shippingOptions);
       return new Response(JSON.stringify({ success: true, shipping_options: shippingOptions, provider: "correios" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
