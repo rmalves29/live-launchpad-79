@@ -327,12 +327,17 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
         }
         const ordersTotal = Math.min(ordersTotalCount ?? orderData.length, ORDERS_HARD_CAP);
         const hasMore = ordersTotalCount != null ? ordersTotal > FIRST_PAGE_SIZE : orderData.length >= FIRST_PAGE_SIZE;
-        await loadCustomersFor(orderData);
-        if (stale()) return;
-        setOrders(withDetails(orderData));
+        // A lista aparece JÁ com os pedidos (o nome vem do próprio pedido); os dados do cadastro (Instagram, CPF, endereço)
+        // entram assim que a consulta de clientes responder, sem segurar a tela.
+        let currentRows = orderData;
+        setOrders(withDetails(currentRows));
         setLoading(false);
         perf.listaVisivel = Math.round(performance.now() - perfStart);
         if (hasMore) setLoadingRest(true);
+        const firstCustomers = loadCustomersFor(orderData).then(() => {
+          if (!stale()) setOrders(withDetails(currentRows));
+          perf.clientesDaPrimeiraFatia = Math.round(performance.now() - perfStart);
+        });
 
         // Etapa 2
         if (hasMore) {
@@ -359,9 +364,12 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
           }
           perf.todosPedidos = Math.round(performance.now() - perfStart);
           if (stale()) return;
-          await loadCustomersFor(orderData);
+          currentRows = orderData;
+          await Promise.all([firstCustomers, loadCustomersFor(orderData)]);
           if (stale()) return;
           setOrders(withDetails(orderData));
+        } else {
+          await firstCustomers;
         }
 
         const uniquePhones = [...new Set(orderData.map(o => o.customer_phone))];
