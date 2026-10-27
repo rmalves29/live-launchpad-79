@@ -417,6 +417,10 @@ export default function LiveShop() {
   const pixPct = pay === 'pix' ?meta?.payment.pix_discount_percent || 0 : 0;
   const pixOff = pixPct > 0 ? Math.round((Math.max(0, subtotal - couponOff) * pixPct) / 100 * 100) / 100 : 0;
   const totalFinal = Math.max(0, subtotal - couponOff - pixOff) + shipPrice;
+  // Tela de finalizar: o total base (sem desconto Pix) e quanto o Pix abate; cada botão de pagar mostra o seu valor.
+  const pixPctMeta = meta?.payment.pix_discount_percent || 0;
+  const pixDiscountOnBase = Math.round((Math.max(0, subtotal - couponOff) * pixPctMeta) / 100 * 100) / 100;
+  const baseTotal = Math.max(0, subtotal - couponOff) + shipPrice;
   const reserveLeft = expiresAt ? Math.max(0, Math.round((expiresAt - tick) / 1000)) : null;
 
   // ------------------------------------------------ carrinho
@@ -710,8 +714,11 @@ export default function LiveShop() {
   }, [screen, meta?.tenant.id, cepForShipping, JSON.stringify(lines.map((l) => [l.product_id, l.qty]))]);
 
   // ------------------------------------------------ pedido e pagamento
-  async function placeOrder() {
+  async function placeOrder(method: 'pix' | 'card' = pay) {
     if (!meta || !customer) return;
+    setPay(method);
+    // o desconto Pix depende da forma escolhida agora (o estado `pay` só atualiza no próximo render)
+    const pixOff = method === 'pix' ? Math.round((Math.max(0, subtotal - couponOff) * (meta.payment.pix_discount_percent || 0)) / 100 * 100) / 100 : 0;
     if (!selectedShip) { toast('Escolha uma opção de frete'); return; }
     if (!validCpf(customer.cpf)) { setForm({ ...EMPTY_CUSTOMER, ...customer }); setFormError('Confirme seu CPF para continuar.'); setModal({ type: 'signup' }); return; }
     setBusy(true);
@@ -753,7 +760,7 @@ export default function LiveShop() {
           shippingCost: selectedShip.price, shippingData, total: payTotal.toString(),
           coupon_discount: order.coupon_discount || 0, coupon_code: order.coupon_code || null,
           tenant_id: meta.tenant.id, tenant_slug: meta.tenant.slug, merge_observation: null,
-          payment_method: pay, pix_discount: pixOff,
+          payment_method: method, pix_discount: pixOff,
         },
       });
 
@@ -1078,20 +1085,6 @@ export default function LiveShop() {
           </div>
 
           <div className="sec">
-            <h3>Forma de pagamento</h3>
-            {meta?.payment.pix && (
-              <button className="opt" role="radio" aria-checked={pay === 'pix'} onClick={() => setPay('pix')} type="button">
-                <span className="dot" /><span className="t"><b>Pix</b><small>Aprovação na hora{(meta?.payment.pix_discount_percent || 0) > 0 ? ` · ${meta?.payment.pix_discount_percent}% de desconto` : ''}</small></span>
-              </button>
-            )}
-            {meta?.payment.card && (
-              <button className="opt" role="radio" aria-checked={pay === 'card'} onClick={() => setPay('card')} type="button">
-                <span className="dot" /><span className="t"><b>Cartão de crédito</b><small>{cardInfoText}</small></span>
-              </button>
-            )}
-          </div>
-
-          <div className="sec">
             <h3>Frete</h3>
             {shipLoading && <p className="note">Calculando frete…</p>}
             {!shipLoading && shipOptions.length === 0 && <p className="note">Nenhuma opção de frete disponível para este CEP. Fale com a loja.</p>}
@@ -1112,17 +1105,26 @@ export default function LiveShop() {
               {original > subtotal && <div className="r sb"><span>Preço original</span><span>{brl(original)}</span></div>}
               {original > subtotal && <div className="r sb"><span>Desconto no produto</span><span className="neg">- {brl(original - subtotal)}</span></div>}
               {couponOff > 0 && <div className="r"><span>Cupom {effectiveCode}</span><span className="neg">- {brl(couponOff)}</span></div>}
-              {pixOff > 0 && <div className="r"><span>Desconto Pix ({pixPct}%)</span><span className="neg">- {brl(pixOff)}</span></div>}
               <div className="r"><span>Frete</span><span>{selectedShip ? (shipPrice ? brl(shipPrice) : 'Grátis') : '—'}</span></div>
-              <div className="r tot"><span>Total</span><span>{brl(totalFinal)}</span></div>
+              <div className="r tot"><span>Total</span><span>{brl(baseTotal)}</span></div>
+              {meta?.payment.pix && pixPctMeta > 0 && <div className="r sb"><span>Pagando no Pix: {pixPctMeta}% de desconto</span><span className="neg">{brl(baseTotal - pixDiscountOnBase)}</span></div>}
             </div>
           </div>
         </div>
         <div className="foot"><div className="in">
-          {(original - subtotal + couponOff + pixOff) > 0 && <div className="save">Você está economizando {brl(original - subtotal + couponOff + pixOff)} neste pedido</div>}
-          <button className="cta block" onClick={placeOrder} disabled={busy || !selectedShip} type="button">
-            {busy ? 'Criando seu pedido…' : `Fazer pedido · ${brl(totalFinal)}`}
-          </button>
+          {(original - subtotal + couponOff) > 0 && <div className="save">Você está economizando {brl(original - subtotal + couponOff)} neste pedido</div>}
+          {/* Um toque na forma de pagamento já cria o pedido e abre a página de pagamento (sem botão "Fazer pedido") */}
+          {meta?.payment.pix && (
+            <button className="cta block" onClick={() => placeOrder('pix')} disabled={busy || !selectedShip} type="button">
+              {busy ? 'Abrindo o pagamento…' : `Pagar com Pix · ${brl(baseTotal - pixDiscountOnBase)}${pixPctMeta > 0 ? ` (${pixPctMeta}% off)` : ''}`}
+            </button>
+          )}
+          {meta?.payment.card && (
+            <button className={meta?.payment.pix ? 'cta block alt' : 'cta block'} style={meta?.payment.pix ? { marginTop: 8, background: 'transparent', color: 'var(--accent)', border: '1.5px solid var(--accent)' } : undefined} onClick={() => placeOrder('card')} disabled={busy || !selectedShip} type="button">
+              {busy ? 'Abrindo o pagamento…' : `Pagar com cartão · ${brl(baseTotal)}`}
+            </button>
+          )}
+          {meta?.payment.card && <div className="note" style={{ textAlign: 'center', marginTop: 6 }}>{cardInfoText}</div>}
         </div></div>
       </>
     );
