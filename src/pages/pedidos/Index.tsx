@@ -188,6 +188,27 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(25);
 
+    // Busca por produto: ids dos carrinhos que têm o produto procurado (null = sem busca/ainda carregando)
+    const [productMatchCartIds, setProductMatchCartIds] = useState<Set<number> | null>(null);
+    useEffect(() => {
+      const term = debouncedProductSearch.trim();
+      if (!term) { setProductMatchCartIds(null); return; }
+      let alive = true;
+      (async () => {
+        try {
+          const safe = term.replace(/[%,()*]/g, ' ');
+          let q = supabaseTenant.raw.from('cart_items').select('cart_id');
+          const tid = supabaseTenant.getTenantId();
+          if (tid) q = q.eq('tenant_id', tid);
+          const { data } = await q.or(`product_name.ilike.%${safe}%,product_code.ilike.%${safe}%`).limit(20000);
+          if (alive) setProductMatchCartIds(new Set((data || []).map((r: any) => Number(r.cart_id))));
+        } catch {
+          if (alive) setProductMatchCartIds(null);
+        }
+      })();
+      return () => { alive = false; };
+    }, [debouncedProductSearch]);
+
     const loadOrders = async () => {
       try {
         setLoading(true);
@@ -301,82 +322,37 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
         const cartIds = orderData.filter(o => o.cart_id).map(o => o.cart_id!);
         const uniqueCartIds = [...new Set(cartIds)];
 
-        const cartItemsSelect = `
-          id,
-          cart_id,
-          qty,
-          unit_price,
-          product_name,
-          product_code,
-          product_image_url,
-          product:products!cart_items_product_id_fkey (
-            name,
-            code,
-            image_url,
-            color,
-            size
+        // Clientes em lotes pequenos e em paralelo (uma lista gigante no endereço da consulta deixa tudo lento).
+        // Os itens do carrinho NÃO são mais carregados para todos os pedidos (eram milhares de linhas com junção de produto):
+        // abrir o pedido, imprimir e buscar por produto buscam só o que precisam.
+        const CUSTOMER_CHUNK = 150;
+        const phoneChunks: string[][] = [];
+        for (let i = 0; i < normalizedUniquePhones.length; i += CUSTOMER_CHUNK) {
+          phoneChunks.push(normalizedUniquePhones.slice(i, i + CUSTOMER_CHUNK));
+        }
+        const customerPages = await Promise.all(
+          phoneChunks.map(chunk =>
+            supabaseTenant
+              .from('customers')
+              .select('phone, name, cpf, street, number, complement, neighborhood, city, state, cep, instagram, bling_contact_id')
+              .in('phone', chunk)
           )
-        `;
-        const CART_ITEMS_PAGE_SIZE = 1000;
-
-        // Clientes e cart_items são independentes entre si — buscados em PARALELO
-        // (a paginação de cart_items também usa contagem exata + Promise.all, igual aos pedidos)
-        const [{ data: allCustomers }, { data: firstCartItemsPage, count: cartItemsTotalCount }] = await Promise.all([
-          supabaseTenant
-            .from('customers')
-            .select('phone, name, cpf, street, number, complement, neighborhood, city, state, cep, instagram, bling_contact_id')
-            .in('phone', normalizedUniquePhones),
-          uniqueCartIds.length > 0
-            ? supabaseTenant.raw
-                .from('cart_items')
-                .select(cartItemsSelect, { count: 'exact' })
-                .in('cart_id', uniqueCartIds)
-                .range(0, CART_ITEMS_PAGE_SIZE - 1)
-            : Promise.resolve({ data: [], count: 0 } as any)
-        ]);
+        );
+        const allCustomers: any[] = customerPages.flatMap(r => (r.data as any[]) || []);
 
         // Criar mapa de clientes por telefone para lookup O(1)
         // Usa telefone normalizado para garantir match mesmo com diferenças de formato
         const customerMap = new Map<string, any>();
-        (allCustomers || []).forEach(c => {
+        allCustomers.forEach(c => {
           customerMap.set(c.phone, c);
           customerMap.set(normalizeForStorage(c.phone), c);
-        });
-
-        let allCartItems: any[] = firstCartItemsPage || [];
-        const cartItemsTotal = cartItemsTotalCount ?? allCartItems.length;
-        if (uniqueCartIds.length > 0 && cartItemsTotal > CART_ITEMS_PAGE_SIZE) {
-          const remainingOffsets: number[] = [];
-          for (let off = CART_ITEMS_PAGE_SIZE; off < cartItemsTotal; off += CART_ITEMS_PAGE_SIZE) {
-            remainingOffsets.push(off);
-          }
-          const remainingCartPages = await Promise.all(
-            remainingOffsets.map(off =>
-              supabaseTenant.raw
-                .from('cart_items')
-                .select(cartItemsSelect)
-                .in('cart_id', uniqueCartIds)
-                .range(off, off + CART_ITEMS_PAGE_SIZE - 1)
-            )
-          );
-          for (const { data: page } of remainingCartPages) {
-            if (page) allCartItems = allCartItems.concat(page);
-          }
-        }
-
-        // Criar mapa de cart_items por cart_id para lookup O(1)
-        const cartItemsMap = new Map<number, any[]>();
-        allCartItems.forEach(item => {
-          const existing = cartItemsMap.get(item.cart_id) || [];
-          existing.push(item);
-          cartItemsMap.set(item.cart_id, existing);
         });
 
         // 3. Montar resultado final com lookups O(1)
         const ordersWithDetails = orderData.map(order => ({
           ...order,
           customer: customerMap.get(order.customer_phone) || customerMap.get(normalizeForStorage(order.customer_phone)) || undefined,
-          cart_items: order.cart_id ? (cartItemsMap.get(order.cart_id) || []) : []
+          cart_items: [] as any[]
         }));
 
         setOrders(ordersWithDetails);
@@ -1504,11 +1480,9 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
       const pSearch = debouncedProductSearch.trim().toLowerCase();
       if (!pSearch) return true;
 
-      return (order.cart_items || []).some(item => {
-        const prodName = (item.product_name || item.product?.name || '').toLowerCase();
-        const prodCode = (item.product_code || item.product?.code || '').toLowerCase();
-        return prodName.includes(pSearch) || prodCode.includes(pSearch);
-      });
+      // A busca por produto é feita no servidor (cart_items não vem mais carregado para todos os pedidos).
+      // Enquanto a resposta não chega, a lista continua inteira.
+      return productMatchCartIds === null ? true : !!order.cart_id && productMatchCartIds.has(order.cart_id);
     });
 
     // "1ª Compra": este pedido PAGO é o primeiro pedido pago da cliente na loja
