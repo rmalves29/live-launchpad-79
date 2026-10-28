@@ -120,14 +120,21 @@ serve(async (req) => {
       const onlyStock = body.only_stock !== false;
       let path = `/produtos?pagina=${page}&limite=${PAGE_SIZE}&criterio=2`;
       if (onlyStock) path += `&filtroSaldoEstoque=1&filtroSaldoEstoqueDeposito=${depositId}`;
-      if (search) path += `&nome=${encodeURIComponent(search)}`;
       if (storeId) path += `&idLoja=${storeId}`;
-      const list = await blingGet(token, path);
+      const list = await blingGet(token, search ? `${path}&nome=${encodeURIComponent(search)}` : path);
       if (!list.ok) {
         const msg = list.status === 401 ? "Token do Bling expirado. Autorize o Bling novamente." : list.data?.error?.description || `Erro ${list.status} ao listar produtos do Bling`;
         return json({ error: msg }, list.status === 401 ? 401 : 400);
       }
-      const raw: any[] = list.data?.data || [];
+      const raw: any[] = [...(list.data?.data || [])];
+      // A busca também aceita o SKU (código do produto no Bling): junta o que casar pelo código exato.
+      if (search && page === 1) {
+        const bySku = await blingGet(token, `${path}&codigos[]=${encodeURIComponent(search)}`);
+        if (bySku.ok) {
+          const seen = new Set(raw.map((p) => Number(p.id)));
+          for (const p of bySku.data?.data || []) if (!seen.has(Number(p.id))) raw.push(p);
+        }
+      }
       const named = (p: any) => String(p.nome || "").trim() && String(p.codigo || "").trim();
       let rows: any[] = raw.filter((p) => !p.idProdutoPai && named(p)).map((p) => ({ ...p, children_count: null as number | null }));
 

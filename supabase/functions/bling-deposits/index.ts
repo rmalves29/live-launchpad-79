@@ -15,6 +15,23 @@ const BLING_API = "https://api.bling.com.br/Api/v3";
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
+const PAGE_SIZE = 100; // máximo do Bling por página
+const MAX_PAGES = 30; // trava de segurança (3.000 depósitos)
+
+// O Bling entrega os depósitos em páginas de 100; percorre todas até acabar.
+async function fetchAllDeposits(headers: Record<string, string>): Promise<{ ok: true; items: any[] } | { ok: false; status: number; data: any }> {
+  const items: any[] = [];
+  for (let pagina = 1; pagina <= MAX_PAGES; pagina++) {
+    const res = await fetch(`${BLING_API}/depositos?limite=${PAGE_SIZE}&pagina=${pagina}`, { headers });
+    const data: any = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, status: res.status, data };
+    const page: any[] = data?.data || [];
+    items.push(...page);
+    if (page.length < PAGE_SIZE) break;
+  }
+  return { ok: true, items };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -42,9 +59,8 @@ serve(async (req) => {
       if (name.length < 2) return json({ error: "Informe o nome do depósito." }, 400);
 
       // não cria duplicado: se já existe um depósito com esse nome, devolve ele
-      const listRes = await fetch(`${BLING_API}/depositos?limite=100`, { headers });
-      const listJson: any = await listRes.json().catch(() => ({}));
-      const existing = (listJson?.data || []).find((d: any) => String(d.descricao || "").trim().toLowerCase() === name.toLowerCase());
+      const all = await fetchAllDeposits(headers);
+      const existing = (all.ok ? all.items : []).find((d: any) => String(d.descricao || "").trim().toLowerCase() === name.toLowerCase());
       if (existing) return json({ ok: true, existed: true, deposit: { id: existing.id, descricao: existing.descricao } });
 
       // padrao=false: o depósito padrão do Bling não muda; desconsiderarSaldo=false: o saldo conta normalmente
@@ -62,13 +78,12 @@ serve(async (req) => {
     }
 
     // list
-    const res = await fetch(`${BLING_API}/depositos?limite=100`, { headers });
-    const data: any = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const msg = res.status === 401 ? "Token do Bling expirado. Autorize o Bling novamente." : data?.error?.description || `Erro ${res.status} ao listar depósitos`;
-      return json({ error: msg, status: res.status }, res.status === 401 ? 401 : 400);
+    const all = await fetchAllDeposits(headers);
+    if (!all.ok) {
+      const msg = all.status === 401 ? "Token do Bling expirado. Autorize o Bling novamente." : all.data?.error?.description || `Erro ${all.status} ao listar depósitos`;
+      return json({ error: msg, status: all.status }, all.status === 401 ? 401 : 400);
     }
-    const deposits = (data?.data || [])
+    const deposits = all.items
       .filter((d: any) => d.situacao === 1 || d.situacao === undefined)
       .map((d: any) => ({
         id: d.id,

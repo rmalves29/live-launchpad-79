@@ -139,8 +139,8 @@ export default function BlingProductsImportPanel({ tenantId, depositName, stores
       <CardContent className="space-y-4">
         <div className="grid gap-3 md:grid-cols-3">
           <div className="space-y-1">
-            <Label htmlFor="imp_search">Buscar por nome</Label>
-            <Input id="imp_search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Ex.: brinco" onKeyDown={(e) => { if (e.key === 'Enter') load(1, false); }} />
+            <Label htmlFor="imp_search">Buscar por nome ou SKU</Label>
+            <Input id="imp_search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Ex.: brinco ou BR-001" onKeyDown={(e) => { if (e.key === 'Enter') load(1, false); }} />
           </div>
           <div className="space-y-1">
             <Label htmlFor="imp_store">Só produtos da loja</Label>
