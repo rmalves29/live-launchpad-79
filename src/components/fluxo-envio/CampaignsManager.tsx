@@ -89,7 +89,7 @@ export default function CampaignsManager() {
         .map((item) => ({ id: item.group_id, group_jid: item.fe_groups?.group_jid }))
         .filter((item) => item.group_jid);
 
-      const eventSummary = summarizeFlowEvents(tenantEvents, linkedGroups as any);
+      const eventSummary = summarizeFlowEvents(tenantEvents, linkedGroups as any, campaign.created_at);
       const clicks = clickCount || 0;
       const entries = eventSummary.entries || 0;
 

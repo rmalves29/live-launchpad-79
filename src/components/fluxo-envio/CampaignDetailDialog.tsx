@@ -149,7 +149,9 @@ export default function CampaignDetailDialog({
       const fullGroups = linkedGroups.filter((group) => group.max_participants && (group.participant_count || 0) >= group.max_participants).length;
       const availableGroups = linkedGroups.filter((group) => group.is_entry_open && group.is_active && (!group.max_participants || (group.participant_count || 0) < group.max_participants)).length;
 
-      // Contagem de entradas/saídas direto no servidor, filtrando apenas pelos grupos vinculados
+      // Contagem de entradas/saídas direto no servidor, filtrando apenas pelos grupos vinculados.
+      // Campanha nova começa zerada: só conta a partir da criação dela.
+      const campaignCreatedAt: string = (campData as any)?.created_at ?? '1970-01-01T00:00:00Z';
       let entries = 0;
       let exits = 0;
       if (linkedGroupIds.length > 0 || linkedGroupJids.length > 0) {
@@ -164,12 +166,14 @@ export default function CampaignDetailDialog({
             .select('id', { count: 'exact', head: true })
             .eq('tenant_id', tenant.id)
             .eq('event_type', 'join')
+            .gte('created_at', campaignCreatedAt)
             .or(orFilter),
           supabase
             .from('fe_group_events' as any)
             .select('id', { count: 'exact', head: true })
             .eq('tenant_id', tenant.id)
             .eq('event_type', 'leave')
+            .gte('created_at', campaignCreatedAt)
             .or(orFilter),
         ]);
         entries = joinCount || 0;

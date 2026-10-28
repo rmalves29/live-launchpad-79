@@ -48,7 +48,10 @@ export async function fetchAllTenantGroupEvents(tenantId: string, since?: string
   return events;
 }
 
-export function summarizeFlowEvents(events: FlowGroupEvent[], groups?: FlowGroupReference[]) {
+/** `since`: campanha nova começa zerada — só contam eventos a partir da criação dela. */
+export function summarizeFlowEvents(allEvents: FlowGroupEvent[], groups?: FlowGroupReference[], since?: string) {
+  const sinceMs = since ? new Date(since).getTime() : Number.NEGATIVE_INFINITY;
+  const events = since ? allEvents.filter((event) => new Date(event.created_at).getTime() >= sinceMs) : allEvents;
   if (!groups) {
     return events.reduce(
       (acc, event) => {
