@@ -277,7 +277,7 @@ export default function BlingProductsImportPanel({ tenantId, depositName, stores
 
         {rows.length > 0 && (
           <p className="text-xs text-muted-foreground">
-            "Novo" cria o produto no Cartzy. "Vincular" liga um produto que já existe no Cartzy (mesmo código) ao do Bling, sem mudar nada nele. O código "C" fica igual ao código do Bling até você editar o produto.
+            "Novo" cria o produto no Cartzy. "Vincular" liga um produto que já existe no Cartzy (mesmo código) ao do Bling, sem mudar nada nele. O código do Bling vai para o SKU ERP e o Cartzy cria o próprio código (C001, C002...).
           </p>
         )}
       </CardContent>
