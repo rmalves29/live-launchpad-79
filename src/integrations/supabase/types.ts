@@ -4028,6 +4028,8 @@ export type Database = {
       }
       products: {
         Row: {
+          bagy_product_id: number | null
+          bagy_variation_id: number | null
           bling_product_id: number | null
           category_id: string | null
           code: string
@@ -4051,6 +4053,8 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          bagy_product_id?: number | null
+          bagy_variation_id?: number | null
           bling_product_id?: number | null
           category_id?: string | null
           code: string
@@ -4074,6 +4078,8 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          bagy_product_id?: number | null
+          bagy_variation_id?: number | null
           bling_product_id?: number | null
           category_id?: string | null
           code?: string
@@ -4126,6 +4132,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      products_code_backup_20261027: {
+        Row: {
+          id: number | null
+          old_code: string | null
+          old_sku_erp: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          id?: number | null
+          old_code?: string | null
+          old_sku_erp?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          id?: number | null
+          old_code?: string | null
+          old_sku_erp?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -4804,6 +4831,48 @@ export type Database = {
           webhook_secret?: string | null
         }
         Relationships: []
+      }
+      shipping_quote_cache: {
+        Row: {
+          cep_prefix: string
+          created_at: string
+          options: Json
+          provider: string
+          tenant_id: string
+          weight_key: string
+        }
+        Insert: {
+          cep_prefix: string
+          created_at?: string
+          options: Json
+          provider: string
+          tenant_id: string
+          weight_key: string
+        }
+        Update: {
+          cep_prefix?: string
+          created_at?: string
+          options?: Json
+          provider?: string
+          tenant_id?: string
+          weight_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shipping_quote_cache_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shipping_quote_cache_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       storage_file_references: {
         Row: {

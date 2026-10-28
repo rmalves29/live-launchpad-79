@@ -430,7 +430,7 @@ export default function EmpresasIndex() {
         if (credentialError) throw credentialError;
 
         // Chamar Edge Function para criar o usuário admin com o role correto
-        const { error: adminError } = await supabase.functions.invoke('create-tenant-admin', {
+        const { data: adminData, error: adminError } = await supabase.functions.invoke('create-tenant-admin', {
           body: {
             tenant_id: tenantId,
             email: formAdminEmail,
@@ -439,9 +439,24 @@ export default function EmpresasIndex() {
           }
         });
 
+        let adminMsg: string | null = null;
         if (adminError) {
           console.error('Erro ao criar admin:', adminError);
-          // Não falhar a operação, apenas logar
+          adminMsg = adminError.message;
+          try {
+            const ctx: any = (adminError as any).context;
+            if (ctx && typeof ctx.json === 'function') {
+              const body = await ctx.json();
+              if (body?.error) adminMsg = body.error;
+            }
+          } catch { /* ignore */ }
+        } else if (adminData && (adminData as any).error) {
+          adminMsg = (adminData as any).error;
+        }
+        if (adminMsg) {
+          await loadTenants();
+          setError(`Empresa salva, mas o login do administrador não foi criado: ${adminMsg}`);
+          return;
         }
       }
 
@@ -775,7 +790,12 @@ export default function EmpresasIndex() {
                 Nova Empresa
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent
+              className="max-w-2xl max-h-[90vh] overflow-y-auto"
+              onInteractOutside={(e) => e.preventDefault()}
+              onPointerDownOutside={(e) => e.preventDefault()}
+              onEscapeKeyDown={(e) => e.preventDefault()}
+            >
               <DialogHeader>
                 <DialogTitle>
                   {editingTenant ? 'Editar Empresa' : 'Nova Empresa'}
