@@ -59,6 +59,7 @@ export default function BagyProductsImportPanel({ tenantId }: Props) {
   const [nextPage, setNextPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [debug, setDebug] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [importing, setImporting] = useState(false);
@@ -78,6 +79,7 @@ export default function BagyProductsImportPanel({ tenantId }: Props) {
       setNextPage(data.next_page || page + 1);
       setHasMore(!!data.has_more);
       setSearched(true);
+      setDebug(data.debug || null);
       if (!append) { setSelected(new Set()); setResults({}); }
     } catch (e: any) {
       toast.error(e?.message || 'Erro ao buscar produtos da Bagy');
@@ -170,6 +172,13 @@ export default function BagyProductsImportPanel({ tenantId }: Props) {
               <div className="h-full bg-primary transition-all" style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }} />
             </div>
             <p className="text-xs text-muted-foreground">Importando {progress.done} de {progress.total}…</p>
+          </div>
+        )}
+
+        {debug && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 space-y-1">
+            <p><strong>{debug.sem_sku} produto(s) vieram sem SKU da Bagy.</strong> Se isso não é esperado, mande este texto para o suporte:</p>
+            <pre className="whitespace-pre-wrap break-all">{JSON.stringify(debug, null, 1)}</pre>
           </div>
         )}
 

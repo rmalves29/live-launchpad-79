@@ -50,7 +50,14 @@ const num = (v: any) => {
 // Estoque disponível da variação = saldo menos o que está reservado em pedidos abertos
 const availableOf = (v: any) => Math.max(0, Math.floor(num(v?.balance) - num(v?.reserved_balance)));
 
-const skuOf = (v: any): string => String(v?.sku || v?.reference || "").trim();
+const ownSku = (o: any): string => String(o?.sku || o?.reference || "").trim();
+// SKU da variação; produto de uma variação só (ou sem variações) pode trazer o SKU no próprio produto
+const skuOf = (v: any, p?: any, count = 2): string => ownSku(v) || (count <= 1 ? ownSku(p) : "");
+// Mostra só campos de código (nunca dados do cliente) para diagnosticar quando a Bagy não devolve SKU
+const peek = (o: any) => ({
+  campos: o && typeof o === "object" ? Object.keys(o).slice(0, 40) : [],
+  sku: o?.sku ?? null, reference: o?.reference ?? null, gtin: o?.gtin ?? null, mpn: o?.mpn ?? null, external_id: o?.external_id ?? null,
+});
 
 // A documentação não detalha o formato da imagem na resposta: aceita texto ou objeto com src/url/link
 function imageOf(obj: any): string | null {
@@ -118,7 +125,7 @@ serve(async (req) => {
 
       // o que já existe no Cartzy
       const ids = collected.map((c) => Number(c.p.id));
-      const codes = [...new Set(collected.flatMap((c) => c.vars.map(skuOf)).filter(Boolean))];
+      const codes = [...new Set(collected.flatMap((c) => [ownSku(c.p), ...c.vars.map((v: any) => skuOf(v, c.p, c.vars.length))]).filter(Boolean))];
       const byId = new Map<number, any>();
       const byCode = new Map<string, any>();
       if (ids.length) {
@@ -137,10 +144,10 @@ serve(async (req) => {
       const rows = collected.map(({ p, vars, total }) => {
         const id = Number(p.id);
         const linkedRow = byId.get(id);
-        const sameRow = vars.map((v) => byCode.get(skuOf(v).toLowerCase())).find(Boolean);
+        const sameRow = [ownSku(p), ...vars.map((v: any) => skuOf(v, p, vars.length))].filter(Boolean).map((c) => byCode.get(c.toLowerCase())).find(Boolean);
         return {
           bagy_id: id,
-          codigo: skuOf(vars[0]) || "—",
+          codigo: ownSku(p) || skuOf(vars[0], p, vars.length) || "—",
           nome: String(p.name || "").trim(),
           preco: num(p.price),
           formato: vars.length > 1 ? "V" : "S",
@@ -151,7 +158,9 @@ serve(async (req) => {
           cartzy_id: linkedRow?.id ?? sameRow?.id ?? null,
         };
       });
-      return json({ ok: true, next_page: page, has_more: hasMore, scanned, rows });
+      const semSku = rows.filter((r) => r.codigo === "—").length;
+      const debug = semSku && collected[0] ? { sem_sku: semSku, produto: peek(collected[0].p), variacao: peek(collected[0].vars[0]) } : null;
+      return json({ ok: true, next_page: page, has_more: hasMore, scanned, rows, debug });
     }
 
     // ======================= IMPORTAÇÃO =======================
@@ -190,12 +199,12 @@ serve(async (req) => {
           const active = p.active !== false;
 
           // vínculo com produto que já existe no Cartzy (pelo SKU)
-          const link = await findLinkable(vars.map(skuOf));
+          const link = await findLinkable([ownSku(p), ...vars.map((v: any) => skuOf(v, p, vars.length))]);
           if (link) {
             await supabase.from("products").update({
               bagy_product_id: id,
               bagy_variation_id: isParent ? null : single?.id ?? null,
-              sku_erp: isParent ? undefined : skuOf(single) || undefined,
+              sku_erp: isParent ? undefined : skuOf(single, p, vars.length) || undefined,
               updated_at: new Date().toISOString(),
             }).eq("id", link.id);
             results.push({ bagy_id: id, status: "vinculado", cartzy_id: link.id, note: isParent ? "Variações não importadas: o produto já existia no Cartzy." : undefined });
@@ -216,7 +225,7 @@ serve(async (req) => {
             sale_type: saleType,
             bagy_product_id: id,
             bagy_variation_id: isParent ? null : single?.id ?? null,
-            sku_erp: isParent ? null : skuOf(single) || null,
+            sku_erp: isParent ? ownSku(p) || null : skuOf(single, p, vars.length) || null,
           }).select("id").single();
           if (pErr || !parentRow) { results.push({ bagy_id: id, status: "erro", error: pErr?.message || "Falha ao criar o produto" }); continue; }
 
@@ -224,7 +233,7 @@ serve(async (req) => {
           if (isParent) {
             for (const v of vars) {
               const lab = variationLabel(v);
-              const vsku = skuOf(v);
+              const vsku = skuOf(v, p, vars.length);
               const { error: cErr } = await supabase.from("products").insert({
                 tenant_id: tenantId,
                 code: nextCode(),
