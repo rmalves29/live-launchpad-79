@@ -45,6 +45,42 @@ export function getHelpPageMeta(pathname: string): HelpPageMeta {
 
 export const ALL_HELP_PAGES: HelpPageMeta[] = MAP.map(({ key, label }) => ({ key, label }));
 
+// Áreas em que os tutoriais são agrupados (ordem = ordem de exibição).
+export const HELP_GROUPS: Array<{ id: string; label: string; keys: string[] }> = [
+  { id: 'comece', label: 'Comece por aqui', keys: ['dashboard', 'config', 'integracoes'] },
+  { id: 'live', label: 'Live e vendas', keys: ['live', 'pedidos', 'pedidos-manual', 'sorteio', 'fila-espera'] },
+  { id: 'catalogo', label: 'Produtos e clientes', keys: ['produtos', 'clientes', 'etiquetas', 'relatorios'] },
+  {
+    id: 'whatsapp',
+    label: 'WhatsApp e mensagens',
+    keys: [
+      'whatsapp-conexao', 'whatsapp-oficial', 'whatsapp-templates', 'whatsapp-cobranca',
+      'envios-ativos', 'sendflow', 'fluxo-envio', 'push',
+    ],
+  },
+  { id: 'ia', label: 'Inteligência artificial', keys: ['agente-ia', 'suporte-ia'] },
+  {
+    id: 'admin',
+    label: 'Administração',
+    keys: ['empresas', 'admin', 'admin-tutoriais', 'admin-comunicados', 'admin-saude', 'admin-erros'],
+  },
+];
+
+export function getHelpGroup(pageKey: string) {
+  return HELP_GROUPS.find((g) => g.keys.includes(pageKey));
+}
+
+// Posição de uma página na ordem de exibição (grupo, depois ordem dentro do grupo).
+export function helpPageRank(pageKey: string): number {
+  let rank = 0;
+  for (const g of HELP_GROUPS) {
+    const i = g.keys.indexOf(pageKey);
+    if (i >= 0) return rank + i;
+    rank += g.keys.length;
+  }
+  return rank;
+}
+
 export function extractYoutubeId(url: string): string | null {
   if (!url) return null;
   try {

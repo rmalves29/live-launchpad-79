@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, Youtube, ExternalLink } from 'lucide-react';
-import { ALL_HELP_PAGES, extractYoutubeId } from '@/lib/help-page-key';
+import { ALL_HELP_PAGES, extractYoutubeId, getHelpGroup, helpPageRank } from '@/lib/help-page-key';
 
 interface Tutorial {
   id: string;
@@ -100,10 +100,23 @@ export default function Tutoriais() {
     load();
   }
 
-  const grouped = items.reduce<Record<string, Tutorial[]>>((acc, t) => {
-    (acc[t.page_key] ||= []).push(t);
-    return acc;
-  }, {});
+  const [query, setQuery] = useState('');
+
+  // Páginas na mesma ordem da Central de Ajuda (por área); busca por título ou página.
+  const grouped = items
+    .filter((t) => {
+      const q = query.trim().toLowerCase();
+      if (!q) return true;
+      const label = ALL_HELP_PAGES.find((p) => p.key === t.page_key)?.label || t.page_key;
+      return `${t.title} ${label}`.toLowerCase().includes(q);
+    })
+    .reduce<Record<string, Tutorial[]>>((acc, t) => {
+      (acc[t.page_key] ||= []).push(t);
+      return acc;
+    }, {});
+  const orderedGroups = Object.entries(grouped).sort(
+    ([a], [b]) => helpPageRank(a) - helpPageRank(b)
+  );
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -119,6 +132,15 @@ export default function Tutoriais() {
         </Button>
       </div>
 
+      {items.length > 0 && (
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Buscar por título ou página"
+          className="max-w-md"
+        />
+      )}
+
       {loading ? (
         <p className="text-sm text-muted-foreground">Carregando...</p>
       ) : items.length === 0 ? (
@@ -126,13 +148,17 @@ export default function Tutoriais() {
           Nenhum tutorial cadastrado ainda.
         </Card>
       ) : (
-        Object.entries(grouped).map(([key, list]) => {
+        orderedGroups.map(([key, list]) => {
           const label = ALL_HELP_PAGES.find((p) => p.key === key)?.label || key;
+          const area = getHelpGroup(key)?.label;
           return (
             <Card key={key} className="p-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary">{key}</Badge>
+              <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="font-semibold">{label}</h2>
+                {area && <Badge variant="secondary">{area}</Badge>}
+                <span className="text-xs text-muted-foreground">
+                  {list.length} {list.length === 1 ? 'vídeo' : 'vídeos'}
+                </span>
               </div>
               <div className="grid gap-2">
                 {list.map((t) => (
@@ -186,7 +212,7 @@ export default function Tutoriais() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {ALL_HELP_PAGES.map((p) => (
+                  {[...ALL_HELP_PAGES].sort((a, b) => helpPageRank(a.key) - helpPageRank(b.key)).map((p) => (
                     <SelectItem key={p.key} value={p.key}>
                       {p.label} <span className="text-muted-foreground">({p.key})</span>
                     </SelectItem>
