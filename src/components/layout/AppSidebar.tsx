@@ -116,10 +116,8 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       label: 'Comunicação',
       entries: [
         { type: 'item', item: { path: '/comunicacao/push', label: 'Push', icon: Bell } },
-        // Super admin gerencia os vídeos; as clientes assistem na Central de Ajuda (também no celular, onde não há barra superior)
-        ...(isSuperAdmin
-          ? [{ type: 'item' as const, item: { path: '/admin/tutoriais', label: 'Tutoriais', icon: PlayCircle } }]
-          : [{ type: 'item' as const, item: { path: '/ajuda', label: 'Tutoriais', icon: PlayCircle } }]),
+        // Todos assistem na Central de Tutoriais; o super admin gerencia os vídeos pelo botão "Gerenciar vídeos" dela
+        { type: 'item' as const, item: { path: '/ajuda', label: 'Tutoriais', icon: PlayCircle } },
 
         {
           type: 'collapsible',
