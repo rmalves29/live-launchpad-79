@@ -13,16 +13,11 @@ import {
   getHelpGroup,
   helpPageRank,
 } from '@/lib/help-page-key';
-import { Play, Search, X, Settings2, PlayCircle } from 'lucide-react';
+import { TutorialFormDialog, type TutorialRow } from '@/components/ajuda/TutorialFormDialog';
+import { toast } from 'sonner';
+import { Play, Search, X, Plus, Pencil, Trash2, PlayCircle } from 'lucide-react';
 
-interface Tutorial {
-  id: string;
-  page_key: string;
-  title: string;
-  youtube_url: string;
-  description: string | null;
-  sort_order: number;
-}
+type Tutorial = TutorialRow;
 
 const pageLabel = (key: string) => ALL_HELP_PAGES.find((p) => p.key === key)?.label || key;
 const thumb = (url: string) => {
@@ -40,15 +35,36 @@ export default function Ajuda() {
   const [query, setQuery] = useState('');
   const [activeGroup, setActiveGroup] = useState('');
   const [selectedId, setSelectedId] = useState('');
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Tutorial | null>(null);
+
+  async function load() {
+    const { data } = await supabase.from('help_tutorials').select('*').order('sort_order');
+    setItems((data as Tutorial[]) || []);
+    setLoading(false);
+  }
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      const { data } = await supabase.from('help_tutorials').select('*').order('sort_order');
-      setItems((data as Tutorial[]) || []);
-      setLoading(false);
-    })();
+    load();
   }, []);
+
+  function openNew() {
+    setEditing(null);
+    setFormOpen(true);
+  }
+
+  function openEdit(t: Tutorial) {
+    setEditing(t);
+    setFormOpen(true);
+  }
+
+  async function remove(t: Tutorial) {
+    if (!confirm(`Excluir "${t.title}"?`)) return;
+    const { error } = await supabase.from('help_tutorials').delete().eq('id', t.id);
+    if (error) return toast.error(error.message);
+    toast.success('Vídeo excluído.');
+    load();
+  }
 
   const sorted = useMemo(
     () =>
@@ -62,26 +78,38 @@ export default function Ajuda() {
   const list = useMemo(
     () =>
       sorted.filter((t) => {
-        if (activePage && t.page_key !== activePage) return false;
         if (activeGroup && getHelpGroup(t.page_key)?.id !== activeGroup) return false;
         if (!q) return true;
         return `${t.title} ${t.description ?? ''} ${pageLabel(t.page_key)}`.toLowerCase().includes(q);
       }),
-    [sorted, activePage, activeGroup, q]
+    [sorted, activeGroup, q]
   );
 
   // O vídeo aberto: o escolhido, se ainda estiver na lista; senão o primeiro.
-  const current = list.find((t) => t.id === selectedId) || list[0];
+  // ?page=... (botão de ajuda da barra superior) abre o primeiro vídeo daquela página.
+  const current =
+    list.find((t) => t.id === selectedId) ||
+    (activePage ? list.find((t) => t.page_key === activePage) : undefined) ||
+    list[0];
   const currentId = current ? extractYoutubeId(current.youtube_url) : null;
 
-  const groupsWithVideos = HELP_GROUPS.filter((g) => items.some((t) => getHelpGroup(t.page_key)?.id === g.id));
-  const filtering = !!(activePage || activeGroup || q);
+  const countByGroup = (id: string) => items.filter((t) => getHelpGroup(t.page_key)?.id === id).length;
+  const filtering = !!(activeGroup || q);
 
   function clearFilters() {
     setQuery('');
     setActiveGroup('');
     setParams({});
   }
+
+  // Lista agrupada por categoria (quando não há filtro); sem categoria conhecida vai para "Outros".
+  const groupedList = HELP_GROUPS.map((g) => ({
+    id: g.id,
+    label: g.label,
+    videos: list.filter((t) => getHelpGroup(t.page_key)?.id === g.id),
+  }))
+    .concat([{ id: 'outros', label: 'Outros', videos: list.filter((t) => !getHelpGroup(t.page_key)) }])
+    .filter((g) => g.videos.length > 0);
 
   return (
     <div className="mx-auto max-w-7xl space-y-5 p-4 sm:p-6">
@@ -91,10 +119,8 @@ export default function Ajuda() {
           <p className="text-sm text-muted-foreground">Aprenda a usar o sistema, passo a passo.</p>
         </div>
         {isSuperAdmin && (
-          <Button asChild size="sm" variant="outline">
-            <Link to="/admin/tutoriais">
-              <Settings2 className="mr-1.5 h-4 w-4" /> Gerenciar vídeos
-            </Link>
+          <Button size="sm" onClick={openNew}>
+            <Plus className="mr-1.5 h-4 w-4" /> Novo vídeo
           </Button>
         )}
       </div>
@@ -130,7 +156,19 @@ export default function Ajuda() {
                   )}
                 </div>
                 <div className="space-y-3">
-                  <Badge variant="secondary">{pageLabel(current.page_key)}</Badge>
+                  <div className="flex items-center justify-between gap-2">
+                    <Badge variant="secondary">{pageLabel(current.page_key)}</Badge>
+                    {isSuperAdmin && (
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="outline" onClick={() => openEdit(current)}>
+                          <Pencil className="mr-1.5 h-3.5 w-3.5" /> Editar
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => remove(current)}>
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                   <h2 className="text-xl font-semibold leading-snug sm:text-2xl">{current.title}</h2>
                   <div className="rounded-xl border bg-muted/40 p-4">
                     <p className="mb-1 text-sm font-semibold">Sobre este vídeo</p>
@@ -173,27 +211,35 @@ export default function Ajuda() {
               )}
             </div>
 
-            {groupsWithVideos.length > 1 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Categorias</p>
               <div className="flex flex-wrap gap-1.5">
                 <Badge
                   variant={!activeGroup ? 'default' : 'outline'}
                   className="cursor-pointer"
                   onClick={() => { setParams({}); setActiveGroup(''); }}
                 >
-                  Todos
+                  Todas ({items.length})
                 </Badge>
-                {groupsWithVideos.map((g) => (
-                  <Badge
-                    key={g.id}
-                    variant={activeGroup === g.id ? 'default' : 'outline'}
-                    className="cursor-pointer"
-                    onClick={() => { setParams({}); setActiveGroup(activeGroup === g.id ? '' : g.id); }}
-                  >
-                    {g.label}
-                  </Badge>
-                ))}
+                {HELP_GROUPS.map((g) => {
+                  const n = countByGroup(g.id);
+                  return (
+                    <Badge
+                      key={g.id}
+                      variant={activeGroup === g.id ? 'default' : 'outline'}
+                      className={n === 0 ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
+                      onClick={() => {
+                        if (n === 0) return;
+                        setParams({});
+                        setActiveGroup(activeGroup === g.id ? '' : g.id);
+                      }}
+                    >
+                      {g.label} ({n})
+                    </Badge>
+                  );
+                })}
               </div>
-            )}
+            </div>
 
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>{list.length} {list.length === 1 ? 'vídeo' : 'vídeos'}</span>
@@ -204,43 +250,54 @@ export default function Ajuda() {
               )}
             </div>
 
-            <div className="max-h-[70vh] space-y-2 overflow-y-auto pr-1">
-              {list.map((t, i) => {
-                const active = current?.id === t.id;
-                const src = thumb(t.youtube_url);
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedId(t.id);
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    className={`flex w-full gap-3 rounded-lg border p-2 text-left transition-colors hover:bg-muted ${
-                      active ? 'border-primary bg-primary/5' : 'bg-card'
-                    }`}
-                  >
-                    <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-md bg-muted">
-                      {src && <img src={src} alt="" loading="lazy" className="h-full w-full object-cover" />}
-                      <span className="absolute inset-0 flex items-center justify-center bg-black/25">
-                        <Play className="h-5 w-5 fill-white text-white" />
-                      </span>
-                    </div>
-                    <div className="min-w-0 flex-1 py-0.5">
-                      <p className="text-[11px] text-muted-foreground">
-                        {i + 1}. {pageLabel(t.page_key)}
-                      </p>
-                      <p className={`line-clamp-2 text-sm font-medium leading-snug ${active ? 'text-primary' : ''}`}>
-                        {t.title}
-                      </p>
-                      {active && <p className="mt-0.5 text-[11px] font-medium text-primary">Assistindo</p>}
-                    </div>
-                  </button>
-                );
-              })}
+            <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
+              {groupedList.map((g) => (
+                <div key={g.id} className="space-y-2">
+                  <p className="text-sm font-semibold">
+                    {g.label} <span className="font-normal text-muted-foreground">· {g.videos.length}</span>
+                  </p>
+                  {g.videos.map((t) => {
+                    const active = current?.id === t.id;
+                    const src = thumb(t.youtube_url);
+                    return (
+                      <div
+                        key={t.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
+                          setSelectedId(t.id);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        onKeyDown={(e) => e.key === 'Enter' && setSelectedId(t.id)}
+                        className={`flex w-full cursor-pointer gap-3 rounded-lg border p-2 text-left transition-colors hover:bg-muted ${
+                          active ? 'border-primary bg-primary/5' : 'bg-card'
+                        }`}
+                      >
+                        <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-md bg-muted">
+                          {src && <img src={src} alt="" loading="lazy" className="h-full w-full object-cover" />}
+                          <span className="absolute inset-0 flex items-center justify-center bg-black/25">
+                            <Play className="h-5 w-5 fill-white text-white" />
+                          </span>
+                        </div>
+                        <div className="min-w-0 flex-1 py-0.5">
+                          <p className="text-[11px] text-muted-foreground">{pageLabel(t.page_key)}</p>
+                          <p className={`line-clamp-2 text-sm font-medium leading-snug ${active ? 'text-primary' : ''}`}>
+                            {t.title}
+                          </p>
+                          {active && <p className="mt-0.5 text-[11px] font-medium text-primary">Assistindo</p>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           </aside>
         </div>
+      )}
+
+      {isSuperAdmin && (
+        <TutorialFormDialog open={formOpen} onOpenChange={setFormOpen} editing={editing} onSaved={load} />
       )}
     </div>
   );
