@@ -84,6 +84,53 @@ const getPlans = (tenantId?: string | null): Plan[] => {
   ];
 };
 
+// Planos por módulo (mensal, recorrente no cartão). O preço cobrado é o do servidor (_shared/plan-modules.ts);
+// estes valores são só o que aparece na tela e precisam bater com ele.
+const getModulePlans = (): Plan[] => [
+  {
+    id: "live",
+    name: "Sistema Live",
+    days: 30,
+    price: 299,
+    monthlyPrice: 299,
+    displayPrice: "R$ 299,00/mês",
+    features: ["Lives, carrinho e loja da live", "Pedidos, checkout e etiquetas", "Suporte por WhatsApp Horário Comercial"],
+    icon: <Rocket className="h-6 w-6" />,
+  },
+  {
+    id: "grupos_vip",
+    name: "Sistema de Grupos VIP",
+    days: 30,
+    price: 299,
+    monthlyPrice: 299,
+    displayPrice: "R$ 299,00/mês",
+    features: ["Envio para grupos de WhatsApp (SendFlow)", "Agendamento e controle de envios", "Suporte por WhatsApp Horário Comercial"],
+    icon: <Zap className="h-6 w-6" />,
+  },
+  {
+    id: "completo",
+    name: "Pacote Completo",
+    days: 30,
+    price: 499,
+    monthlyPrice: 499,
+    displayPrice: "R$ 499,00/mês",
+    discount: "Live + Grupos VIP",
+    features: ["Sistema Live completo", "Sistema de Grupos VIP completo", "Suporte prioritário"],
+    popular: true,
+    icon: <Crown className="h-6 w-6" />,
+  },
+];
+
+// Quem já é cliente não muda: os planos novos aparecem só para empresa nova (trial/sem plano)
+// ou que está sem acesso há mais de 40 dias.
+const DIAS_SEM_ACESSO_PLANO_NOVO = 40;
+const mostraPlanosNovos = (planType?: string | null, endsAt?: string | null) => {
+  if (!planType || planType === "trial") return true;
+  if (!endsAt) return true;
+  const diasVencido = (Date.now() - new Date(endsAt).getTime()) / 86400000;
+  return diasVencido > DIAS_SEM_ACESSO_PLANO_NOVO;
+};
+
 export default function RenovarAssinatura() {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -99,6 +146,7 @@ export default function RenovarAssinatura() {
   const [tenantInfo, setTenantInfo] = useState<{
     name: string;
     subscription_ends_at: string | null;
+    plan_type?: string | null;
   } | null>(null);
   const [recurringDialog, setRecurringDialog] = useState<Plan | null>(null);
   const [activeRecurring, setActiveRecurring] = useState<any | null>(null);
@@ -171,7 +219,7 @@ export default function RenovarAssinatura() {
       
       const { data } = await supabase
         .from("tenants")
-        .select("name, subscription_ends_at")
+        .select("name, subscription_ends_at, plan_type")
         .eq("id", tenantId)
         .maybeSingle();
 
@@ -281,7 +329,13 @@ export default function RenovarAssinatura() {
 
         {/* Cards de Planos */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {getPlans(currentTenantId).map((plan) => (
+          {/* Enquanto os dados da empresa não chegam, não mostra preço (evita piscar o plano errado) */}
+          {(!tenantInfo
+            ? []
+            : mostraPlanosNovos(tenantInfo.plan_type, tenantInfo.subscription_ends_at)
+              ? getModulePlans()
+              : getPlans(currentTenantId)
+          ).map((plan) => (
             <Card
               key={plan.id}
               className={`relative transition-all duration-300 hover:shadow-xl ${
@@ -307,7 +361,7 @@ export default function RenovarAssinatura() {
                 </div>
                 <CardTitle className="text-xl">{plan.name}</CardTitle>
                 <CardDescription>
-                  {plan.days} dias de acesso
+                  {plan.monthlyPrice && !plan.totalCycles ? "Assinatura mensal" : `${plan.days} dias de acesso`}
                 </CardDescription>
               </CardHeader>
               <CardContent className="text-center">
@@ -399,7 +453,7 @@ export default function RenovarAssinatura() {
             open={!!recurringDialog}
             onOpenChange={(v) => !v && setRecurringDialog(null)}
             tenantId={currentTenantId}
-            planId={recurringDialog.id as "basic" | "pro" | "enterprise"}
+            planId={recurringDialog.id}
             planName={recurringDialog.name}
             planPrice={recurringDialog.monthlyPrice ?? recurringDialog.price}
             intervalMonths={1}

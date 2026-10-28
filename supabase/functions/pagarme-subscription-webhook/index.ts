@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { createHmac } from "node:crypto";
 import { notifyCartzyAdmins } from "../_shared/admin-push-notify.ts";
+import { getModulePlan } from "../_shared/plan-modules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -183,11 +184,17 @@ Deno.serve(async (req) => {
 
       await supabase
         .from("tenants")
-        .update({ subscription_ends_at: extended.toISOString(), plan_type: planId })
+        .update({
+          subscription_ends_at: extended.toISOString(),
+          plan_type: planId,
+          // Plano por módulo: cada pagamento reafirma só os módulos contratados
+          ...(getModulePlan(planId)?.flags ?? {}),
+        })
         .eq("id", tenantId);
 
       // Alerta admins Cartzy quando sai do trial ou muda de plano
-      const planLabel = planId === "enterprise" ? "Alto Volume" : planId === "pro" ? "Profissional" : "Essencial";
+      const planLabel = getModulePlan(planId)?.name
+        ?? (planId === "enterprise" ? "Alto Volume" : planId === "pro" ? "Profissional" : "Essencial");
       if (previousPlan === "trial" || !previousPlan) {
         notifyCartzyAdmins({
           title: '💸 Contratação Fluxo de Envio',

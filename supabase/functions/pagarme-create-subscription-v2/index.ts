@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { getModulePlan } from "../_shared/plan-modules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,7 +11,7 @@ const PAGARME_API = "https://api.pagar.me/core/v5";
 
 interface Body {
   tenant_id: string;
-  plan_id: "basic" | "pro" | "enterprise";
+  plan_id: string; // basic | pro | enterprise (legados) ou live | grupos_vip | completo (por módulo)
   plan_name?: string; // nome de exibição do plano (aparece na descrição da fatura)
   plan_price: number; // BRL — valor MENSAL
   interval_months?: number; // intervalo da cobrança (default 1 = mensal)
@@ -88,11 +89,15 @@ Deno.serve(async (req) => {
       return json({ success: false, error: "Sem permissão para este tenant" }, 200);
     }
 
-    const interval_months = Number(body.interval_months) > 0 ? Number(body.interval_months) : 1;
-    const total_cycles = Number(body.total_cycles) > 0
-      ? Number(body.total_cycles)
-      : (body.plan_id === "enterprise" ? 12 : 6);
-    const priceCents = Math.round(Number(body.plan_price) * 100);
+    // Planos por módulo: sempre mensal, sem fim, e o preço vem do servidor (não do navegador).
+    const modulePlan = getModulePlan(body.plan_id);
+    const interval_months = modulePlan ? 1 : (Number(body.interval_months) > 0 ? Number(body.interval_months) : 1);
+    const requestedCycles = modulePlan ? 0 : Number(body.total_cycles);
+    const total_cycles = requestedCycles > 0
+      ? requestedCycles
+      : (modulePlan ? 0 : (body.plan_id === "enterprise" ? 12 : 6));
+    const planPriceBrl = modulePlan ? modulePlan.price : Number(body.plan_price);
+    const priceCents = Math.round(planPriceBrl * 100);
     if (!Number.isFinite(priceCents) || priceCents <= 0) {
       return json({ success: false, error: "Preço inválido" }, 200);
     }
@@ -161,12 +166,14 @@ Deno.serve(async (req) => {
       pricing_scheme: { scheme_type: "unit", price: priceCents },
       items: [
         {
-          description: body.plan_name
+          description: modulePlan
+            ? `Cartzy ${modulePlan.name}`
+            : body.plan_name
             ? `Cartzy ${body.plan_name}`
             : `Cartzy ${body.plan_id === "enterprise" ? "Enterprise (anual)" : "Pro (semestral)"}`,
           quantity: 1,
           // Só limita quando o cliente pediu um número de cobranças; sem isso a assinatura segue mensal sem fim.
-          ...(Number(body.total_cycles) > 0 ? { cycles: Number(body.total_cycles) } : {}),
+          ...(requestedCycles > 0 ? { cycles: requestedCycles } : {}),
           pricing_scheme: { scheme_type: "unit", price: priceCents },
         },
       ],
@@ -243,7 +250,7 @@ Deno.serve(async (req) => {
       tenant_id: body.tenant_id,
       plan_id: body.plan_id,
       interval_months,
-      price: body.plan_price,
+      price: planPriceBrl,
       pagarme_subscription_id: subscriptionId,
       pagarme_customer_id: customerId,
       pagarme_card_id: cardId,
@@ -295,7 +302,11 @@ Deno.serve(async (req) => {
 
         await supabase
           .from("tenants")
-          .update({ subscription_ends_at: extended.toISOString(), plan_type: body.plan_id })
+          .update({
+            subscription_ends_at: extended.toISOString(),
+            plan_type: body.plan_id,
+            ...(modulePlan ? modulePlan.flags : {}), // libera só os módulos do plano contratado
+          })
           .eq("id", body.tenant_id);
 
         await supabase

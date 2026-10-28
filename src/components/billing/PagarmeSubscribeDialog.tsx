@@ -11,7 +11,7 @@ interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   tenantId: string;
-  planId: "basic" | "pro" | "enterprise";
+  planId: string;
   planName: string;
   planPrice: number;
   intervalMonths: number;
@@ -132,7 +132,9 @@ export function PagarmeSubscribeDialog({
               ? `Pagamento único no cartão. Acesso por ${planDays} dias.`
               : totalCycles
                 ? `Cobrança mensal recorrente no cartão por ${totalCycles} meses. Você pode cancelar a qualquer momento.`
-                : `Cobrança recorrente no cartão a cada ${intervalMonths} meses. Você pode cancelar a qualquer momento.`}
+                : intervalMonths === 1
+                  ? "Cobrança mensal recorrente no cartão. Você pode cancelar a qualquer momento."
+                  : `Cobrança recorrente no cartão a cada ${intervalMonths} meses. Você pode cancelar a qualquer momento.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -147,7 +149,9 @@ export function PagarmeSubscribeDialog({
                 ? " (pagamento único)"
                 : totalCycles
                   ? ` por mês durante ${totalCycles} meses`
-                  : ` a cada ${intervalMonths} meses`}
+                  : intervalMonths === 1
+                    ? " por mês"
+                    : ` a cada ${intervalMonths} meses`}
             </div>
           </div>
 
