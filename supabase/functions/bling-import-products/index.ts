@@ -138,8 +138,8 @@ serve(async (req) => {
       const named = (p: any) => String(p.nome || "").trim() && String(p.codigo || "").trim();
       let rows: any[] = raw.filter((p) => !p.idProdutoPai && named(p)).map((p) => ({ ...p, children_count: null as number | null }));
 
-      // Com filtro de saldo, o Bling devolve as variações (filhos) e não o pai: montamos a linha do pai a partir dos filhos.
-      if (onlyStock) {
+      // Com filtro de saldo (ou busca pelo SKU de uma variação), o Bling devolve as variações (filhos) e não o pai: montamos a linha do pai a partir dos filhos.
+      {
         const kids = raw.filter((p) => p.idProdutoPai);
         const perParent = new Map<number, number>();
         for (const k of kids) perParent.set(Number(k.idProdutoPai), (perParent.get(Number(k.idProdutoPai)) || 0) + 1);
