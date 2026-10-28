@@ -29,6 +29,7 @@ import {
   Wifi,
   Download,
 } from 'lucide-react';
+import BagyProductsImportPanel from './BagyProductsImportPanel';
 
 interface BagyIntegrationProps {
   tenantId: string;
@@ -152,15 +153,6 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
       toast.success(data.message || 'Estoque sincronizado!');
     },
     onError: (error) => toast.error(error.message || 'Erro ao sincronizar estoque'),
-  });
-
-  const syncProductsMutation = useMutation({
-    mutationFn: () => callBagySync(tenantId, 'sync_products'),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['bagy-integration', tenantId] });
-      toast.success(data.message || 'Produtos importados!');
-    },
-    onError: (error) => toast.error(error.message || 'Erro ao importar produtos'),
   });
 
   const exportOrdersMutation = useMutation({
@@ -353,8 +345,9 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
           <Alert>
             <Info className="h-4 w-4" />
             <AlertDescription>
-              O mapeamento de produtos é feito pelo <strong>código/SKU</strong>. Certifique-se de que
-              os códigos dos produtos no Cartzy correspondem aos SKUs (reference) na Bagy.
+              Produtos importados pelo painel abaixo ficam ligados à Bagy pelo ID da variação, e o SKU da Bagy
+              fica no SKU ERP. Produtos que você já tinha no Cartzy continuam sendo ligados pelo <strong>código/SKU</strong>
+              (igual ao SKU/reference da Bagy).
             </AlertDescription>
           </Alert>
         </CardContent>
@@ -370,18 +363,6 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex gap-2 flex-wrap">
-            <Button
-              variant="outline"
-              onClick={() => syncProductsMutation.mutate()}
-              disabled={syncProductsMutation.isPending || !integration?.is_active}
-            >
-              {syncProductsMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4 mr-2" />
-              )}
-              Importar Produtos da Bagy
-            </Button>
             <Button
               variant="outline"
               onClick={() => syncStockMutation.mutate()}
@@ -404,6 +385,8 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
           )}
         </CardContent>
       </Card>
+
+      {integration?.is_active && integration?.access_token && <BagyProductsImportPanel tenantId={tenantId} />}
     </div>
   );
 }

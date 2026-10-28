@@ -10,3 +10,6 @@ verify_jwt = false
 
 [functions.bling-import-products]
 verify_jwt = false
+
+[functions.bagy-import-products]
+verify_jwt = false

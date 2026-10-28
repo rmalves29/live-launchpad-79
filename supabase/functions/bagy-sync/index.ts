@@ -125,7 +125,7 @@ Deno.serve(async (req) => {
       if (order.cart_id) {
         const { data: cartItems } = await supabase
           .from("cart_items")
-          .select("*, products(code, name, price)")
+          .select("*, products(code, name, price, sku_erp, bagy_variation_id)")
           .eq("cart_id", order.cart_id);
         items = cartItems || [];
       }
@@ -139,7 +139,7 @@ Deno.serve(async (req) => {
 
       const bagyItems = items.map((item: any) => ({
         name: item.product_name || item.products?.name || "Produto",
-        reference: item.product_code || item.products?.code || "",
+        reference: item.products?.sku_erp || item.product_code || item.products?.code || "",
         quantity: item.qty || 1,
         price: item.unit_price || 0,
       }));
@@ -250,7 +250,7 @@ Deno.serve(async (req) => {
             if (order.cart_id) {
               const { data: cartItems } = await supabase
                 .from("cart_items")
-                .select("*, products(code, name, price)")
+                .select("*, products(code, name, price, sku_erp, bagy_variation_id)")
                 .eq("cart_id", order.cart_id);
               items = cartItems || [];
             }
@@ -259,7 +259,7 @@ Deno.serve(async (req) => {
 
             const bagyItems = items.map((item: any) => ({
               name: item.product_name || item.products?.name || "Produto",
-              reference: item.product_code || item.products?.code || "",
+              reference: item.products?.sku_erp || item.product_code || item.products?.code || "",
               quantity: item.qty || 1,
               price: item.unit_price || 0,
             }));
@@ -340,7 +340,7 @@ Deno.serve(async (req) => {
       try {
         const { data: products } = await supabase
           .from("products")
-          .select("id, code, name, stock")
+          .select("id, code, name, stock, sku_erp, bagy_variation_id")
           .eq("tenant_id", tenant_id)
           .not("code", "is", null);
 
@@ -360,9 +360,12 @@ Deno.serve(async (req) => {
         let unmatched = 0;
 
         for (const product of products) {
-          const bagy = bagySkuMap.get(product.code);
-          if (bagy) {
-            stockUpdates.push({ variation_id: bagy.variation_id, balance: product.stock ?? 0 });
+          // 1º o ID da variação gravado na importação; 2º o SKU ERP (SKU da Bagy); 3º o código do sistema (produtos antigos)
+          const variationId = product.bagy_variation_id
+            ? Number(product.bagy_variation_id)
+            : (bagySkuMap.get(product.sku_erp || "") || bagySkuMap.get(product.code))?.variation_id;
+          if (variationId) {
+            stockUpdates.push({ variation_id: variationId, balance: product.stock ?? 0 });
             matched++;
           } else {
             unmatched++;
@@ -410,6 +413,11 @@ Deno.serve(async (req) => {
 
     // ===================== SYNC PRODUCTS (Bagy → Cartzy) =====================
     if (action === "sync_products") {
+      // Desativado: criava produtos com o SKU da Bagy como código do sistema. Use o painel "Importar produtos da Bagy" (bagy-import-products).
+      return new Response(
+        JSON.stringify({ success: false, error: "Use o painel \"Importar produtos da Bagy\" para escolher e importar produtos." }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
       try {
         const bagyProducts = await fetchAllBagyProducts(token);
 
@@ -554,19 +562,36 @@ function buildBagySkuMap(bagyProducts: any[]) {
 
 async function syncStockForItems(items: any[], token: string) {
   try {
-    const res = await bagyFetch("/products?limit=250", token);
-    const bagyProducts = res?.data || [];
-    const bagySkuMap = buildBagySkuMap(bagyProducts);
+    // Lê o saldo atual de cada variação conhecida (pelo ID gravado na importação)
+    const knownIds = [...new Set(items.map((i: any) => Number(i.products?.bagy_variation_id)).filter((n: number) => n > 0))];
+    const currentById = new Map<number, number>();
+    for (const vid of knownIds) {
+      try {
+        const v = await bagyFetch(`/variations/${vid}`, token);
+        const row = v?.data ?? v;
+        currentById.set(vid, Number(row?.balance) || 0);
+      } catch (_e) { /* cai no mapeamento por SKU abaixo */ }
+    }
+
+    // Produtos sem ID de variação: mapeia pelo SKU (SKU ERP ou código), como antes
+    let bagySkuMap: ReturnType<typeof buildBagySkuMap> | null = null;
+    const needSku = items.some((i: any) => !currentById.has(Number(i.products?.bagy_variation_id)));
+    if (needSku) {
+      const res = await bagyFetch("/products?limit=250", token);
+      bagySkuMap = buildBagySkuMap(res?.data || []);
+    }
 
     const stockUpdates: { variation_id: number; balance: number }[] = [];
     for (const item of items) {
-      const sku = item.product_code || item.products?.code;
-      if (!sku) continue;
-      const bagy = bagySkuMap.get(sku);
-      if (bagy) {
-        const newBalance = Math.max(0, bagy.current_balance - (item.qty || 1));
-        stockUpdates.push({ variation_id: bagy.variation_id, balance: newBalance });
+      const qty = item.qty || 1;
+      const vid = Number(item.products?.bagy_variation_id);
+      if (vid > 0 && currentById.has(vid)) {
+        stockUpdates.push({ variation_id: vid, balance: Math.max(0, (currentById.get(vid) as number) - qty) });
+        continue;
       }
+      const sku = item.products?.sku_erp || item.product_code || item.products?.code;
+      const bagy = sku && bagySkuMap ? bagySkuMap.get(sku) : null;
+      if (bagy) stockUpdates.push({ variation_id: bagy.variation_id, balance: Math.max(0, bagy.current_balance - qty) });
     }
 
     if (stockUpdates.length > 0) {
