@@ -70,16 +70,57 @@ serve(async (req) => {
     const userRole = role === 'super_admin' ? 'super_admin' : 'tenant_admin';
     console.log(`[create-tenant-admin] Caller=${userData.user.email} criando ${email} com role: ${userRole}`);
 
-    // Check if user already exists
-    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
-    const existingUser = existingUsers?.users?.find(u => u.email === email);
+    // Check if user already exists (paginated)
+    const normEmail = String(email).trim().toLowerCase();
+    let existingUser: { id: string } | undefined;
+    for (let page = 1; page <= 20; page++) {
+      const { data: pageData, error: listErr } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 });
+      if (listErr) {
+        console.error("Erro ao listar usuários:", listErr);
+        break;
+      }
+      const users = pageData?.users ?? [];
+      existingUser = users.find((u) => (u.email ?? "").trim().toLowerCase() === normEmail);
+      if (existingUser || users.length < 1000) break;
+    }
 
     let userId: string;
 
     if (existingUser) {
-      // User exists - just update their profile
       userId = existingUser.id;
-      console.log(`Usuário ${email} já existe, atualizando profile com role ${userRole}...`);
+      const { data: existingProfile } = await supabaseAdmin
+        .from("profiles")
+        .select("tenant_id")
+        .eq("id", userId)
+        .maybeSingle();
+
+      const otherTenantId = existingProfile?.tenant_id;
+      if (otherTenantId && otherTenantId !== tenant_id) {
+        const { data: otherTenant } = await supabaseAdmin
+          .from("tenants")
+          .select("id")
+          .eq("id", otherTenantId)
+          .maybeSingle();
+        if (otherTenant) {
+          return new Response(
+            JSON.stringify({ error: `O e-mail ${email} já é login de outra empresa` }),
+            { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+
+      const { error: updErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+        password,
+        email_confirm: true,
+      });
+      if (updErr) {
+        console.error("Erro ao atualizar senha:", updErr);
+        return new Response(
+          JSON.stringify({ error: `Erro ao atualizar senha: ${updErr.message}` }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      console.log(`Usuário ${email} já existia; senha atualizada e profile com role ${userRole}...`);
     } else {
       // Create new user
       const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
