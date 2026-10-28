@@ -230,23 +230,53 @@ serve(async (req) => {
 
     const sb = createClient(supabaseUrl, serviceKey);
 
-    const rlBlocked = await enforceRateLimit(req, sb, "create-payment", 60, 60);
+    const t0 = Date.now();
+    const lap = (label: string) => console.log(`[create-payment][timing] ${label}: ${Date.now() - t0}ms`);
+    // Tarefa que não precisa bloquear a resposta: segue rodando depois que o cliente já recebeu o link.
+    const bg = (p: PromiseLike<unknown>) => {
+      const safe = Promise.resolve(p).catch((e) => console.log("[create-payment] bg error", e));
+      try { (globalThis as any).EdgeRuntime?.waitUntil?.(safe); } catch { /* sem waitUntil: segue solto */ }
+    };
+
+    const orderIds = (payload.order_ids && payload.order_ids.length > 0 ? payload.order_ids : [payload.order_id]).filter(Boolean);
+    const productsSubtotalForDiscount = payload.cartItems.reduce(
+      (s, it) => s + Number(it.unit_price) * Number(it.qty),
+      0,
+    );
+
+    // Tudo que só lê o banco roda junto: limite de requisições, desconto PIX, pedidos e as 4 integrações.
+    const [rlBlocked, resolved, ordersRes, infinitepayInteg, appmaxInteg, mpInteg, pagarmeInteg] = await Promise.all([
+      enforceRateLimit(req, sb, "create-payment", 60, 60),
+      resolvePixDiscount(sb, payload.tenant_id, payload.payment_method, productsSubtotalForDiscount),
+      sb.from("orders").select("id, observation, total_amount, cart_id, created_at").in("id", orderIds),
+      sb.from("integration_infinitepay")
+        .select("is_active, handle, enable_pix, enable_credit_card")
+        .eq("tenant_id", payload.tenant_id)
+        .maybeSingle(),
+      sb.from("integration_appmax")
+        .select("access_token, environment, is_active, enable_pix, enable_credit_card")
+        .eq("tenant_id", payload.tenant_id)
+        .maybeSingle(),
+      sb.from("integration_mp")
+        .select("access_token, environment, is_active, enable_pix, enable_credit_card")
+        .eq("tenant_id", payload.tenant_id)
+        .maybeSingle(),
+      sb.from("integration_pagarme")
+        .select("api_key, public_key, environment, is_active, min_installment_value, max_installments_without_interest, max_installments, enable_pix, enable_credit_card")
+        .eq("tenant_id", payload.tenant_id)
+        .maybeSingle(),
+    ]);
     if (rlBlocked) return rlBlocked;
+    const infinitepayIntegration = infinitepayInteg.data;
+    const appmaxIntegration = appmaxInteg.data;
+    const mpIntegration = mpInteg.data;
+    const pagarmeIntegration = pagarmeInteg.data;
+    lap("leituras iniciais");
 
     // === BLINDAGEM SERVIDOR: recalcular desconto PIX a partir das integrações ativas ===
     // Ignoramos qualquer valor enviado pelo frontend — fonte de verdade é o backend.
     let pixDiscountPercent = 0;
     {
-      const productsSubtotalForDiscount = payload.cartItems.reduce(
-        (s, it) => s + Number(it.unit_price) * Number(it.qty),
-        0,
-      );
-      const resolved = await resolvePixDiscount(
-        sb,
-        payload.tenant_id,
-        payload.payment_method,
-        productsSubtotalForDiscount,
-      );
       const incoming = toNumber(payload.pix_discount, 0);
       if (Math.abs(incoming - resolved.value) > 0.01) {
         console.log(
@@ -259,7 +289,8 @@ serve(async (req) => {
 
 
     // 1) Persistir endereço no cliente (service role)
-    await sb
+    // (em segundo plano: a resposta não depende dele)
+    bg(sb
       .from("customers")
       .upsert(
         {
@@ -278,12 +309,10 @@ serve(async (req) => {
           updated_at: new Date().toISOString(),
         },
         { onConflict: "tenant_id,phone" },
-      );
+      ));
 
     // 2) Persistir endereço + frete no(s) pedido(s)
     const freightNote = buildFreightNote(payload.shippingData, payload.shippingCost);
-    const orderIds = (payload.order_ids && payload.order_ids.length > 0 ? payload.order_ids : [payload.order_id]).filter(Boolean);
-
     // Pré-carregar todos os pedidos do merge e calcular subtotal de cada um (a partir dos cart_items)
     type OrderCtx = {
       id: number;
@@ -293,24 +322,21 @@ serve(async (req) => {
       created_at: string | null;
     };
     const orderCtxs: OrderCtx[] = [];
-    for (const orderId of orderIds) {
-      const { data: existingOrder } = await sb
-        .from("orders")
-        .select("id, observation, total_amount, cart_id, created_at")
-        .eq("id", orderId)
-        .single();
-      if (!existingOrder) continue;
-
-      let productsTotal = 0;
-      if (existingOrder.cart_id) {
-        const { data: cartItems } = await sb
-          .from("cart_items")
-          .select("unit_price, qty")
-          .eq("cart_id", existingOrder.cart_id);
-        if (cartItems && cartItems.length > 0) {
-          productsTotal = cartItems.reduce((s, it) => s + Number(it.unit_price) * Number(it.qty), 0);
-        }
+    // Pedidos já vieram na leitura inicial; os itens de todos os carrinhos vêm numa consulta só.
+    const existingOrders = ordersRes.data || [];
+    const cartIds = [...new Set(existingOrders.map((o: any) => o.cart_id).filter(Boolean))];
+    const totalsByCart = new Map<number, number>();
+    if (cartIds.length > 0) {
+      const { data: allCartItems } = await sb
+        .from("cart_items")
+        .select("cart_id, unit_price, qty")
+        .in("cart_id", cartIds);
+      for (const it of allCartItems || []) {
+        totalsByCart.set(it.cart_id, (totalsByCart.get(it.cart_id) || 0) + Number(it.unit_price) * Number(it.qty));
       }
+    }
+    for (const existingOrder of existingOrders) {
+      const productsTotal = existingOrder.cart_id ? (totalsByCart.get(existingOrder.cart_id) || 0) : 0;
       orderCtxs.push({
         id: existingOrder.id,
         observation: existingOrder.observation,
@@ -391,6 +417,7 @@ serve(async (req) => {
     }
 
 
+    const orderUpdates: PromiseLike<unknown>[] = [];
     for (let i = 0; i < orderCtxs.length; i++) {
       const ctx = orderCtxs[i];
       const orderId = ctx.id;
@@ -424,7 +451,7 @@ serve(async (req) => {
       const shippingServiceId = payload.shippingData?.service_id ? Number(payload.shippingData.service_id) : null;
       const shippingProvider = typeof payload.shippingData?.provider === "string" && payload.shippingData.provider ? payload.shippingData.provider : null;
 
-      const { error: updateError } = await sb
+      orderUpdates.push(sb
         .from("orders")
         .update({
           customer_name: payload.customerData.name,
@@ -443,20 +470,17 @@ serve(async (req) => {
           shipping_service_id: shippingServiceId,
           shipping_provider: shippingProvider,
         })
-        .eq("id", orderId);
-
-      if (updateError) {
-        console.log(`[create-payment] Error updating order ${orderId}:`, updateError);
-      }
+        .eq("id", orderId)
+        .then(({ error: updateError }: any) => {
+          if (updateError) console.log(`[create-payment] Error updating order ${orderId}:`, updateError);
+        }));
     }
+    // Todos os pedidos são gravados ao mesmo tempo (o InfinitePay lê o total do banco, então espera terminar).
+    await Promise.all(orderUpdates);
+    lap("pedidos gravados");
 
-    // 3) Determinar qual integração de pagamento usar
+    // 3) Determinar qual integração de pagamento usar (dados já lidos no início)
     // Prioridade: InfinitePay > App Max > Pagar.me > Mercado Pago
-    const { data: infinitepayIntegration } = await sb
-      .from("integration_infinitepay")
-      .select("is_active, handle, enable_pix, enable_credit_card")
-      .eq("tenant_id", payload.tenant_id)
-      .maybeSingle();
 
     // Helper: força payment_method conforme flags do gateway ativo (defesa em profundidade)
     const enforcePaymentMethod = (
@@ -517,24 +541,6 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const { data: appmaxIntegration } = await sb
-      .from("integration_appmax")
-      .select("access_token, environment, is_active, enable_pix, enable_credit_card")
-      .eq("tenant_id", payload.tenant_id)
-      .maybeSingle();
-
-    const { data: mpIntegration } = await sb
-      .from("integration_mp")
-      .select("access_token, environment, is_active, enable_pix, enable_credit_card")
-      .eq("tenant_id", payload.tenant_id)
-      .maybeSingle();
-
-    const { data: pagarmeIntegration } = await sb
-      .from("integration_pagarme")
-      .select("api_key, public_key, environment, is_active, min_installment_value, max_installments_without_interest, max_installments, enable_pix, enable_credit_card")
-      .eq("tenant_id", payload.tenant_id)
-      .maybeSingle();
 
     // Determinar qual provedor usar (ordem: App Max > Pagar.me > Mercado Pago)
     const useAppmax = appmaxIntegration?.is_active && appmaxIntegration?.access_token;
@@ -768,10 +774,11 @@ serve(async (req) => {
         : `https://appmax.com.br/checkout/${appmaxOrderId}`;
 
       // Salvar link de pagamento nos pedidos
-      await sb
+      bg(sb
         .from("orders")
         .update({ payment_link: checkoutUrl })
-        .in("id", orderIds);
+        .in("id", orderIds));
+      lap("appmax pronto");
 
       return new Response(
         JSON.stringify({ 
@@ -1001,11 +1008,12 @@ serve(async (req) => {
       const checkoutUrl = pagarmeJson?.url;
 
       if (checkoutUrl) {
-        await sb
+        bg(sb
           .from("orders")
           .update({ payment_link: checkoutUrl })
-          .in("id", orderIds);
+          .in("id", orderIds));
       }
+      lap("pagarme pronto");
 
       return new Response(
         JSON.stringify({ init_point: checkoutUrl, provider: "pagarme" }),
@@ -1124,11 +1132,12 @@ serve(async (req) => {
     // 4) Salvar link de pagamento no(s) pedido(s)
     const paymentLink = initPoint || sandboxInitPoint || null;
     if (paymentLink) {
-      await sb
+      bg(sb
         .from("orders")
         .update({ payment_link: paymentLink })
-        .in("id", orderIds);
+        .in("id", orderIds));
     }
+    lap("mercado pago pronto");
 
     return new Response(
       JSON.stringify({ init_point: initPoint, sandbox_init_point: sandboxInitPoint, provider: "mercado_pago" }),

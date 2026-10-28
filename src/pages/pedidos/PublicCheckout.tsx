@@ -1045,6 +1045,7 @@ const PublicCheckout = () => {
     }
 
     setLoadingPayment(true);
+    let redirecting = false;
 
     try {
       let shippingCost = 0;
@@ -1071,11 +1072,15 @@ const PublicCheckout = () => {
       const totalWithDiscount = Math.max(0, productsTotal - totalCouponDiscount - pixDiscount);
       const totalAmount = totalWithDiscount + shippingCost;
 
+      // Contador do cupom não precisa travar o pagamento
       if (appliedCoupon) {
-        await supabase
+        void supabase
           .from('coupons')
           .update({ used_count: appliedCoupon.used_count + 1 })
-          .eq('id', appliedCoupon.id);
+          .eq('id', appliedCoupon.id)
+          .then(({ error: couponErr }) => {
+            if (couponErr) console.error('Erro ao atualizar uso do cupom:', couponErr);
+          });
       }
 
       let shippingData = null;
@@ -1149,8 +1154,9 @@ const PublicCheckout = () => {
 
       if (data && (data.init_point || data.sandbox_init_point)) {
         const paymentUrl = data.init_point || data.sandbox_init_point;
+        // Mantém o botão travado até a página trocar (evita clique duplo gerando outro link)
+        redirecting = true;
         window.location.href = paymentUrl;
-        toast({ title: 'Redirecionando para pagamento', description: 'Você será redirecionado para finalizar o pagamento' });
       } else if (data?.free_order) {
         toast({ title: 'Pedido confirmado', description: 'Pedido gratuito processado com sucesso!' });
       } else {
@@ -1165,7 +1171,7 @@ const PublicCheckout = () => {
         variant: 'destructive'
       });
     } finally {
-      setLoadingPayment(false);
+      if (!redirecting) setLoadingPayment(false);
     }
   };
 
