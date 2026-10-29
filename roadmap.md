@@ -1,8 +1,8 @@
 # Current task
 
-- [ ] Apply campaign attribution migration and chronological backfill; validate tenant isolation and one-use clicks.
-- [ ] Update campaign counts, shared participants labels and unattributed tenant joins report; run focused tests.
-- [ ] Publish frontend and report Mania de Mulher backfill totals.
+- [x] Apply campaign attribution migration and chronological backfill; database validation found zero window, tenant, pairing, single-use or leave-attribution violations.
+- [x] Update campaign counts, shared participants labels and unattributed tenant joins report; three focused tests passed and automatic build is OK.
+- [x] Deploy fe-campaign-redirect, request frontend publication and report Mania de Mulher backfill totals (934 joins, 403 leaves); authenticated reporting UI validation remains blocked by external unmanaged Supabase session availability.
 
 - [x] Remove platform Mercado Pago fallbacks from tenant order functions and verify public checkout error with a real Jubiju order (no link generated).
 - [x] Run five payment isolation tests and deploy create-payment, mp-webhook and backfill-payment-methods; request frontend publication (completion not independently confirmed: hosted asset fetch returned 403).
