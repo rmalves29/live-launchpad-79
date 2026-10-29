@@ -14,6 +14,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
+import ExportContactsDialog from './ExportContactsDialog';
 import ReportsCharts, { type TimelinePoint } from './ReportsCharts';
 
 type PeriodKey = '24h' | '7d' | '30d' | '90d' | 'all';
@@ -164,6 +165,7 @@ function buildTimeline(
 export default function ReportsPanel() {
   const { tenant } = useTenant();
   const [period, setPeriod] = useState<PeriodKey>('30d');
+  const [exportMode, setExportMode] = useState<'contacts' | 'movements' | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [totals, setTotals] = useState({ clicks: 0, entries: 0, exits: 0 });
@@ -395,6 +397,12 @@ export default function ReportsPanel() {
               ))}
             </SelectContent>
           </Select>
+          <Button size="sm" onClick={() => setExportMode('contacts')} disabled={!tenant?.id}>
+            <Users className="mr-1 h-4 w-4" /> Exportar contatos
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setExportMode('movements')} disabled={!tenant?.id}>
+            <Download className="mr-1 h-4 w-4" /> Exportar movimentação
+          </Button>
           <Button variant="outline" size="sm" onClick={exportCsv} disabled={loading}>
             <Download className="mr-1 h-4 w-4" /> CSV
           </Button>
@@ -565,6 +573,9 @@ export default function ReportsPanel() {
           )}
         </CardContent>
       </Card>
+      {tenant?.id && exportMode && (
+        <ExportContactsDialog open={!!exportMode} onOpenChange={(o) => { if (!o) setExportMode(null); }} tenantId={tenant.id} mode={exportMode} />
+      )}
     </div>
   );
 }
