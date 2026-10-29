@@ -110,6 +110,8 @@ export default function LiveShop() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  // próxima posição (em linhas de produto, não em cards) a pedir ao servidor: variações juntam várias linhas num card só
+  const [nextOffset, setNextOffset] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
 
@@ -216,6 +218,8 @@ export default function LiveShop() {
         if (!res.payment.pix && res.payment.card) setPay('card');
       }
       setTotal(res.total || 0);
+      setNextOffset(offset + 40);
+      if (!opts.append) triedAt.current = -1;
       if (offset === 0 && !opts.q && res.tenant) {
         writeCatalogCache(slug, { meta: { tenant: res.tenant, coupons: res.coupons || [], gifts: res.gifts || [], shipping_hints: res.shipping_hints || [], payment: res.payment, settings: res.settings }, items: res.items, total: res.total || 0 });
       }
@@ -263,20 +267,20 @@ export default function LiveShop() {
   // Rolagem infinita: quando o fim da lista se aproxima da tela, carrega a próxima leva sozinha (sem botão "Ver mais peças").
   const moreRef = useRef<HTMLDivElement | null>(null);
   const triedAt = useRef(-1);
-  const hasMore = products.length < total;
+  const hasMore = nextOffset > 0 && nextOffset < total;
   useEffect(() => {
     const el = moreRef.current;
-    if (!el || !hasMore || loadingMore || triedAt.current === products.length) return;
+    if (!el || !hasMore || loadingMore || triedAt.current === nextOffset) return;
     const io = new IntersectionObserver((entries) => {
       if (!entries[0]?.isIntersecting) return;
       io.disconnect();
-      triedAt.current = products.length; // se a carga falhar, não insiste em loop
+      triedAt.current = nextOffset; // se a carga falhar, não insiste em loop
       setLoadingMore(true);
-      loadCatalog({ offset: products.length, q: query, append: true }).finally(() => setLoadingMore(false));
+      loadCatalog({ offset: nextOffset, q: query, append: true }).finally(() => setLoadingMore(false));
     }, { rootMargin: '800px 0px' });
     io.observe(el);
     return () => io.disconnect();
-  }, [hasMore, loadingMore, products.length, query, loadCatalog]);
+  }, [hasMore, loadingMore, nextOffset, query, loadCatalog]);
 
   // Vitrine "ao vivo": a cada 8 s (e ao voltar para a aba) confere se a lista de produtos da live mudou
   // (produto marcado/desmarcado, estoque, loja desativada) e recarrega sozinha, sem o cliente precisar atualizar a página.
@@ -858,29 +862,53 @@ export default function LiveShop() {
         </div>
       )}
 
-      {meta && (meta.coupons.length > 0 || meta.shipping_hints.length > 0 || meta.gifts.length > 0) && (
-        <div className="chips">
-          {meta.shipping_hints.filter((h) => h.free_min != null).slice(0, 1).map((h) => (
-            <div className="cp ship" key={'fs' + h.name}><b>Frete grátis</b><small>em pedidos acima de {brl(h.free_min as number)}</small></div>
-          ))}
-          {meta.shipping_hints.filter((h) => h.free_min == null && !h.pickup && h.price > 0).slice(0, 1).map((h) => (
-            <div className="cp ship" key={'ff' + h.name}><b>Frete fixo {brl(h.price)}</b><small>{h.name}</small></div>
-          ))}
-          {meta.coupons.slice(0, 6).map((c) => {
-            const d = describeCoupon(c);
-            // 2 linhas: título + descrição (editável pelo lojista; sem descrição usa a regra do cupom)
-            return (
-              <div className="cp off" key={c.code}>
-                <b>{d.title} · {c.auto_apply ? 'automático' : `cupom ${c.code}`}</b>
-                <small>{c.description || d.rule}</small>
+      {meta && (meta.coupons.length > 0 || meta.shipping_hints.length > 0 || meta.gifts.length > 0) && (() => {
+        const freeShip = meta.shipping_hints.filter((h) => h.free_min != null).slice(0, 1);
+        const fixedShip = meta.shipping_hints.filter((h) => h.free_min == null && !h.pickup && h.price > 0).slice(0, 1);
+        const coupons = meta.coupons.slice(0, 6);
+        const gifts = meta.gifts.slice(0, 3);
+        const count = freeShip.length + fixedShip.length + coupons.length + gifts.length;
+        const svg = (d: string) => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>;
+        const TRUCK = 'M3 7h11v9H3zM14 10h4l3 3v3h-7zM7 19a1.5 1.5 0 1 0 0-.01M17 19a1.5 1.5 0 1 0 0-.01';
+        const TICKET = 'M3 9V7a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v2a2.5 2.5 0 0 0 0 5v2a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-2a2.5 2.5 0 0 0 0-5zM9 15l6-6M9.5 9.5h.01M14.5 14.5h.01';
+        const GIFT = 'M4 11h16v9H4zM3 8h18v3H3zM12 8v12M12 8c-1-3-5-3-5-1s3 1 5 1zM12 8c1-3 5-3 5-1s-3 1-5 1z';
+        return (
+          <div className={`chips${count === 1 ? ' one' : ''}`}>
+            {freeShip.map((h) => (
+              <div className="cp ship" key={'fs' + h.name}>
+                <span className="ic">{svg(TRUCK)}</span>
+                <div className="tx"><b>Frete grátis</b><small>em pedidos acima de {brl(h.free_min as number)}</small></div>
               </div>
-            );
-          })}
-          {meta.gifts.slice(0, 3).map((g) => (
-            <div className="cp gift" key={g.name}><b>Brinde: {g.name}</b><small>em compras acima de {brl(g.minimum_purchase_amount)}</small></div>
-          ))}
-        </div>
-      )}
+            ))}
+            {fixedShip.map((h) => (
+              <div className="cp ship" key={'ff' + h.name}>
+                <span className="ic">{svg(TRUCK)}</span>
+                <div className="tx"><b>Frete fixo {brl(h.price)}</b><small>{h.name}</small></div>
+              </div>
+            ))}
+            {coupons.map((c) => {
+              const d = describeCoupon(c);
+              // título + descrição (editável pelo lojista; sem descrição usa a regra do cupom)
+              return (
+                <div className="cp off" key={c.code}>
+                  <span className="ic">{svg(TICKET)}</span>
+                  <div className="tx">
+                    <b>{d.title}</b>
+                    <small>{c.description || d.rule}</small>
+                  </div>
+                  <span className="code">{c.auto_apply ? 'automático' : c.code}</span>
+                </div>
+              );
+            })}
+            {gifts.map((g) => (
+              <div className="cp gift" key={g.name}>
+                <span className="ic">{svg(GIFT)}</span>
+                <div className="tx"><b>Brinde: {g.name}</b><small>em compras acima de {brl(g.minimum_purchase_amount)}</small></div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {total > 12 || query ? (
         <div style={{ padding: '4px 16px 8px' }}>
@@ -962,7 +990,7 @@ export default function LiveShop() {
         )}
       </div>
 
-      {products.length < total && (
+      {hasMore && (
         <div ref={moreRef} className="center note" style={{ padding: '18px 16px' }}>Carregando mais peças…</div>
       )}
     </div>
