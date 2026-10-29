@@ -34,6 +34,7 @@ interface GroupRow {
   jid: string;
   name: string;
   participants: number;
+  shared: boolean;
   entries: number;
   exits: number;
   net: number;
@@ -166,6 +167,7 @@ export default function ReportsPanel() {
   const [loading, setLoading] = useState(true);
 
   const [totals, setTotals] = useState({ clicks: 0, entries: 0, exits: 0 });
+  const [unattributedEntries, setUnattributedEntries] = useState(0);
   const [campaignRows, setCampaignRows] = useState<CampaignRow[]>([]);
   const [groupRows, setGroupRows] = useState<GroupRow[]>([]);
   const [recentEvents, setRecentEvents] = useState<EventRow[]>([]);
@@ -213,30 +215,19 @@ export default function ReportsPanel() {
       }
 
       const groupsInCampaigns = allGroups.filter((g) => linkedGroupIds.has(g.id));
-      const groupById = new Map(groupsInCampaigns.map((g) => [g.id, g]));
-      const groupByJid = new Map(groupsInCampaigns.map((g) => [g.group_jid, g]));
-      const groupIdList = groupsInCampaigns.map((g) => g.id);
-      const groupJidList = groupsInCampaigns.map((g) => g.group_jid).filter(Boolean);
+      const groupById = new Map(allGroups.map((g) => [g.id, g]));
+      const groupByJid = new Map(allGroups.map((g) => [g.group_jid, g]));
 
-      // 2. Eventos filtrados por grupos vinculados às campanhas
-      let events: any[] = [];
-      if (groupIdList.length > 0 || groupJidList.length > 0) {
-        const orFilter = [
-          groupIdList.length > 0 ? `group_id.in.(${groupIdList.join(',')})` : null,
-          groupJidList.length > 0 ? `group_jid.in.(${groupJidList.map((j) => `"${j}"`).join(',')})` : null,
-        ].filter(Boolean).join(',');
-
-        events = await fetchAllRange<any>(() => {
+      // Inclui entradas sem campanha de todos os grupos do tenant.
+      const events = await fetchAllRange<any>(() => {
           let q: any = supabase
             .from('fe_group_events' as any)
-            .select('id, event_type, phone, group_id, group_jid, created_at')
+            .select('id, event_type, phone, group_id, group_jid, created_at, campaign_id')
             .eq('tenant_id', tenant.id)
-            .or(orFilter)
             .order('created_at', { ascending: false });
           if (since) q = q.gte('created_at', since);
           return q;
         });
-      }
 
       // 3. Clicks
       let clicks: any[] = [];
@@ -265,21 +256,21 @@ export default function ReportsPanel() {
       for (const e of events) {
         const grp = (e.group_id && groupById.get(e.group_id))
           || (e.group_jid && groupByJid.get(e.group_jid));
-        if (!grp) continue;
 
         const isJoin = e.event_type === 'join';
         const isLeave = e.event_type === 'leave';
         if (isJoin) totalEntries += 1;
         if (isLeave) totalExits += 1;
 
-        const gAgg = perGroup.get(grp.id) || { entries: 0, exits: 0 };
-        if (isJoin) gAgg.entries += 1;
-        if (isLeave) gAgg.exits += 1;
-        perGroup.set(grp.id, gAgg);
+        if (grp && linkedGroupIds.has(grp.id)) {
+          const gAgg = perGroup.get(grp.id) || { entries: 0, exits: 0 };
+          if (isJoin) gAgg.entries += 1;
+          if (isLeave) gAgg.exits += 1;
+          perGroup.set(grp.id, gAgg);
+        }
 
-        const campIds = groupToCampaigns.get(grp.id) || [];
-        for (const cid of campIds) {
-          const cAgg = perCampaign.get(cid)!;
+        const cAgg = perCampaign.get(e.campaign_id);
+        if (cAgg) {
           if (isJoin) cAgg.entries += 1;
           if (isLeave) cAgg.exits += 1;
         }
@@ -292,7 +283,7 @@ export default function ReportsPanel() {
 
       // 5. Rankings
       const campaignRowsBuilt: CampaignRow[] = campaigns.map((c) => {
-        const agg = perCampaign.get(c.id)!;
+        const agg = perCampaign.get(c.id) || { entries: 0, exits: 0, clicks: 0 };
         return {
           id: c.id,
           name: c.name,
@@ -313,6 +304,7 @@ export default function ReportsPanel() {
             jid: grp?.group_jid || '',
             name: grp?.group_name || grp?.group_jid || gid,
             participants: grp?.participant_count || 0,
+            shared: (groupToCampaigns.get(gid)?.length || 0) > 1,
             entries: agg.entries,
             exits: agg.exits,
             net: agg.entries - agg.exits,
@@ -324,10 +316,7 @@ export default function ReportsPanel() {
       const recent: EventRow[] = events.slice(0, 50).map((e) => {
         const grp = (e.group_id && groupById.get(e.group_id))
           || (e.group_jid && groupByJid.get(e.group_jid));
-        const campIds = grp ? (groupToCampaigns.get(grp.id) || []) : [];
-        const campName = campIds.length > 0
-          ? (campaignById.get(campIds[0]) as any)?.name || null
-          : null;
+        const campName = (campaignById.get(e.campaign_id) as any)?.name || null;
         return {
           id: e.id,
           event_type: e.event_type,
@@ -341,6 +330,7 @@ export default function ReportsPanel() {
       });
 
       setTotals({ clicks: clicks.length, entries: totalEntries, exits: totalExits });
+      setUnattributedEntries(events.filter((event) => event.event_type === 'join' && !event.campaign_id).length);
       setCampaignRows(campaignRowsBuilt);
       setGroupRows(groupRowsBuilt);
       setRecentEvents(recent);
@@ -353,8 +343,8 @@ export default function ReportsPanel() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const conversion = useMemo(
-    () => (totals.clicks > 0 ? (totals.entries / totals.clicks) * 100 : 0),
-    [totals],
+    () => (totals.clicks > 0 ? ((totals.entries - unattributedEntries) / totals.clicks) * 100 : 0),
+    [totals, unattributedEntries],
   );
   const net = totals.entries - totals.exits;
 
@@ -433,6 +423,8 @@ export default function ReportsPanel() {
           </Card>
         ))}
       </div>
+
+      <p className="text-sm text-muted-foreground">Entradas sem campanha (link direto): <span className="font-semibold text-foreground">{loading ? '—' : unattributedEntries}</span></p>
 
       {/* Gráficos futuristas */}
       <ReportsCharts
@@ -521,7 +513,7 @@ export default function ReportsPanel() {
                   {groupRows.map((g) => (
                     <TableRow key={g.id}>
                       <TableCell className="max-w-[260px] truncate font-medium">{g.name}</TableCell>
-                      <TableCell className="text-right tabular-nums">{g.participants}</TableCell>
+                      <TableCell className="text-right tabular-nums">{g.participants}{g.shared && <p className="text-xs text-muted-foreground">(compartilhado entre campanhas)</p>}</TableCell>
                       <TableCell className="text-right tabular-nums">{g.entries}</TableCell>
                       <TableCell className="text-right tabular-nums text-destructive">{g.exits}</TableCell>
                       <TableCell className="text-right tabular-nums">
