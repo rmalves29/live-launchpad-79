@@ -3670,6 +3670,45 @@ export type Database = {
           },
         ]
       }
+      pagarme_recurring_links: {
+        Row: {
+          created_at: string
+          created_by: string
+          cycles: number
+          id: string
+          name: string
+          pagarme_link_id: string
+          pagarme_plan_id: string
+          price: number
+          status: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          cycles?: number
+          id?: string
+          name: string
+          pagarme_link_id: string
+          pagarme_plan_id: string
+          price: number
+          status?: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          cycles?: number
+          id?: string
+          name?: string
+          pagarme_link_id?: string
+          pagarme_plan_id?: string
+          price?: number
+          status?: string
+          url?: string
+        }
+        Relationships: []
+      }
       payment_integrations: {
         Row: {
           access_token: string

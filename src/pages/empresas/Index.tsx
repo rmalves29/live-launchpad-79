@@ -54,6 +54,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/hooks/useAuth';
 import { differenceInDays } from 'date-fns';
+import { RecurringLinksDialog } from './RecurringLinksDialog';
 
 interface Tenant {
   id: string;
@@ -778,11 +779,12 @@ export default function EmpresasIndex() {
           </h1>
           <p className="text-muted-foreground">Gerencie todas as empresas do sistema</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={loadTenants} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Atualizar
           </Button>
+          <RecurringLinksDialog />
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={() => handleOpenDialog()}>
