@@ -23,7 +23,11 @@ const hms = (s: number) => {
 // Marcar = vira AMBOS (continua no bazar); desmarcar = vira BAZAR (sai da live).
 // Produto com variações: cada variação (tamanho/cor) entra ou sai sozinha; o produto "pai" acompanha.
 const IN_LIVE = ['LIVE', 'AMBOS'];
-const PAGE_SIZE = 50;
+const PAGE_SIZES = [25, 50, 100];
+const MAX_OFFERS = 2;
+const readPageSize = () => {
+  try { const n = Number(localStorage.getItem('live-products-page-size')); return PAGE_SIZES.includes(n) ? n : 50; } catch { return 50; }
+};
 
 type Child = {
   id: number;
@@ -70,10 +74,14 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
   // produto aberto no diálogo de edição (sem sair da página)
   const [editingId, setEditingId] = useState<number | null>(null);
   // oferta relâmpago: a que está no ar e o produto escolhido para disparar uma nova
-  const [offer, setOffer] = useState<ActiveOffer | null>(null);
+  const [offers, setOffers] = useState<ActiveOffer[]>([]);
+  const [pageSize, setPageSize] = useState(readPageSize);
+  // posição digitada na vitrine (id do produto -> texto) enquanto o lojista edita
+  const [posDraft, setPosDraft] = useState<Map<number, string>>(new Map());
+  const [movingId, setMovingId] = useState<number | null>(null);
   const [offerTarget, setOfferTarget] = useState<FlashTarget | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const [endingOffer, setEndingOffer] = useState(false);
+  const [endingOffer, setEndingOffer] = useState<string | null>(null);
 
   const loadOffer = useCallback(async () => {
     if (!tenant?.id) return;
@@ -83,8 +91,8 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
       .eq('tenant_id', tenant.id)
       .eq('status', 'active')
       .gt('ends_at', new Date().toISOString())
-      .maybeSingle();
-    setOffer((data as any) || null);
+      .order('ends_at', { ascending: true });
+    setOffers(((data as any[]) || []).slice(0, MAX_OFFERS) as ActiveOffer[]);
   }, [tenant?.id]);
   useEffect(() => { loadOffer(); }, [loadOffer]);
   useEffect(() => {
@@ -92,16 +100,16 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
     return () => clearInterval(t);
   }, []);
   // oferta que chegou ao fim some da faixa sozinha
-  const offerLeft = offer ? Math.floor((Date.parse(offer.ends_at) - now) / 1000) : 0;
-  useEffect(() => { if (offer && offerLeft <= 0) setOffer(null); }, [offer, offerLeft]);
+  const offerLeft = (o: ActiveOffer) => Math.floor((Date.parse(o.ends_at) - now) / 1000);
+  const liveOffers = offers.filter((o) => offerLeft(o) > 0);
+  useEffect(() => { if (offers.length !== liveOffers.length) setOffers(liveOffers); }, [offers, liveOffers]);
 
-  async function endOffer() {
-    if (!offer) return;
-    setEndingOffer(true);
+  async function endOffer(offer: ActiveOffer) {
+    setEndingOffer(offer.id);
     const { error } = await supabase.from('live_flash_offers' as any).update({ status: 'cancelled' } as any).eq('id', offer.id);
-    setEndingOffer(false);
+    setEndingOffer(null);
     if (error) { toast({ title: 'Erro ao encerrar a oferta', description: error.message, variant: 'destructive' }); return; }
-    setOffer(null);
+    setOffers((prev) => prev.filter((o) => o.id !== offer.id));
     toast({ title: 'Oferta encerrada', description: 'O produto voltou ao preço normal na vitrine.' });
   }
 
@@ -135,9 +143,13 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
     if (q) query = query.or(`code.ilike.%${q}%,name.ilike.%${q}%`);
     if (filter === 'in') query = query.in('sale_type', IN_LIVE);
     if (filter === 'out') query = query.not('sale_type', 'in', `(${IN_LIVE.join(',')})`);
-    const { data, count, error } = await query
-      .order('code', { ascending: true })
-      .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+    // No filtro "Na live" a lista segue a ordem da vitrine (posição escolhida; sem posição, ordem de entrada)
+    if (filter === 'in') {
+      query = query.order('live_position', { ascending: true, nullsFirst: false }).order('live_added_at', { ascending: true }).order('id', { ascending: true });
+    } else {
+      query = query.order('code', { ascending: true });
+    }
+    const { data, count, error } = await query.range(page * pageSize, page * pageSize + pageSize - 1);
     if (error) {
       setLoading(false);
       toast({ title: 'Erro ao carregar produtos', description: error.message, variant: 'destructive' });
@@ -177,7 +189,7 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
     setTotal(count ?? mapped.length);
     setKnown((prev) => { const n = new Map(prev); mapped.forEach((r) => n.set(r.id, r)); return n; });
     setLoading(false);
-  }, [tenant?.id, debounced, filter, page]);
+  }, [tenant?.id, debounced, filter, page, pageSize]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { countInLive(); }, [countInLive]);
@@ -288,7 +300,31 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
     }
   }
 
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+
+  function changePageSize(n: number) {
+    setPageSize(n);
+    setPage(0);
+    try { localStorage.setItem('live-products-page-size', String(n)); } catch { /* sem armazenamento: vale só nesta visita */ }
+  }
+
+  // só dá para numerar com o filtro "Na live" e sem busca: aí a posição na tela é a posição real na vitrine
+  const canOrder = filter === 'in' && !debounced;
+
+  async function movePosition(r: Row, rank: number) {
+    const raw = posDraft.get(r.id);
+    setPosDraft((prev) => { const n = new Map(prev); n.delete(r.id); return n; });
+    if (raw === undefined) return;
+    const want = Math.floor(Number(raw));
+    if (!Number.isFinite(want) || want < 1 || want === rank) return;
+    setMovingId(r.id);
+    const { error } = await supabase.rpc('set_live_position' as any, { p_product_id: r.id, p_position: want } as any);
+    setMovingId(null);
+    if (error) { toast({ title: 'Erro ao mudar a posição', description: error.message, variant: 'destructive' }); return; }
+    toast({ title: 'Posição atualizada', description: `${r.code || r.name} agora é o nº ${want} da vitrine.` });
+    await load();
+    onChanged?.();
+  }
   const dirty = pending.size > 0;
 
   const handleEditOpenChange = useCallback((o: boolean) => { if (!o) setEditingId(null); }, []);
@@ -308,15 +344,15 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
           {inLiveCount !== null && <Badge variant="secondary">{inLiveCount} na live</Badge>}
         </div>
 
-        {offer && offerLeft > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+        {liveOffers.map((offer) => (
+          <div key={offer.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
             <span className="flex items-center gap-1.5">
               <Zap className="h-4 w-4" />
-              Oferta no ar: <b>{offer.product?.name || `produto #${offer.product_id}`}</b> por {money(Number(offer.flash_price))} · termina em <b className="tabular-nums">{hms(offerLeft)}</b>
+              Oferta no ar: <b>{offer.product?.name || `produto #${offer.product_id}`}</b> por {money(Number(offer.flash_price))} · termina em <b className="tabular-nums">{hms(offerLeft(offer))}</b>
             </span>
-            <Button size="sm" variant="outline" disabled={endingOffer} onClick={endOffer}>Encerrar agora</Button>
+            <Button size="sm" variant="outline" disabled={endingOffer === offer.id} onClick={() => endOffer(offer)}>Encerrar agora</Button>
           </div>
-        )}
+        ))}
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative flex-1 min-w-[220px]">
@@ -353,6 +389,7 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
               aria-label="Marcar ou desmarcar todos desta página"
               disabled={loading || rows.length === 0}
             />
+            {canOrder && <span className="w-14 text-center" title="Posição na vitrine">Nº</span>}
             <span className="flex-1">Produto</span>
             <span className="hidden w-20 text-right sm:block">Estoque</span>
             <span className="hidden w-24 text-right sm:block">Preço</span>
@@ -368,7 +405,8 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
             </p>
           ) : (
             <ul className="divide-y">
-              {rows.map((r) => {
+              {rows.map((r, idx) => {
+                const rank = page * pageSize + idx + 1;
                 const st = rowState(r);
                 const hasKids = r.children.length > 0;
                 const isOpen = open.has(r.id);
@@ -378,6 +416,21 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
                 return (
                   <li key={r.id} className={changed ? 'bg-amber-50 dark:bg-amber-950/20' : ''}>
                     <div className="flex items-center gap-3 px-3 py-2">
+                      {canOrder && (
+                        <Input
+                          type="number" min={1} max={total} inputMode="numeric"
+                          className="h-8 w-14 px-1 text-center tabular-nums"
+                          aria-label={`Posição de ${r.code || r.name} na vitrine`}
+                          disabled={movingId !== null}
+                          value={posDraft.get(r.id) ?? String(rank)}
+                          onChange={(e) => setPosDraft((prev) => new Map(prev).set(r.id, e.target.value))}
+                          onBlur={() => movePosition(r, rank)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                            if (e.key === 'Escape') setPosDraft((prev) => { const n = new Map(prev); n.delete(r.id); return n; });
+                          }}
+                        />
+                      )}
                       <Checkbox checked={st} onCheckedChange={(v) => setRow(r, v === true)} aria-label={`${st === true ? 'Tirar' : 'Colocar'} ${r.code || r.name} ${st === true ? 'da' : 'na'} live`} />
                       <div className="h-11 w-11 shrink-0 overflow-hidden rounded-md border bg-muted">
                         {r.image_url
@@ -408,10 +461,11 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
                         title={r.inLive && (r.stock ?? 0) > 0 ? 'Oferta relâmpago' : 'Coloque o produto na live (e com estoque) para fazer oferta relâmpago'}
                         disabled={!r.inLive || (r.stock ?? 0) <= 0}
                         onClick={() => {
-                          if (offer && offerLeft > 0) { toast({ title: 'Já existe uma oferta no ar', description: 'Encerre a oferta atual antes de disparar outra.', variant: 'destructive' }); return; }
+                          if (liveOffers.some((o) => o.product_id === r.id)) { toast({ title: 'Este produto já está em oferta', description: 'Encerre a oferta dele antes de disparar outra.', variant: 'destructive' }); return; }
+                          if (liveOffers.length >= MAX_OFFERS) { toast({ title: `Já existem ${MAX_OFFERS} ofertas no ar`, description: 'Encerre uma delas antes de disparar outra.', variant: 'destructive' }); return; }
                           setOfferTarget({ id: r.id, name: r.name, code: r.code, price: r.price, stock: r.stock, inLive: r.inLive });
                         }}>
-                        <Zap className={`h-4 w-4 ${offer && offer.product_id === r.id && offerLeft > 0 ? 'text-red-600' : ''}`} />
+                        <Zap className={`h-4 w-4 ${liveOffers.some((o) => o.product_id === r.id) ? 'text-red-600' : ''}`} />
                       </Button>
                       <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0" aria-label={`Editar ${r.code || r.name}`} onClick={() => setEditingId(r.id)}>
                         <Pencil className="h-4 w-4" />
@@ -453,6 +507,17 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
 
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>{total} produto(s){debounced ? ' encontrados' : ''}</span>
+          <label className="flex items-center gap-1.5">
+            Por página
+            <select
+              value={pageSize}
+              onChange={(e) => changePageSize(Number(e.target.value))}
+              className="h-8 rounded-md border bg-background px-2 text-sm text-foreground"
+              aria-label="Produtos por página"
+            >
+              {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" disabled={page === 0 || loading} onClick={() => setPage((p) => Math.max(0, p - 1))}>Anterior</Button>
             <span>Página {page + 1} de {pages}</span>

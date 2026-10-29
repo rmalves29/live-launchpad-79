@@ -49,7 +49,7 @@ export function LiveFlashOfferDialog({ target, open, onOpenChange, onStarted }: 
 
     setSaving(true);
     const nowIso = new Date().toISOString();
-    // oferta que já passou do prazo deixa de ocupar a vaga (só uma oferta no ar por vez)
+    // oferta que já passou do prazo deixa de ocupar a vaga (no máximo 2 ofertas no ar ao mesmo tempo)
     await supabase.from('live_flash_offers' as any).update({ status: 'ended' } as any).eq('tenant_id', tenant.id).eq('status', 'active').lte('ends_at', nowIso);
     const { error } = await supabase.from('live_flash_offers' as any).insert({
       tenant_id: tenant.id,
@@ -61,10 +61,11 @@ export function LiveFlashOfferDialog({ target, open, onOpenChange, onStarted }: 
     } as any);
     setSaving(false);
     if (error) {
+      const full = String(error.message || '').includes('max_flash_offers');
       const dup = (error as any).code === '23505';
       toast({
-        title: dup ? 'Já existe uma oferta no ar' : 'Erro ao disparar a oferta',
-        description: dup ? 'Encerre a oferta atual antes de disparar outra.' : error.message,
+        title: full ? 'Já existem 2 ofertas no ar' : dup ? 'Este produto já está em oferta' : 'Erro ao disparar a oferta',
+        description: full ? 'Encerre uma delas antes de disparar outra.' : dup ? 'Encerre a oferta dele antes de disparar outra.' : error.message,
         variant: 'destructive',
       });
       return;
@@ -110,7 +111,7 @@ export function LiveFlashOfferDialog({ target, open, onOpenChange, onStarted }: 
             </div>
           </div>
 
-          <p className="text-xs text-muted-foreground">A oferta aparece na vitrine, logo abaixo da busca, na hora. Só uma por vez. Vale para o produto e todas as suas variações; ao acabar o tempo o preço volta ao normal, inclusive no carrinho.</p>
+          <p className="text-xs text-muted-foreground">A oferta aparece na vitrine, logo abaixo da busca, na hora. Até 2 ao mesmo tempo. Vale para o produto e todas as suas variações; ao acabar o tempo o preço volta ao normal, inclusive no carrinho.</p>
         </div>
 
         <DialogFooter>

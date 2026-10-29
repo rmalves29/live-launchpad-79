@@ -81,9 +81,9 @@ const wasPrice = (p: any) => (num(p.promotional_price) > 0 && num(p.price) > num
 const isPromo = (p: any) => num(p.promotional_price) > 0;
 
 // ------------------------- oferta relâmpago -------------------------
-// Uma por empresa. Só vale dentro do prazo: depois de ends_at o preço volta ao normal em qualquer carrinho, pois todo preço
+// Até 2 por empresa. Só vale dentro do prazo: depois de ends_at o preço volta ao normal em qualquer carrinho, pois todo preço
 // (vitrine, cupom, reserva e pedido) sai de loadProducts/catalog, que aplicam a oferta só enquanto ela está no ar.
-async function getActiveFlash(tenantId: string) {
+async function getActiveFlashes(tenantId: string): Promise<any[]> {
   const nowIso = new Date().toISOString();
   const { data } = await sb
     .from('live_flash_offers')
@@ -92,16 +92,19 @@ async function getActiveFlash(tenantId: string) {
     .eq('status', 'active')
     .lte('starts_at', nowIso)
     .gt('ends_at', nowIso)
-    .maybeSingle();
-  return data as any;
+    .order('ends_at', { ascending: true })
+    .limit(2);
+  return (data as any[]) || [];
 }
 
 // A oferta vale para o produto e para todas as suas variações; só aplica onde o preço da oferta é menor que o preço normal.
-function applyFlash(rows: any[], offer: any) {
-  const price = num(offer?.flash_price);
-  if (!offer || price <= 0) return;
-  for (const p of rows) {
-    if ((p.id === offer.product_id || p.parent_product_id === offer.product_id) && price < num(p.price)) p.promotional_price = price;
+function applyFlash(rows: any[], offers: any[]) {
+  for (const offer of offers) {
+    const price = num(offer?.flash_price);
+    if (!offer || price <= 0) continue;
+    for (const p of rows) {
+      if ((p.id === offer.product_id || p.parent_product_id === offer.product_id) && price < num(p.price)) p.promotional_price = price;
+    }
   }
 }
 
@@ -161,7 +164,7 @@ async function loadProducts(tenantId: string, ids: number[]) {
     .eq('tenant_id', tenantId)
     .in('id', ids);
   const rows = data || [];
-  applyFlash(rows, await getActiveFlash(tenantId));
+  applyFlash(rows, await getActiveFlashes(tenantId));
   return new Map<number, any>(rows.map((p: any) => [p.id, p]));
 }
 
@@ -233,14 +236,14 @@ async function loadCatalogExtras(tenant: any) {
 async function catalogVersion(tenant: any): Promise<string> {
   const base = () => sb.from('products').select('updated_at', { count: 'exact' })
     .eq('tenant_id', tenant.id).eq('is_active', true).in('sale_type', ['LIVE', 'AMBOS']).gt('stock', 0);
-  const [{ count }, { data: last }, offer] = await Promise.all([
+  const [{ count }, { data: last }, offers] = await Promise.all([
     sb.from('products').select('id', { count: 'exact', head: true })
       .eq('tenant_id', tenant.id).eq('is_active', true).in('sale_type', ['LIVE', 'AMBOS']).gt('stock', 0),
     base().order('updated_at', { ascending: false }).limit(1),
-    getActiveFlash(tenant.id),
+    getActiveFlashes(tenant.id),
   ]);
-  // a oferta entra na versão: quando ela começa ou termina, a vitrine aberta recarrega sozinha
-  return `${count ?? 0}:${last?.[0]?.updated_at || ''}:${offer?.id || ''}`;
+  // as ofertas entram na versão: quando ela começa ou termina, a vitrine aberta recarrega sozinha
+  return `${count ?? 0}:${last?.[0]?.updated_at || ''}:${offers.map((o: any) => o.id).join(',')}`;
 }
 
 const CATALOG_COLS = 'id, code, name, price, promotional_price, stock, image_url, color, size, parent_product_id, is_live';
@@ -305,7 +308,7 @@ async function buildFlash(tenantId: string, offer: any, pageItems: any[]) {
       .gt('stock', 0)
       .or(`id.eq.${offer.product_id},parent_product_id.eq.${offer.product_id}`);
     const rows = data || [];
-    applyFlash(rows, offer);
+    applyFlash(rows, [offer]);
     item = (await buildItems(rows, tenantId)).find((i: any) => i.id === offer.product_id) || null;
   }
   if (!item) return null;
@@ -328,22 +331,26 @@ async function catalog(body: any, tenant: any) {
     .in('sale_type', ['LIVE', 'AMBOS'])
     .gt('stock', 0);
   if (q) query = query.or(`code.ilike.%${q}%,name.ilike.%${q}%`);
-  // Ordem FIXA da vitrine: quem entrou na live primeiro aparece primeiro; o que foi cadastrado/ativado agora vai para o fim.
-  // Só depende de live_added_at (gravado quando o produto entra na live) e do id: estoque, preço e venda não mexem na posição.
+  // Ordem FIXA da vitrine: primeiro a posição escolhida pelo lojista (live_position); sem posição, quem entrou na live primeiro
+  // aparece primeiro e o que foi ativado agora vai para o fim. Estoque, preço e venda não mexem na posição.
   const { data: rows, count, error } = await query
+    .order('live_position', { ascending: true, nullsFirst: false })
     .order('live_added_at', { ascending: true })
     .order('id', { ascending: true })
     .range(offset, offset + limit - 1);
   if (error) return fail('Não foi possível carregar a vitrine.', 'CATALOG_ERROR');
 
-  const offer = await getActiveFlash(tenant.id);
-  applyFlash(rows || [], offer);
+  const offers = await getActiveFlashes(tenant.id);
+  applyFlash(rows || [], offers);
   const items = await buildItems(rows || [], tenant.id);
 
   const result: any = { ok: true, items, total: count ?? items.length, offset, limit };
 
   if (offset === 0) result.version = await catalogVersion(tenant);
-  if (offset === 0 && offer) result.flash = await buildFlash(tenant.id, offer, items);
+  if (offset === 0 && offers.length) {
+    const built = await Promise.all(offers.map((o: any) => buildFlash(tenant.id, o, items)));
+    result.flashes = built.filter(Boolean);
+  }
   if (extrasP) Object.assign(result, await extrasP);
   return json(result);
 }

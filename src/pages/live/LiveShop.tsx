@@ -210,9 +210,9 @@ export default function LiveShop() {
       setError(null);
       if (res.version) versionRef.current = res.version;
       if (res.tenant) {
-        setMeta({ tenant: res.tenant, coupons: res.coupons || [], gifts: res.gifts || [], shipping_hints: res.shipping_hints || [], payment: res.payment, settings: res.settings, flash: res.flash || null });
+        setMeta({ tenant: res.tenant, coupons: res.coupons || [], gifts: res.gifts || [], shipping_hints: res.shipping_hints || [], payment: res.payment, settings: res.settings, flashes: res.flashes || [] });
         // diferença entre o relógio do servidor e o do aparelho (a contagem da oferta usa o do servidor)
-        if (res.flash?.now) clockOffset.current = new Date(res.flash.now).getTime() - Date.now();
+        if (res.flashes?.[0]?.now) clockOffset.current = new Date(res.flashes[0].now).getTime() - Date.now();
         if (!res.payment.pix && res.payment.card) setPay('card');
       }
       setTotal(res.total || 0);
@@ -295,15 +295,16 @@ export default function LiveShop() {
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', onVisible); };
   }, [slug, loadCatalog]);
 
-  // Oferta relâmpago: contagem pelo relógio do servidor; ao zerar, recarrega a vitrine (o preço volta ao normal).
-  const flash = meta?.flash || null;
-  const flashLeft = flash ? Math.floor((Date.parse(flash.ends_at) - (tick + clockOffset.current)) / 1000) : 0;
-  const flashEndedFor = useRef<string | null>(null);
+  // Ofertas relâmpago (até 2): contagem pelo relógio do servidor; ao zerar, recarrega a vitrine (o preço volta ao normal).
+  const flashes = meta?.flashes || [];
+  const flashEndedFor = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (!flash || flashLeft > 0 || flashEndedFor.current === flash.ends_at) return;
-    flashEndedFor.current = flash.ends_at;
+    const nowMs = tick + clockOffset.current;
+    const ended = flashes.filter((f) => Date.parse(f.ends_at) <= nowMs && !flashEndedFor.current.has(`${f.item.key}|${f.ends_at}`));
+    if (!ended.length) return;
+    ended.forEach((f) => flashEndedFor.current.add(`${f.item.key}|${f.ends_at}`));
     loadCatalog({ q: queryRef.current });
-  }, [flash, flashLeft, loadCatalog]);
+  }, [flashes, tick, loadCatalog]);
 
   // Preço do carrinho acompanha a vitrine: quando a oferta acaba (ou começa), as peças dela voltam/passam ao preço certo.
   useEffect(() => {
@@ -872,14 +873,16 @@ export default function LiveShop() {
         </div>
       ) : null}
 
-      {flash && flashLeft > 0 && !query && (() => {
+      {!query && flashes.map((flash) => {
+        const flashLeft = Math.floor((Date.parse(flash.ends_at) - (tick + clockOffset.current)) / 1000);
+        if (flashLeft <= 0) return null;
         const f = flash.item;
         const off = pct(f.price, f.was);
         const hh = String(Math.floor(flashLeft / 3600)).padStart(2, '0');
         const mm = String(Math.floor((flashLeft % 3600) / 60)).padStart(2, '0');
         const ss = String(flashLeft % 60).padStart(2, '0');
         return (
-          <div className={`flash${flashLeft <= 60 ? ' urgent' : ''}`}>
+          <div className={`flash${flashLeft <= 60 ? ' urgent' : ''}`} key={`${f.key}|${flash.ends_at}`}>
             <div className="fh">
               <span>Oferta relâmpago{flashLeft <= 60 ? <em>Acaba já!</em> : null}</span>
               <div className="clk" role="timer" aria-label="Tempo restante da oferta">
@@ -900,7 +903,7 @@ export default function LiveShop() {
             </div>
           </div>
         );
-      })()}
+      })}
 
       <div className="list">
         {products.map((p, i) => {
