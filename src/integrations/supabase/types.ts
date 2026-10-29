@@ -4079,6 +4079,7 @@ export type Database = {
           is_active: boolean
           is_live: boolean | null
           live_added_at: string | null
+          live_position: number | null
           name: string
           observation: string | null
           parent_product_id: number | null
@@ -4104,6 +4105,7 @@ export type Database = {
           is_active?: boolean
           is_live?: boolean | null
           live_added_at?: string | null
+          live_position?: number | null
           name: string
           observation?: string | null
           parent_product_id?: number | null
@@ -4129,6 +4131,7 @@ export type Database = {
           is_active?: boolean
           is_live?: boolean | null
           live_added_at?: string | null
+          live_position?: number | null
           name?: string
           observation?: string | null
           parent_product_id?: number | null
@@ -6476,6 +6479,10 @@ export type Database = {
           items_restored: number
           restored: boolean
         }[]
+      }
+      set_live_position: {
+        Args: { p_position: number; p_product_id: number }
+        Returns: undefined
       }
       site_agenda_reservar: {
         Args: {
