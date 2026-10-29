@@ -117,7 +117,15 @@ function preserveBlankLines(message: string): string {
     .join("\n");
 }
 
-function personalizeMessage(template: string, product: Product): string {
+// Aceita o nome escrito com espaço ou sem abreviar ({{valor promocional}}, {{valor promo}}, {{valor original}}) e leva para o nome padrão.
+function normalizeVariableNames(template: string): string {
+  return template
+    .replace(/\{\{?\s*valor[\s_]*promo(?:cional)?\s*\}?\}/gi, "{{valor_promo}}")
+    .replace(/\{\{?\s*valor[\s_]*original\s*\}?\}/gi, "{{valor_original}}");
+}
+
+function personalizeMessage(rawTemplate: string, product: Product): string {
+  const template = normalizeVariableNames(rawTemplate);
   let message = applyPromotionalPriceFallback(template, product);
 
   message = message
