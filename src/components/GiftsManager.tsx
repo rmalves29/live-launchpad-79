@@ -20,6 +20,8 @@ interface GiftItem {
   minimum_purchase_amount: number;
   is_active: boolean;
   auto_apply?: boolean;
+  quantity?: number | null;
+  used?: number;
   tenant_id?: string;
 }
 
@@ -38,7 +40,8 @@ export const GiftsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'live'
     description: '',
     minimum_purchase_amount: 0,
     is_active: true,
-    auto_apply: true
+    auto_apply: true,
+    quantity: '' as string
   });
 
   useEffect(() => {
@@ -46,6 +49,22 @@ export const GiftsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'live'
       loadGifts();
     }
   }, [tenantId]);
+
+  // Quantos brindes já foram para pedidos (não cancelados) da loja da live, para mostrar "restam N".
+  const withUsage = async (list: GiftItem[]): Promise<GiftItem[]> => {
+    if (channel !== 'live' || !tenantId) return list;
+    return await Promise.all(list.map(async (g) => {
+      if (g.quantity == null) return g;
+      const { count } = await supabaseTenant.raw
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .eq('source', 'live_shop')
+        .eq('is_cancelled', false)
+        .eq('gift_name', g.name);
+      return { ...g, used: count ?? 0 };
+    }));
+  };
 
   const loadGifts = async () => {
     if (!tenantId) return;
@@ -70,12 +89,12 @@ export const GiftsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'live'
             .order('minimum_purchase_amount', { ascending: true });
           
           if (allError) throw allError;
-          setGifts((allData || []) as GiftItem[]);
+          setGifts(await withUsage((allData || []) as GiftItem[]));
         } else {
           throw error;
         }
       } else {
-        setGifts((data || []) as GiftItem[]);
+        setGifts(await withUsage((data || []) as GiftItem[]));
       }
     } catch (error: any) {
       console.error('Erro ao carregar brindes:', error);
@@ -115,6 +134,7 @@ export const GiftsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'live'
         minimum_purchase_amount: newGift.minimum_purchase_amount,
         is_active: newGift.is_active,
         auto_apply: newGift.auto_apply,
+        quantity: newGift.quantity.trim() === '' ? null : Math.max(0, Math.floor(Number(newGift.quantity)) || 0),
         channel
       };
 
@@ -188,7 +208,8 @@ export const GiftsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'live'
       description: '',
       minimum_purchase_amount: 0,
       is_active: true,
-      auto_apply: true
+      auto_apply: true,
+      quantity: ''
     });
     setIsAddingGift(false);
     setEditingGift(null);
@@ -201,7 +222,8 @@ export const GiftsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'live'
       description: gift.description || '',
       minimum_purchase_amount: gift.minimum_purchase_amount,
       is_active: gift.is_active,
-      auto_apply: gift.auto_apply !== false
+      auto_apply: gift.auto_apply !== false,
+      quantity: gift.quantity == null ? '' : String(gift.quantity)
     });
     setIsAddingGift(true);
   };
@@ -280,6 +302,22 @@ export const GiftsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'live'
                 />
               </div>
 
+              <div>
+                <Label htmlFor="gift_quantity">Quantidade disponível (opcional)</Label>
+                <Input
+                  id="gift_quantity"
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  value={newGift.quantity}
+                  onChange={(e) => setNewGift({ ...newGift, quantity: e.target.value })}
+                  placeholder="Deixe vazio para não limitar"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Quando acabar, o brinde deixa de aparecer e de ser dado nos novos pedidos. Pedido cancelado devolve o brinde ao saldo.
+                </p>
+              </div>
+
               <div className="flex items-center space-x-2">
                 <Switch
                   id="is_active"
@@ -329,6 +367,11 @@ export const GiftsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'live'
                     </div>
                     <p className="text-sm text-muted-foreground">
                       Compras acima de {formatCurrency(gift.minimum_purchase_amount)}
+                      {gift.quantity != null && (
+                        <span className={(gift.quantity - (gift.used ?? 0)) <= 0 ? ' ml-2 font-medium text-destructive' : ' ml-2 font-medium'}>
+                          · {(gift.quantity - (gift.used ?? 0)) <= 0 ? 'esgotado' : `restam ${gift.quantity - (gift.used ?? 0)} de ${gift.quantity}`}
+                        </span>
+                      )}
                     </p>
                     {gift.description && (
                       <p className="text-sm text-muted-foreground mt-1">

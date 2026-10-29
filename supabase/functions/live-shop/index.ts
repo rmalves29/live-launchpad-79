@@ -179,6 +179,19 @@ function sanitizeItems(raw: unknown): Array<{ product_id: number; qty: number }>
   return Array.from(merged, ([product_id, qty]) => ({ product_id, qty }));
 }
 
+// Brinde com quantidade limitada (gifts.quantity; vazio = sem limite): o que já foi para pedidos não cancelados da live sai do saldo.
+// excludeOrderId = o próprio pedido que está sendo recalculado (ele não conta contra si mesmo).
+async function giftsWithLeft(tenantId: string, gifts: any[], excludeOrderId?: number): Promise<any[]> {
+  return await Promise.all((gifts || []).map(async (g: any) => {
+    if (g.quantity == null) return { ...g, left: null };
+    let q = sb.from('orders').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId).eq('source', 'live_shop').eq('is_cancelled', false).eq('gift_name', g.name);
+    if (excludeOrderId) q = q.neq('id', excludeOrderId);
+    const { count } = await q;
+    return { ...g, left: Math.max(0, num(g.quantity) - (count ?? 0)) };
+  }));
+}
+
 // ------------------------------- ações -------------------------------
 
 // Cupons, brindes, fretes e gateway da vitrine (independem dos produtos; rodam em paralelo com a lista).
@@ -187,7 +200,7 @@ async function loadCatalogExtras(tenant: any) {
     const nowIso = new Date().toISOString();
     const [couponsRes, giftsRes, shipRes, pagarme, appmax, mp, infinite] = await Promise.all([
       sb.from('coupons').select('code, discount_type, discount_value, min_purchase_amount, min_items_quantity, progressive_tiers, apply_to_promotional, auto_apply, description, starts_at, expires_at, usage_limit, used_count, is_active').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).limit(50),
-      sb.from('gifts').select('name, description, minimum_purchase_amount, auto_apply').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).order('minimum_purchase_amount', { ascending: true }),
+      sb.from('gifts').select('name, description, minimum_purchase_amount, auto_apply, quantity').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).order('minimum_purchase_amount', { ascending: true }),
       sb.from('custom_shipping_options').select('name, price, delivery_days, free_shipping_min_order, coverage_type').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true),
       sb.from('integration_pagarme').select('is_active, enable_pix, enable_credit_card, pix_discount_percent, max_installments, max_installments_without_interest, min_installment_value').eq('tenant_id', tenant.id).maybeSingle(),
       sb.from('integration_appmax').select('is_active, enable_pix, enable_credit_card, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
@@ -203,7 +216,8 @@ async function loadCatalogExtras(tenant: any) {
         progressive_tiers: c.progressive_tiers, apply_to_promotional: c.apply_to_promotional !== false, auto_apply: c.auto_apply === true,
         description: typeof c.description === 'string' && c.description.trim() ? c.description.trim() : null, expires_at: c.expires_at,
       }));
-    extras.gifts = (giftsRes.data || []).filter((g: any) => g.auto_apply !== false).map((g: any) => ({ name: g.name, minimum_purchase_amount: num(g.minimum_purchase_amount) }));
+    const giftsLeft = await giftsWithLeft(tenant.id, (giftsRes.data || []).filter((g: any) => g.auto_apply !== false));
+    extras.gifts = giftsLeft.filter((g: any) => g.left !== 0).map((g: any) => ({ name: g.name, minimum_purchase_amount: num(g.minimum_purchase_amount), left: g.left }));
     extras.shipping_hints = (shipRes.data || [])
       .filter((s: any) => (s.coverage_type || 'national') === 'national')
       .map((s: any) => ({ name: s.name, price: num(s.price), free_min: s.free_shipping_min_order != null ? num(s.free_shipping_min_order) : null, pickup: s.delivery_days === 0 }));
@@ -665,8 +679,9 @@ async function syncOpenOrder(body: any, tenant: any, finalize: boolean) {
   }
 
   let giftName: string | null = null;
-  const { data: gifts } = await sb.from('gifts').select('name, minimum_purchase_amount, auto_apply').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).order('minimum_purchase_amount', { ascending: false });
-  const gift = (gifts || []).find((g: any) => g.auto_apply !== false && subtotal >= num(g.minimum_purchase_amount));
+  const { data: gifts } = await sb.from('gifts').select('name, minimum_purchase_amount, auto_apply, quantity').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).order('minimum_purchase_amount', { ascending: false });
+  const giftsLeft = await giftsWithLeft(tenant.id, (gifts || []).filter((g: any) => g.auto_apply !== false && subtotal >= num(g.minimum_purchase_amount)), order.id);
+  const gift = giftsLeft.find((g: any) => g.left !== 0);
   if (gift) giftName = gift.name;
 
   const total = round2(Math.max(0, subtotal - couponDiscount));
@@ -807,8 +822,9 @@ async function createOrder(body: any, tenant: any, ip: string) {
   }
 
   let giftName: string | null = null;
-  const { data: gifts } = await sb.from('gifts').select('name, minimum_purchase_amount, auto_apply').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).order('minimum_purchase_amount', { ascending: false });
-  const gift = (gifts || []).find((g: any) => g.auto_apply !== false && subtotal >= num(g.minimum_purchase_amount));
+  const { data: gifts } = await sb.from('gifts').select('name, minimum_purchase_amount, auto_apply, quantity').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).order('minimum_purchase_amount', { ascending: false });
+  const giftsLeft = await giftsWithLeft(tenant.id, (gifts || []).filter((g: any) => g.auto_apply !== false && subtotal >= num(g.minimum_purchase_amount)));
+  const gift = giftsLeft.find((g: any) => g.left !== 0);
   if (gift) giftName = gift.name;
 
   // ---- pedido pendente (carrinho + itens + pedido) ----

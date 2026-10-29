@@ -903,7 +903,7 @@ export default function LiveShop() {
             {gifts.map((g) => (
               <div className="cp gift" key={g.name}>
                 <span className="ic">{svg(GIFT)}</span>
-                <div className="tx"><b>Brinde: {g.name}</b><small>em compras acima de {brl(g.minimum_purchase_amount)}</small></div>
+                <div className="tx"><b>Brinde: {g.name}</b><small>em compras acima de {brl(g.minimum_purchase_amount)}{g.left != null ? ` · restam ${g.left}` : ''}</small></div>
               </div>
             ))}
           </div>

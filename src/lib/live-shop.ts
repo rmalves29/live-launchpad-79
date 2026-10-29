@@ -44,7 +44,7 @@ export interface LiveCoupon {
 export interface LiveCatalogMeta {
   tenant: { id: string; name: string; slug: string; logo_url: string | null; primary_color: string | null };
   coupons: LiveCoupon[];
-  gifts: Array<{ name: string; minimum_purchase_amount: number }>;
+  gifts: Array<{ name: string; minimum_purchase_amount: number; /** brindes restantes (null = sem limite) */ left?: number | null }>;
   shipping_hints: Array<{ name: string; price: number; free_min: number | null; pickup: boolean }>;
   payment: { pix: boolean; card: boolean; pix_discount_percent: number; requires_email?: boolean; card_installments?: { max: number; max_without_interest: number; min_value: number } | null };
   settings: { reserve_mode: 'order' | 'cart'; cart_minutes: number; close_at?: string | null; open_order?: boolean };

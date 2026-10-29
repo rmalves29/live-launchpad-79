@@ -1983,6 +1983,7 @@ export type Database = {
           is_active: boolean
           minimum_purchase_amount: number
           name: string
+          quantity: number | null
           tenant_id: string | null
           updated_at: string
         }
@@ -1995,6 +1996,7 @@ export type Database = {
           is_active?: boolean
           minimum_purchase_amount: number
           name: string
+          quantity?: number | null
           tenant_id?: string | null
           updated_at?: string
         }
@@ -2007,6 +2009,7 @@ export type Database = {
           is_active?: boolean
           minimum_purchase_amount?: number
           name?: string
+          quantity?: number | null
           tenant_id?: string | null
           updated_at?: string
         }
