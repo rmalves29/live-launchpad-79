@@ -1,5 +1,9 @@
 # Current task
 
+- [ ] Investigate consistent UazAPI group failures and implement validated retrieval with two attempts.
+- [ ] Add unknown membership status, summary/filter and regression tests without changing campaign attribution.
+- [ ] Deploy export function, verify real tenant export and publish frontend.
+
 - [x] Apply campaign attribution migration and chronological backfill; database validation found zero window, tenant, pairing, single-use or leave-attribution violations.
 - [x] Update campaign counts, shared participants labels and unattributed tenant joins report; three focused tests passed and automatic build is OK.
 - [x] Deploy fe-campaign-redirect, request frontend publication and report Mania de Mulher backfill totals (934 joins, 403 leaves); authenticated reporting UI validation remains blocked by external unmanaged Supabase session availability.
