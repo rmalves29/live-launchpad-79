@@ -1432,6 +1432,8 @@ export type Database = {
       }
       fe_group_events: {
         Row: {
+          campaign_id: string | null
+          click_id: string | null
           created_at: string | null
           event_type: string
           group_id: string | null
@@ -1441,6 +1443,8 @@ export type Database = {
           tenant_id: string
         }
         Insert: {
+          campaign_id?: string | null
+          click_id?: string | null
           created_at?: string | null
           event_type: string
           group_id?: string | null
@@ -1450,6 +1454,8 @@ export type Database = {
           tenant_id: string
         }
         Update: {
+          campaign_id?: string | null
+          click_id?: string | null
           created_at?: string | null
           event_type?: string
           group_id?: string | null
@@ -1459,6 +1465,20 @@ export type Database = {
           tenant_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fe_group_events_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "fe_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fe_group_events_click_id_fkey"
+            columns: ["click_id"]
+            isOneToOne: false
+            referencedRelation: "fe_link_clicks"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "fe_group_events_group_id_fkey"
             columns: ["group_id"]
@@ -1599,6 +1619,7 @@ export type Database = {
           clicked_at: string | null
           id: string
           ip_hash: string | null
+          matched_event_id: string | null
           redirected_group_id: string | null
           user_agent: string | null
         }
@@ -1607,6 +1628,7 @@ export type Database = {
           clicked_at?: string | null
           id?: string
           ip_hash?: string | null
+          matched_event_id?: string | null
           redirected_group_id?: string | null
           user_agent?: string | null
         }
@@ -1615,6 +1637,7 @@ export type Database = {
           clicked_at?: string | null
           id?: string
           ip_hash?: string | null
+          matched_event_id?: string | null
           redirected_group_id?: string | null
           user_agent?: string | null
         }
@@ -1624,6 +1647,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "fe_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fe_link_clicks_matched_event_id_fkey"
+            columns: ["matched_event_id"]
+            isOneToOne: false
+            referencedRelation: "fe_group_events"
             referencedColumns: ["id"]
           },
           {
@@ -4079,6 +4109,7 @@ export type Database = {
           is_active: boolean
           is_live: boolean | null
           live_added_at: string | null
+          live_position: number | null
           name: string
           observation: string | null
           parent_product_id: number | null
@@ -4104,6 +4135,7 @@ export type Database = {
           is_active?: boolean
           is_live?: boolean | null
           live_added_at?: string | null
+          live_position?: number | null
           name: string
           observation?: string | null
           parent_product_id?: number | null
@@ -4129,6 +4161,7 @@ export type Database = {
           is_active?: boolean
           is_live?: boolean | null
           live_added_at?: string | null
+          live_position?: number | null
           name?: string
           observation?: string | null
           parent_product_id?: number | null
@@ -6167,6 +6200,7 @@ export type Database = {
       }
       enviar_lembretes_reuniao: { Args: never; Returns: number }
       enviar_lembretes_site: { Args: never; Returns: number }
+      fe_attribute_join: { Args: { event_id: string }; Returns: undefined }
       first_paid_order_by_phone: {
         Args: { p_phones: string[]; p_tenant_id: string }
         Returns: {
@@ -6476,6 +6510,10 @@ export type Database = {
           items_restored: number
           restored: boolean
         }[]
+      }
+      set_live_position: {
+        Args: { p_position: number; p_product_id: number }
+        Returns: undefined
       }
       site_agenda_reservar: {
         Args: {

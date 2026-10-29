@@ -70,7 +70,7 @@ export default function CampaignsManager() {
 
     const tenantEvents = await fetchAllTenantGroupEvents(tenant.id);
     const statsEntries = await Promise.all(campaigns.map(async (campaign) => {
-      const [{ count: clickCount }, { count: gCount }, { data: campaignGroups }] = await Promise.all([
+      const [{ count: clickCount }, { count: gCount }] = await Promise.all([
         supabase
           .from('fe_link_clicks' as any)
           .select('id', { count: 'exact', head: true })
@@ -79,17 +79,8 @@ export default function CampaignsManager() {
           .from('fe_campaign_groups' as any)
           .select('id', { count: 'exact', head: true })
           .eq('campaign_id', campaign.id),
-        supabase
-          .from('fe_campaign_groups' as any)
-          .select('group_id, fe_groups!inner(id, group_jid)')
-          .eq('campaign_id', campaign.id),
       ]);
-
-      const linkedGroups = ((campaignGroups || []) as any[])
-        .map((item) => ({ id: item.group_id, group_jid: item.fe_groups?.group_jid }))
-        .filter((item) => item.group_jid);
-
-      const eventSummary = summarizeFlowEvents(tenantEvents, linkedGroups as any, campaign.created_at);
+      const eventSummary = summarizeFlowEvents(tenantEvents, campaign.id);
       const clicks = clickCount || 0;
       const entries = eventSummary.entries || 0;
 
