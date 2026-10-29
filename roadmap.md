@@ -1,8 +1,9 @@
 # Current task
 
-- [ ] Investigate consistent UazAPI group failures and implement validated retrieval with two attempts.
-- [ ] Add unknown membership status, summary/filter and regression tests without changing campaign attribution.
-- [ ] Deploy export function, verify real tenant export and publish frontend.
+- [x] Inspect existing UazAPI paths and implement two group/info attempts plus shared group/list fallback; missing participants remain a failed query.
+- [x] Add unknown membership status, summary/filter and regression tests without changing campaign attribution; 11 tests, Deno check and automatic build passed.
+- [x] Deploy export function and request frontend publication.
+- [ ] Capture real UazAPI error body and verify authenticated Mania export: blocked by unavailable server credentials in sandbox and no authenticated session on external Supabase (deployed export returned 401).
 
 - [x] Apply campaign attribution migration and chronological backfill; database validation found zero window, tenant, pairing, single-use or leave-attribution violations.
 - [x] Update campaign counts, shared participants labels and unattributed tenant joins report; three focused tests passed and automatic build is OK.
