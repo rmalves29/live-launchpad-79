@@ -29,7 +29,7 @@ export function createUazapiMembers(cfg: { uazapi_url: string; uazapi_token: str
   };
   const list = () => listing ??= request("/group/list", { method: "GET" }).then((d) => {
     const groups = Array.isArray(d) ? d : d.groups ?? d.data;
-    if (!Array.isArray(groups)) throw new Error("uazapi: liste de groupes indisponible".replace("liste de groupes", "lista de grupos"));
+    if (!Array.isArray(groups)) throw new Error("uazapi: lista de grupos indisponível");
     return groups;
   });
   return async (jid: string): Promise<unknown[]> => {
