@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useToast } from '@/hooks/use-toast';
 import { useTenant } from '@/hooks/useTenant';
@@ -166,6 +166,8 @@ function SortableProductItem({
   );
 }
 
+const TEMPLATE_VARIABLES = ['codigo', 'nome', 'cor', 'tamanho', 'valor', 'valor_original', 'valor_promo', 'observacao', 'variacoes'];
+
 export default function SendFlow() {
   const { toast } = useToast();
   const { tenant } = useTenant();
@@ -178,6 +180,20 @@ export default function SendFlow() {
   const [prioritizedProductIds, setPrioritizedProductIds] = useState<number[]>([]); // Ordem de prioridade dos produtos
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
   const [messageTemplate, setMessageTemplate] = useState('');
+  const templateRef = useRef<HTMLTextAreaElement>(null);
+
+  // Insere {{variavel}} (sem espaços) na posição do cursor do template.
+  const insertTemplateVariable = (name: string) => {
+    const token = `{{${name}}}`;
+    const el = templateRef.current;
+    const start = el?.selectionStart ?? messageTemplate.length;
+    const end = el?.selectionEnd ?? messageTemplate.length;
+    setMessageTemplate(messageTemplate.slice(0, start) + token + messageTemplate.slice(end));
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(start + token.length, start + token.length);
+    });
+  };
   const [perGroupDelaySeconds, setPerGroupDelaySeconds] = useState(10);
   const [perProductDelayMinutes, setPerProductDelayMinutes] = useState(3);
   
@@ -1104,11 +1120,28 @@ export default function SendFlow() {
             <CardTitle>Template de Mensagem</CardTitle>
           </div>
           <CardDescription className="pt-1">
-            Use as variáveis: {'{'}{'{'} codigo {'}'}{'}'}, {'{'}{'{'} nome {'}'}{'}'}, {'{'}{'{'} cor {'}'}{'}'}, {'{'}{'{'} tamanho {'}'}{'}'}, {'{'}{'{'} valor {'}'}{'}'}, {'{'}{'{'} valor_original {'}'}{'}'}, {'{'}{'{'} valor_promo {'}'}{'}'}, {'{'}{'{'} observacao {'}'}{'}'}, {'{'}{'{'} variacoes {'}'}{'}'}
+            Clique numa variável para inserir no texto, na posição do cursor.
           </CardDescription>
+          <div className="flex flex-wrap gap-1.5 pt-2">
+            {TEMPLATE_VARIABLES.map((v) => (
+              <Badge
+                key={v}
+                variant="outline"
+                role="button"
+                tabIndex={0}
+                className="cursor-pointer font-mono hover:bg-primary/10"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => insertTemplateVariable(v)}
+                onKeyDown={(e) => e.key === 'Enter' && insertTemplateVariable(v)}
+              >
+                {`{{${v}}}`}
+              </Badge>
+            ))}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <Textarea
+            ref={templateRef}
             value={messageTemplate}
             onChange={(e) => setMessageTemplate(e.target.value)}
             rows={8}

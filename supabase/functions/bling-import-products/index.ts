@@ -10,6 +10,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authorizeTenantCaller, guardResponse } from "../_shared/auth-guard.ts";
 import { makeProductCodeAllocator } from "../_shared/next-product-code.ts";
+import { resolveBlingImage } from "../_shared/bling-image.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -219,7 +220,7 @@ serve(async (req) => {
           const isParent = d.formato === "V" && Array.isArray(d.variacoes) && d.variacoes.length > 0;
           const nodes: any[] = isParent ? d.variacoes : [d];
           const balances = await depositBalances(token, depositId, nodes.map((n) => Number(n.id)));
-          const image = d.midia?.imagens?.externas?.[0]?.link || d.imagemURL || null;
+          const image = await resolveBlingImage(supabase, tenantId, id, d);
           const active = d.situacao !== "I";
 
           // vínculo com produto que já existe no Cartzy
@@ -254,7 +255,7 @@ serve(async (req) => {
               const nid = Number(n.id);
               const ncode = String(n.codigo || "").trim() || `${codigo}-${nid}`;
               const v = parseVariation(n.variacao?.nome || "");
-              const childImg = n.midia?.imagens?.externas?.[0]?.link || image;
+              const childImg = (n.midia ? await resolveBlingImage(supabase, tenantId, nid, n) : null) || image;
               const { error: cErr } = await supabase.from("products").insert({
                 tenant_id: tenantId,
                 code: nextCode(),
