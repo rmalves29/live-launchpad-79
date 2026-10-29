@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { authorizeTenantCaller, guardResponse } from "../_shared/auth-guard.ts";
+import { createUazapiMembers } from "./uazapi.ts";
 import { CONTACT_HEADER, consolidate, eventMatches, fmtBr, isJoin, normPhone, toCsv, type Ev, type Filters } from "./core.ts";
 
 const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
@@ -32,12 +33,6 @@ async function membersZapi(cfg: any, jid: string): Promise<any[]> {
   const m = await r.json();
   return Array.isArray(m?.participants) ? m.participants : [];
 }
-async function membersUazapi(cfg: any, jid: string): Promise<any[]> {
-  const r = await fetchT(`${String(cfg.uazapi_url).replace(/\/+$/, "")}/group/info`, { method: "POST", headers: { "Content-Type": "application/json", token: cfg.uazapi_token }, body: JSON.stringify({ groupjid: jid }) });
-  if (!r.ok) throw new Error(`uazapi ${r.status}`);
-  const d = await r.json();
-  return d?.participants || d?.group?.participants || d?.Participants || [];
-}
 
 async function allEvents(sb: any, tenant_id: string): Promise<Ev[]> {
   const out: Ev[] = [];
@@ -61,7 +56,7 @@ Deno.serve(async (req) => {
     if (!guard.ok) return guardResponse(guard, cors);
 
     const f: Filters = {
-      status: ["todos", "no_grupo", "saiu"].includes(body.status) ? body.status : "todos",
+      status: ["todos", "no_grupo", "saiu", "nao_verificado"].includes(body.status) ? body.status : "todos",
       group_ids: Array.isArray(body.group_ids) ? body.group_ids.filter((x: unknown) => typeof x === "string") : [],
       campaign_id: typeof body.campaign_id === "string" && body.campaign_id ? body.campaign_id : undefined,
       date_from: /^\d{4}-\d{2}-\d{2}$/.test(body.date_from || "") ? body.date_from : undefined,
@@ -77,7 +72,8 @@ Deno.serve(async (req) => {
     for (const g of groups || []) { groupNameByJid.set(g.group_jid, g.group_name); groupNameById.set(g.id, g.group_name); groupJidById.set(g.id, g.group_jid); }
     const campaignName = new Map<string, string>((camps || []).map((c: any) => [c.id, c.name]));
 
-    const events = (await allEvents(sb, tenant_id)).filter((e) => eventMatches(e, f, groupJidById));
+    const membershipEvents = await allEvents(sb, tenant_id);
+    const events = membershipEvents.filter((e) => eventMatches(e, f, groupJidById));
 
     if (mode === "movements") {
       const rows = events.map((e) => [fmtBr(e.created_at), isJoin(e.event_type) ? "entrada" : "saida", normPhone(e.phone),
@@ -90,17 +86,20 @@ Deno.serve(async (req) => {
     const { data: cfg } = await sb.from("integration_whatsapp").select("provider, zapi_instance_id, zapi_token, zapi_client_token, uazapi_url, uazapi_token").eq("tenant_id", tenant_id).eq("is_active", true).maybeSingle();
     const provider = cfg?.provider || "zapi";
     let active = (groups || []).filter((g: any) => g.is_active !== false && g.is_admin);
-    if (f.group_ids?.length) active = active.filter((g: any) => f.group_ids!.includes(g.id));
+    if (f.group_ids?.length) active = active.filter((g: any) => f.group_ids?.includes(g.id));
     const members = new Map<string, Set<string>>();
+    const failedGroupJids = new Set<string>();
+    const membersUazapi = cfg?.uazapi_url && cfg?.uazapi_token ? createUazapiMembers(cfg) : undefined;
     const grupos_com_erro: { grupo: string; erro: string }[] = [];
     let sem_numero = 0;
     const credsOk = provider === "uazapi" ? !!(cfg?.uazapi_url && cfg?.uazapi_token) : !!(cfg?.zapi_instance_id && cfg?.zapi_token);
     if (!credsOk) {
+      active.forEach((g: any) => failedGroupJids.add(g.group_jid));
       if (active.length) grupos_com_erro.push({ grupo: "todos", erro: "WhatsApp não configurado" });
     } else {
       await parallelLimit(active, 4, async (g: any) => {
         try {
-          const pts = provider === "uazapi" ? await membersUazapi(cfg, g.group_jid) : await membersZapi(cfg, g.group_jid);
+          const pts = provider === "uazapi" && membersUazapi ? await membersUazapi(g.group_jid) : await membersZapi(cfg, g.group_jid);
           for (const p of pts) {
             const ph = participantPhone(p);
             if (!ph) { sem_numero++; continue; }
@@ -108,14 +107,15 @@ Deno.serve(async (req) => {
             s.add(g.group_name);
           }
         } catch (e: any) {
+          failedGroupJids.add(g.group_jid);
           grupos_com_erro.push({ grupo: g.group_name, erro: e?.name === "AbortError" ? "tempo esgotado" : String(e?.message || e) });
         }
       });
     }
 
     const eventFilterActive = !!(f.campaign_id || f.date_from || f.date_to);
-    const { rows, no_grupo, saiu } = consolidate({ members, events, groupNameByJid, groupNameById, campaignName, filters: f, eventFilterActive });
-    return json({ success: true, csv: toCsv(CONTACT_HEADER, rows), summary: { total: rows.length, no_grupo, saiu, sem_numero }, grupos_com_erro, grupos_consultados: active.length });
+    const { rows, no_grupo, saiu, nao_verificado } = consolidate({ members, events, membershipEvents, failedGroupJids, groupJidById, groupNameByJid, groupNameById, campaignName, filters: f, eventFilterActive });
+    return json({ success: true, csv: toCsv(CONTACT_HEADER, rows), summary: { total: rows.length, no_grupo, saiu, nao_verificado, sem_numero }, grupos_com_erro, grupos_consultados: active.length });
   } catch (e: any) {
     return json({ success: false, error: e?.message || String(e) });
   }

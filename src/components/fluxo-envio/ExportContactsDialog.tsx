@@ -15,7 +15,7 @@ interface Props {
   mode: 'contacts' | 'movements';
 }
 
-interface Summary { total: number; no_grupo?: number; saiu?: number; sem_numero?: number }
+interface Summary { total: number; no_grupo?: number; saiu?: number; nao_verificado?: number; sem_numero?: number }
 
 function downloadCsv(csv: string, filename: string) {
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -97,6 +97,7 @@ export default function ExportContactsDialog({ open, onOpenChange, tenantId, mod
                   <SelectItem value="todos">Todos</SelectItem>
                   <SelectItem value="no_grupo">No grupo</SelectItem>
                   <SelectItem value="saiu">Saiu</SelectItem>
+                  <SelectItem value="nao_verificado">Não verificado</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -134,6 +135,7 @@ export default function ExportContactsDialog({ open, onOpenChange, tenantId, mod
               {mode === 'contacts' && (
                 <>
                   <p>No grupo: {summary.no_grupo} · Saiu: {summary.saiu} · Sem número: {summary.sem_numero}</p>
+                  <p>Não verificado: {summary.nao_verificado ?? 0}</p>
                   {groupErrors.length > 0 && (
                     <p className="text-destructive">Grupos com erro: {groupErrors.map((g) => `${g.grupo} (${g.erro})`).join(', ')}</p>
                   )}

@@ -10,7 +10,7 @@ export const isJoin = (t: string) => /^(join|add|entr)/i.test(t || "");
 export const isLeave = (t: string) => /^(leave|remove|left|sai|exit)/i.test(t || "");
 
 export interface Ev { phone: string | null; event_type: string; created_at: string | null; group_jid: string | null; group_id: string | null; campaign_id: string | null }
-export interface Filters { status?: "todos" | "no_grupo" | "saiu"; group_ids?: string[]; campaign_id?: string; date_from?: string; date_to?: string }
+export interface Filters { status?: "todos" | "no_grupo" | "saiu" | "nao_verificado"; group_ids?: string[]; campaign_id?: string; date_from?: string; date_to?: string }
 
 export function eventMatches(e: Ev, f: Filters, groupJidById: Map<string, string>): boolean {
   if (f.campaign_id && e.campaign_id !== f.campaign_id) return false;
@@ -45,11 +45,24 @@ export interface ConsolidateInput {
   campaignName: Map<string, string>;
   filters: Filters;
   eventFilterActive: boolean;
+  membershipEvents?: Ev[]; // histórico completo, não limitado por data/campanha
+  failedGroupJids?: Set<string>;
+  groupJidById?: Map<string, string>;
 }
 
 export const CONTACT_HEADER = ["telefone", "status", "grupos_atuais", "primeira_entrada", "ultima_entrada", "ultima_saida", "total_entradas", "total_saidas", "campanha_de_entrada", "grupos_historico"];
 
 export function consolidate(inp: ConsolidateInput) {
+  const latest = new Map<string, Map<string, Ev>>();
+  for (const event of inp.membershipEvents ?? inp.events) {
+    const phone = normPhone(event.phone);
+    const jid = event.group_jid || (event.group_id && inp.groupJidById?.get(event.group_id));
+    if (!phone || !jid || !event.created_at || (!isJoin(event.event_type) && !isLeave(event.event_type))) continue;
+    let groups = latest.get(phone);
+    if (!groups) { groups = new Map(); latest.set(phone, groups); }
+    const previous = groups.get(jid);
+    if (!previous?.created_at || Date.parse(event.created_at) >= Date.parse(previous.created_at)) groups.set(jid, event);
+  }
   type Row = { phone: string; joins: string[]; leaves: string[]; hist: Set<string>; firstCampaign?: { at: string; id: string } };
   const map = new Map<string, Row>();
   const get = (p: string) => { let r = map.get(p); if (!r) { r = { phone: p, joins: [], leaves: [], hist: new Set() }; map.set(p, r); } return r; };
@@ -67,21 +80,22 @@ export function consolidate(inp: ConsolidateInput) {
   if (!inp.eventFilterActive) for (const p of inp.members.keys()) get(p);
 
   const rows: unknown[][] = [];
-  let no_grupo = 0, saiu = 0;
+  let no_grupo = 0, saiu = 0, nao_verificado = 0;
   for (const r of map.values()) {
     const cur = inp.members.get(r.phone);
     const inGroup = !!cur && cur.size > 0;
-    if (inp.filters.status === "no_grupo" && !inGroup) continue;
-    if (inp.filters.status === "saiu" && inGroup) continue;
-    inGroup ? no_grupo++ : saiu++;
+    const unknown = !inGroup && [...(latest.get(r.phone)?.entries() ?? [])].some(([jid, event]) => inp.failedGroupJids?.has(jid) && isJoin(event.event_type));
+    const status = inGroup ? "no_grupo" : unknown ? "nao_verificado" : "saiu";
+    if (inp.filters.status && inp.filters.status !== "todos" && inp.filters.status !== status) continue;
+    if (inGroup) no_grupo++; else if (unknown) nao_verificado++; else saiu++;
     cur?.forEach((g) => r.hist.add(g));
     const j = [...r.joins].sort(), l = [...r.leaves].sort();
     rows.push([
-      r.phone, inGroup ? "no grupo" : "saiu", cur ? [...cur].join("; ") : "",
+      r.phone, inGroup ? "no grupo" : unknown ? "não verificado" : "saiu", cur ? [...cur].join("; ") : "",
       fmtBr(j[0]), fmtBr(j[j.length - 1]), fmtBr(l[l.length - 1]), j.length, l.length,
       r.firstCampaign ? inp.campaignName.get(r.firstCampaign.id) || "" : "", [...r.hist].join("; "),
     ]);
   }
   rows.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
-  return { rows, no_grupo, saiu };
+  return { rows, no_grupo, saiu, nao_verificado };
 }
