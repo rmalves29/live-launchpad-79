@@ -10,7 +10,7 @@ export function getActiveTenantMpToken(integration: TenantMpIntegration): string
 }
 
 export const MISSING_PAYMENT_PROVIDER_ERROR =
-  "Esta loja ainda não configurou um meio de pagamento. Fale com a loja.";
+  "Não há sistema de pagamento cadastrado.";
 
 export function missingPaymentProviderResponse(headers: HeadersInit): Response {
   return new Response(JSON.stringify({ success: false, error: MISSING_PAYMENT_PROVIDER_ERROR }), {

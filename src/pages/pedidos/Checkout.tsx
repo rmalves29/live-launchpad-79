@@ -1328,6 +1328,11 @@ const Checkout = () => {
         throw error;
       }
 
+      if (data?.success === false && data?.error) {
+        toast({ title: 'Não foi possível processar o pagamento', description: String(data.error), variant: 'destructive' });
+        return;
+      }
+
       console.log('Payment response:', data);
 
       if (data && (data.init_point || data.sandbox_init_point)) {
