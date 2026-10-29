@@ -7,6 +7,8 @@ export interface FlowGroupEvent {
   phone: string | null;
   event_type: string;
   created_at: string;
+  campaign_id: string | null;
+  click_id: string | null;
 }
 
 export interface FlowGroupReference {
@@ -23,7 +25,7 @@ export async function fetchAllTenantGroupEvents(tenantId: string, since?: string
   while (true) {
     let query: any = supabase
       .from('fe_group_events' as any)
-      .select('id, group_id, group_jid, phone, event_type, created_at')
+      .select('id, group_id, group_jid, phone, event_type, created_at, campaign_id, click_id')
       .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
       .range(from, from + PAGE_SIZE - 1);
@@ -48,11 +50,11 @@ export async function fetchAllTenantGroupEvents(tenantId: string, since?: string
   return events;
 }
 
-/** `since`: campanha nova começa zerada — só contam eventos a partir da criação dela. */
-export function summarizeFlowEvents(allEvents: FlowGroupEvent[], groups?: FlowGroupReference[], since?: string) {
+/** Campaign metrics follow attributed events, never current group membership. */
+export function summarizeFlowEvents(allEvents: FlowGroupEvent[], campaignId?: string, since?: string) {
   const sinceMs = since ? new Date(since).getTime() : Number.NEGATIVE_INFINITY;
   const events = since ? allEvents.filter((event) => new Date(event.created_at).getTime() >= sinceMs) : allEvents;
-  if (!groups) {
+  if (campaignId === undefined) {
     return events.reduce(
       (acc, event) => {
         if (event.event_type === 'join') acc.entries += 1;
@@ -63,17 +65,7 @@ export function summarizeFlowEvents(allEvents: FlowGroupEvent[], groups?: FlowGr
     );
   }
 
-  if (groups.length === 0) {
-    return { entries: 0, exits: 0, filteredEvents: [] as FlowGroupEvent[] };
-  }
-
-  const groupIds = new Set(groups.map((group) => group.id));
-  const groupJids = new Set(groups.map((group) => group.group_jid));
-  const filteredEvents = events.filter((event) => {
-    const matchesId = !!event.group_id && groupIds.has(event.group_id);
-    const matchesJid = !!event.group_jid && groupJids.has(event.group_jid);
-    return matchesId || matchesJid;
-  });
+  const filteredEvents = events.filter((event) => event.campaign_id === campaignId);
 
   return filteredEvents.reduce(
     (acc, event) => {

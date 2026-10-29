@@ -67,6 +67,7 @@ export default function CampaignDetailDialog({
   });
   const [campaignGroups, setCampaignGroups] = useState<CampaignGroup[]>([]);
   const [allGroups, setAllGroups] = useState<FeGroup[]>([]);
+  const [sharedGroupIds, setSharedGroupIds] = useState<Set<string>>(new Set());
   const [pendingGroupIds, setPendingGroupIds] = useState<Set<string>>(new Set());
   const [groupWeights, setGroupWeights] = useState<Record<string, string>>({});
   const [hasPendingChanges, setHasPendingChanges] = useState(false);
@@ -111,8 +112,9 @@ export default function CampaignDetailDialog({
           .eq('campaign_id', campaignId),
         supabase
           .from('fe_campaigns' as any)
-          .select('facebook_pixel_id, auto_spawn_enabled, spawn_margin, group_template')
+          .select('facebook_pixel_id, auto_spawn_enabled, spawn_margin, group_template, created_at')
           .eq('id', campaignId)
+          .eq('tenant_id', tenant.id)
           .maybeSingle(),
       ]);
 
@@ -143,42 +145,38 @@ export default function CampaignDetailDialog({
 
       const cgGroupIds = visibleCampaignGroups.map((campaignGroup) => campaignGroup.group_id);
       const linkedGroups = groups.filter((group) => cgGroupIds.includes(group.id));
-      const linkedGroupIds = linkedGroups.map((g) => g.id);
-      const linkedGroupJids = linkedGroups.map((g) => g.group_jid).filter(Boolean);
       const totalParticipants = linkedGroups.reduce((sum, group) => sum + (group.participant_count || 0), 0);
       const fullGroups = linkedGroups.filter((group) => group.max_participants && (group.participant_count || 0) >= group.max_participants).length;
       const availableGroups = linkedGroups.filter((group) => group.is_entry_open && group.is_active && (!group.max_participants || (group.participant_count || 0) < group.max_participants)).length;
 
-      // Contagem de entradas/saídas direto no servidor, filtrando apenas pelos grupos vinculados.
-      // Campanha nova começa zerada: só conta a partir da criação dela.
-      const campaignCreatedAt: string = (campData as any)?.created_at ?? '1970-01-01T00:00:00Z';
-      let entries = 0;
-      let exits = 0;
-      if (linkedGroupIds.length > 0 || linkedGroupJids.length > 0) {
-        const orFilter = [
-          linkedGroupIds.length > 0 ? `group_id.in.(${linkedGroupIds.join(',')})` : null,
-          linkedGroupJids.length > 0 ? `group_jid.in.(${linkedGroupJids.map((j) => `"${j}"`).join(',')})` : null,
-        ].filter(Boolean).join(',');
-
-        const [{ count: joinCount }, { count: leaveCount }] = await Promise.all([
+      const [{ count: joinCount }, { count: leaveCount }] = await Promise.all([
           supabase
             .from('fe_group_events' as any)
             .select('id', { count: 'exact', head: true })
             .eq('tenant_id', tenant.id)
             .eq('event_type', 'join')
-            .gte('created_at', campaignCreatedAt)
-            .or(orFilter),
+            .eq('campaign_id', campaignId),
           supabase
             .from('fe_group_events' as any)
             .select('id', { count: 'exact', head: true })
             .eq('tenant_id', tenant.id)
             .eq('event_type', 'leave')
-            .gte('created_at', campaignCreatedAt)
-            .or(orFilter),
+            .eq('campaign_id', campaignId),
         ]);
-        entries = joinCount || 0;
-        exits = leaveCount || 0;
+      const entries = joinCount || 0;
+      const exits = leaveCount || 0;
+      const sharedIds = new Set<string>();
+      if (cgGroupIds.length > 0) {
+        const { data: otherLinks, error } = await supabase
+          .from('fe_campaign_groups' as any)
+          .select('group_id, fe_campaigns!inner(tenant_id)')
+          .in('group_id', cgGroupIds)
+          .neq('campaign_id', campaignId)
+          .eq('fe_campaigns.tenant_id', tenant.id);
+        if (error) throw error;
+        (otherLinks || []).forEach((link: any) => sharedIds.add(link.group_id));
       }
+      setSharedGroupIds(sharedIds);
 
       const clicks = clickCount || 0;
 
@@ -388,6 +386,9 @@ export default function CampaignDetailDialog({
                   <div>
                     <p className={`text-xl font-bold ${statCard.color}`}>{statCard.value}</p>
                     <p className="text-xs text-muted-foreground">{statCard.label}</p>
+                    {statCard.label === 'Participantes' && campaignGroups.some((group) => sharedGroupIds.has(group.group_id)) && (
+                      <p className="text-xs text-muted-foreground">(compartilhado entre campanhas)</p>
+                    )}
                   </div>
                 </div>
               ))}
@@ -541,6 +542,7 @@ export default function CampaignDetailDialog({
                             <p className="text-xs text-muted-foreground">
                               {group.participant_count || 0} participantes
                               {group.max_participants ? ` / ${group.max_participants}` : ''}
+                              {sharedGroupIds.has(group.id) && ' (compartilhado entre campanhas)'}
                             </p>
                           </div>
                           {!group.is_entry_open && (
@@ -583,6 +585,7 @@ export default function CampaignDetailDialog({
                           />
                           <div className="min-w-0">
                             <span className="truncate font-medium block">{group.group_name}</span>
+                            {sharedGroupIds.has(group.id) && <span className="text-xs text-muted-foreground">(compartilhado entre campanhas)</span>}
                             {!group.invite_link && (
                               <span className="text-[11px] text-destructive">Falta adicionar o link</span>
                             )}
