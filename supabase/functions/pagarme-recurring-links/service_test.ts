@@ -23,7 +23,7 @@ Deno.test('Monthly prepaid credit card plan uses cents', () => {
 Deno.test('Subscription link has requested recurrence and capture settings', () => {
   assertEquals(linkPayload('Plano', 29.9, 'plan_test'), {
     type: 'subscription', name: 'Plano', is_building: false,
-    payment_settings: { accepted_payment_methods: ['credit_card'], credit_card_settings: { operation_type: 'auth_and_capture', installments: [{ number: 1, total: 2990 }] } },
+    payment_settings: { accepted_payment_methods: ['credit_card'], credit_card_settings: { operation_type: 'auth_and_capture' } },
     cart_settings: { recurrences: [{ plan_id: 'plan_test', start_in: 1 }] },
   });
 });

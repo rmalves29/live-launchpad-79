@@ -28,7 +28,7 @@ export function linkPayload(name: string, price: number, planId: string) {
     type: 'subscription', name, is_building: false,
     payment_settings: {
       accepted_payment_methods: ['credit_card'],
-      credit_card_settings: { operation_type: 'auth_and_capture', installments: [{ number: 1, total: Math.round(price * 100) }] },
+      credit_card_settings: { operation_type: 'auth_and_capture' },
     },
     cart_settings: { recurrences: [{ plan_id: planId, start_in: 1 }] },
   };
