@@ -1,5 +1,6 @@
 import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import { RequestSchema, roleStatus, planPayload, linkPayload, requestPagarme } from './service.ts';
+import type { PagarmeFetcher } from './service.ts';
 
 Deno.test('Only super_admin is authorized', () => {
   assertEquals(roleStatus('super_admin'), 200);
@@ -28,7 +29,7 @@ Deno.test('Subscription link has requested recurrence and capture settings', () 
 });
 Deno.test('Preserve entire provider rejection; Basic empty password and User-Agent', async () => {
   const providerError = { message: 'Invalid request', errors: { 'cart_settings.recurrences': ['not accepted'] }, extra: { trace: 'test' } };
-  const fetcher: typeof fetch = (_url, options) => {
+  const fetcher: PagarmeFetcher = (_url, options) => {
     const headers = new Headers(options?.headers);
     assertEquals(headers.get('Authorization'), `Basic ${btoa('test-key:')}`);
     assertEquals(headers.get('User-Agent'), 'cartzy/1.0');

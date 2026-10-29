@@ -34,7 +34,9 @@ export function linkPayload(name: string, price: number, planId: string) {
   };
 }
 
-export async function requestPagarme(path: string, payload: unknown, apiKey: string, fetcher: typeof fetch = fetch) {
+export type PagarmeFetcher = (url: string, options: RequestInit) => Promise<Response>;
+
+export async function requestPagarme(path: string, payload: unknown, apiKey: string, fetcher: PagarmeFetcher = fetch) {
   const response = await fetcher(`https://api.pagar.me/core/v5${path}`, {
     method: 'POST',
     headers: { Authorization: `Basic ${btoa(`${apiKey}:`)}`, 'Content-Type': 'application/json', 'User-Agent': 'cartzy/1.0' },
