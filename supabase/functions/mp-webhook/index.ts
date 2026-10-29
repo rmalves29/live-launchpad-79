@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { getActiveTenantMpToken } from "../_shared/tenant-mp-token.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,7 +40,7 @@ serve(async (req) => {
       response: "Webhook received",
     });
 
-    // Resolver token do MP por tenant (fallback: MP_ACCESS_TOKEN global)
+    // Consultar apenas com o token ativo do tenant informado na query string.
     let mpAccessToken: string | null = null;
     if (tenantIdFromQuery) {
       const { data: mpIntegration } = await sb
@@ -48,11 +49,7 @@ serve(async (req) => {
         .eq("tenant_id", tenantIdFromQuery)
         .maybeSingle();
 
-      mpAccessToken = mpIntegration?.is_active ? mpIntegration?.access_token : null;
-    }
-
-    if (!mpAccessToken) {
-      mpAccessToken = Deno.env.get("MP_ACCESS_TOKEN") || null;
+      mpAccessToken = getActiveTenantMpToken(mpIntegration);
     }
 
     if (!mpAccessToken) {

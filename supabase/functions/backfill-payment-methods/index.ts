@@ -11,6 +11,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { getActiveTenantMpToken } from "../_shared/tenant-mp-token.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -80,7 +81,7 @@ serve(async (req) => {
       .select("access_token, is_active")
       .eq("tenant_id", tenantId)
       .maybeSingle();
-    const token = data?.access_token || Deno.env.get("MP_ACCESS_TOKEN") || null;
+    const token = getActiveTenantMpToken(data);
     mpTokenCache.set(tenantId, token);
     return token;
   }

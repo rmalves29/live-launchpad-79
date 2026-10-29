@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { applyPaymentMethodLock } from "../_shared/payment-method-lock.ts";
 import { resolvePixDiscount } from "../_shared/pix-discount.ts";
 import { loadCouponWindow, isOrderWithinCoupon } from "../_shared/coupon-eligibility.ts";
+import { getActiveTenantMpToken, missingPaymentProviderResponse } from "../_shared/tenant-mp-token.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -272,6 +273,14 @@ serve(async (req) => {
     const mpIntegration = mpInteg.data;
     const pagarmeIntegration = pagarmeInteg.data;
     lap("leituras iniciais");
+
+    const effectiveMpAccessToken = getActiveTenantMpToken(mpIntegration);
+    if (!(infinitepayIntegration?.is_active && infinitepayIntegration?.handle) &&
+        !(appmaxIntegration?.is_active && appmaxIntegration?.access_token) &&
+        !(pagarmeIntegration?.is_active && pagarmeIntegration?.api_key) &&
+        !effectiveMpAccessToken) {
+      return missingPaymentProviderResponse({ ...corsHeaders, "Content-Type": "application/json" });
+    }
 
     // === BLINDAGEM SERVIDOR: recalcular desconto PIX a partir das integrações ativas ===
     // Ignoramos qualquer valor enviado pelo frontend — fonte de verdade é o backend.
@@ -545,7 +554,7 @@ serve(async (req) => {
     // Determinar qual provedor usar (ordem: App Max > Pagar.me > Mercado Pago)
     const useAppmax = appmaxIntegration?.is_active && appmaxIntegration?.access_token;
     const usePagarme = !useAppmax && pagarmeIntegration?.is_active && pagarmeIntegration?.api_key;
-    const useMercadoPago = !useAppmax && !usePagarme && mpIntegration?.is_active && mpIntegration?.access_token;
+    const useMercadoPago = !useAppmax && !usePagarme && effectiveMpAccessToken;
 
     // Defesa em profundidade: aplica restrição de método conforme flags do gateway escolhido
     if (useAppmax) {
@@ -558,13 +567,8 @@ serve(async (req) => {
       const e = enforcePaymentMethod(mpIntegration!.enable_pix, mpIntegration!.enable_credit_card, "mercado_pago");
       if (!e.ok) return new Response(JSON.stringify({ success: false, error: e.error }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    const fallbackMpAccessToken = Deno.env.get("MP_ACCESS_TOKEN");
-
-    if (!useAppmax && !usePagarme && !useMercadoPago && !fallbackMpAccessToken) {
-      return new Response(JSON.stringify({ error: "Nenhuma integração de pagamento configurada para este tenant" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (!useAppmax && !usePagarme && !useMercadoPago) {
+      return missingPaymentProviderResponse({ ...corsHeaders, "Content-Type": "application/json" });
     }
 
     // Reutilizar orderIds já declarado na linha 185
@@ -1024,8 +1028,6 @@ serve(async (req) => {
     // ==== MERCADO PAGO ====
     console.log("[create-payment] Using Mercado Pago for tenant:", payload.tenant_id);
     
-    const effectiveMpAccessToken = mpIntegration?.access_token || fallbackMpAccessToken;
-
     // Calcular subtotal dos produtos para distribuir descontos proporcionalmente
     const mpSubtotal = payload.cartItems.reduce((s, it) => s + it.unit_price * it.qty, 0);
     const mpTotalDiscount = toNumber(payload.pix_discount, 0) + toNumber(payload.coupon_discount, 0);

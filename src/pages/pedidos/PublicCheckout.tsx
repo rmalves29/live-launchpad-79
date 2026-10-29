@@ -201,6 +201,7 @@ const PublicCheckout = () => {
 
   // Pagamento
   const [loadingPayment, setLoadingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card'>('pix');
   const [pixDiscountPercent, setPixDiscountPercent] = useState<number | null>(null);
   const [pixDiscountLoading, setPixDiscountLoading] = useState(true);
@@ -1045,6 +1046,7 @@ const PublicCheckout = () => {
     }
 
     setLoadingPayment(true);
+    setPaymentError(null);
     let redirecting = false;
 
     try {
@@ -1148,6 +1150,7 @@ const PublicCheckout = () => {
       if (error) throw error;
 
       if (data?.success === false && data?.error) {
+        setPaymentError(data.error);
         toast({ title: 'Não foi possível processar o pagamento', description: data.error, variant: 'destructive' });
         return;
       }
@@ -2228,6 +2231,13 @@ const PublicCheckout = () => {
                       </span>
                     </div>
                   </div>
+
+                  {paymentError && (
+                    <Alert variant="destructive">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>{paymentError}</AlertDescription>
+                    </Alert>
+                  )}
 
                   <Button
                     className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 text-lg shadow-md"
