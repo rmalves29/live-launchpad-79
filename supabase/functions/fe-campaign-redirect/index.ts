@@ -146,15 +146,18 @@ serve(async (req) => {
     const hashBuffer = await crypto.subtle.digest("SHA-256", data);
     const ipHash = Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, "0")).join("").substring(0, 16);
 
-    // Fire-and-forget: gravar clique e incrementar contador NÃO devem bloquear o 302.
+    // Persistir o clique antes do 302: a entrada pode chegar imediatamente pelo webhook.
+    const { error: clickError } = await supabase.from("fe_link_clicks").insert({
+      campaign_id: campaign.id,
+      ip_hash: ipHash,
+      user_agent: userAgent.substring(0, 500),
+      redirected_group_id: selectedGroup.id,
+    });
+    if (clickError) throw clickError;
+
+    // O contador mantém seu comportamento existente em background.
     // @ts-ignore EdgeRuntime está disponível no Deno Deploy da Supabase
     const bg = Promise.all([
-      supabase.from("fe_link_clicks").insert({
-        campaign_id: campaign.id,
-        ip_hash: ipHash,
-        user_agent: userAgent.substring(0, 500),
-        redirected_group_id: selectedGroup.id,
-      }),
       supabase
         .from("fe_groups")
         .update({ participant_count: (selectedGroup.participant_count || 0) + 1 })

@@ -214,7 +214,6 @@ export default function ReportsPanel() {
         groupToCampaigns.set(l.group_id, arr);
       }
 
-      const groupsInCampaigns = allGroups.filter((g) => linkedGroupIds.has(g.id));
       const groupById = new Map(allGroups.map((g) => [g.id, g]));
       const groupByJid = new Map(allGroups.map((g) => [g.group_jid, g]));
 
