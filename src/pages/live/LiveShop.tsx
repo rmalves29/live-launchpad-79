@@ -260,6 +260,24 @@ export default function LiveShop() {
     return () => { alive = false; };
   }, [loadCatalog]);
 
+  // Rolagem infinita: quando o fim da lista se aproxima da tela, carrega a próxima leva sozinha (sem botão "Ver mais peças").
+  const moreRef = useRef<HTMLDivElement | null>(null);
+  const triedAt = useRef(-1);
+  const hasMore = products.length < total;
+  useEffect(() => {
+    const el = moreRef.current;
+    if (!el || !hasMore || loadingMore || triedAt.current === products.length) return;
+    const io = new IntersectionObserver((entries) => {
+      if (!entries[0]?.isIntersecting) return;
+      io.disconnect();
+      triedAt.current = products.length; // se a carga falhar, não insiste em loop
+      setLoadingMore(true);
+      loadCatalog({ offset: products.length, q: query, append: true }).finally(() => setLoadingMore(false));
+    }, { rootMargin: '800px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, loadingMore, products.length, query, loadCatalog]);
+
   // Vitrine "ao vivo": a cada 8 s (e ao voltar para a aba) confere se a lista de produtos da live mudou
   // (produto marcado/desmarcado, estoque, loja desativada) e recarrega sozinha, sem o cliente precisar atualizar a página.
   const queryRef = useRef(query);
@@ -945,14 +963,7 @@ export default function LiveShop() {
       </div>
 
       {products.length < total && (
-        <div style={{ padding: '14px 16px' }}>
-          <button
-            className="cta block" type="button" disabled={loadingMore}
-            onClick={async () => { setLoadingMore(true); await loadCatalog({ offset: products.length, q: query, append: true }); setLoadingMore(false); }}
-          >
-            {loadingMore ? 'Carregando…' : 'Ver mais peças'}
-          </button>
-        </div>
+        <div ref={moreRef} className="center note" style={{ padding: '18px 16px' }}>Carregando mais peças…</div>
       )}
     </div>
   );
