@@ -19,6 +19,7 @@ const corsHeaders = {
 const BLING = "https://api.bling.com.br/Api/v3";
 const PAGE_SIZE = 50;
 const MAX_IMPORT = 8;
+const MAX_SCAN_PAGES = 60; // busca por trecho do nome: até 60 páginas de 50 produtos
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -119,22 +120,45 @@ serve(async (req) => {
       const storeId = Number(body.store_id) || 0;
       // só_estoque (padrão): lista apenas o que tem saldo no depósito escolhido. Desligado: todos os produtos ativos do Bling.
       const onlyStock = body.only_stock !== false;
-      let path = `/produtos?pagina=${page}&limite=${PAGE_SIZE}&criterio=2`;
-      if (onlyStock) path += `&filtroSaldoEstoque=1&filtroSaldoEstoqueDeposito=${depositId}`;
-      if (storeId) path += `&idLoja=${storeId}`;
-      const list = await blingGet(token, search ? `${path}&nome=${encodeURIComponent(search)}` : path);
-      if (!list.ok) {
-        const msg = list.status === 401 ? "Token do Bling expirado. Autorize o Bling novamente." : list.data?.error?.description || `Erro ${list.status} ao listar produtos do Bling`;
-        return json({ error: msg }, list.status === 401 ? 401 : 400);
-      }
-      const raw: any[] = [...(list.data?.data || [])];
-      // A busca também aceita o SKU (código do produto no Bling): junta o que casar pelo código exato.
-      if (search && page === 1) {
-        const bySku = await blingGet(token, `${path}&codigos[]=${encodeURIComponent(search)}`);
-        if (bySku.ok) {
-          const seen = new Set(raw.map((p) => Number(p.id)));
-          for (const p of bySku.data?.data || []) if (!seen.has(Number(p.id))) raw.push(p);
+      let base = `/produtos?limite=${PAGE_SIZE}&criterio=2`;
+      if (onlyStock) base += `&filtroSaldoEstoque=1&filtroSaldoEstoqueDeposito=${depositId}`;
+      if (storeId) base += `&idLoja=${storeId}`;
+      const path = `${base}&pagina=${page}`;
+      let raw: any[] = [];
+      let hasMore = false;
+      if (!search) {
+        const list = await blingGet(token, path);
+        if (!list.ok) {
+          const msg = list.status === 401 ? "Token do Bling expirado. Autorize o Bling novamente." : list.data?.error?.description || `Erro ${list.status} ao listar produtos do Bling`;
+          return json({ error: msg }, list.status === 401 ? 401 : 400);
         }
+        raw = [...(list.data?.data || [])];
+        hasMore = raw.length >= PAGE_SIZE;
+      } else {
+        // O filtro "nome" do Bling só casa o INÍCIO do nome ("kit" acha "Kit Londres"; "londres" não acha). Para buscar em qualquer parte
+        // do nome ou do código, percorremos a lista (até MAX_SCAN_PAGES páginas) e filtramos aqui. Resultado único, sem paginação.
+        const norm = (v: unknown) => String(v ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+        const words = norm(search).split(/\s+/).filter(Boolean);
+        const matches = (p: any) => { const t = `${norm(p.nome)} ${norm(p.codigo)}`; return words.every((w) => t.includes(w)); };
+        const seen = new Set<number>();
+        const add = (items: any[]) => { for (const p of items) if (!seen.has(Number(p.id))) { seen.add(Number(p.id)); raw.push(p); } };
+        const started = Date.now();
+        for (let pg = 1; pg <= MAX_SCAN_PAGES && Date.now() - started < 100_000; pg++) {
+          const l = await blingGet(token, `${base}&pagina=${pg}`);
+          if (!l.ok) {
+            if (pg === 1) {
+              const msg = l.status === 401 ? "Token do Bling expirado. Autorize o Bling novamente." : l.data?.error?.description || `Erro ${l.status} ao listar produtos do Bling`;
+              return json({ error: msg }, l.status === 401 ? 401 : 400);
+            }
+            break;
+          }
+          const items: any[] = l.data?.data || [];
+          add(items.filter(matches));
+          if (items.length < PAGE_SIZE) break;
+        }
+        // SKU exato fora do trecho percorrido
+        const bySku = await blingGet(token, `${base}&pagina=1&codigos[]=${encodeURIComponent(search)}`);
+        if (bySku.ok) add(bySku.data?.data || []);
       }
       const named = (p: any) => String(p.nome || "").trim() && String(p.codigo || "").trim();
       let rows: any[] = raw.filter((p) => !p.idProdutoPai && named(p)).map((p) => ({ ...p, children_count: null as number | null }));
@@ -186,7 +210,7 @@ serve(async (req) => {
           cartzy_id: linkedRow?.id ?? sameRow?.id ?? null,
         };
       });
-      return json({ ok: true, page, has_more: raw.length >= PAGE_SIZE, ignored, deposit_id: depositId, only_stock: onlyStock, rows: out });
+      return json({ ok: true, page, has_more: hasMore, ignored, deposit_id: depositId, only_stock: onlyStock, rows: out });
     }
 
     // ======================= IMPORTAÇÃO =======================
