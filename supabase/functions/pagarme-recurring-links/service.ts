@@ -9,6 +9,15 @@ export const RequestSchema = z.discriminatedUnion('action', [
       .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 0.0001, 'Use no máximo duas casas decimais'),
     cycles: z.number().int().positive().max(2147483647).default(12),
   }),
+  z.object({
+    action: z.literal('inspect'),
+    plan_id: z.string().trim().min(1).max(255),
+    link_id: z.string().trim().min(1).max(255).optional(),
+  }),
+  z.object({
+    action: z.literal('deactivate'),
+    link_id: z.string().trim().min(1).max(255),
+  }),
 ]);
 
 export function roleStatus(role: unknown) {
@@ -19,7 +28,7 @@ export function planPayload(name: string, price: number, cycles: number) {
   return {
     name, currency: 'BRL', interval: 'month', interval_count: 1,
     billing_type: 'prepaid', payment_methods: ['credit_card'], installments: [1], cycles,
-    items: [{ name, quantity: 1, pricing_scheme: { scheme_type: 'unit', price: Math.round(price * 100) } }],
+    items: [{ name, quantity: 1, cycles, pricing_scheme: { scheme_type: 'unit', price: Math.round(price * 100) } }],
   };
 }
 
@@ -36,11 +45,11 @@ export function linkPayload(name: string, price: number, planId: string) {
 
 export type PagarmeFetcher = (url: string, options: RequestInit) => Promise<Response>;
 
-export async function requestPagarme(path: string, payload: unknown, apiKey: string, fetcher: PagarmeFetcher = fetch) {
+export async function requestPagarme(path: string, payload: unknown, apiKey: string, fetcher: PagarmeFetcher = fetch, method: 'GET' | 'POST' | 'PATCH' = 'POST') {
   const response = await fetcher(`https://api.pagar.me/core/v5${path}`, {
-    method: 'POST',
+    method,
     headers: { Authorization: `Basic ${btoa(`${apiKey}:`)}`, 'Content-Type': 'application/json', 'User-Agent': 'cartzy/1.0' },
-    body: JSON.stringify(payload),
+    body: method === 'GET' ? undefined : JSON.stringify(payload ?? {}),
   });
   const raw = await response.text();
   let body;

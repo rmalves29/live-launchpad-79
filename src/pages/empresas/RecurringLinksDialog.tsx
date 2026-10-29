@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 
 interface RecurringLink {
   id: string; name: string; price: number; cycles: number; url: string; created_at: string;
+  pagarme_link_id: string; status: string;
 }
 
 function errorMessage(data: Record<string, unknown>) {
@@ -45,6 +46,8 @@ export function RecurringLinksDialog() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const savingRef = useRef(false);
   const generationRef = useRef(0);
+  const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
+  const deactivatingRef = useRef(false);
 
   useEffect(() => {
     const generation = ++generationRef.current;
@@ -86,6 +89,23 @@ export function RecurringLinksDialog() {
     }
   };
 
+  const deactivate = async (item: RecurringLink) => {
+    if (deactivatingRef.current) return;
+    deactivatingRef.current = true;
+    setDeactivatingId(item.id);
+    setError(null);
+    try {
+      await invoke({ action: 'deactivate', link_id: item.pagarme_link_id });
+      const data = await invoke({ action: 'list' });
+      setLinks(data.links);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      deactivatingRef.current = false;
+      setDeactivatingId(null);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild><Button variant="outline"><Link className="h-4 w-4 mr-2" />Links recorrentes</Button></DialogTrigger>
@@ -109,13 +129,18 @@ export function RecurringLinksDialog() {
             {loading ? <Loader2 className="h-5 w-5 animate-spin" aria-label="Carregando links" /> : links.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum link gerado.</p> : links.map((item) => (
               <div key={item.id} className="border-b pb-3 space-y-2">
                 <p className="font-medium break-words">{item.name}</p>
-                <p className="text-sm text-muted-foreground">{Number(item.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} · {item.cycles} ciclos · {new Date(item.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</p>
+                <p className="text-sm text-muted-foreground">{Number(item.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} · {item.cycles} ciclos · {item.status === 'canceled' ? 'desativado' : item.status} · {new Date(item.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</p>
                 <div className="flex items-start gap-2">
                   <a href={item.url.startsWith('https://') ? item.url : undefined} target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline break-all flex-1 min-w-0">{item.url}</a>
                   <Button variant="outline" size="sm" onClick={async () => {
                     try { await navigator.clipboard.writeText(item.url); setCopiedId(item.id); }
                     catch { setError('Não foi possível copiar o link.'); }
                   }}><Copy className="h-4 w-4 mr-2" />{copiedId === item.id ? 'Copiado' : 'Copiar'}</Button>
+                  {item.status !== 'canceled' && (
+                    <Button variant="destructive" size="sm" disabled={deactivatingId !== null} onClick={() => deactivate(item)}>
+                      {deactivatingId === item.id ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}Desativar
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}

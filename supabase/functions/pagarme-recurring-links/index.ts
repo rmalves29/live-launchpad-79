@@ -41,6 +41,29 @@ Deno.serve(async (req) => {
 
     const apiKey = Deno.env.get('PAGARME_ORDERZAP_API_KEY');
     if (!apiKey) return json({ success: false, error: 'PAGARME_ORDERZAP_API_KEY não configurada' });
+
+    if (parsed.data.action === 'inspect') {
+      const { plan_id, link_id } = parsed.data;
+      const plan = await requestPagarme(`/plans/${encodeURIComponent(plan_id)}`, undefined, apiKey, fetch, 'GET');
+      if (!plan.ok) return json({ success: false, error: 'Pagar.me recusou a consulta do plano', pagarme_error: plan.body, pagarme_status: plan.status });
+      let paymentLink: unknown;
+      if (link_id) {
+        const link = await requestPagarme(`/paymentlinks/${encodeURIComponent(link_id)}`, undefined, apiKey, fetch, 'GET');
+        if (!link.ok) return json({ success: false, error: 'Pagar.me recusou a consulta do link', plan: plan.body, pagarme_error: link.body, pagarme_status: link.status });
+        paymentLink = link.body;
+      }
+      return json({ success: true, plan: plan.body, payment_link: paymentLink });
+    }
+
+    if (parsed.data.action === 'deactivate') {
+      const { link_id } = parsed.data;
+      const canceled = await requestPagarme(`/paymentlinks/${encodeURIComponent(link_id)}/cancel`, {}, apiKey, fetch, 'PATCH');
+      if (!canceled.ok) return json({ success: false, error: 'Pagar.me recusou o cancelamento do link', pagarme_error: canceled.body, pagarme_status: canceled.status });
+      const { error: updateError } = await admin.from('pagarme_recurring_links').update({ status: 'canceled' }).eq('pagarme_link_id', link_id);
+      if (updateError) return json({ success: false, error: `Link cancelado na Pagar.me, mas o status não foi atualizado: ${updateError.message}` });
+      return json({ success: true, link_id, status: 'canceled' });
+    }
+
     const { name, price, cycles } = parsed.data;
     const plan = await requestPagarme('/plans', planPayload(name, price, cycles), apiKey);
     if (!plan.ok) return json({ success: false, error: 'Pagar.me recusou a criação do plano', pagarme_error: plan.body, pagarme_status: plan.status });
