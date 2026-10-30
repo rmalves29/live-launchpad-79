@@ -112,7 +112,7 @@ export default function CampaignDetailDialog({
           .eq('campaign_id', campaignId),
         supabase
           .from('fe_campaigns' as any)
-          .select('facebook_pixel_id, auto_spawn_enabled, spawn_margin, group_template, created_at')
+          .select('facebook_pixel_id, auto_spawn_enabled, spawn_margin, group_template, created_at, stats_since')
           .eq('id', campaignId)
           .eq('tenant_id', tenant.id)
           .maybeSingle(),
@@ -149,20 +149,19 @@ export default function CampaignDetailDialog({
       const fullGroups = linkedGroups.filter((group) => group.max_participants && (group.participant_count || 0) >= group.max_participants).length;
       const availableGroups = linkedGroups.filter((group) => group.is_entry_open && group.is_active && (!group.max_participants || (group.participant_count || 0) < group.max_participants)).length;
 
-      const [{ count: joinCount }, { count: leaveCount }] = await Promise.all([
-          supabase
-            .from('fe_group_events' as any)
-            .select('id', { count: 'exact', head: true })
-            .eq('tenant_id', tenant.id)
-            .eq('event_type', 'join')
-            .eq('campaign_id', campaignId),
-          supabase
-            .from('fe_group_events' as any)
-            .select('id', { count: 'exact', head: true })
-            .eq('tenant_id', tenant.id)
-            .eq('event_type', 'leave')
-            .eq('campaign_id', campaignId),
-        ]);
+      // Números da campanha contam a partir do zeramento (stats_since), se houver.
+      const statsSince: string | null = (campData as any)?.stats_since ?? null;
+      const eventCount = (type: 'join' | 'leave') => {
+        let q: any = supabase
+          .from('fe_group_events' as any)
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenant.id)
+          .eq('event_type', type)
+          .eq('campaign_id', campaignId);
+        if (statsSince) q = q.gte('created_at', statsSince);
+        return q;
+      };
+      const [{ count: joinCount }, { count: leaveCount }] = await Promise.all([eventCount('join'), eventCount('leave')]);
       const entries = joinCount || 0;
       const exits = leaveCount || 0;
       const sharedIds = new Set<string>();
@@ -178,7 +177,15 @@ export default function CampaignDetailDialog({
       }
       setSharedGroupIds(sharedIds);
 
-      const clicks = clickCount || 0;
+      let clicks = clickCount || 0;
+      if (statsSince) {
+        const { count: clicksSince } = await supabase
+          .from('fe_link_clicks' as any)
+          .select('id', { count: 'exact', head: true })
+          .eq('campaign_id', campaignId)
+          .gte('clicked_at', statsSince);
+        clicks = clicksSince || 0;
+      }
 
       setStats({
         clicks,

@@ -26,6 +26,8 @@ interface FeCampaign {
   is_entry_open: boolean;
   is_active: boolean;
   created_at: string;
+  /** Início da contagem (zerar números sem apagar histórico). */
+  stats_since?: string | null;
 }
 
 interface CampaignStats {
@@ -71,16 +73,20 @@ export default function CampaignsManager() {
     const tenantEvents = await fetchAllTenantGroupEvents(tenant.id);
     const statsEntries = await Promise.all(campaigns.map(async (campaign) => {
       const [{ count: clickCount }, { count: gCount }] = await Promise.all([
-        supabase
-          .from('fe_link_clicks' as any)
-          .select('id', { count: 'exact', head: true })
-          .eq('campaign_id', campaign.id),
+        (() => {
+          let q: any = supabase
+            .from('fe_link_clicks' as any)
+            .select('id', { count: 'exact', head: true })
+            .eq('campaign_id', campaign.id);
+          if (campaign.stats_since) q = q.gte('clicked_at', campaign.stats_since);
+          return q;
+        })(),
         supabase
           .from('fe_campaign_groups' as any)
           .select('id', { count: 'exact', head: true })
           .eq('campaign_id', campaign.id),
       ]);
-      const eventSummary = summarizeFlowEvents(tenantEvents, campaign.id);
+      const eventSummary = summarizeFlowEvents(tenantEvents, campaign.id, campaign.stats_since ?? undefined);
       const clicks = clickCount || 0;
       const entries = eventSummary.entries || 0;
 

@@ -186,7 +186,7 @@ export default function ReportsPanel() {
       const [{ data: campaignsData }, { data: groupsData }, { data: cgData }] = await Promise.all([
         supabase
           .from('fe_campaigns' as any)
-          .select('id, name, slug')
+          .select('id, name, slug, stats_since')
           .eq('tenant_id', tenant.id),
         supabase
           .from('fe_groups' as any)
@@ -271,7 +271,9 @@ export default function ReportsPanel() {
         }
 
         const cAgg = perCampaign.get(e.campaign_id);
-        if (cAgg) {
+        const cSince = (campaignById.get(e.campaign_id) as any)?.stats_since;
+        // Campanha zerada: só conta a partir do zeramento (stats_since).
+        if (cAgg && !(cSince && new Date(e.created_at) < new Date(cSince))) {
           if (isJoin) cAgg.entries += 1;
           if (isLeave) cAgg.exits += 1;
         }
@@ -279,7 +281,8 @@ export default function ReportsPanel() {
 
       for (const cl of clicks) {
         const cAgg = perCampaign.get(cl.campaign_id);
-        if (cAgg) cAgg.clicks += 1;
+        const cSince = (campaignById.get(cl.campaign_id) as any)?.stats_since;
+        if (cAgg && !(cSince && new Date(cl.clicked_at) < new Date(cSince))) cAgg.clicks += 1;
       }
 
       // 5. Rankings
