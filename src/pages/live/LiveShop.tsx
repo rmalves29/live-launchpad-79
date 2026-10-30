@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   bestAutoCoupon, brl, calculateLiveShipping, cartOriginal, cartSubtotal, describeCoupon, formatCep, formatCpf, formatPhone,
   liveApi, normalizeLocalPhone, onlyDigits, previewCoupon, validCpf,
-  type CartLine, type LiveCatalogMeta, type LiveCoupon, type LiveCustomer, type LiveProduct, type LiveVariant, type ShippingOption,
+  setLiveRefs, type CartLine, type LiveCatalogMeta, type LiveCoupon, type LiveCustomer, type LiveProduct, type LiveVariant, type ShippingOption,
 } from '@/lib/live-shop';
 import './live-shop.css';
 
@@ -102,8 +102,19 @@ const BackIcon = () => (
 );
 
 export default function LiveShop() {
-  const { slug: slugParam } = useParams<{ slug: string }>();
+  const { slug: slugParam, ref: refParam } = useParams<{ slug: string; ref?: string }>();
   const slug = useMemo(() => decodeURIComponent(slugParam || '').replace(/[​-‍﻿]/g, '').trim().toLowerCase(), [slugParam]);
+
+  // Afiliada: o link /live/a/CODIGO mostra a vitrine dela. O aparelho lembra dela por 7 dias, só para atribuir a venda.
+  const viewRef = useMemo(() => (refParam || '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 40) || null, [refParam]);
+  const cacheId = viewRef ? `${slug}~${viewRef}` : slug;
+  const attrRef = useMemo(() => {
+    const key = `live_ref_${slug}`;
+    if (viewRef) { writeLS(key, { code: viewRef, at: Date.now() }); return viewRef; }
+    const saved = readLS<{ code: string; at: number } | null>(key, null);
+    return saved && Date.now() - saved.at < 7 * 86400_000 ? saved.code : null;
+  }, [slug, viewRef]);
+  setLiveRefs({ view: viewRef, attr: attrRef });
 
   const [meta, setMeta] = useState<LiveCatalogMeta | null>(null);
   const [products, setProducts] = useState<LiveProduct[]>([]);
@@ -198,7 +209,7 @@ export default function LiveShop() {
     try {
       // Primeira abertura: se o cliente já viu a vitrine há pouco, mostra a versão guardada e atualiza em seguida.
       if (offset === 0 && !opts.q && !opts.append) {
-        const cached = readCatalogCache(slug);
+        const cached = readCatalogCache(cacheId);
         if (cached) {
           setMeta(cached.meta);
           setProducts(cached.items);
@@ -212,7 +223,7 @@ export default function LiveShop() {
       setError(null);
       if (res.version) versionRef.current = res.version;
       if (res.tenant) {
-        setMeta({ tenant: res.tenant, coupons: res.coupons || [], gifts: res.gifts || [], shipping_hints: res.shipping_hints || [], payment: res.payment, settings: res.settings, flashes: res.flashes || [] });
+        setMeta({ tenant: res.tenant, coupons: res.coupons || [], gifts: res.gifts || [], shipping_hints: res.shipping_hints || [], payment: res.payment, settings: res.settings, flashes: res.flashes || [], affiliate: res.affiliate || null });
         // diferença entre o relógio do servidor e o do aparelho (a contagem da oferta usa o do servidor)
         if (res.flashes?.[0]?.now) clockOffset.current = new Date(res.flashes[0].now).getTime() - Date.now();
         if (!res.payment.pix && res.payment.card) setPay('card');
@@ -221,7 +232,7 @@ export default function LiveShop() {
       setNextOffset(offset + 40);
       if (!opts.append) triedAt.current = -1;
       if (offset === 0 && !opts.q && res.tenant) {
-        writeCatalogCache(slug, { meta: { tenant: res.tenant, coupons: res.coupons || [], gifts: res.gifts || [], shipping_hints: res.shipping_hints || [], payment: res.payment, settings: res.settings }, items: res.items, total: res.total || 0 });
+        writeCatalogCache(cacheId, { meta: { tenant: res.tenant, coupons: res.coupons || [], gifts: res.gifts || [], shipping_hints: res.shipping_hints || [], payment: res.payment, settings: res.settings, affiliate: res.affiliate || null }, items: res.items, total: res.total || 0 });
       }
       setProducts((prev) => {
         if (!opts.append) return res.items;
@@ -424,6 +435,7 @@ export default function LiveShop() {
   }, [meta, subtotal]);
   const freeMin = useMemo(() => {
     const mins = (meta?.shipping_hints || []).filter((h) => h.free_min != null).map((h) => h.free_min as number);
+    if (meta?.affiliate?.free_ship_min != null) mins.push(meta.affiliate.free_ship_min);
     return mins.length ? Math.min(...mins) : null;
   }, [meta]);
   const selectedShip = shipOptions.find((o) => o.id === shipId) || null;
@@ -731,7 +743,7 @@ export default function LiveShop() {
         setShipId((prev) => (options.some((o) => o.id === prev) ? prev : options.slice().sort((a, b) => a.price - b.price)[0]?.id || ''));
       };
       // As opções da própria loja (frete fixo, grátis, retirada) aparecem na hora; as das transportadoras entram quando chegam.
-      const res = await calculateLiveShipping({ tenantId: meta.tenant.id, cep: cepForShipping, lines, cartTotal: cartSubtotal(lines), onPartial: apply });
+      const res = await calculateLiveShipping({ tenantId: meta.tenant.id, cep: cepForShipping, lines, cartTotal: cartSubtotal(lines), onPartial: apply, freeAbove: meta.affiliate?.free_ship_min ?? null });
       if (!alive) return;
       apply(res.options);
       setShipNotice(res.notice || '');
@@ -744,7 +756,7 @@ export default function LiveShop() {
   // Aquece o frete enquanto a cliente ainda está na vitrine/carrinho: ao abrir "Finalizar pedido" o valor já está em cache.
   useEffect(() => {
     if (screen === 'checkout' || !meta || !cepForShipping || cart.length === 0) return;
-    calculateLiveShipping({ tenantId: meta.tenant.id, cep: cepForShipping, lines: cart, cartTotal: cartSubtotal(cart) }).catch(() => undefined);
+    calculateLiveShipping({ tenantId: meta.tenant.id, cep: cepForShipping, lines: cart, cartTotal: cartSubtotal(cart), freeAbove: meta.affiliate?.free_ship_min ?? null }).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen, meta?.tenant.id, cepForShipping, JSON.stringify(cart.map((l) => [l.product_id, l.qty]))]);
 
@@ -862,12 +874,13 @@ export default function LiveShop() {
         </div>
       )}
 
-      {meta && (meta.coupons.length > 0 || meta.shipping_hints.length > 0 || meta.gifts.length > 0) && (() => {
+      {meta && (meta.coupons.length > 0 || meta.shipping_hints.length > 0 || meta.gifts.length > 0 || meta.affiliate?.free_ship_min != null) && (() => {
         const freeShip = meta.shipping_hints.filter((h) => h.free_min != null).slice(0, 1);
         const fixedShip = meta.shipping_hints.filter((h) => h.free_min == null && !h.pickup && h.price > 0).slice(0, 1);
         const coupons = meta.coupons.slice(0, 6);
         const gifts = meta.gifts.slice(0, 3);
-        const count = freeShip.length + fixedShip.length + coupons.length + gifts.length;
+        const affShip = meta.affiliate?.free_ship_min != null ? meta.affiliate.free_ship_min : null;
+        const count = freeShip.length + fixedShip.length + coupons.length + gifts.length + (affShip != null ? 1 : 0);
         const svg = (d: string) => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>;
         const TRUCK = 'M3 7h11v9H3zM14 10h4l3 3v3h-7zM7 19a1.5 1.5 0 1 0 0-.01M17 19a1.5 1.5 0 1 0 0-.01';
         const TICKET = 'M3 9V7a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v2a2.5 2.5 0 0 0 0 5v2a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-2a2.5 2.5 0 0 0 0-5zM9 15l6-6M9.5 9.5h.01M14.5 14.5h.01';
@@ -880,6 +893,12 @@ export default function LiveShop() {
                 <div className="tx"><b>Frete grátis</b><small>em pedidos acima de {brl(h.free_min as number)}</small></div>
               </div>
             ))}
+            {affShip != null && (
+              <div className="cp ship" key="aff-ship">
+                <span className="ic">{svg(TRUCK)}</span>
+                <div className="tx"><b>Frete grátis</b><small>em pedidos acima de {brl(affShip)}</small></div>
+              </div>
+            )}
             {fixedShip.map((h) => (
               <div className="cp ship" key={'ff' + h.name}>
                 <span className="ic">{svg(TRUCK)}</span>

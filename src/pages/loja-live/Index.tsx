@@ -18,6 +18,7 @@ import { ShippingOptionsManager } from '@/components/ShippingOptionsManager';
 import WhatsAppMessages from './WhatsAppMessages';
 import { LiveProductsManager } from './LiveProductsManager';
 import { LiveOrdersManager } from './LiveOrdersManager';
+import { AffiliatesManager } from './AffiliatesManager';
 import { AlertTriangle, CalendarClock, CheckCircle2, Copy, ExternalLink, Store } from 'lucide-react';
 import { liveShopUrl } from '@/lib/live-shop';
 
@@ -62,6 +63,12 @@ async function copy(text: string, label: string) {
 
 export default function LojaDaLive() {
   const { tenant } = useTenant();
+  // Afiliadas: função liberada por empresa (tenants.enable_afiliados)
+  const [afiliadosEnabled, setAfiliadosEnabled] = useState(false);
+  useEffect(() => {
+    if (!tenant?.id) return;
+    supabase.from('tenants').select('enable_afiliados' as any).eq('id', tenant.id).maybeSingle().then(({ data }) => setAfiliadosEnabled((data as any)?.enable_afiliados === true));
+  }, [tenant?.id]);
   const { profile } = useAuth();
   // A visão "todas as empresas" é só do super admin e some quando ele está visualizando uma empresa específica.
   const previewingTenant = (() => { try { return !!localStorage.getItem('previewTenantId'); } catch { return false; } })();
@@ -209,6 +216,7 @@ export default function LojaDaLive() {
           <TabsTrigger value="coupons">Cupons</TabsTrigger>
           <TabsTrigger value="gifts">Brindes</TabsTrigger>
           <TabsTrigger value="shipping">Frete</TabsTrigger>
+          {afiliadosEnabled && <TabsTrigger value="affiliates">Afiliadas</TabsTrigger>}
           <TabsTrigger value="orders">Pedidos</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
           {isSuperAdmin && <TabsTrigger value="tenants">Links de todas as empresas</TabsTrigger>}
@@ -363,6 +371,8 @@ export default function LojaDaLive() {
           </p>
           <ShippingOptionsManager channel="live" />
         </TabsContent>
+
+        {afiliadosEnabled && <TabsContent value="affiliates" className="mt-4"><AffiliatesManager /></TabsContent>}
 
         <TabsContent value="orders" className="mt-4"><LiveOrdersManager /></TabsContent>
 

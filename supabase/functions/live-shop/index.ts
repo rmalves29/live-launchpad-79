@@ -69,11 +69,29 @@ async function getTenant(slugRaw: unknown) {
   if (!slug) return null;
   const { data } = await sb
     .from('tenants')
-    .select('id, name, slug, logo_url, primary_color, is_active, live_reserve_mode, live_cart_minutes, live_shop_enabled, live_shop_close_at, live_open_order, enable_loja_live')
+    .select('id, name, slug, logo_url, primary_color, is_active, live_reserve_mode, live_cart_minutes, live_shop_enabled, live_shop_close_at, live_open_order, enable_loja_live, enable_afiliados')
     .eq('slug', slug)
     .eq('is_active', true)
     .maybeSingle();
   return data as any;
+}
+
+// ------------------------- afiliada -------------------------
+// Link da afiliada: /t/:slug/live/a/:codigo. Só vale quando a empresa tem a função ligada (tenants.enable_afiliados) e a afiliada está ativa.
+async function getAffiliate(tenant: any, ref: unknown) {
+  if (!tenant?.enable_afiliados) return null;
+  const code = String(ref ?? '').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 40);
+  if (!code) return null;
+  const { data } = await sb
+    .from('affiliates')
+    .select('id, name, code, commission_percent, allow_free_shipping, free_ship_min, updated_at')
+    .eq('tenant_id', tenant.id).eq('is_active', true).eq('code', code).maybeSingle();
+  return data as any;
+}
+
+// Cupom/oferta da afiliada só vale no link dela; os da loja valem em qualquer link.
+function scopeAffiliate(q: any, affId?: string | null) {
+  return affId ? q.or(`affiliate_id.is.null,affiliate_id.eq.${affId}`) : q.is('affiliate_id', null);
 }
 
 const effectivePrice = (p: any) => (num(p.promotional_price) > 0 ? num(p.promotional_price) : num(p.price));
@@ -83,17 +101,18 @@ const isPromo = (p: any) => num(p.promotional_price) > 0;
 // ------------------------- oferta relâmpago -------------------------
 // Até 2 por empresa. Só vale dentro do prazo: depois de ends_at o preço volta ao normal em qualquer carrinho, pois todo preço
 // (vitrine, cupom, reserva e pedido) sai de loadProducts/catalog, que aplicam a oferta só enquanto ela está no ar.
-async function getActiveFlashes(tenantId: string): Promise<any[]> {
+async function getActiveFlashes(tenantId: string, affId?: string | null): Promise<any[]> {
   const nowIso = new Date().toISOString();
-  const { data } = await sb
+  const q = sb
     .from('live_flash_offers')
-    .select('id, product_id, flash_price, ends_at')
+    .select('id, product_id, flash_price, ends_at, affiliate_id')
     .eq('tenant_id', tenantId)
     .eq('status', 'active')
     .lte('starts_at', nowIso)
     .gt('ends_at', nowIso)
     .order('ends_at', { ascending: true })
-    .limit(2);
+    .limit(8);
+  const { data } = await scopeAffiliate(q, affId);
   return (data as any[]) || [];
 }
 
@@ -149,14 +168,15 @@ function computeCoupon(coupon: any, lines: Line[]): { ok: boolean; discount: num
   return discount > 0 ? { ok: true, discount } : { ok: false, discount: 0, message: 'Cupom sem desconto para este pedido.' };
 }
 
-async function loadCoupon(tenantId: string, code: unknown) {
+async function loadCoupon(tenantId: string, code: unknown, affId?: string | null) {
   const c = String(code ?? '').trim().toUpperCase();
   if (!c) return null;
-  const { data } = await sb.from('coupons').select('*').eq('tenant_id', tenantId).eq('channel', 'live').eq('code', c).eq('is_active', true).maybeSingle();
+  const q = sb.from('coupons').select('*').eq('tenant_id', tenantId).eq('channel', 'live').eq('code', c).eq('is_active', true);
+  const { data } = await scopeAffiliate(q, affId).maybeSingle();
   return data as any;
 }
 
-async function loadProducts(tenantId: string, ids: number[]) {
+async function loadProducts(tenantId: string, ids: number[], affId?: string | null) {
   if (!ids.length) return new Map<number, any>();
   const { data } = await sb
     .from('products')
@@ -164,7 +184,7 @@ async function loadProducts(tenantId: string, ids: number[]) {
     .eq('tenant_id', tenantId)
     .in('id', ids);
   const rows = data || [];
-  applyFlash(rows, await getActiveFlashes(tenantId));
+  applyFlash(rows, await getActiveFlashes(tenantId, affId));
   return new Map<number, any>(rows.map((p: any) => [p.id, p]));
 }
 
@@ -195,11 +215,11 @@ async function giftsWithLeft(tenantId: string, gifts: any[], excludeOrderId?: nu
 // ------------------------------- ações -------------------------------
 
 // Cupons, brindes, fretes e gateway da vitrine (independem dos produtos; rodam em paralelo com a lista).
-async function loadCatalogExtras(tenant: any) {
+async function loadCatalogExtras(tenant: any, aff?: any) {
   const extras: Record<string, unknown> = {};
     const nowIso = new Date().toISOString();
     const [couponsRes, giftsRes, shipRes, pagarme, appmax, mp, infinite] = await Promise.all([
-      sb.from('coupons').select('code, discount_type, discount_value, min_purchase_amount, min_items_quantity, progressive_tiers, apply_to_promotional, auto_apply, description, starts_at, expires_at, usage_limit, used_count, is_active').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).limit(50),
+      scopeAffiliate(sb.from('coupons').select('code, discount_type, discount_value, min_purchase_amount, min_items_quantity, progressive_tiers, apply_to_promotional, auto_apply, description, starts_at, expires_at, usage_limit, used_count, is_active').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).limit(50), aff?.id),
       sb.from('gifts').select('name, description, minimum_purchase_amount, auto_apply, quantity').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).order('minimum_purchase_amount', { ascending: true }),
       sb.from('custom_shipping_options').select('name, price, delivery_days, free_shipping_min_order, coverage_type').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true),
       sb.from('integration_pagarme').select('is_active, enable_pix, enable_credit_card, pix_discount_percent, max_installments, max_installments_without_interest, min_installment_value').eq('tenant_id', tenant.id).maybeSingle(),
@@ -241,23 +261,31 @@ async function loadCatalogExtras(tenant: any) {
     };
     extras.tenant = { id: tenant.id, name: tenant.name, slug: tenant.slug, logo_url: tenant.logo_url, primary_color: tenant.primary_color };
     extras.settings = { reserve_mode: tenant.live_reserve_mode, cart_minutes: tenant.live_cart_minutes, close_at: tenant.live_shop_close_at || null, open_order: tenant.live_open_order === true };
+    extras.affiliate = aff ? { name: aff.name, code: aff.code, free_ship_min: aff.allow_free_shipping && aff.free_ship_min != null ? num(aff.free_ship_min) : null } : null;
     extras.now = nowIso;
   return extras;
 }
 
 // "Versão" da lista de produtos da live: muda quando um produto entra, sai, ou tem estoque/preço alterado.
 // É barata (2 consultas pequenas) para a vitrine aberta perguntar a cada poucos segundos se precisa recarregar.
-async function catalogVersion(tenant: any): Promise<string> {
+async function catalogVersion(tenant: any, aff?: any): Promise<string> {
   const base = () => sb.from('products').select('updated_at', { count: 'exact' })
     .eq('tenant_id', tenant.id).eq('is_active', true).in('sale_type', ['LIVE', 'AMBOS']).gt('stock', 0);
   const [{ count }, { data: last }, offers] = await Promise.all([
     sb.from('products').select('id', { count: 'exact', head: true })
       .eq('tenant_id', tenant.id).eq('is_active', true).in('sale_type', ['LIVE', 'AMBOS']).gt('stock', 0),
     base().order('updated_at', { ascending: false }).limit(1),
-    getActiveFlashes(tenant.id),
+    getActiveFlashes(tenant.id, aff?.id),
   ]);
+  // vitrine da afiliada: a escolha de produtos e a ordem dela também mudam a versão
+  let affSig = '';
+  if (aff) {
+    const { data: sel } = await sb.from('affiliate_products').select('updated_at').eq('affiliate_id', aff.id).order('updated_at', { ascending: false }).limit(1);
+    const { count: selCount } = await sb.from('affiliate_products').select('product_id', { count: 'exact', head: true }).eq('affiliate_id', aff.id);
+    affSig = `:a${selCount ?? 0}:${sel?.[0]?.updated_at || ''}`;
+  }
   // as ofertas entram na versão: quando ela começa ou termina, a vitrine aberta recarrega sozinha
-  return `${count ?? 0}:${last?.[0]?.updated_at || ''}:${offers.map((o: any) => o.id).join(',')}`;
+  return `${count ?? 0}:${last?.[0]?.updated_at || ''}:${offers.map((o: any) => o.id).join(',')}${affSig}`;
 }
 
 const CATALOG_COLS = 'id, code, name, price, promotional_price, stock, image_url, color, size, parent_product_id, is_live';
@@ -329,38 +357,76 @@ async function buildFlash(tenantId: string, offer: any, pageItems: any[]) {
   return { item, price: num(offer.flash_price), ends_at: offer.ends_at, now: new Date().toISOString() };
 }
 
-async function catalog(body: any, tenant: any) {
+async function catalog(body: any, tenant: any, affView: any, aff: any) {
   const offset = Math.max(0, Math.floor(num(body.offset, 0)));
   const limit = Math.min(100, Math.max(1, Math.floor(num(body.limit, 60))));
   const q = String(body.q ?? '').replace(/[%_\\,()]/g, ' ').trim().slice(0, 40);
 
   // Cupons, brindes, fretes e gateway não dependem dos produtos: já saem em paralelo.
-  const extrasP = offset === 0 ? loadCatalogExtras(tenant) : null;
+  const extrasP = offset === 0 ? loadCatalogExtras(tenant, aff) : null;
 
-  let query = sb
-    .from('products')
-    .select(CATALOG_COLS, { count: 'exact' })
-    .eq('tenant_id', tenant.id)
-    .eq('is_active', true)
-    .in('sale_type', ['LIVE', 'AMBOS'])
-    .gt('stock', 0);
-  if (q) query = query.or(`code.ilike.%${q}%,name.ilike.%${q}%`);
-  // Ordem FIXA da vitrine: primeiro a posição escolhida pelo lojista (live_position); sem posição, quem entrou na live primeiro
-  // aparece primeiro e o que foi ativado agora vai para o fim. Estoque, preço e venda não mexem na posição.
-  const { data: rows, count, error } = await query
-    .order('live_position', { ascending: true, nullsFirst: false })
-    .order('live_added_at', { ascending: true })
-    .order('id', { ascending: true })
-    .range(offset, offset + limit - 1);
-  if (error) return fail('Não foi possível carregar a vitrine.', 'CATALOG_ERROR');
+  let rows: any[] | null = null;
+  let count = 0;
+  let affPos: Map<number, number> | null = null;
 
-  const offers = await getActiveFlashes(tenant.id);
+  if (affView) {
+    // Vitrine da afiliada: só os produtos que ela escolheu (e que continuam na live, com estoque), na ordem dela.
+    const { data: sel } = await sb.from('affiliate_products').select('product_id, position').eq('affiliate_id', affView.id);
+    affPos = new Map<number, number>((sel || []).map((r: any) => [Number(r.product_id), Number(r.position)]));
+    const ids = Array.from(affPos.keys());
+    let all: any[] = [];
+    if (ids.length) {
+      const list = ids.join(',');
+      const { data, error } = await sb
+        .from('products')
+        .select(CATALOG_COLS)
+        .eq('tenant_id', tenant.id)
+        .eq('is_active', true)
+        .in('sale_type', ['LIVE', 'AMBOS'])
+        .gt('stock', 0)
+        .or(`id.in.(${list}),parent_product_id.in.(${list})`)
+        .range(0, 1999);
+      if (error) return fail('Não foi possível carregar a vitrine.', 'CATALOG_ERROR');
+      all = data || [];
+    }
+    if (q) {
+      const needle = q.toLowerCase();
+      all = all.filter((p: any) => `${p.code ?? ''} ${p.name ?? ''}`.toLowerCase().includes(needle));
+    }
+    const posOf = (p: any) => affPos!.get(Number(p.parent_product_id || p.id)) ?? 1e9;
+    all.sort((a: any, b: any) => posOf(a) - posOf(b) || a.id - b.id);
+    count = all.length;
+    rows = all.slice(offset, offset + limit);
+  } else {
+    let query = sb
+      .from('products')
+      .select(CATALOG_COLS, { count: 'exact' })
+      .eq('tenant_id', tenant.id)
+      .eq('is_active', true)
+      .in('sale_type', ['LIVE', 'AMBOS'])
+      .gt('stock', 0);
+    if (q) query = query.or(`code.ilike.%${q}%,name.ilike.%${q}%`);
+    // Ordem FIXA da vitrine: primeiro a posição escolhida pelo lojista (live_position); sem posição, quem entrou na live primeiro
+    // aparece primeiro e o que foi ativado agora vai para o fim. Estoque, preço e venda não mexem na posição.
+    const res = await query
+      .order('live_position', { ascending: true, nullsFirst: false })
+      .order('live_added_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(offset, offset + limit - 1);
+    if (res.error) return fail('Não foi possível carregar a vitrine.', 'CATALOG_ERROR');
+    rows = res.data || [];
+    count = res.count ?? rows.length;
+  }
+
+  let offers = await getActiveFlashes(tenant.id, aff?.id);
+  // vitrine da afiliada: oferta da loja só aparece se o produto estiver na lista dela; oferta dela aparece sempre
+  if (affPos) offers = offers.filter((o: any) => o.affiliate_id || affPos!.has(Number(o.product_id)));
   applyFlash(rows || [], offers);
   const items = await buildItems(rows || [], tenant.id);
 
   const result: any = { ok: true, items, total: count ?? items.length, offset, limit };
 
-  if (offset === 0) result.version = await catalogVersion(tenant);
+  if (offset === 0) result.version = await catalogVersion(tenant, aff);
   if (offset === 0 && offers.length) {
     const built = await Promise.all(offers.map((o: any) => buildFlash(tenant.id, o, items)));
     result.flashes = built.filter(Boolean);
@@ -443,11 +509,11 @@ async function customerSave(body: any, tenant: any, ip: string) {
   return json({ ok: true, phone });
 }
 
-async function couponCheck(body: any, tenant: any) {
-  const coupon = await loadCoupon(tenant.id, body.code);
+async function couponCheck(body: any, tenant: any, aff: any) {
+  const coupon = await loadCoupon(tenant.id, body.code, aff?.id);
   if (!coupon) return json({ ok: true, valid: false, message: 'Cupom inválido ou expirado.' });
   const items = sanitizeItems(body.items);
-  const products = await loadProducts(tenant.id, items.map((i) => i.product_id));
+  const products = await loadProducts(tenant.id, items.map((i) => i.product_id), aff?.id);
   const lines: Line[] = items.filter((i) => products.get(i.product_id)).map((i) => {
     const p = products.get(i.product_id);
     return { unit_price: effectivePrice(p), qty: i.qty, promotional: isPromo(p) };
@@ -457,14 +523,14 @@ async function couponCheck(body: any, tenant: any) {
 }
 
 // Modo "reservar ao adicionar no carrinho": define a quantidade ABSOLUTA reservada para a sessão.
-async function reserve(body: any, tenant: any) {
+async function reserve(body: any, tenant: any, aff: any) {
   if (tenant.live_open_order === true || tenant.live_reserve_mode !== 'cart') return json({ ok: true, skipped: true });
   const sessionId = String(body.session_id ?? '').slice(0, 80);
   const productId = Number(body.product_id);
   const want = Math.max(0, Math.min(99, Math.floor(num(body.qty, 0))));
   if (!sessionId || !Number.isFinite(productId)) return fail('Requisição inválida.', 'BAD_REQUEST');
 
-  const products = await loadProducts(tenant.id, [productId]);
+  const products = await loadProducts(tenant.id, [productId], aff?.id);
   const p = products.get(productId);
   if (!p || !p.is_active || !['LIVE', 'AMBOS'].includes(p.sale_type)) return fail('Produto indisponível.', 'NOT_AVAILABLE');
 
@@ -475,7 +541,7 @@ async function reserve(body: any, tenant: any) {
   if (delta > 0) {
     const { data: left, error } = await sb.rpc('reserve_product_stock', { p_product_id: productId, p_qty: delta });
     if (error || left === null || left === undefined) {
-      const fresh = (await loadProducts(tenant.id, [productId])).get(productId);
+      const fresh = (await loadProducts(tenant.id, [productId], aff?.id)).get(productId);
       return fail('Estoque insuficiente para essa quantidade.', 'INSUFFICIENT_STOCK', { stock: num(fresh?.stock), reserved: have });
     }
   } else if (delta < 0) {
@@ -514,7 +580,7 @@ async function cancelOrder(body: any, tenant: any) {
 // O evento continua INSTAGRAM_LIVE e a origem live_shop (mesmas etiquetas de sempre).
 async function findOpenLiveOrder(tenantId: string, phone: string) {
   const { data } = await sb.from('orders')
-    .select('id, cart_id, customer_phone, payment_link, observation, coupon_code')
+    .select('id, cart_id, customer_phone, payment_link, observation, coupon_code, affiliate_id, affiliate_commission_percent')
     .eq('tenant_id', tenantId).eq('source', 'live_shop').eq('is_paid', false).eq('is_cancelled', false)
     .in('customer_phone', phoneVariants(phone))
     .order('id', { ascending: false }).limit(1);
@@ -538,7 +604,7 @@ async function dropOpenOrder(order: any) {
   }
 }
 
-async function syncOpenOrder(body: any, tenant: any, finalize: boolean) {
+async function syncOpenOrder(body: any, tenant: any, finalize: boolean, aff: any) {
   const phone = normPhone(body.phone);
   const items = sanitizeItems(body.items);
   if (phone.length < 10 || phone.length > 11) return fail('Informe o celular com DDD.', 'INVALID_PHONE');
@@ -555,7 +621,7 @@ async function syncOpenOrder(body: any, tenant: any, finalize: boolean) {
     return json({ ok: true, order_id: null, items_state: [] });
   }
 
-  const products = await loadProducts(tenant.id, items.map((i) => i.product_id));
+  const products = await loadProducts(tenant.id, items.map((i) => i.product_id), aff?.id);
   const availableP = (p: any) => !!p && p.is_active && ['LIVE', 'AMBOS'].includes(p.sale_type);
 
   // itens atuais do pedido (se ja existe)
@@ -593,7 +659,7 @@ async function syncOpenOrder(body: any, tenant: any, finalize: boolean) {
       customer_cep: customer.cep, customer_street: customer.street, customer_number: customer.number,
       customer_complement: customer.complement, customer_neighborhood: customer.neighborhood,
       customer_city: customer.city, customer_state: customer.state,
-    }).select('id, cart_id, customer_phone, payment_link, observation, coupon_code').single();
+    }).select('id, cart_id, customer_phone, payment_link, observation, coupon_code, affiliate_id, affiliate_commission_percent').single();
     if (orderErr || !created) {
       await sb.from('carts').delete().eq('id', cart.id);
       console.error('[live-shop] pedido aberto:', orderErr?.message);
@@ -627,7 +693,7 @@ async function syncOpenOrder(body: any, tenant: any, finalize: boolean) {
       const need = w - held;
       const { data: left, error } = await sb.rpc('reserve_product_stock', { p_product_id: pid, p_qty: need });
       if (error || left === null || left === undefined) {
-        const fresh = (await loadProducts(tenant.id, [pid])).get(pid);
+        const fresh = (await loadProducts(tenant.id, [pid], aff?.id)).get(pid);
         if (!problem) problem = { product_id: pid, max_qty: held + Math.max(0, num(fresh?.stock)), stock: num(fresh?.stock) };
       } else {
         qty = w;
@@ -664,12 +730,12 @@ async function syncOpenOrder(body: any, tenant: any, finalize: boolean) {
 
   let couponCode: string | null = null, couponDiscount = 0, couponMessage: string | undefined, couponRow: any = null, couponAuto = false;
   if (body.coupon_code) {
-    couponRow = await loadCoupon(tenant.id, body.coupon_code);
+    couponRow = await loadCoupon(tenant.id, body.coupon_code, aff?.id);
     const r = couponRow ? computeCoupon(couponRow, lines.map((l) => l.line)) : { ok: false, discount: 0, message: 'Cupom inválido ou expirado.' };
     if (r.ok) { couponCode = couponRow.code; couponDiscount = r.discount; } else { couponMessage = r.message; couponRow = null; }
   }
   if (!couponRow) {
-    const { data: autos } = await sb.from('coupons').select('*').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).eq('auto_apply', true);
+    const { data: autos } = await scopeAffiliate(sb.from('coupons').select('*').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).eq('auto_apply', true), aff?.id);
     let best: { row: any; discount: number } | null = null;
     for (const c of autos || []) {
       const r = computeCoupon(c, lines.map((l) => l.line));
@@ -693,6 +759,14 @@ async function syncOpenOrder(body: any, tenant: any, finalize: boolean) {
     customer_complement: customer.complement, customer_neighborhood: customer.neighborhood,
     customer_city: customer.city, customer_state: customer.state,
   };
+  // afiliada: o pedido guarda quem trouxe a venda e o percentual combinado (a primeira afiliada fica); a comissão é sobre o valor depois do desconto
+  const orderAffId = order.affiliate_id || aff?.id || null;
+  if (orderAffId) {
+    const pct = order.affiliate_id ? num(order.affiliate_commission_percent) : num(aff?.commission_percent);
+    patch.affiliate_id = orderAffId;
+    patch.affiliate_commission_percent = pct;
+    patch.affiliate_commission_amount = round2(Math.max(0, subtotal - couponDiscount) * pct / 100);
+  }
   // o carrinho mudou: o link de pagamento antigo (com o valor antigo) nao vale mais
   if (changed && order.payment_link) patch.payment_link = null;
   if (finalize && note) patch.observation = `Nota do cliente: ${note}`;
@@ -720,16 +794,16 @@ async function syncOpenOrder(body: any, tenant: any, finalize: boolean) {
 }
 
 // O que ja esta no pedido aberto da cliente (para ela ver o mesmo carrinho ao voltar, ou em outro aparelho)
-async function cartState(body: any, tenant: any) {
+async function cartState(body: any, tenant: any, aff: any) {
   const phone = normPhone(body.phone);
   if (phone.length < 10 || phone.length > 11) return json({ ok: true, order_id: null, lines: [] });
   const order = await findOpenLiveOrder(tenant.id, phone);
   if (!order) return json({ ok: true, order_id: null, lines: [] });
   const { data: rows } = await sb.from('cart_items').select('product_id, qty').eq('cart_id', order.cart_id);
   const ids = (rows || []).map((r: any) => r.product_id);
-  const prods = await loadProducts(tenant.id, ids);
+  const prods = await loadProducts(tenant.id, ids, aff?.id);
   const parentIds = Array.from(new Set(Array.from(prods.values()).map((p: any) => p.parent_product_id).filter(Boolean))) as number[];
-  const parents = await loadProducts(tenant.id, parentIds);
+  const parents = await loadProducts(tenant.id, parentIds, aff?.id);
   const lines = (rows || []).flatMap((r: any) => {
     const p = prods.get(r.product_id);
     if (!p) return [];
@@ -744,9 +818,9 @@ async function cartState(body: any, tenant: any) {
   return json({ ok: true, order_id: order.id, coupon_code: order.coupon_code || null, lines });
 }
 
-async function createOrder(body: any, tenant: any, ip: string) {
+async function createOrder(body: any, tenant: any, ip: string, aff: any) {
   // Loja com pedido aberto: o pedido ja existe (criado ao adicionar no carrinho). Aqui so fecha os valores e segue para o pagamento.
-  if (tenant.live_open_order === true) return await syncOpenOrder(body, tenant, true);
+  if (tenant.live_open_order === true) return await syncOpenOrder(body, tenant, true, aff);
   const phone = normPhone(body.phone);
   const sessionId = String(body.session_id ?? '').slice(0, 80);
   const items = sanitizeItems(body.items);
@@ -759,7 +833,7 @@ async function createOrder(body: any, tenant: any, ip: string) {
 
   if (body.replace_order_id) await cancelPending(tenant.id, Number(body.replace_order_id), phone);
 
-  const products = await loadProducts(tenant.id, items.map((i) => i.product_id));
+  const products = await loadProducts(tenant.id, items.map((i) => i.product_id), aff?.id);
   for (const it of items) {
     const p = products.get(it.product_id);
     if (!p || !p.is_active || !['LIVE', 'AMBOS'].includes(p.sale_type)) {
@@ -785,7 +859,7 @@ async function createOrder(body: any, tenant: any, ip: string) {
       const { data: left, error } = await sb.rpc('reserve_product_stock', { p_product_id: it.product_id, p_qty: need });
       if (error || left === null || left === undefined) {
         await undo();
-        const fresh = (await loadProducts(tenant.id, [it.product_id])).get(it.product_id);
+        const fresh = (await loadProducts(tenant.id, [it.product_id], aff?.id)).get(it.product_id);
         return fail(`Estoque insuficiente de ${products.get(it.product_id).name}.`, 'INSUFFICIENT_STOCK', { product_id: it.product_id, stock: num(fresh?.stock) });
       }
       reservedNow.push({ product_id: it.product_id, qty: need });
@@ -806,13 +880,13 @@ async function createOrder(body: any, tenant: any, ip: string) {
 
   let couponCode: string | null = null, couponDiscount = 0, couponMessage: string | undefined, couponRow: any = null, couponAuto = false;
   if (body.coupon_code) {
-    couponRow = await loadCoupon(tenant.id, body.coupon_code);
+    couponRow = await loadCoupon(tenant.id, body.coupon_code, aff?.id);
     const r = couponRow ? computeCoupon(couponRow, lines.map((l) => l.line)) : { ok: false, discount: 0, message: 'Cupom inválido ou expirado.' };
     if (r.ok) { couponCode = couponRow.code; couponDiscount = r.discount; } else { couponMessage = r.message; couponRow = null; }
   }
   // Sem cupom digitado (ou inválido): aplica sozinho o cupom "automático" que dá o maior desconto para este pedido.
   if (!couponRow) {
-    const { data: autos } = await sb.from('coupons').select('*').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).eq('auto_apply', true);
+    const { data: autos } = await scopeAffiliate(sb.from('coupons').select('*').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).eq('auto_apply', true), aff?.id);
     let best: { row: any; discount: number } | null = null;
     for (const c of autos || []) {
       const r = computeCoupon(c, lines.map((l) => l.line));
@@ -849,6 +923,10 @@ async function createOrder(body: any, tenant: any, ip: string) {
     item_added_message_sent: false, payment_confirmation_sent: false, is_cancelled: false,
     coupon_code: couponCode, coupon_discount: couponDiscount || null, gift_name: giftName,
     observation: note ? `Nota do cliente: ${note}` : null,
+    ...(aff ? {
+      affiliate_id: aff.id, affiliate_commission_percent: num(aff.commission_percent),
+      affiliate_commission_amount: round2(Math.max(0, subtotal - couponDiscount) * num(aff.commission_percent) / 100),
+    } : {}),
     customer_cep: customer.cep, customer_street: customer.street, customer_number: customer.number,
     customer_complement: customer.complement, customer_neighborhood: customer.neighborhood,
     customer_city: customer.city, customer_state: customer.state,
@@ -884,17 +962,20 @@ Deno.serve(async (req) => {
     const closedBySchedule = Number.isFinite(closeAtMs) && Date.now() >= closeAtMs;
     // enable_loja_live = Loja da Live liberada para a empresa (Configurações > Empresas): desligada, o link público também sai do ar
     if (tenant.live_shop_enabled === false || tenant.enable_loja_live === false || closedBySchedule) return fail('A vitrine da live está indisponível no momento.', 'LIVE_DISABLED');
+    // ref = link da afiliada aberto agora (define a vitrine); attr_ref = afiliada lembrada no aparelho (só atribui a venda, preços e cupons)
+    const affView = await getAffiliate(tenant, body.ref);
+    const aff = affView || (await getAffiliate(tenant, body.attr_ref));
     switch (body.action) {
-      case 'catalog': return await catalog(body, tenant);
-      case 'catalog_version': return json({ ok: true, version: await catalogVersion(tenant) });
+      case 'catalog': return await catalog(body, tenant, affView, aff);
+      case 'catalog_version': return json({ ok: true, version: await catalogVersion(tenant, aff) });
       case 'recognize': return await recognize(tenant, clientIp(req));
       case 'customer_lookup': return await customerLookup(body, tenant, clientIp(req));
       case 'customer_save': return await customerSave(body, tenant, clientIp(req));
-      case 'coupon_check': return await couponCheck(body, tenant);
-      case 'reserve': return await reserve(body, tenant);
-      case 'create_order': return await createOrder(body, tenant, clientIp(req));
-      case 'cart_sync': return tenant.live_open_order === true ? await syncOpenOrder(body, tenant, false) : fail('Ação indisponível.', 'NOT_ENABLED');
-      case 'cart_state': return tenant.live_open_order === true ? await cartState(body, tenant) : json({ ok: true, order_id: null, lines: [] });
+      case 'coupon_check': return await couponCheck(body, tenant, aff);
+      case 'reserve': return await reserve(body, tenant, aff);
+      case 'create_order': return await createOrder(body, tenant, clientIp(req), aff);
+      case 'cart_sync': return tenant.live_open_order === true ? await syncOpenOrder(body, tenant, false, aff) : fail('Ação indisponível.', 'NOT_ENABLED');
+      case 'cart_state': return tenant.live_open_order === true ? await cartState(body, tenant, aff) : json({ ok: true, order_id: null, lines: [] });
       case 'cancel_order': return await cancelOrder(body, tenant);
       default: return fail('Ação inválida.', 'BAD_ACTION');
     }

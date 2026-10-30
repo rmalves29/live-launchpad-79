@@ -26,7 +26,7 @@ const WhatsAppSupportButton = lazy(() =>
 // Balão de suporte: fica de fora da Loja da Live (/t/:slug/live) e carrega sob demanda nas demais telas.
 const SupportButtonGate = () => {
   const { pathname } = useLocation();
-  if (/^\/t\/[^/]+\/live\/?$/.test(pathname)) return null;
+  if (/^\/t\/[^/]+\/live(\/a\/[^/]+)?\/?$/.test(pathname) || /^\/t\/[^/]+\/afiliada\/[^/]+\/?$/.test(pathname)) return null;
   return <Suspense fallback={null}><WhatsAppSupportButton /></Suspense>;
 };
 
@@ -61,6 +61,7 @@ const TenantStorefront = lazy(() => import("./pages/TenantStorefront"));
 const PushOptInPublic = lazy(() => import("./pages/push/PushOptIn"));
 const CadastroInstagram = lazy(() => import("./pages/tenant/CadastroInstagram"));
 const LiveShop = lazy(() => import("./pages/live/LiveShop"));
+const AffiliatePortal = lazy(() => import("./pages/affiliate/AffiliatePortal"));
 const LojaDaLive = lazy(() => import("./pages/loja-live/Index"));
 
 const EmpresasIndex = lazy(() => import("./pages/empresas/Index"));
@@ -401,6 +402,8 @@ const AppContent = () => {
         {/* Cadastro público Instagram */}
         <Route path="/t/:slug/cadastro-instagram" element={<CadastroInstagram />} />
         <Route path="/t/:slug/live" element={<LiveShop />} />
+        <Route path="/t/:slug/live/a/:ref" element={<LiveShop />} />
+        <Route path="/t/:slug/afiliada/:token" element={<AffiliatePortal />} />
 
         {/* Opt-in público de notificações push */}
         <Route path="/t/:slug/push" element={<PushOptInPublic />} />

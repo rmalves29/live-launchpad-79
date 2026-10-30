@@ -48,6 +48,8 @@ export interface LiveCatalogMeta {
   shipping_hints: Array<{ name: string; price: number; free_min: number | null; pickup: boolean }>;
   payment: { pix: boolean; card: boolean; pix_discount_percent: number; requires_email?: boolean; card_installments?: { max: number; max_without_interest: number; min_value: number } | null };
   settings: { reserve_mode: 'order' | 'cart'; cart_minutes: number; close_at?: string | null; open_order?: boolean };
+  /** Afiliada do link aberto (ou lembrada no aparelho): o frete grátis dela vale só no link dela. */
+  affiliate?: { name: string; code: string; free_ship_min: number | null } | null;
   /** Ofertas relâmpago no ar (até 2): o card traz o preço da oferta; "now" é o relógio do servidor (para a contagem não depender do aparelho). */
   flashes?: Array<{ item: LiveProduct; price: number; ends_at: string; now: string }>;
 }
@@ -127,9 +129,13 @@ export function normalizeLocalPhone(v: string) {
 }
 
 // ---------------------------------------------------------------- API
+// Afiliada: `view` = link aberto agora (define a vitrine); `attr` = lembrada no aparelho (só atribui a venda, preços e cupons).
+let liveRefs: { view: string | null; attr: string | null } = { view: null, attr: null };
+export function setLiveRefs(refs: { view: string | null; attr: string | null }) { liveRefs = refs; }
+
 export async function liveApi<T = any>(action: string, tenantSlug: string, payload: Record<string, unknown> = {}): Promise<T> {
   const { data, error } = await supabase.functions.invoke('live-shop', {
-    body: { action, tenant_slug: tenantSlug, ...payload },
+    body: { action, tenant_slug: tenantSlug, ref: liveRefs.view, attr_ref: liveRefs.attr, ...payload },
   });
   if (error) throw new Error(error.message || 'Falha de conexão');
   return data as T;
@@ -283,13 +289,15 @@ export async function calculateLiveShipping(params: {
   cartTotal: number;
   /** Chamado assim que as opções da própria loja (frete fixo, grátis, retirada) estão prontas, antes das transportadoras. */
   onPartial?: (options: ShippingOption[]) => void;
+  /** Frete grátis da afiliada: a partir deste valor de carrinho todas as opções ficam sem custo. */
+  freeAbove?: number | null;
 }): Promise<{ options: ShippingOption[]; notice?: string }> {
   const cep = onlyDigits(params.cep);
   if (cep.length !== 8) return { options: [] };
 
   const qty = params.lines.reduce((s, l) => s + l.qty, 0);
   const insurance = params.lines.reduce((s, l) => s + l.price * l.qty, 0);
-  const key = `${params.tenantId}|${cep}|${qty}|${Math.round(insurance * 100)}|${Math.round(params.cartTotal * 100)}`;
+  const key = `${params.tenantId}|${cep}|${qty}|${Math.round(insurance * 100)}|${Math.round(params.cartTotal * 100)}|${params.freeAbove ?? ''}`;
   const hit = shipCache.get(key);
   if (hit && Date.now() - hit.ts < SHIP_TTL_MS) {
     params.onPartial?.(hit.res.options);
@@ -299,6 +307,10 @@ export async function calculateLiveShipping(params: {
   if (running) return running;
 
   const job = (async () => {
+    // frete grátis da afiliada: zera o preço de todas as opções quando o carrinho chega ao valor que ela definiu
+    const free = (list: ShippingOption[]): ShippingOption[] =>
+      params.freeAbove != null && params.cartTotal >= params.freeAbove ? list.map((o) => ({ ...o, price: 0 })) : list;
+
     // Tudo que não depende de uma resposta anterior sai ao mesmo tempo: CEP, integrações ativas e medidas padrão.
     const cepP = lookupCep(cep);
     const activesP = getActiveShippingIntegrations(params.tenantId);
@@ -314,12 +326,12 @@ export async function calculateLiveShipping(params: {
         price: parseFloat(o.custom_price || o.price) || 0,
         delivery_time: o.delivery_time,
       }));
-      params.onPartial?.(options);
+      params.onPartial?.(free(options));
       return options;
     });
 
     const actives = await activesP;
-    if (actives.length === 0) return { options: await customP };
+    if (actives.length === 0) return { options: free(await customP) };
 
     const app = await appP;
     const weight = app?.default_weight_kg ?? 0.01;
@@ -372,9 +384,9 @@ export async function calculateLiveShipping(params: {
 
     const anyFailed = results.some((r) => r.failed);
     if (carrierOptions.length === 0 && anyFailed) {
-      return { options, notice: 'Não foi possível consultar a transportadora. Mostrando as opções da loja.' };
+      return { options: free(options), notice: 'Não foi possível consultar a transportadora. Mostrando as opções da loja.' };
     }
-    return { options: [...options, ...carrierOptions] };
+    return { options: free([...options, ...carrierOptions]) };
   })();
 
   shipInflight.set(key, job);
