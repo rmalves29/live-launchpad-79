@@ -14,6 +14,135 @@ export type Database = {
   }
   public: {
     Tables: {
+      affiliate_products: {
+        Row: {
+          affiliate_id: string
+          position: number
+          product_id: number
+          updated_at: string
+        }
+        Insert: {
+          affiliate_id: string
+          position?: number
+          product_id: number
+          updated_at?: string
+        }
+        Update: {
+          affiliate_id?: string
+          position?: number
+          product_id?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "affiliate_products_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "affiliates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliate_products_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      affiliates: {
+        Row: {
+          access_token: string
+          allow_coupons: boolean
+          allow_flash: boolean
+          allow_free_shipping: boolean
+          code: string
+          commission_percent: number
+          coupon_max_active: number
+          coupon_max_discount_pct: number
+          coupon_min_order: number
+          created_at: string
+          email: string | null
+          flash_max_concurrent: number
+          flash_max_discount_pct: number
+          flash_max_minutes: number
+          free_ship_min: number | null
+          id: string
+          is_active: boolean
+          name: string
+          phone: string | null
+          pix_key: string | null
+          ship_min_order: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string
+          allow_coupons?: boolean
+          allow_flash?: boolean
+          allow_free_shipping?: boolean
+          code: string
+          commission_percent?: number
+          coupon_max_active?: number
+          coupon_max_discount_pct?: number
+          coupon_min_order?: number
+          created_at?: string
+          email?: string | null
+          flash_max_concurrent?: number
+          flash_max_discount_pct?: number
+          flash_max_minutes?: number
+          free_ship_min?: number | null
+          id?: string
+          is_active?: boolean
+          name: string
+          phone?: string | null
+          pix_key?: string | null
+          ship_min_order?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          allow_coupons?: boolean
+          allow_flash?: boolean
+          allow_free_shipping?: boolean
+          code?: string
+          commission_percent?: number
+          coupon_max_active?: number
+          coupon_max_discount_pct?: number
+          coupon_min_order?: number
+          created_at?: string
+          email?: string | null
+          flash_max_concurrent?: number
+          flash_max_discount_pct?: number
+          flash_max_minutes?: number
+          free_ship_min?: number | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          phone?: string | null
+          pix_key?: string | null
+          ship_min_order?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "affiliates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "affiliates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agenda_config: {
         Row: {
           chave: string
@@ -884,6 +1013,7 @@ export type Database = {
       }
       coupons: {
         Row: {
+          affiliate_id: string | null
           apply_to_promotional: boolean
           auto_apply: boolean
           channel: string
@@ -905,6 +1035,7 @@ export type Database = {
           used_count: number
         }
         Insert: {
+          affiliate_id?: string | null
           apply_to_promotional?: boolean
           auto_apply?: boolean
           channel?: string
@@ -926,6 +1057,7 @@ export type Database = {
           used_count?: number
         }
         Update: {
+          affiliate_id?: string | null
           apply_to_promotional?: boolean
           auto_apply?: boolean
           channel?: string
@@ -947,6 +1079,13 @@ export type Database = {
           used_count?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "coupons_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "affiliates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "coupons_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -1378,6 +1517,7 @@ export type Database = {
           name: string
           slug: string
           spawn_margin: number
+          stats_since: string | null
           tenant_id: string
           updated_at: string | null
         }
@@ -1394,6 +1534,7 @@ export type Database = {
           name: string
           slug: string
           spawn_margin?: number
+          stats_since?: string | null
           tenant_id: string
           updated_at?: string | null
         }
@@ -1410,6 +1551,7 @@ export type Database = {
           name?: string
           slug?: string
           spawn_margin?: number
+          stats_since?: string | null
           tenant_id?: string
           updated_at?: string | null
         }
@@ -3358,6 +3500,7 @@ export type Database = {
       }
       live_flash_offers: {
         Row: {
+          affiliate_id: string | null
           created_at: string
           ends_at: string
           flash_price: number
@@ -3368,6 +3511,7 @@ export type Database = {
           tenant_id: string
         }
         Insert: {
+          affiliate_id?: string | null
           created_at?: string
           ends_at: string
           flash_price: number
@@ -3378,6 +3522,7 @@ export type Database = {
           tenant_id: string
         }
         Update: {
+          affiliate_id?: string | null
           created_at?: string
           ends_at?: string
           flash_price?: number
@@ -3388,6 +3533,13 @@ export type Database = {
           tenant_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "live_flash_offers_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "affiliates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "live_flash_offers_product_id_fkey"
             columns: ["product_id"]
@@ -3524,6 +3676,10 @@ export type Database = {
       }
       orders: {
         Row: {
+          affiliate_commission_amount: number | null
+          affiliate_commission_percent: number | null
+          affiliate_id: string | null
+          affiliate_paid_at: string | null
           bagy_order_id: number | null
           bling_order_id: number | null
           bling_sync_status: string | null
@@ -3576,6 +3732,10 @@ export type Database = {
           whatsapp_group_name: string | null
         }
         Insert: {
+          affiliate_commission_amount?: number | null
+          affiliate_commission_percent?: number | null
+          affiliate_id?: string | null
+          affiliate_paid_at?: string | null
           bagy_order_id?: number | null
           bling_order_id?: number | null
           bling_sync_status?: string | null
@@ -3628,6 +3788,10 @@ export type Database = {
           whatsapp_group_name?: string | null
         }
         Update: {
+          affiliate_commission_amount?: number | null
+          affiliate_commission_percent?: number | null
+          affiliate_id?: string | null
+          affiliate_paid_at?: string | null
           bagy_order_id?: number | null
           bling_order_id?: number | null
           bling_sync_status?: string | null
@@ -3680,6 +3844,13 @@ export type Database = {
           whatsapp_group_name?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "orders_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "affiliates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "orders_cart_id_fkey"
             columns: ["cart_id"]
@@ -5330,6 +5501,7 @@ export type Database = {
           company_state: string | null
           created_at: string
           email: string | null
+          enable_afiliados: boolean
           enable_live: boolean
           enable_loja_live: boolean
           enable_sendflow: boolean
@@ -5384,6 +5556,7 @@ export type Database = {
           company_state?: string | null
           created_at?: string
           email?: string | null
+          enable_afiliados?: boolean
           enable_live?: boolean
           enable_loja_live?: boolean
           enable_sendflow?: boolean
@@ -5438,6 +5611,7 @@ export type Database = {
           company_state?: string | null
           created_at?: string
           email?: string | null
+          enable_afiliados?: boolean
           enable_live?: boolean
           enable_loja_live?: boolean
           enable_sendflow?: boolean
