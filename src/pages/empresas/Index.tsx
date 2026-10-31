@@ -48,13 +48,15 @@ import {
   Building2,
   AlertTriangle,
   Clock,
-  RefreshCw
+  RefreshCw,
+  Copy
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/hooks/useAuth';
 import { differenceInDays } from 'date-fns';
 import { RecurringLinksDialog } from './RecurringLinksDialog';
+import { generateAdminPassword } from './admin-password';
 
 interface Tenant {
   id: string;
@@ -108,6 +110,10 @@ export default function EmpresasIndex() {
   const [formEmail, setFormEmail] = useState('');
   const [formAdminEmail, setFormAdminEmail] = useState('');
   const [formAdminPassword, setFormAdminPassword] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [welcomeMessage, setWelcomeMessage] = useState<string | null>(null);
+  const [welcomeCopied, setWelcomeCopied] = useState(false);
+  const [welcomeCopyError, setWelcomeCopyError] = useState<string | null>(null);
   const [formContactName, setFormContactName] = useState('');
   const [formContactPhone, setFormContactPhone] = useState('');
   const [formTrialDays, setFormTrialDays] = useState('7');
@@ -240,6 +246,7 @@ export default function EmpresasIndex() {
   };
 
   const handleOpenDialog = async (tenant?: Tenant) => {
+    setShowAdminPassword(false);
     if (tenant) {
       setEditingTenant(tenant);
       setFormName(tenant.name);
@@ -285,7 +292,7 @@ export default function EmpresasIndex() {
       setFormEmail('');
       setFormLogoUrl(null);
       setFormAdminEmail('');
-      setFormAdminPassword('');
+      setFormAdminPassword(generateAdminPassword());
       setFormContactName('');
       setFormContactPhone('');
       setFormTrialDays('7');
@@ -418,13 +425,13 @@ export default function EmpresasIndex() {
         if (insertError) throw insertError;
         tenantId = newTenant.id;
 
-        // Criar credencial - senha em texto puro
+        // Manter o registro de login sem persistir a senha do formulário.
         const { error: credentialError } = await supabase
           .from('tenant_credentials')
           .insert({
             tenant_id: tenantId,
             email: formAdminEmail,
-            password_hash: formAdminPassword,
+            password_hash: '',
             is_active: true
           });
 
@@ -459,6 +466,18 @@ export default function EmpresasIndex() {
           setError(`Empresa salva, mas o login do administrador não foi criado: ${adminMsg}`);
           return;
         }
+        setWelcomeCopied(false);
+        setWelcomeCopyError(null);
+        setWelcomeMessage(`Olá, ${formContactName}! 👋 Seja bem-vinda ao Cartzy!
+
+A conta da *${formName}* já está criada.
+
+🌐 Site: https://app.cartzy.com.br
+👤 Login: ${formAdminEmail}
+🔑 Senha: ${formAdminPassword}
+
+Vamos agendar nossa reunião de integração para configurar pagamento, frete e ERP. Qual o melhor dia e horário para você?`);
+        setFormAdminPassword('');
       }
 
       setDialogOpen(false);
@@ -785,7 +804,13 @@ export default function EmpresasIndex() {
             Atualizar
           </Button>
           <RecurringLinksDialog />
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <Dialog open={dialogOpen} onOpenChange={(open) => {
+            setDialogOpen(open);
+            if (!open) {
+              setFormAdminPassword('');
+              setShowAdminPassword(false);
+            }
+          }}>
             <DialogTrigger asChild>
               <Button onClick={() => handleOpenDialog()}>
                 <Plus className="h-4 w-4 mr-2" />
@@ -887,6 +912,7 @@ export default function EmpresasIndex() {
                     <Input
                       id="admin_email"
                       type="email"
+                      autoComplete="off"
                       value={formAdminEmail}
                       onChange={(e) => setFormAdminEmail(e.target.value)}
                       placeholder="admin@empresa.com"
@@ -900,13 +926,26 @@ export default function EmpresasIndex() {
                     <Label htmlFor="admin_password">
                       Senha do Administrador {!editingTenant && '*'}
                     </Label>
-                    <Input
-                      id="admin_password"
-                      type="password"
-                      value={formAdminPassword}
-                      onChange={(e) => setFormAdminPassword(e.target.value)}
-                      placeholder={editingTenant ? "Deixe em branco para manter a atual" : "Senha de acesso"}
-                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Input
+                        id="admin_password"
+                        type={showAdminPassword ? 'text' : 'password'}
+                        autoComplete="new-password"
+                        value={formAdminPassword}
+                        onChange={(e) => setFormAdminPassword(e.target.value)}
+                        placeholder={editingTenant ? "Deixe em branco para manter a atual" : "Senha de acesso"}
+                        className="flex-1 min-w-32"
+                      />
+                      {!editingTenant && (
+                        <Button type="button" variant="outline" onClick={() => setFormAdminPassword(generateAdminPassword())}>
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Gerar nova
+                        </Button>
+                      )}
+                      <Button type="button" variant="outline" size="icon" aria-label={showAdminPassword ? 'Ocultar senha' : 'Mostrar senha'} title={showAdminPassword ? 'Ocultar senha' : 'Mostrar senha'} onClick={() => setShowAdminPassword((shown) => !shown)}>
+                        {showAdminPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
                     {editingTenant && (
                       <p className="text-xs text-muted-foreground">
                         Deixe em branco para manter a senha atual
@@ -1054,12 +1093,48 @@ export default function EmpresasIndex() {
               )}
 
               <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                <Button variant="outline" onClick={() => {
+                  setDialogOpen(false);
+                  setFormAdminPassword('');
+                  setShowAdminPassword(false);
+                }}>
                   Cancelar
                 </Button>
                 <Button onClick={handleSave} disabled={!formName || loading}>
                   {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                   {editingTenant ? 'Salvar Alterações' : 'Criar Empresa'}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={welcomeMessage !== null} onOpenChange={(open) => {
+            if (!open) {
+              setWelcomeMessage(null);
+              setWelcomeCopied(false);
+              setWelcomeCopyError(null);
+            }
+          }}>
+            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()} onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+              <DialogHeader>
+                <DialogTitle>Empresa criada com sucesso</DialogTitle>
+                <DialogDescription>Mensagem de boas-vindas</DialogDescription>
+              </DialogHeader>
+              <Textarea aria-label="Mensagem de boas-vindas" value={welcomeMessage ?? ''} readOnly className="min-h-72" />
+              {welcomeCopyError && <Alert variant="destructive"><AlertDescription>{welcomeCopyError}</AlertDescription></Alert>}
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setWelcomeMessage(null)}>Fechar</Button>
+                <Button onClick={async () => {
+                  if (!welcomeMessage) return;
+                  try {
+                    await navigator.clipboard.writeText(welcomeMessage);
+                    setWelcomeCopied(true);
+                    setWelcomeCopyError(null);
+                  } catch {
+                    setWelcomeCopyError('Não foi possível copiar a mensagem. Selecione o texto e copie manualmente.');
+                  }
+                }}>
+                  <Copy className="h-4 w-4 mr-2" />
+                  {welcomeCopied ? 'Mensagem copiada' : 'Copiar mensagem'}
                 </Button>
               </div>
             </DialogContent>

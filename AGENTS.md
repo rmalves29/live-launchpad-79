@@ -1,5 +1,7 @@
 # Architecture rules
 
+- Generate new-company admin passwords with browser Web Crypto; retain them only in transient form/welcome state and never persist them in tenant credentials, because authentication provisioning owns password storage.
+
 - Export membership status uses complete per-phone/per-group event history and failed group JIDs, independently of report date/campaign filters; unavailable participant lists never imply an empty group.
 
 - Attribute Fluxo de Envio membership events in the database insert trigger with locked, single-use clicks; campaign metrics use event campaign_id rather than mutable group links to avoid double counting shared groups.
