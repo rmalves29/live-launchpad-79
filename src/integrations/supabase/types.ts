@@ -4448,6 +4448,63 @@ export type Database = {
           },
         ]
       }
+      prospect_leads: {
+        Row: {
+          aprovado_em: string | null
+          arquivado_em: string | null
+          created_at: string
+          enviado_em: string | null
+          erro: string | null
+          evidencia_live: string | null
+          fonte: string | null
+          handle: string | null
+          id: string
+          lote_data: string | null
+          nome_loja: string | null
+          segmento: string | null
+          seguidores: string | null
+          status: string
+          updated_at: string
+          whatsapp: string | null
+        }
+        Insert: {
+          aprovado_em?: string | null
+          arquivado_em?: string | null
+          created_at?: string
+          enviado_em?: string | null
+          erro?: string | null
+          evidencia_live?: string | null
+          fonte?: string | null
+          handle?: string | null
+          id?: string
+          lote_data?: string | null
+          nome_loja?: string | null
+          segmento?: string | null
+          seguidores?: string | null
+          status?: string
+          updated_at?: string
+          whatsapp?: string | null
+        }
+        Update: {
+          aprovado_em?: string | null
+          arquivado_em?: string | null
+          created_at?: string
+          enviado_em?: string | null
+          erro?: string | null
+          evidencia_live?: string | null
+          fonte?: string | null
+          handle?: string | null
+          id?: string
+          lote_data?: string | null
+          nome_loja?: string | null
+          segmento?: string | null
+          seguidores?: string | null
+          status?: string
+          updated_at?: string
+          whatsapp?: string | null
+        }
+        Relationships: []
+      }
       push_campaigns: {
         Row: {
           audience: Database["public"]["Enums"]["push_campaign_audience"]
