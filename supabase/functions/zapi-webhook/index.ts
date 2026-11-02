@@ -960,6 +960,22 @@ serve(async (req) => {
 
     console.log(`[zapi-webhook] Message: "${messageText}", From: ${senderPhone}, Group: ${groupName}, IsGroup: ${isGroup}, MessageId: ${messageId || 'N/A'}`);
 
+    // Pré-cadastro de empresas: "OK 1234" / "NÃO 1234" do número aprovador (validado na função).
+    if (!isGroup && !fromMe && /^\s*(ok|n[aã]o)\s+\d{4}\s*$/i.test(messageText)) {
+      try {
+        const { data: ob } = await supabase.functions.invoke('tenant-onboarding', {
+          body: { action: 'whatsapp_reply', phone: senderPhone, text: messageText, instance_id: payload.instanceId },
+        });
+        if (ob?.handled) {
+          return new Response(JSON.stringify({ success: true, onboarding_handled: true }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+      } catch (e) {
+        console.error('[zapi-webhook] tenant-onboarding falhou:', (e as Error).message);
+      }
+    }
+
      // IMPORTANT: Check for confirmation responses (SIM/OK) from PRIVATE messages FIRST
      // This handles the two-step message flow where customer replies to confirm checkout link
     if (!isGroup) {
