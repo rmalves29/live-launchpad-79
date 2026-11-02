@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   getUazapiConfig, sendText, runTypingSegments, sendPresenceAvailable,
-  ensureLabel, addChatLabel, archiveChat, type UazapiConfig,
+  ensureLabel, addChatLabel, archiveChat, findChat, type UazapiConfig,
 } from "../_shared/uazapi-api.ts";
 
 const corsHeaders = {
@@ -13,6 +13,8 @@ const LABEL_NAME = "lead";
 
 const json = (b: unknown, status = 200) =>
   new Response(JSON.stringify(b), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function normalizePhone(p: unknown): string {
   let d = String(p ?? "").replace(/\D/g, "");
@@ -56,16 +58,31 @@ Deno.serve(async (req) => {
 
     const tagAndArchive = async (c: UazapiConfig, phone: string) => {
       const errors: string[] = [];
+      // usa o chatid real se o /chat/find mostrar número diferente (com/sem 9)
+      const before = await findChat(c, phone);
+      const target = before.chatid ? before.chatid.split("@")[0] : phone;
       let labeled = false;
       const lbl = await getLabel();
       if (lbl.labelId) {
-        const r = await addChatLabel(c, phone, lbl.labelId);
+        const r = await addChatLabel(c, target, lbl.labelId);
         labeled = r.success;
         if (!r.success) errors.push(`etiqueta: ${r.error}`);
       } else errors.push(`etiqueta: ${lbl.error}`);
-      const a = await archiveChat(c, phone, true);
+      let a = await archiveChat(c, target, true);
       if (!a.success) errors.push(`arquivar: ${a.error}`);
-      return { labeled, archived: a.success, errors };
+      await sleep(2000);
+      let check = await findChat(c, target);
+      if (!check.archived) {
+        a = await archiveChat(c, target, true);
+        if (!a.success) errors.push(`arquivar (2ª): ${a.error}`);
+        await sleep(3000);
+        check = await findChat(c, target);
+      }
+      if (!check.found) errors.push(`verificação: chat não encontrado no /chat/find${check.error ? ` (${check.error})` : ""}`);
+      return {
+        chatid_used: target, chatid_differs: target !== phone, labeled, archived: a.success,
+        archived_verified: check.archived === true, labels: check.labels ?? null, errors,
+      };
     };
 
     if (action === "send") {
@@ -89,6 +106,7 @@ Deno.serve(async (req) => {
       } catch (e) { console.error("[prospect-outreach] log error", e); }
 
       if (!sent.success) return json({ success: false, sent: false, labeled: false, archived: false, errors: [`envio: ${sent.error}`] });
+      await sleep(8000);
       const t = await tagAndArchive(cfg, phone);
       return json({ success: true, sent: true, ...t });
     }
@@ -102,7 +120,19 @@ Deno.serve(async (req) => {
       return json({ success: true, results });
     }
 
-    return json({ success: false, error: "action inválida (use send ou tag_archive)" }, 400);
+    if (action === "check") {
+      const phones: string[] = Array.isArray(body.phones) ? body.phones.map(normalizePhone).filter((p: string) => p.length >= 12) : [];
+      if (!phones.length) return json({ success: false, error: "phones é obrigatório" }, 400);
+      if (phones.length > 200) return json({ success: false, error: "máximo de 200 telefones" }, 400);
+      const results: Record<string, unknown>[] = [];
+      for (const phone of phones) {
+        const r = await findChat(cfg, phone);
+        results.push({ phone, found: r.found, chatid: r.chatid ?? null, archived: r.archived ?? null, labels: r.labels ?? null, raw_resumido: r.raw ?? null, error: r.error });
+      }
+      return json({ success: true, results });
+    }
+
+    return json({ success: false, error: "action inválida (use send, tag_archive ou check)" }, 400);
   } catch (e: any) {
     console.error("[prospect-outreach]", e);
     return json({ success: false, error: e?.message || "erro interno" });
