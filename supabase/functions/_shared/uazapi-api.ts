@@ -574,3 +574,41 @@ export async function archiveChat(cfg: UazapiConfig, phone: string, archive = tr
   const r = await callWithRetry(cfg, "/chat/archive", { method: "POST", body: { number: phone, archive } });
   return r.success ? { success: true } : { success: false, error: r.error };
 }
+
+// Variantes de número BR com/sem nono dígito.
+export function brPhoneVariants(phone: string): string[] {
+  const d = phone.replace(/\D/g, "");
+  const out = [d];
+  if (d.startsWith("55") && d.length === 13 && d[4] === "9") out.push(d.slice(0, 4) + d.slice(5));
+  else if (d.startsWith("55") && d.length === 12) out.push(d.slice(0, 4) + "9" + d.slice(4));
+  return out;
+}
+
+export interface UazapiChatState { found: boolean; chatid?: string; archived?: boolean; labels?: unknown; raw?: any; error?: string }
+
+// POST /chat/find — consulta estado real do chat (só leitura), testando variantes com/sem 9.
+export async function findChat(cfg: UazapiConfig, phone: string): Promise<UazapiChatState> {
+  let lastErr: string | undefined;
+  for (const v of brPhoneVariants(phone)) {
+    const r = await callWithRetry(cfg, "/chat/find", {
+      method: "POST",
+      body: { operator: "AND", sort: "-wa_lastMsgTimestamp", limit: 5, offset: 0, wa_chatid: `${v}@s.whatsapp.net` },
+    }, "POST /chat/find");
+    if (!r.success) { lastErr = r.error; continue; }
+    const chats = Array.isArray(r.data) ? r.data : (r.data?.chats || r.data?.data || []);
+    const c = chats.find((x: any) => String(x?.wa_chatid || "").startsWith(v + "@")) || chats[0];
+    if (c) {
+      return {
+        found: true,
+        chatid: c.wa_chatid,
+        archived: c.wa_archived === true || c.wa_archived === "true",
+        labels: c.wa_label ?? c.labels ?? null,
+        raw: {
+          wa_chatid: c.wa_chatid, wa_archived: c.wa_archived, wa_label: c.wa_label, wa_name: c.wa_name ?? c.name,
+          wa_lastMsgTimestamp: c.wa_lastMsgTimestamp, wa_isGroup: c.wa_isGroup, phone: c.phone,
+        },
+      };
+    }
+  }
+  return { found: false, error: lastErr };
+}
