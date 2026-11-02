@@ -473,6 +473,7 @@ export type Database = {
           handling_days: number | null
           health_alert_phone: string | null
           id: number
+          onboarding_approver_phone: string | null
           public_base_url: string | null
           updated_at: string
         }
@@ -486,6 +487,7 @@ export type Database = {
           handling_days?: number | null
           health_alert_phone?: string | null
           id?: number
+          onboarding_approver_phone?: string | null
           public_base_url?: string | null
           updated_at?: string
         }
@@ -499,6 +501,7 @@ export type Database = {
           handling_days?: number | null
           health_alert_phone?: string | null
           id?: number
+          onboarding_approver_phone?: string | null
           public_base_url?: string | null
           updated_at?: string
         }
@@ -5439,6 +5442,102 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      tenant_onboarding_requests: {
+        Row: {
+          access_type: string
+          address: string | null
+          admin_email: string
+          approval_sent_at: string | null
+          approved_at: string | null
+          cnpj: string | null
+          company_email: string | null
+          company_name: string
+          contact_name: string | null
+          contact_phone: string | null
+          created_at: string
+          created_by: string | null
+          error_message: string | null
+          expires_at: string
+          id: string
+          logo_url: string | null
+          notes: string | null
+          password_suffix: string
+          plan: string
+          sells_bazar: boolean
+          sells_live: boolean
+          short_code: string
+          slug: string
+          status: string
+          tenant_id: string | null
+          trial_days: number
+          updated_at: string
+          welcome_sent_at: string | null
+          whatsapp_provider: string
+        }
+        Insert: {
+          access_type?: string
+          address?: string | null
+          admin_email: string
+          approval_sent_at?: string | null
+          approved_at?: string | null
+          cnpj?: string | null
+          company_email?: string | null
+          company_name: string
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          expires_at?: string
+          id?: string
+          logo_url?: string | null
+          notes?: string | null
+          password_suffix: string
+          plan?: string
+          sells_bazar?: boolean
+          sells_live?: boolean
+          short_code: string
+          slug: string
+          status?: string
+          tenant_id?: string | null
+          trial_days?: number
+          updated_at?: string
+          welcome_sent_at?: string | null
+          whatsapp_provider?: string
+        }
+        Update: {
+          access_type?: string
+          address?: string | null
+          admin_email?: string
+          approval_sent_at?: string | null
+          approved_at?: string | null
+          cnpj?: string | null
+          company_email?: string | null
+          company_name?: string
+          contact_name?: string | null
+          contact_phone?: string | null
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          expires_at?: string
+          id?: string
+          logo_url?: string | null
+          notes?: string | null
+          password_suffix?: string
+          plan?: string
+          sells_bazar?: boolean
+          sells_live?: boolean
+          short_code?: string
+          slug?: string
+          status?: string
+          tenant_id?: string | null
+          trial_days?: number
+          updated_at?: string
+          welcome_sent_at?: string | null
+          whatsapp_provider?: string
+        }
+        Relationships: []
       }
       tenant_users: {
         Row: {
