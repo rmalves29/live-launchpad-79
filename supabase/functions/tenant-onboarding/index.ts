@@ -132,10 +132,8 @@ async function handleReply(body: any) {
   if (!parsed) return json({ handled: false });
   const approver = await approverPhone();
   if (!approver || !samePhone(body?.phone, approver)) return json({ handled: false });
-  if (body?.instance_id) {
-    const { data: integ } = await sb.from("integration_whatsapp").select("zapi_instance_id").eq("tenant_id", ORDERZAP_TENANT_ID).maybeSingle();
-    if (integ?.zapi_instance_id && integ.zapi_instance_id !== body.instance_id) return json({ handled: false });
-  }
+  const { data: integ } = await sb.from("integration_whatsapp").select("zapi_instance_id").eq("tenant_id", ORDERZAP_TENANT_ID).maybeSingle();
+  if (!isOrderZapInstance(body?.instance_id, integ?.zapi_instance_id, ORDERZAP_TENANT_ID)) return json({ handled: false });
   await expireOld();
   const { data: row } = await sb.from("tenant_onboarding_requests").select("id, short_code")
     .eq("short_code", parsed.code).eq("status", "pendente").maybeSingle();
