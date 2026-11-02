@@ -45,8 +45,14 @@ Deno.serve(async (req) => {
     if (!cfg) return json({ success: false, error: cfgErr || "Instância OrderZap indisponível" });
 
     // cache do id da etiqueta nesta execução
-    let labelCache: { labelId?: string; error?: string } | null = null;
-    const getLabel = async () => (labelCache ??= await ensureLabel(cfg, LABEL_NAME));
+    // cache só do sucesso: falha tenta de novo no próximo telefone
+    let cachedLabelId: string | null = null;
+    const getLabel = async (): Promise<{ labelId?: string; error?: string }> => {
+      if (cachedLabelId) return { labelId: cachedLabelId };
+      const r = await ensureLabel(cfg, LABEL_NAME);
+      if (r.labelId) cachedLabelId = r.labelId;
+      return r;
+    };
 
     const tagAndArchive = async (c: UazapiConfig, phone: string) => {
       const errors: string[] = [];

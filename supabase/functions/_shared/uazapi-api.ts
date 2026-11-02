@@ -500,17 +500,49 @@ function friendlyLabelError(err?: string): string {
   return e;
 }
 
-export async function listLabels(cfg: UazapiConfig): Promise<{ success: boolean; labels: UazapiLabel[]; error?: string }> {
-  try {
-    const res = await fetchWithTimeout(`${trimUrl(cfg.url)}/labels`, { method: "GET", headers: instanceHeaders(cfg.token) });
-    const r = await readResult(res);
-    if (!r.success) return { success: false, labels: [], error: friendlyLabelError(r.error) };
-    const d = r.data;
-    const labels = Array.isArray(d) ? d : (d?.labels || d?.data || []);
-    return { success: true, labels };
-  } catch (e: any) {
-    return { success: false, labels: [], error: e.message };
+const LABEL_TIMEOUT_MS = 30_000;
+const RETRY_WAIT_MS = 3_000;
+
+function isRetryable(err?: string): boolean {
+  return !!err && /abort|timeout|websocket not connected/i.test(err);
+}
+
+// Faz a chamada com timeout de 30s e 1 retry (espera 3s) em timeout ou "websocket not connected".
+// Loga status e corpo resumido (nunca o token) quando logTag é informado.
+async function callWithRetry(
+  cfg: UazapiConfig, path: string, init: { method: string; body?: unknown }, logTag?: string,
+): Promise<{ success: boolean; data?: any; error?: string }> {
+  let last: { success: boolean; data?: any; error?: string } = { success: false, error: "sem tentativa" };
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetchWithTimeout(`${trimUrl(cfg.url)}${path}`, {
+        method: init.method,
+        headers: instanceHeaders(cfg.token),
+        body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+      }, LABEL_TIMEOUT_MS);
+      const text = await res.text();
+      let data: any = null;
+      try { data = text ? JSON.parse(text) : null; } catch { /* ignore */ }
+      if (logTag) console.log(`[uazapi ${logTag}] tentativa ${attempt} status=${res.status} body=${(text || "").replace(/\s+/g, " ").substring(0, 500)}`);
+      if (res.ok) return { success: true, data };
+      last = { success: false, error: `uazapi ${res.status}: ${(text || res.statusText).replace(/\s+/g, " ").substring(0, 300)}` };
+    } catch (e: any) {
+      const msg = e?.name === "AbortError" || /abort/i.test(e?.message || "") ? `timeout ${LABEL_TIMEOUT_MS / 1000}s em ${path}` : (e?.message || String(e));
+      if (logTag) console.log(`[uazapi ${logTag}] tentativa ${attempt} erro=${msg}`);
+      last = { success: false, error: msg };
+    }
+    if (attempt === 1 && isRetryable(last.error)) { await new Promise((r) => setTimeout(r, RETRY_WAIT_MS)); continue; }
+    break;
   }
+  return last;
+}
+
+export async function listLabels(cfg: UazapiConfig): Promise<{ success: boolean; labels: UazapiLabel[]; error?: string }> {
+  const r = await callWithRetry(cfg, "/labels", { method: "GET" }, "GET /labels");
+  if (!r.success) return { success: false, labels: [], error: friendlyLabelError(r.error) };
+  const d = r.data;
+  const labels = Array.isArray(d) ? d : (d?.labels || d?.data || []);
+  return { success: true, labels };
 }
 
 function labelRef(l: UazapiLabel): string | undefined {
@@ -525,47 +557,20 @@ export async function ensureLabel(cfg: UazapiConfig, name: string): Promise<{ la
   if (!first.success) return { error: first.error };
   const existing = find(first.labels);
   if (existing && labelRef(existing)) return { labelId: labelRef(existing) };
-  try {
-    const res = await fetchWithTimeout(`${trimUrl(cfg.url)}/label/edit`, {
-      method: "POST",
-      headers: instanceHeaders(cfg.token),
-      body: JSON.stringify({ labelid: "new", name, color: 1, delete: false }),
-    });
-    const r = await readResult(res);
-    if (!r.success) return { error: friendlyLabelError(r.error) };
-  } catch (e: any) {
-    return { error: e.message };
-  }
+  const created = await callWithRetry(cfg, "/label/edit", { method: "POST", body: { labelid: "new", name, color: 1, delete: false } }, "POST /label/edit");
+  if (!created.success) return { error: friendlyLabelError(created.error) };
   const again = await listLabels(cfg);
-  const created = again.success ? find(again.labels) : undefined;
-  if (created && labelRef(created)) return { labelId: labelRef(created) };
+  const found = again.success ? find(again.labels) : undefined;
+  if (found && labelRef(found)) return { labelId: labelRef(found) };
   return { error: again.error || `etiqueta "${name}" criada mas não encontrada em /labels` };
 }
 
 export async function addChatLabel(cfg: UazapiConfig, phone: string, labelId: string): Promise<{ success: boolean; error?: string }> {
-  try {
-    const res = await fetchWithTimeout(`${trimUrl(cfg.url)}/chat/labels`, {
-      method: "POST",
-      headers: instanceHeaders(cfg.token),
-      body: JSON.stringify({ number: phone, add_labelid: labelId }),
-    });
-    const r = await readResult(res);
-    return r.success ? { success: true } : { success: false, error: friendlyLabelError(r.error) };
-  } catch (e: any) {
-    return { success: false, error: e.message };
-  }
+  const r = await callWithRetry(cfg, "/chat/labels", { method: "POST", body: { number: phone, add_labelid: labelId } }, "POST /chat/labels");
+  return r.success ? { success: true } : { success: false, error: friendlyLabelError(r.error) };
 }
 
 export async function archiveChat(cfg: UazapiConfig, phone: string, archive = true): Promise<{ success: boolean; error?: string }> {
-  try {
-    const res = await fetchWithTimeout(`${trimUrl(cfg.url)}/chat/archive`, {
-      method: "POST",
-      headers: instanceHeaders(cfg.token),
-      body: JSON.stringify({ number: phone, archive }),
-    });
-    const r = await readResult(res);
-    return r.success ? { success: true } : { success: false, error: r.error };
-  } catch (e: any) {
-    return { success: false, error: e.message };
-  }
+  const r = await callWithRetry(cfg, "/chat/archive", { method: "POST", body: { number: phone, archive } });
+  return r.success ? { success: true } : { success: false, error: r.error };
 }
