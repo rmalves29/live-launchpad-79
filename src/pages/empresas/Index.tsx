@@ -56,6 +56,7 @@ import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/hooks/useAuth';
 import { differenceInDays } from 'date-fns';
 import { RecurringLinksDialog } from './RecurringLinksDialog';
+import { OnboardingRequestsDialog } from './OnboardingRequestsDialog';
 import { generateAdminPassword } from './admin-password';
 
 interface Tenant {
@@ -803,6 +804,7 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Atualizar
           </Button>
+          <OnboardingRequestsDialog onTenantCreated={loadTenants} />
           <RecurringLinksDialog />
           <Dialog open={dialogOpen} onOpenChange={(open) => {
             setDialogOpen(open);
