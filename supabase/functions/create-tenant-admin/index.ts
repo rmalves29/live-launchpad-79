@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { upsertTenantAdmin } from "../_shared/tenant-onboarding.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -70,109 +71,14 @@ serve(async (req) => {
     const userRole = role === 'super_admin' ? 'super_admin' : 'tenant_admin';
     console.log(`[create-tenant-admin] Caller=${userData.user.email} criando ${email} com role: ${userRole}`);
 
-    // Check if user already exists (paginated)
-    const normEmail = String(email).trim().toLowerCase();
-    let existingUser: { id: string } | undefined;
-    for (let page = 1; page <= 20; page++) {
-      const { data: pageData, error: listErr } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 });
-      if (listErr) {
-        console.error("Erro ao listar usuários:", listErr);
-        break;
-      }
-      const users = pageData?.users ?? [];
-      existingUser = users.find((u) => (u.email ?? "").trim().toLowerCase() === normEmail);
-      if (existingUser || users.length < 1000) break;
-    }
-
-    let userId: string;
-
-    if (existingUser) {
-      userId = existingUser.id;
-      const { data: existingProfile } = await supabaseAdmin
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", userId)
-        .maybeSingle();
-
-      const otherTenantId = existingProfile?.tenant_id;
-      if (otherTenantId && otherTenantId !== tenant_id) {
-        const { data: otherTenant } = await supabaseAdmin
-          .from("tenants")
-          .select("id")
-          .eq("id", otherTenantId)
-          .maybeSingle();
-        if (otherTenant) {
-          return new Response(
-            JSON.stringify({ error: `O e-mail ${email} já é login de outra empresa` }),
-            { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-      }
-
-      const { error: updErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-        password,
-        email_confirm: true,
-      });
-      if (updErr) {
-        console.error("Erro ao atualizar senha:", updErr);
-        return new Response(
-          JSON.stringify({ error: `Erro ao atualizar senha: ${updErr.message}` }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      console.log(`Usuário ${email} já existia; senha atualizada e profile com role ${userRole}...`);
-    } else {
-      // Create new user
-      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true, // Auto-confirm email
-      });
-
-      if (createError) {
-        console.error("Erro ao criar usuário:", createError);
-        return new Response(
-          JSON.stringify({ error: `Erro ao criar usuário: ${createError.message}` }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      userId = newUser.user.id;
-      console.log(`Usuário ${email} criado com sucesso: ${userId}`);
-    }
-
-    // Update profile with tenant_id and role
-    const { error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .upsert({
-        id: userId,
-        email,
-        tenant_id,
-        role: userRole,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "id" });
-
-    if (profileError) {
-      console.error("Erro ao atualizar profile:", profileError);
+    const result = await upsertTenantAdmin(supabaseAdmin, { tenant_id, email, password, role: userRole });
+    if (!result.ok) {
       return new Response(
-        JSON.stringify({ error: `Erro ao atualizar profile: ${profileError.message}` }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: result.error }),
+        { status: result.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    // Update tenant with admin info
-    const { error: tenantError } = await supabaseAdmin
-      .from("tenants")
-      .update({
-        admin_email: email,
-        admin_user_id: userId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", tenant_id);
-
-    if (tenantError) {
-      console.error("Erro ao atualizar tenant:", tenantError);
-    }
+    const userId = result.user_id;
 
     return new Response(
       JSON.stringify({ 
