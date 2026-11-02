@@ -53,6 +53,23 @@ export function samePhone(a: string, b: string): boolean {
   return ka.length >= 10 && ka === kb;
 }
 
+/**
+ * Instância autorizada a responder aprovação. Mensagens uazapi chegam ao zapi-webhook
+ * com instanceId = `uazapi:{tenantId}`; o id Z-API legado ainda pode estar preenchido.
+ * Recusa instance_id ausente ou de qualquer outra instância.
+ */
+export function isOrderZapInstance(
+  instanceId: unknown,
+  zapiInstanceId: unknown,
+  orderZapTenantId: string,
+): boolean {
+  const id = String(instanceId ?? "").trim();
+  if (!id) return false;
+  if (id === `uazapi:${orderZapTenantId}`) return true;
+  const zapi = String(zapiInstanceId ?? "").trim();
+  return zapi.length > 0 && id === zapi;
+}
+
 /** Acessos: live → Live/Loja Live; bazar → Fluxo de Envio; os dois → os dois (mesmo mapa de plan-modules). */
 export function moduleAccess(sellsLive: boolean, sellsBazar: boolean) {
   const live = sellsLive || !sellsBazar; // nenhum marcado = acesso Live padrão do cadastro atual

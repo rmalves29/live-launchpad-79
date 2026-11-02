@@ -1,5 +1,18 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { isValidSuffix, moduleAccess, onboardingPassword, parseApprovalReply, randomSuffix, samePhone } from "./tenant-onboarding.ts";
+import { isOrderZapInstance, isValidSuffix, moduleAccess, onboardingPassword, parseApprovalReply, randomSuffix, samePhone } from "./tenant-onboarding.ts";
+
+const ORDERZAP = "d5671cfb-9c42-4c44-8f94-0a19a39473d8";
+
+Deno.test("resposta aceita apenas a instância da OrderZap (uazapi ou Z-API legado)", () => {
+  assert(isOrderZapInstance(`uazapi:${ORDERZAP}`, "old-zapi-id", ORDERZAP));
+  assert(isOrderZapInstance("old-zapi-id", "old-zapi-id", ORDERZAP));
+  assert(isOrderZapInstance("uazapi:" + ORDERZAP, null, ORDERZAP));
+  assert(!isOrderZapInstance(undefined, "old-zapi-id", ORDERZAP));
+  assert(!isOrderZapInstance("", "old-zapi-id", ORDERZAP));
+  assert(!isOrderZapInstance("outra-instancia", "old-zapi-id", ORDERZAP));
+  assert(!isOrderZapInstance(`uazapi:11111111-1111-1111-1111-111111111111`, "old-zapi-id", ORDERZAP));
+  assert(!isOrderZapInstance("old-zapi-id", null, ORDERZAP));
+});
 
 Deno.test("senha = slug + 2 especiais do conjunto * + @ # $ %", () => {
   for (let i = 0; i < 50; i++) assert(isValidSuffix(randomSuffix()));
