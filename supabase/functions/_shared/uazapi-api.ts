@@ -489,3 +489,83 @@ const REACTION_EMOJIS = ["❤️", "🔥", "😍", "👏", "🛍️", "💜", "�
 export function getRandomReactionEmoji(): string {
   return REACTION_EMOJIS[Math.floor(Math.random() * REACTION_EMOJIS.length)];
 }
+
+// ============ Etiquetas e arquivamento ============
+
+export interface UazapiLabel { id?: string; labelid?: string; name?: string; color?: number }
+
+function friendlyLabelError(err?: string): string {
+  const e = err || "erro desconhecido";
+  if (/business/i.test(e)) return `conta não é WhatsApp Business (${e})`;
+  return e;
+}
+
+export async function listLabels(cfg: UazapiConfig): Promise<{ success: boolean; labels: UazapiLabel[]; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(`${trimUrl(cfg.url)}/labels`, { method: "GET", headers: instanceHeaders(cfg.token) });
+    const r = await readResult(res);
+    if (!r.success) return { success: false, labels: [], error: friendlyLabelError(r.error) };
+    const d = r.data;
+    const labels = Array.isArray(d) ? d : (d?.labels || d?.data || []);
+    return { success: true, labels };
+  } catch (e: any) {
+    return { success: false, labels: [], error: e.message };
+  }
+}
+
+function labelRef(l: UazapiLabel): string | undefined {
+  return (l.labelid || l.id) ? String(l.labelid || l.id) : undefined;
+}
+
+// Retorna o id da etiqueta com o nome informado, criando-a se não existir.
+export async function ensureLabel(cfg: UazapiConfig, name: string): Promise<{ labelId?: string; error?: string }> {
+  const find = (labels: UazapiLabel[]) =>
+    labels.find((l) => (l.name || "").trim().toLowerCase() === name.trim().toLowerCase());
+  const first = await listLabels(cfg);
+  if (!first.success) return { error: first.error };
+  const existing = find(first.labels);
+  if (existing && labelRef(existing)) return { labelId: labelRef(existing) };
+  try {
+    const res = await fetchWithTimeout(`${trimUrl(cfg.url)}/label/edit`, {
+      method: "POST",
+      headers: instanceHeaders(cfg.token),
+      body: JSON.stringify({ labelid: "new", name, color: 1, delete: false }),
+    });
+    const r = await readResult(res);
+    if (!r.success) return { error: friendlyLabelError(r.error) };
+  } catch (e: any) {
+    return { error: e.message };
+  }
+  const again = await listLabels(cfg);
+  const created = again.success ? find(again.labels) : undefined;
+  if (created && labelRef(created)) return { labelId: labelRef(created) };
+  return { error: again.error || `etiqueta "${name}" criada mas não encontrada em /labels` };
+}
+
+export async function addChatLabel(cfg: UazapiConfig, phone: string, labelId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(`${trimUrl(cfg.url)}/chat/labels`, {
+      method: "POST",
+      headers: instanceHeaders(cfg.token),
+      body: JSON.stringify({ number: phone, add_labelid: labelId }),
+    });
+    const r = await readResult(res);
+    return r.success ? { success: true } : { success: false, error: friendlyLabelError(r.error) };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
+export async function archiveChat(cfg: UazapiConfig, phone: string, archive = true): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(`${trimUrl(cfg.url)}/chat/archive`, {
+      method: "POST",
+      headers: instanceHeaders(cfg.token),
+      body: JSON.stringify({ number: phone, archive }),
+    });
+    const r = await readResult(res);
+    return r.success ? { success: true } : { success: false, error: r.error };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
