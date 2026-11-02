@@ -3,7 +3,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  approvalMessage, isValidSuffix, moduleAccess, onboardingPassword, parseApprovalReply,
+  approvalMessage, isOrderZapInstance, isValidSuffix, moduleAccess, onboardingPassword, parseApprovalReply,
   randomShortCode, samePhone, slugFromName, upsertTenantAdmin, welcomeMessage,
 } from "../_shared/tenant-onboarding.ts";
 
