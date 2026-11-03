@@ -86,7 +86,9 @@ Deno.serve(async (req) => {
       const realSub = subIdOf(real) || claimedSub;
       if (!realSub || (claimedSub && subIdOf(real) && claimedSub !== subIdOf(real))) return await reject("assinatura divergente");
       if (!JSON.stringify(real).includes(realSub)) return await reject("sem vínculo com a assinatura");
-      const okStatus = t.endsWith(".paid") ? real.status === "paid" : t.endsWith("failed") ? real.status === "failed" : true;
+      const okStatus = t.endsWith(".paid") ? real.status === "paid" : t.endsWith("failed") ? real.status === "failed"
+        : ["charge.refunded", "charge.chargedback", "charge.canceled", "charge.partial_canceled"].includes(t)
+          ? ["refunded", "chargedback", "canceled", "partial_canceled"].includes(real.status) : true;
       if (!okStatus) return await reject(`status real=${real.status}`);
       event.data = { ...d, ...real, subscription_id: realSub };
     } else {
