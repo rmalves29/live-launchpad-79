@@ -26,6 +26,9 @@ export default function AfiliadoPainel() {
   const [copied, setCopied] = useState(false);
   const [pix, setPix] = useState('');
   const [pixMsg, setPixMsg] = useState<string | null>(null);
+  // Logo após o login o contexto pode ainda não ter o usuário: confirma a sessão antes de mandar para o login
+  const [sessionChecked, setSessionChecked] = useState(false);
+  useEffect(() => { supabase.auth.getSession().then(({ data }) => { if (!data.session) setSessionChecked(true); else setTimeout(() => setSessionChecked(true), 4000); }); }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -61,7 +64,7 @@ export default function AfiliadoPainel() {
     };
   }, [clicks, comms, clients]);
 
-  if (isLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  if (isLoading || (!user && !sessionChecked)) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   if (!user) return <Navigate to="/auth" replace />;
   if (profile && profile.role !== 'affiliate') return <Navigate to="/" replace />;
 
