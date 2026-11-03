@@ -13,3 +13,6 @@ verify_jwt = false
 
 [functions.bagy-import-products]
 verify_jwt = false
+
+[functions.platform-affiliates]
+verify_jwt = false
