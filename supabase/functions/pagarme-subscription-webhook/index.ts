@@ -98,6 +98,13 @@ Deno.serve(async (req) => {
   const data = event?.data || {};
   console.log("[pagarme-sub-webhook] event:", type);
 
+  // Programa de afiliados: estorno/chargeback cancela a comissão ainda não paga
+  if (["charge.refunded", "charge.chargedback", "charge.canceled", "charge.partial_canceled"].includes(type) && data?.id) {
+    const { data: n, error: cErr } = await supabase.rpc("platform_affiliate_cancel_commission", { _payment_ref: String(data.id) });
+    if (cErr) console.error("[pagarme-sub-webhook] cancelar comissão falhou:", cErr.message);
+    else if (n) console.log("[pagarme-sub-webhook] comissões canceladas:", n);
+  }
+
   try {
     // Resolver subscription_id e tenant_id
     let subscriptionId: string | undefined;
@@ -191,6 +198,17 @@ Deno.serve(async (req) => {
           ...(getModulePlan(planId)?.flags ?? {}),
         })
         .eq("id", tenantId);
+
+      // Programa de afiliados: comissão da mensalidade (idempotente por payment_ref; regras no banco)
+      if (charge?.id) {
+        const cents = Number(charge?.paid_amount ?? charge?.amount ?? 0);
+        const { data: affRes, error: affErr } = await supabase.rpc("platform_affiliate_record_commission", {
+          _tenant_id: tenantId, _payment_ref: String(charge.id), _amount: cents / 100,
+          _paid_at: charge?.paid_at || now.toISOString(),
+        });
+        if (affErr) console.error("[pagarme-sub-webhook] comissão afiliado falhou:", affErr.message);
+        else if (affRes !== "sem_afiliado") console.log("[pagarme-sub-webhook] comissão afiliado:", affRes);
+      }
 
       // Alerta admins Cartzy quando sai do trial ou muda de plano
       const planLabel = getModulePlan(planId)?.name
