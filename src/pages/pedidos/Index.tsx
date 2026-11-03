@@ -731,7 +731,7 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
 
     // Pedido já exportado para a Bagy: devolve lá o estoque que foi abatido (uma vez só; o servidor confere).
     const restoreBagyStock = async (order: Order | undefined, deleting = false) => {
-      if (!order?.bagy_order_id || !order.tenant_id) return;
+      if (!order?.bagy_order_id || !order.tenant_id || order.is_paid) return;
       try {
         const { data, error } = await supabase.functions.invoke('bagy-sync', {
           body: { action: 'restore_stock', tenant_id: order.tenant_id, order_id: order.id, deleting },
