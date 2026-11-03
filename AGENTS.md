@@ -8,3 +8,6 @@
 
 - Keep recurring payment links isolated in their own Empresas dialog and edge function, reusing protected server-side super_admin authorization; existing company management and subscription flows must remain unchanged.
 - Resolve order Mercado Pago credentials through the shared active-tenant token helper, failing closed without a token; platform subscription credentials remain separate to prevent cross-store payment routing.- Company pre-registration approval lives in the tenant-onboarding edge function; admin login provisioning is shared via _shared/tenant-onboarding.ts with create-tenant-admin so login-hijack protections stay identical, and the full password is never persisted.
+
+- Platform affiliate program uses platform_affiliate* tables (never the Loja da Live `affiliates` table or legacy referral_*); commission rules (idempotency, months limit, hold, cancel, payout) live in SECURITY DEFINER SQL functions called by pagarme-subscription-webhook and the admin UI, so every path applies the same rules.
+- Platform affiliates have profile role `affiliate` with no tenant; App routing confines them to /afiliado and public pages, and the affiliate dashboard reads its own session directly because the global auth context can lag right after login.
