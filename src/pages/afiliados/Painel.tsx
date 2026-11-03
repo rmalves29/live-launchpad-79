@@ -14,7 +14,23 @@ const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', curren
 const SITE = 'https://app.cartzy.com.br';
 
 export default function AfiliadoPainel() {
-  const { user, profile, isLoading, signOut } = useAuth() as any;
+  const { signOut } = useAuth();
+  // Sessão lida direto do cliente: logo após o login o contexto global pode ainda não ter o usuário
+  const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    const read = async () => {
+      const { data } = await supabase.auth.getSession();
+      const u = data.session?.user ?? null;
+      const prof = u ? (await supabase.from('profiles').select('role').eq('id', u.id).maybeSingle()).data : null;
+      if (alive) { setUser(u); setProfile(prof); setIsLoading(false); }
+    };
+    read();
+    const { data: sub } = supabase.auth.onAuthStateChange((ev) => { if (ev === 'SIGNED_IN' || ev === 'SIGNED_OUT') read(); });
+    return () => { alive = false; sub.subscription.unsubscribe(); };
+  }, []);
   const [aff, setAff] = useState<any>(null);
   const [clicks, setClicks] = useState<any[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
@@ -26,9 +42,6 @@ export default function AfiliadoPainel() {
   const [copied, setCopied] = useState(false);
   const [pix, setPix] = useState('');
   const [pixMsg, setPixMsg] = useState<string | null>(null);
-  // Logo após o login o contexto pode ainda não ter o usuário: confirma a sessão antes de mandar para o login
-  const [sessionChecked, setSessionChecked] = useState(false);
-  useEffect(() => { supabase.auth.getSession().then(({ data }) => { if (!data.session) setSessionChecked(true); else setTimeout(() => setSessionChecked(true), 4000); }); }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -64,7 +77,7 @@ export default function AfiliadoPainel() {
     };
   }, [clicks, comms, clients]);
 
-  if (isLoading || (!user && !sessionChecked)) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   if (!user) return <Navigate to="/auth" replace />;
   if (profile && profile.role !== 'affiliate') return <Navigate to="/" replace />;
 
@@ -82,7 +95,7 @@ export default function AfiliadoPainel() {
       <header className="border-b bg-card">
         <div className="mx-auto max-w-5xl px-5 py-4 flex items-center justify-between">
           <img src={cartzyLogo} alt="Cartzy" className="h-7 w-auto" />
-          <Button variant="ghost" size="sm" onClick={() => signOut?.()}><LogOut className="h-4 w-4 mr-1" />Sair</Button>
+          <Button variant="ghost" size="sm" onClick={() => signOut()}><LogOut className="h-4 w-4 mr-1" />Sair</Button>
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-5 py-6 space-y-6">
