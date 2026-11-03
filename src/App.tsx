@@ -27,6 +27,7 @@ const WhatsAppSupportButton = lazy(() =>
 const SupportButtonGate = () => {
   const { pathname } = useLocation();
   if (/^\/t\/[^/]+\/live(\/a\/[^/]+)?\/?$/.test(pathname) || /^\/t\/[^/]+\/afiliada\/[^/]+\/?$/.test(pathname)) return null;
+  if (pathname === '/indicacao' || pathname === '/afiliado' || pathname === '/afiliados/cadastro' || pathname.startsWith('/i/')) return null;
   return <Suspense fallback={null}><WhatsAppSupportButton /></Suspense>;
 };
 
