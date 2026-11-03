@@ -1,10 +1,12 @@
 /**
  * Importar produtos da Bagy para o Cartzy.
- * Passo 1: "Buscar produtos" mostra uma prévia (nada é gravado). Passo 2: "Importar selecionados" cria no Cartzy.
+ * Passo 1: "Buscar produtos" traz TODOS os produtos da Bagy (nada é gravado) e guarda a lista neste navegador;
+ * o filtro por nome/SKU e a paginação (25/50/100) funcionam na lista salva, sem falar com a Bagy.
+ * Passo 2: "Importar selecionados" cria no Cartzy.
  * O SKU da Bagy vai para o SKU ERP; o código do sistema é a próxima sequência C001, C002...;
  * produtos com variação viram pai + filhos; o estoque é o disponível da Bagy (saldo menos reservado).
  */
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { Download, Loader2, Search, Package, ZoomIn } from 'lucide-react';
+import { Download, Loader2, Search, Package, ZoomIn, X } from 'lucide-react';
 
 interface Props {
   tenantId: string;
@@ -43,6 +45,24 @@ interface ImportResult {
 const money = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const CHUNK = 8;
 
+const PAGE_SIZES = [25, 50, 100];
+const MAX_PAGES = 300; // trava de segurança: evita laço infinito se a Bagy nunca avisar que acabou
+
+// Lista completa guardada no navegador (localStorage): permite filtrar na hora, sem falar com a Bagy.
+// "Buscar produtos" sempre refaz do zero e sobrescreve. Foto só vai para o cache se o link for curto.
+type CacheEntry = { key: string; at: number; rows: PreviewRow[] };
+const cacheKey = (tenantId: string) => `bagy-import-cache:${tenantId}`;
+function readCache(tenantId: string): CacheEntry | null {
+  try { const raw = localStorage.getItem(cacheKey(tenantId)); return raw ? (JSON.parse(raw) as CacheEntry) : null; } catch { return null; }
+}
+function writeCache(tenantId: string, entry: CacheEntry) {
+  try {
+    const slim = entry.rows.map((r) => ({ ...r, imagem: r.imagem && r.imagem.length <= 160 ? r.imagem : null }));
+    localStorage.setItem(cacheKey(tenantId), JSON.stringify({ ...entry, rows: slim }));
+  } catch { /* sem espaço ou sem armazenamento: a lista só vale nesta visita */ }
+}
+const norm = (v: string) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
 async function call(body: Record<string, unknown>) {
   const { data, error } = await supabase.functions.invoke('bagy-import-products', { body });
   if (error) throw new Error(error.message || 'Falha ao falar com o servidor');
@@ -56,31 +76,63 @@ export default function BagyProductsImportPanel({ tenantId }: Props) {
   const [onlyStock, setOnlyStock] = useState(true);
   const [zoom, setZoom] = useState<{ src: string; top: number; left: number } | null>(null);
   const [rows, setRows] = useState<PreviewRow[]>([]);
-  const [nextPage, setNextPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
-  const [searched, setSearched] = useState(false);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(50);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
   const [debug, setDebug] = useState<any>(null);
+  const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(0);
+  const cancelRef = useRef(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [results, setResults] = useState<Record<number, ImportResult>>({});
 
-  async function load(page: number, append: boolean) {
+  const listKey = `${onlyStock}`;
+
+  // lista salva de uma visita anterior (mesmo filtro de estoque)
+  useEffect(() => {
+    const c = readCache(tenantId);
+    if (c && c.key === listKey && c.rows.length) { setRows(c.rows); setSavedAt(c.at); } else { setRows([]); setSavedAt(null); }
+    setPage(0); setSelected(new Set()); setResults({}); setDebug(null); setSearched(false);
+  }, [tenantId, listKey]);
+
+  // Traz TODOS os produtos da Bagy (página por página, até acabar) e guarda a lista no navegador.
+  async function load() {
     setLoading(true);
+    setLoaded(0);
+    cancelRef.current = false;
+    const map = new Map<number, PreviewRow>();
+    let finished = false;
+    let firstDebug: any = null;
     try {
-      const data = await call({ tenant_id: tenantId, action: 'preview', page, search, only_stock: onlyStock });
-      setRows((prev) => {
-        if (!append) return data.rows as PreviewRow[];
-        const map = new Map<number, PreviewRow>(prev.map((r) => [r.bagy_id, r]));
+      let pg = 1;
+      for (let i = 0; i < MAX_PAGES && !cancelRef.current; i++) {
+        const data = await call({ tenant_id: tenantId, action: 'preview', page: pg, search: '', only_stock: onlyStock, bulk: true });
         for (const r of data.rows as PreviewRow[]) map.set(r.bagy_id, r);
-        return Array.from(map.values());
-      });
-      setNextPage(data.next_page || page + 1);
-      setHasMore(!!data.has_more);
+        if (!firstDebug && data.debug) firstDebug = data.debug;
+        setLoaded(map.size);
+        if (!data.has_more) { finished = true; break; }
+        pg = data.next_page || pg + 1;
+      }
+      const list = Array.from(map.values());
+      setDebug(firstDebug);
       setSearched(true);
-      setDebug(data.debug || null);
-      if (!append) { setSelected(new Set()); setResults({}); }
+      if (!finished) {
+        toast.message(`Carregamento interrompido: ${list.length} produtos (lista parcial, não foi salva).`);
+        setRows(list);
+        setSavedAt(null);
+      } else {
+        const at = Date.now();
+        setRows(list);
+        setSavedAt(at);
+        writeCache(tenantId, { key: listKey, at, rows: list });
+        toast.success(`${list.length} produtos carregados da Bagy e salvos neste navegador.`);
+      }
+      setPage(0);
+      setSelected(new Set());
+      setResults({});
     } catch (e: any) {
       toast.error(e?.message || 'Erro ao buscar produtos da Bagy');
     } finally {
@@ -88,7 +140,18 @@ export default function BagyProductsImportPanel({ tenantId }: Props) {
     }
   }
 
-  const importable = rows.filter((r) => r.status !== 'vinculado' && results[r.bagy_id]?.status !== 'criado' && results[r.bagy_id]?.status !== 'vinculado');
+  // filtro instantâneo (em qualquer parte do nome ou do SKU), sem chamar a Bagy
+  const filtered = useMemo(() => {
+    const words = norm(search).split(/\s+/).filter(Boolean);
+    if (!words.length) return rows;
+    return rows.filter((r) => { const t = `${norm(r.nome)} ${norm(r.codigo)}`; return words.every((w) => t.includes(w)); });
+  }, [rows, search]);
+  const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, pages - 1);
+  const pageRows = filtered.slice(safePage * pageSize, safePage * pageSize + pageSize);
+  useEffect(() => { setPage(0); }, [search, pageSize]);
+
+  const importable = pageRows.filter((r) => r.status !== 'vinculado' && results[r.bagy_id]?.status !== 'criado' && results[r.bagy_id]?.status !== 'vinculado');
   const toggle = (id: number) => setSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const allSelected = importable.length > 0 && importable.every((r) => selected.has(r.bagy_id));
 
@@ -108,6 +171,14 @@ export default function BagyProductsImportPanel({ tenantId }: Props) {
           if (r.status === 'criado') created++; else if (r.status === 'vinculado' || r.status === 'ja_vinculado') linked++; else failed++;
         }
         setResults((prev) => ({ ...prev, ...map }));
+        const doneIds = new Set((data.results as ImportResult[]).filter((r) => r.status === 'criado' || r.status === 'vinculado' || r.status === 'ja_vinculado').map((r) => r.bagy_id));
+        if (doneIds.size) {
+          setRows((prev) => {
+            const next = prev.map((r) => (doneIds.has(r.bagy_id) ? { ...r, status: 'vinculado' as const } : r));
+            if (savedAt) writeCache(tenantId, { key: listKey, at: savedAt, rows: next });
+            return next;
+          });
+        }
         setProgress({ done: Math.min(i + CHUNK, ids.length), total: ids.length });
       }
       setSelected(new Set());
@@ -134,8 +205,13 @@ export default function BagyProductsImportPanel({ tenantId }: Props) {
       <CardContent className="space-y-4">
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
-            <Label htmlFor="bagy_imp_search">Buscar por nome</Label>
-            <Input id="bagy_imp_search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Ex.: brinco" onKeyDown={(e) => { if (e.key === 'Enter') load(1, false); }} />
+            <Label htmlFor="bagy_imp_search">Filtrar por nome ou SKU</Label>
+            <div className="relative">
+              <Input id="bagy_imp_search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={rows.length ? 'Ex.: brinco ou BR-001' : 'Busque os produtos primeiro'} disabled={rows.length === 0} className="pr-9" />
+              {search && (
+                <button type="button" onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground" aria-label="Limpar filtro"><X className="h-4 w-4" /></button>
+              )}
+            </div>
           </div>
           <div className="space-y-1">
             <Label htmlFor="bagy_imp_sale">Vender no Cartzy como</Label>
@@ -154,10 +230,11 @@ export default function BagyProductsImportPanel({ tenantId }: Props) {
         </label>
 
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => load(1, false)} disabled={loading || importing} variant="outline">
-            {loading && !rows.length ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
-            Buscar produtos
+          <Button onClick={() => load()} disabled={loading || importing} variant="outline">
+            {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
+            {loading ? `Carregando… ${loaded} produtos` : rows.length ? 'Buscar de novo na Bagy' : 'Buscar produtos'}
           </Button>
+          {loading && <Button variant="ghost" onClick={() => { cancelRef.current = true; }}>Parar</Button>}
           {rows.length > 0 && (
             <Button onClick={runImport} disabled={importing || selected.size === 0}>
               {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
@@ -165,6 +242,12 @@ export default function BagyProductsImportPanel({ tenantId }: Props) {
             </Button>
           )}
         </div>
+
+        {savedAt && !loading && (
+          <p className="text-xs text-muted-foreground">
+            Lista salva neste navegador em {new Date(savedAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · {rows.length} produtos{search ? ` (${filtered.length} no filtro)` : ''}. Clique em <b>Buscar de novo na Bagy</b> para refazer a lista do zero.
+          </p>
+        )}
 
         {progress && (
           <div className="space-y-1">
@@ -184,18 +267,21 @@ export default function BagyProductsImportPanel({ tenantId }: Props) {
 
         {searched && !loading && rows.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            {hasMore ? 'Nenhum produto nesta página.' : 'Nenhum produto encontrado.'}
-            {onlyStock ? ' Desmarque "Só produtos com estoque" para ver todos os ativos.' : ''}
+            Nenhum produto encontrado.{onlyStock ? ' Desmarque "Só produtos com estoque" para ver todos os ativos.' : ''}
           </p>
         )}
 
-        {rows.length > 0 && (
+        {rows.length > 0 && filtered.length === 0 && (
+          <p className="p-4 text-center text-sm text-muted-foreground">Nenhum produto da lista combina com "{search}".</p>
+        )}
+
+        {filtered.length > 0 && (
           <div className="rounded-lg border">
             <div className="flex items-center gap-3 border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
               <Checkbox
                 checked={allSelected}
-                onCheckedChange={(v) => setSelected(v === true ? new Set(importable.map((r) => r.bagy_id)) : new Set())}
-                aria-label="Marcar todos os importáveis"
+                onCheckedChange={(v) => setSelected((prev) => { const n = new Set(prev); importable.forEach((r) => (v === true ? n.add(r.bagy_id) : n.delete(r.bagy_id))); return n; })}
+                aria-label="Marcar todos os importáveis desta página"
                 disabled={importable.length === 0 || importing}
               />
               <span className="flex-1">Produto (SKU da Bagy)</span>
@@ -204,7 +290,7 @@ export default function BagyProductsImportPanel({ tenantId }: Props) {
               <span className="w-28 text-right">Situação</span>
             </div>
             <ul className="divide-y max-h-[520px] overflow-auto">
-              {rows.map((r) => {
+              {pageRows.map((r) => {
                 const res = results[r.bagy_id];
                 const done = res?.status === 'criado' || res?.status === 'vinculado' || res?.status === 'ja_vinculado';
                 const disabled = r.status === 'vinculado' || done || importing;
@@ -263,11 +349,20 @@ export default function BagyProductsImportPanel({ tenantId }: Props) {
           </div>
         )}
 
-        {hasMore && (
-          <Button variant="outline" onClick={() => load(nextPage, true)} disabled={loading || importing}>
-            {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-            Carregar mais
-          </Button>
+        {filtered.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+            <label className="flex items-center gap-1.5">
+              Por página
+              <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className="h-8 rounded-md border bg-background px-2 text-sm text-foreground" aria-label="Produtos por página">
+                {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </label>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>Anterior</Button>
+              <span>Página {safePage + 1} de {pages}</span>
+              <Button size="sm" variant="outline" disabled={safePage + 1 >= pages} onClick={() => setPage(safePage + 1)}>Próxima</Button>
+            </div>
+          </div>
         )}
 
         {rows.length > 0 && (

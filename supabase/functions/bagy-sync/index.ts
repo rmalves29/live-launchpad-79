@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { authorizeTenantCaller, guardResponse } from "../_shared/auth-guard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,7 +49,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { tenant_id, action, order_id } = await req.json();
+    const body = await req.json();
+    const { tenant_id, action, order_id } = body;
 
     if (!tenant_id || !action) {
       return new Response(
@@ -89,6 +91,58 @@ Deno.serve(async (req) => {
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+    }
+
+    // ===================== RESTORE STOCK (pedido cancelado ou excluído) =====================
+    // Devolve na Bagy o que foi abatido quando o pedido foi exportado. Só vale para pedido exportado, não pago, com
+    // "sincronizar estoque" ligado, e roda uma única vez por pedido (bagy_stock_restored_at).
+    if (action === "restore_stock") {
+      const guard = await authorizeTenantCaller(req, supabase, tenant_id);
+      if (!guard.ok) return guardResponse(guard, corsHeaders);
+      const reply = (payload: Record<string, unknown>) =>
+        new Response(JSON.stringify(payload), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+      if (!order_id) return reply({ success: false, error: "order_id é obrigatório para restore_stock" });
+
+      const { data: order } = await supabase
+        .from("orders")
+        .select("id, cart_id, is_cancelled, is_paid, bagy_order_id, bagy_stock_restored_at")
+        .eq("id", order_id)
+        .eq("tenant_id", tenant_id)
+        .maybeSingle();
+      if (!order) return reply({ success: false, error: "Pedido não encontrado" });
+
+      if (!order.bagy_order_id) return reply({ success: true, skipped: "nao_exportado" });
+      if (!integration.sync_stock) return reply({ success: true, skipped: "sincronizacao_desligada" });
+      if (order.is_paid) return reply({ success: true, skipped: "pedido_pago" });
+      if (order.bagy_stock_restored_at) return reply({ success: true, skipped: "ja_devolvido" });
+      if (!order.is_cancelled && body.deleting !== true) return reply({ success: false, error: "Pedido não está cancelado" });
+
+      // reserva a devolução antes de falar com a Bagy: duas chamadas ao mesmo tempo não devolvem em dobro
+      const { data: claimed } = await supabase
+        .from("orders")
+        .update({ bagy_stock_restored_at: new Date().toISOString() })
+        .eq("id", order_id)
+        .is("bagy_stock_restored_at", null)
+        .select("id");
+      if (!claimed || claimed.length === 0) return reply({ success: true, skipped: "ja_devolvido" });
+
+      let items: any[] = [];
+      if (order.cart_id) {
+        const { data: cartItems } = await supabase
+          .from("cart_items")
+          .select("*, products(code, name, price, sku_erp, bagy_variation_id)")
+          .eq("cart_id", order.cart_id);
+        items = cartItems || [];
+      }
+
+      const ok = items.length === 0 ? true : await syncStockForItems(items, token, 1);
+      if (!ok) {
+        // a Bagy falhou: libera a reserva para a devolução poder ser tentada de novo
+        await supabase.from("orders").update({ bagy_stock_restored_at: null }).eq("id", order_id);
+        return reply({ success: false, error: "Não foi possível devolver o estoque na Bagy." });
+      }
+      return reply({ success: true, restored: items.length });
     }
 
     // ===================== EXPORT ORDER =====================
@@ -560,7 +614,8 @@ function buildBagySkuMap(bagyProducts: any[]) {
   return bagySkuMap;
 }
 
-async function syncStockForItems(items: any[], token: string) {
+// delta = -1 abate o estoque (venda exportada); delta = +1 devolve (pedido cancelado). Retorna false se a Bagy falhou.
+async function syncStockForItems(items: any[], token: string, delta: 1 | -1 = -1): Promise<boolean> {
   try {
     // Lê o saldo atual de cada variação conhecida (pelo ID gravado na importação)
     const knownIds = [...new Set(items.map((i: any) => Number(i.products?.bagy_variation_id)).filter((n: number) => n > 0))];
@@ -586,12 +641,12 @@ async function syncStockForItems(items: any[], token: string) {
       const qty = item.qty || 1;
       const vid = Number(item.products?.bagy_variation_id);
       if (vid > 0 && currentById.has(vid)) {
-        stockUpdates.push({ variation_id: vid, balance: Math.max(0, (currentById.get(vid) as number) - qty) });
+        stockUpdates.push({ variation_id: vid, balance: Math.max(0, (currentById.get(vid) as number) + delta * qty) });
         continue;
       }
       const sku = item.products?.sku_erp || item.product_code || item.products?.code;
       const bagy = sku && bagySkuMap ? bagySkuMap.get(sku) : null;
-      if (bagy) stockUpdates.push({ variation_id: bagy.variation_id, balance: Math.max(0, bagy.current_balance - qty) });
+      if (bagy) stockUpdates.push({ variation_id: bagy.variation_id, balance: Math.max(0, bagy.current_balance + delta * qty) });
     }
 
     if (stockUpdates.length > 0) {
@@ -599,9 +654,11 @@ async function syncStockForItems(items: any[], token: string) {
         method: "PUT",
         body: JSON.stringify(stockUpdates),
       });
-      console.log(`[bagy-sync] Estoque abatido para ${stockUpdates.length} item(ns)`);
+      console.log(`[bagy-sync] Estoque ${delta > 0 ? "devolvido" : "abatido"} para ${stockUpdates.length} item(ns)`);
     }
+    return true;
   } catch (e: any) {
-    console.error("[bagy-sync] Erro ao abater estoque:", e.message);
+    console.error(`[bagy-sync] Erro ao ${delta > 0 ? "devolver" : "abater"} estoque:`, e.message);
+    return false;
   }
 }

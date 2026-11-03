@@ -913,6 +913,7 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
                     <Label htmlFor="admin_email">Email do Administrador *</Label>
                     <Input
                       id="admin_email"
+                      name="tenant-admin-email"
                       type="email"
                       autoComplete="off"
                       value={formAdminEmail}

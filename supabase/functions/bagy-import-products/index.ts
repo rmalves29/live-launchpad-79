@@ -120,7 +120,7 @@ serve(async (req) => {
         const current = num(r.data?.meta?.current_page) || page;
         hasMore = last ? current < last : items.length >= 25;
         page = current + 1;
-        if (!hasMore || collected.length >= 10) break;
+        if (!hasMore || collected.length >= (body.bulk === true ? 100 : 10)) break;
       }
 
       // o que já existe no Cartzy

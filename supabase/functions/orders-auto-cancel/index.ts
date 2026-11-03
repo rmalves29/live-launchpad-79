@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
 
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
-        .select('id, cart_id, tenant_id, tenant_order_number, total_amount, customer_phone, event_type, created_at')
+        .select('id, cart_id, tenant_id, tenant_order_number, total_amount, customer_phone, event_type, created_at, bagy_order_id')
         .eq('tenant_id', t.id)
         .eq('is_paid', false)
         .or('is_cancelled.is.null,is_cancelled.eq.false')
@@ -98,6 +98,19 @@ Deno.serve(async (req) => {
         }
 
         cancelledIds.push(order.id);
+
+        // Pedido que já tinha sido exportado para a Bagy: devolve lá o estoque abatido (o servidor confere e só devolve uma vez).
+        if ((order as any).bagy_order_id) {
+          try {
+            await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/bagy-sync`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+              body: JSON.stringify({ action: 'restore_stock', tenant_id: order.tenant_id, order_id: order.id }),
+            });
+          } catch (bagyErr) {
+            console.error(`[orders-auto-cancel] falha ao devolver estoque na Bagy do pedido ${order.id}:`, bagyErr);
+          }
+        }
 
         await supabase.from('audit_logs').insert({
           entity: 'order',

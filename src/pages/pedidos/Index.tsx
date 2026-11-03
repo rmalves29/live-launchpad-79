@@ -61,6 +61,7 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
     order_status?: 'em_separacao' | 'envio_pendente' | 'enviado' | 'liberado_retirada' | null;
     customer_name?: string;
     bling_order_id?: number;
+    bagy_order_id?: number | null;
     source?: string | null;
     customer?: {
       name?: string;
@@ -728,9 +729,30 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
       }
     };
 
+    // Pedido já exportado para a Bagy: devolve lá o estoque que foi abatido (uma vez só; o servidor confere).
+    const restoreBagyStock = async (order: Order | undefined, deleting = false) => {
+      if (!order?.bagy_order_id || !order.tenant_id) return;
+      try {
+        const { data, error } = await supabase.functions.invoke('bagy-sync', {
+          body: { action: 'restore_stock', tenant_id: order.tenant_id, order_id: order.id, deleting },
+        });
+        if (error || (data as any)?.success === false) {
+          toast({
+            title: 'Estoque da Bagy não atualizado',
+            description: `Pedido #${order.tenant_order_number || order.id}: não foi possível devolver o estoque na Bagy. Use "Sincronizar estoque" na integração da Bagy.`,
+            variant: 'destructive',
+          });
+        }
+      } catch (err) {
+        console.error('Erro ao devolver estoque na Bagy:', err);
+      }
+    };
+
+    const BLING_CANCEL_WARNING = 'Atenção: este pedido já foi enviado ao Bling. Cancele-o lá também, porque o estoque do Bling não é devolvido automaticamente.';
+
     const toggleCancelledStatus = async (orderId: number, currentStatus: boolean) => {
       const order = orders.find(o => o.id === orderId);
-      
+
       // Não permitir cancelar pedido já pago
       if (!currentStatus && order?.is_paid) {
         toast({
@@ -744,7 +766,7 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
       const actionText = currentStatus ? 'reverter o cancelamento' : 'cancelar';
       const orderNumber = order?.tenant_order_number || orderId;
       const confirmed = await confirm({
-        description: `Deseja ${actionText} do pedido #${orderNumber}?`,
+        description: `Deseja ${actionText} do pedido #${orderNumber}?${!currentStatus && order?.bling_order_id ? ` ${BLING_CANCEL_WARNING}` : ''}`,
         confirmText: currentStatus ? 'Reverter' : 'Cancelar Pedido',
         variant: currentStatus ? 'default' : 'destructive',
       });
@@ -771,6 +793,8 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
           .eq('id', orderId);
 
         if (error) throw error;
+
+        if (!currentStatus) await restoreBagyStock(order);
 
         // Registrar auditoria do cancelamento/reativação
         try {
@@ -855,8 +879,9 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
         return;
       }
 
+      const blingSent = cancelableOrders.filter(o => o.bling_order_id).length;
       const confirmed = await confirm({
-        description: `Deseja cancelar ${cancelableOrders.length} pedido(s)? O estoque dos produtos será devolvido.`,
+        description: `Deseja cancelar ${cancelableOrders.length} pedido(s)? O estoque dos produtos será devolvido.${blingSent ? ` Atenção: ${blingSent} deles já foi(ram) enviado(s) ao Bling. Cancele-o(s) lá também, porque o estoque do Bling não é devolvido automaticamente.` : ''}`,
         confirmText: 'Cancelar Pedidos',
         variant: 'destructive',
       });
@@ -880,6 +905,8 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
           .in('id', cancelableOrders.map(o => o.id));
 
         if (error) throw error;
+
+        for (const o of cancelableOrders) await restoreBagyStock(o);
 
         // Registrar auditoria de cancelamento em lote
         try {
@@ -939,8 +966,9 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
         return;
       }
 
+      const blingSentDel = orders.filter(o => selectedOrders.has(o.id) && o.bling_order_id).length;
       const confirmed = await confirm({
-        description: `Deseja deletar ${selectedOrders.size} pedido(s)?`,
+        description: `Deseja deletar ${selectedOrders.size} pedido(s)?${blingSentDel ? ` Atenção: ${blingSentDel} deles já foi(ram) enviado(s) ao Bling. Cancele-o(s) lá também, porque o estoque do Bling não é devolvido automaticamente.` : ''}`,
         confirmText: 'Deletar',
         variant: 'destructive',
       });
@@ -961,6 +989,7 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
             if (restoreError) {
               console.error(`[deleteOrders] Erro ao devolver estoque do pedido ${orderId}:`, restoreError);
             }
+            await restoreBagyStock(order, true);
 
             // Deletar cart items e cart
             await supabaseTenant

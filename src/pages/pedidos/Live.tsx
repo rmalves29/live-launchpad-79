@@ -756,9 +756,37 @@ const Live = () => {
   };
 
   const handleDeleteOrder = async (orderId: number) => {
-    if (!confirm('Tem certeza que deseja excluir este pedido?')) return;
+    const { data: ord } = await supabaseTenant
+      .from('orders')
+      .select('tenant_id, cart_id, is_paid, bagy_order_id, bling_order_id')
+      .eq('id', orderId)
+      .maybeSingle();
+    const blingNote = ord?.bling_order_id
+      ? '\n\nAtenção: este pedido já foi enviado ao Bling. Cancele-o lá também, porque o estoque do Bling não é devolvido automaticamente.'
+      : '';
+    if (!confirm(`Tem certeza que deseja excluir este pedido?${blingNote}`)) return;
 
     try {
+      // Devolve o estoque antes de apagar (atômico e uma vez só; pedido pago nunca devolve por aqui).
+      if (ord?.cart_id && !ord.is_paid) {
+        const { error: restoreError } = await supabaseTenant.rpc('restore_order_stock', { p_order_id: orderId });
+        if (restoreError) console.error('Erro ao devolver estoque do pedido excluído:', restoreError);
+
+        // Pedido já exportado para a Bagy: devolve lá o estoque abatido
+        if (ord.bagy_order_id && ord.tenant_id) {
+          const { data: bagy, error: bagyError } = await supabase.functions.invoke('bagy-sync', {
+            body: { action: 'restore_stock', tenant_id: ord.tenant_id, order_id: orderId, deleting: true },
+          });
+          if (bagyError || (bagy as any)?.success === false) {
+            toast({
+              title: 'Estoque da Bagy não atualizado',
+              description: 'Não foi possível devolver o estoque na Bagy. Use "Sincronizar estoque" na integração da Bagy.',
+              variant: 'destructive',
+            });
+          }
+        }
+      }
+
       const { error } = await supabaseTenant
         .from('orders')
         .delete()
