@@ -4114,6 +4114,291 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_affiliate_clicks: {
+        Row: {
+          affiliate_id: string
+          created_at: string
+          id: string
+          ip_hash: string | null
+          landing_path: string | null
+          referrer: string | null
+          user_agent: string | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+        }
+        Insert: {
+          affiliate_id: string
+          created_at?: string
+          id?: string
+          ip_hash?: string | null
+          landing_path?: string | null
+          referrer?: string | null
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Update: {
+          affiliate_id?: string
+          created_at?: string
+          id?: string
+          ip_hash?: string | null
+          landing_path?: string | null
+          referrer?: string | null
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_affiliate_clicks_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "platform_affiliates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_affiliate_commissions: {
+        Row: {
+          affiliate_id: string
+          created_at: string
+          id: string
+          libera_em: string
+          paga_em: string | null
+          payment_ref: string
+          payout_id: string | null
+          percent: number
+          status: string
+          tenant_id: string | null
+          valor_base: number
+          valor_comissao: number
+        }
+        Insert: {
+          affiliate_id: string
+          created_at?: string
+          id?: string
+          libera_em: string
+          paga_em?: string | null
+          payment_ref: string
+          payout_id?: string | null
+          percent: number
+          status?: string
+          tenant_id?: string | null
+          valor_base: number
+          valor_comissao: number
+        }
+        Update: {
+          affiliate_id?: string
+          created_at?: string
+          id?: string
+          libera_em?: string
+          paga_em?: string | null
+          payment_ref?: string
+          payout_id?: string | null
+          percent?: number
+          status?: string
+          tenant_id?: string | null
+          valor_base?: number
+          valor_comissao?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_affiliate_commissions_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "platform_affiliates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_affiliate_commissions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_affiliate_commissions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_affiliate_leads: {
+        Row: {
+          affiliate_id: string | null
+          created_at: string
+          id: string
+          instagram: string | null
+          nome: string | null
+          origem: string
+          tenant_id: string | null
+          whatsapp: string | null
+        }
+        Insert: {
+          affiliate_id?: string | null
+          created_at?: string
+          id?: string
+          instagram?: string | null
+          nome?: string | null
+          origem?: string
+          tenant_id?: string | null
+          whatsapp?: string | null
+        }
+        Update: {
+          affiliate_id?: string | null
+          created_at?: string
+          id?: string
+          instagram?: string | null
+          nome?: string | null
+          origem?: string
+          tenant_id?: string | null
+          whatsapp?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_affiliate_leads_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "platform_affiliates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_affiliate_leads_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_affiliate_leads_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_affiliate_payouts: {
+        Row: {
+          affiliate_id: string
+          comprovante_url: string | null
+          created_by: string | null
+          id: string
+          paid_at: string
+          pix_key: string | null
+          valor: number
+        }
+        Insert: {
+          affiliate_id: string
+          comprovante_url?: string | null
+          created_by?: string | null
+          id?: string
+          paid_at?: string
+          pix_key?: string | null
+          valor: number
+        }
+        Update: {
+          affiliate_id?: string
+          comprovante_url?: string | null
+          created_by?: string | null
+          id?: string
+          paid_at?: string
+          pix_key?: string | null
+          valor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_affiliate_payouts_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "platform_affiliates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_affiliate_settings: {
+        Row: {
+          affiliate_whatsapp: string | null
+          attribution_days: number
+          default_months: number | null
+          default_percent: number
+          hold_days: number
+          id: number
+          min_payout: number
+          updated_at: string
+        }
+        Insert: {
+          affiliate_whatsapp?: string | null
+          attribution_days?: number
+          default_months?: number | null
+          default_percent?: number
+          hold_days?: number
+          id?: number
+          min_payout?: number
+          updated_at?: string
+        }
+        Update: {
+          affiliate_whatsapp?: string | null
+          attribution_days?: number
+          default_months?: number | null
+          default_percent?: number
+          hold_days?: number
+          id?: number
+          min_payout?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_affiliates: {
+        Row: {
+          codigo: string
+          commission_months: number | null
+          commission_percent: number
+          created_at: string
+          email: string
+          id: string
+          nome: string
+          pix_key: string | null
+          status: string
+          telefone: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          codigo: string
+          commission_months?: number | null
+          commission_percent?: number
+          created_at?: string
+          email: string
+          id?: string
+          nome: string
+          pix_key?: string | null
+          status?: string
+          telefone?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          codigo?: string
+          commission_months?: number | null
+          commission_percent?: number
+          created_at?: string
+          email?: string
+          id?: string
+          nome?: string
+          pix_key?: string | null
+          status?: string
+          telefone?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       product_categories: {
         Row: {
           created_at: string
@@ -5675,6 +5960,7 @@ export type Database = {
           access_type: string
           address: string | null
           admin_email: string
+          affiliate_id: string | null
           approval_sent_at: string | null
           approved_at: string | null
           cnpj: string | null
@@ -5706,6 +5992,7 @@ export type Database = {
           access_type?: string
           address?: string | null
           admin_email: string
+          affiliate_id?: string | null
           approval_sent_at?: string | null
           approved_at?: string | null
           cnpj?: string | null
@@ -5737,6 +6024,7 @@ export type Database = {
           access_type?: string
           address?: string | null
           admin_email?: string
+          affiliate_id?: string | null
           approval_sent_at?: string | null
           approved_at?: string | null
           cnpj?: string | null
@@ -5764,7 +6052,15 @@ export type Database = {
           welcome_sent_at?: string | null
           whatsapp_provider?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "tenant_onboarding_requests_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "platform_affiliates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tenant_users: {
         Row: {
@@ -5810,6 +6106,8 @@ export type Database = {
           address: string | null
           admin_email: string | null
           admin_user_id: string | null
+          affiliate_attributed_at: string | null
+          affiliate_id: string | null
           auto_cancel_live_minutes: number | null
           auto_cancel_unpaid_enabled: boolean
           auto_cancel_unpaid_hours: number
@@ -5865,6 +6163,8 @@ export type Database = {
           address?: string | null
           admin_email?: string | null
           admin_user_id?: string | null
+          affiliate_attributed_at?: string | null
+          affiliate_id?: string | null
           auto_cancel_live_minutes?: number | null
           auto_cancel_unpaid_enabled?: boolean
           auto_cancel_unpaid_hours?: number
@@ -5920,6 +6220,8 @@ export type Database = {
           address?: string | null
           admin_email?: string | null
           admin_user_id?: string | null
+          affiliate_attributed_at?: string | null
+          affiliate_id?: string | null
           auto_cancel_live_minutes?: number | null
           auto_cancel_unpaid_enabled?: boolean
           auto_cancel_unpaid_hours?: number
@@ -5971,7 +6273,15 @@ export type Database = {
           waitlist_reserve_minutes?: number
           whatsapp_provider?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "tenants_affiliate_id_fkey"
+            columns: ["affiliate_id"]
+            isOneToOne: false
+            referencedRelation: "platform_affiliates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       webhook_logs: {
         Row: {
@@ -6977,9 +7287,57 @@ export type Database = {
         }[]
       }
       live_release_expired_reservations: { Args: never; Returns: number }
+      my_platform_affiliate_clients: {
+        Args: never
+        Returns: {
+          ativo: boolean
+          attributed_at: string
+          name: string
+        }[]
+      }
+      my_platform_affiliate_id: { Args: never; Returns: string }
       normalize_bazar_phone: { Args: { phone: string }; Returns: string }
       normalize_phone_regional: { Args: { phone: string }; Returns: string }
       phone_match_key: { Args: { p: string }; Returns: string }
+      platform_affiliate_attach_tenant: {
+        Args: { _affiliate_id: string; _phone?: string; _tenant_id: string }
+        Returns: boolean
+      }
+      platform_affiliate_cancel_commission: {
+        Args: { _payment_ref: string }
+        Returns: number
+      }
+      platform_affiliate_match_lead: {
+        Args: { _phone: string }
+        Returns: string
+      }
+      platform_affiliate_ranking: {
+        Args: never
+        Returns: {
+          affiliate_id: string
+          clientes: number
+          clientes_ativos: number
+          cliques: number
+          comissao_total: number
+          leads: number
+          liberado: number
+          mrr: number
+        }[]
+      }
+      platform_affiliate_record_commission: {
+        Args: {
+          _amount: number
+          _paid_at?: string
+          _payment_ref: string
+          _tenant_id: string
+        }
+        Returns: string
+      }
+      platform_affiliate_register_payout: {
+        Args: { _affiliate_id: string; _comprovante_url?: string }
+        Returns: Json
+      }
+      platform_affiliate_release_due: { Args: never; Returns: number }
       public_register_instagram: {
         Args: {
           p_instagram: string
@@ -7148,7 +7506,7 @@ export type Database = {
         | "waitlist"
         | "blocked_customer"
         | "instagram_signup"
-      user_role: "super_admin" | "tenant_admin" | "staff"
+      user_role: "super_admin" | "tenant_admin" | "staff" | "affiliate"
       whatsapp_message_type:
         | "incoming"
         | "outgoing"
@@ -7326,7 +7684,7 @@ export const Constants = {
         "blocked_customer",
         "instagram_signup",
       ],
-      user_role: ["super_admin", "tenant_admin", "staff"],
+      user_role: ["super_admin", "tenant_admin", "staff", "affiliate"],
       whatsapp_message_type: [
         "incoming",
         "outgoing",

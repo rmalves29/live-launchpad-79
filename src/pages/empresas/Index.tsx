@@ -58,6 +58,7 @@ import { differenceInDays } from 'date-fns';
 import { RecurringLinksDialog } from './RecurringLinksDialog';
 import { OnboardingRequestsDialog } from './OnboardingRequestsDialog';
 import { generateAdminPassword } from './admin-password';
+import { AffiliateSelect } from '@/components/affiliates/AffiliateSelect';
 
 interface Tenant {
   id: string;
@@ -124,6 +125,8 @@ export default function EmpresasIndex() {
   const [formBlockedReason, setFormBlockedReason] = useState('');
   const [formNotes, setFormNotes] = useState('');
   const [formAccessType, setFormAccessType] = useState<'tenant_admin' | 'super_admin'>('tenant_admin');
+  const [formAffiliateId, setFormAffiliateId] = useState<string | null>(null);
+  const [affKey, setAffKey] = useState(0);
   
   // Logo upload states
   const [formLogoUrl, setFormLogoUrl] = useState<string | null>(null);
@@ -303,6 +306,8 @@ export default function EmpresasIndex() {
       setFormBlockedReason('');
       setFormNotes('');
       setFormAccessType('tenant_admin');
+      setFormAffiliateId(null);
+      setAffKey((k) => k + 1);
     }
     setDialogOpen(true);
   };
@@ -425,6 +430,13 @@ export default function EmpresasIndex() {
 
         if (insertError) throw insertError;
         tenantId = newTenant.id;
+
+        if (formAffiliateId) {
+          const { error: affErr } = await supabase.rpc('platform_affiliate_attach_tenant' as any, {
+            _tenant_id: tenantId, _affiliate_id: formAffiliateId, _phone: formContactPhone || null,
+          });
+          if (affErr) console.error('Erro ao vincular afiliado:', affErr);
+        }
 
         // Manter o registro de login sem persistir a senha do formulário.
         const { error: credentialError } = await supabase
@@ -1005,6 +1017,10 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
                     />
                   </div>
                 </div>
+
+                {!editingTenant && (
+                  <AffiliateSelect key={affKey} value={formAffiliateId} onChange={setFormAffiliateId} phone={formContactPhone} />
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">

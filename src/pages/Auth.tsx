@@ -138,6 +138,13 @@ export default function Auth() {
 
       // Verificar se a tenant do usuário tem acesso
       if (data.user) {
+        // Afiliado da plataforma: não tem empresa, vai direto para o painel dele
+        const { data: roleRow } = await supabase.from('profiles').select('role').eq('id', data.user.id).maybeSingle();
+        if ((roleRow as any)?.role === 'affiliate') {
+          navigate('/afiliado', { replace: true });
+          return;
+        }
+
         const accessCheck = await checkTenantAccess(data.user.id);
         console.log('[Auth] Resultado da verificação:', accessCheck);
         

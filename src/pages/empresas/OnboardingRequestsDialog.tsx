@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
+import { AffiliateSelect } from '@/components/affiliates/AffiliateSelect';
 
 const SUFFIX_CHARS = ['*', '+', '@', '#', '$', '%'];
 const pick = () => {
@@ -54,6 +55,8 @@ export function OnboardingRequestsDialog({ onTenantCreated }: { onTenantCreated?
   const [info, setInfo] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY);
   const [suffix, setSuffix] = useState(newSuffix);
+  const [affiliateId, setAffiliateId] = useState<string | null>(null);
+  const [affKey, setAffKey] = useState(0);
   const [approver, setApprover] = useState('');
   const [settingsId, setSettingsId] = useState<number | null>(null);
 
@@ -89,11 +92,11 @@ export function OnboardingRequestsDialog({ onTenantCreated }: { onTenantCreated?
   const create = async () => {
     setError(null); setInfo(null); setBusy('create');
     try {
-      const r = await call({ action: 'create', ...form, password_suffix: suffix });
+      const r = await call({ action: 'create', ...form, password_suffix: suffix, affiliate_id: affiliateId });
       setInfo(r.send_error
         ? `Pré-cadastro ${r.short_code} criado (senha ${r.password}), mas o pedido de aprovação não saiu: ${r.send_error}`
         : `Pré-cadastro ${r.short_code} criado e pedido de aprovação enviado. Senha: ${r.password}`);
-      setForm(EMPTY); setSuffix(newSuffix()); load();
+      setForm(EMPTY); setSuffix(newSuffix()); setAffiliateId(null); setAffKey((k) => k + 1); load();
     } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
   };
 
@@ -146,6 +149,7 @@ export function OnboardingRequestsDialog({ onTenantCreated }: { onTenantCreated?
               <div><Label>CNPJ</Label><Input value={form.cnpj} onChange={(e) => set('cnpj', e.target.value)} /></div>
               <div><Label>Responsável</Label><Input value={form.contact_name} onChange={(e) => set('contact_name', e.target.value)} /></div>
               <div><Label>WhatsApp do responsável</Label><Input value={form.contact_phone} onChange={(e) => set('contact_phone', e.target.value)} /></div>
+              <div className="md:col-span-2"><AffiliateSelect key={affKey} value={affiliateId} onChange={setAffiliateId} phone={form.contact_phone} /></div>
               <div className="md:col-span-2"><Label>Endereço</Label><Input value={form.address} onChange={(e) => set('address', e.target.value)} /></div>
               <div className="md:col-span-2"><Label>Logo (URL, opcional)</Label><Input value={form.logo_url} onChange={(e) => set('logo_url', e.target.value)} /></div>
               <div className="md:col-span-2"><Label>Observações</Label><Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>

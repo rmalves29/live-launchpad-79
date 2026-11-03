@@ -108,6 +108,11 @@ async function approve(id: string): Promise<{ ok: boolean; text: string; status:
     return await fail(admin.error);
   }
 
+  if (row.affiliate_id) {
+    const { error: affErr } = await sb.rpc("platform_affiliate_attach_tenant", { _tenant_id: tenantId, _affiliate_id: row.affiliate_id, _phone: row.contact_phone });
+    if (affErr) console.error("[tenant-onboarding] vincular afiliado:", affErr.message);
+  }
+
   await sb.from("tenant_onboarding_requests").update({
     status: "aprovado", approved_at: new Date().toISOString(), tenant_id: tenantId, error_message: null,
   }).eq("id", id);
@@ -186,6 +191,7 @@ Deno.serve(async (req) => {
           sells_live: !!body.sells_live, sells_bazar: !!body.sells_bazar,
           cnpj: s(body.cnpj, 30) || null, address: s(body.address, 400) || null, notes: s(body.notes, 2000) || null,
           logo_url: s(body.logo_url, 500) || null, password_suffix: suffix, created_by: u.user.id,
+          affiliate_id: /^[0-9a-f-]{36}$/i.test(String(body.affiliate_id || "")) ? body.affiliate_id : null,
         }).select("*").single();
         if (error) { if (error.code === "23505") continue; return json({ error: error.message }, 400); }
         row = data;

@@ -6,7 +6,7 @@ import { supabaseTenant } from '@/lib/supabase-tenant';
 interface UserProfile {
   id: string;
   email: string | null;
-  role: 'super_admin' | 'tenant_admin' | 'staff';
+  role: 'super_admin' | 'tenant_admin' | 'staff' | 'affiliate';
   tenant_id: string | null;
   access_scope?: 'full' | 'fluxo_envio' | string | null;
   created_at: string;
