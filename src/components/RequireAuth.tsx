@@ -8,8 +8,12 @@ interface RequireAuthProps {
 }
 
 export default function RequireAuth({ children }: RequireAuthProps) {
-  const { user, isLoading } = useAuth();
+  const { user, profile, isLoading } = useAuth();
   const location = useLocation();
+
+  if (user && profile?.role === 'affiliate') {
+    return <Navigate to="/afiliado" replace />;
+  }
 
   if (user) {
     return <>{children}</>;

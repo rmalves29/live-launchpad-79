@@ -93,6 +93,11 @@ const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const TermsOfUse = lazy(() => import("./pages/TermsOfUse"));
 const SuporteIA = lazy(() => import("./pages/suporte-ia/Index"));
 const DesignPreview = lazy(() => import("./pages/design-preview/Index"));
+const ReferralRedirect = lazy(() => import("./pages/afiliados/ReferralRedirect"));
+const Indicacao = lazy(() => import("./pages/afiliados/Indicacao"));
+const AfiliadoCadastro = lazy(() => import("./pages/afiliados/Cadastro"));
+const AfiliadoPainel = lazy(() => import("./pages/afiliados/Painel"));
+const AdminAfiliados = lazy(() => import("./pages/admin/Afiliados"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -107,7 +112,7 @@ const queryClient = new QueryClient({
 const AppContent = () => {
   const location = useLocation();
   const { tenant, isMainSite } = useTenantContext();
-  const showShell = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && location.pathname !== '/politica-de-privacidade' && location.pathname !== '/termos-de-uso' && location.pathname !== '/design-preview' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/') && location.pathname !== '/fluxo-envio' && !location.pathname.startsWith('/fluxo-envio/app') && location.pathname !== '/fluxo-envio/pagamento';
+  const showShell = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && location.pathname !== '/politica-de-privacidade' && location.pathname !== '/termos-de-uso' && location.pathname !== '/design-preview' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/') && location.pathname !== '/fluxo-envio' && !location.pathname.startsWith('/fluxo-envio/app') && location.pathname !== '/fluxo-envio/pagamento' && !location.pathname.startsWith('/i/') && location.pathname !== '/indicacao' && location.pathname !== '/afiliados/cadastro' && location.pathname !== '/afiliado';
   
   // Atualiza o título da aba do navegador baseado na página atual
   usePageTitle();
@@ -161,6 +166,11 @@ const AppContent = () => {
       {/* Landing page pública institucional */}
       <Route path="/landing" element={<LandingPage />} />
       <Route path="/fluxo-envio" element={<LandingFluxoEnvio />} />
+      {/* Programa de afiliados da plataforma */}
+      <Route path="/i/:codigo" element={<ReferralRedirect />} />
+      <Route path="/indicacao" element={<Indicacao />} />
+      <Route path="/afiliados/cadastro" element={<AfiliadoCadastro />} />
+      <Route path="/afiliado" element={<AfiliadoPainel />} />
 
         
         {/* Rota principal - Index ou TenantAuth dependendo do contexto */}
@@ -332,6 +342,13 @@ const AppContent = () => {
             <RafaelOnly>
               <AdminErros />
             </RafaelOnly>
+          </RequireAuth>
+        } />
+        <Route path="/admin/afiliados" element={
+          <RequireAuth>
+            <SuperAdminOnly>
+              <AdminAfiliados />
+            </SuperAdminOnly>
           </RequireAuth>
         } />
         <Route path="/admin/monitoramento-mensagens" element={
