@@ -116,6 +116,7 @@ const AppContent = () => {
   
   // Atualiza o título da aba do navegador baseado na página atual
   usePageTitle();
+  const { profile: authProfile } = useAuth();
 
   // Se estamos em um subdomínio de tenant, usar autenticação específica
   const TenantAuthComponent = tenant ? TenantAuth : Auth;
@@ -434,6 +435,10 @@ const AppContent = () => {
       </Routes>
     </Suspense>
   );
+
+  // Afiliado da plataforma não acessa nada de empresa: fica só no painel dele e nas páginas públicas
+  const affiliateAllowed = ['/afiliado', '/indicacao', '/afiliados/cadastro', '/auth', '/reset-password'].includes(location.pathname) || location.pathname.startsWith('/i/');
+  if (authProfile?.role === 'affiliate' && !affiliateAllowed) return <Navigate to="/afiliado" replace />;
 
   return showShell ? <AppShell>{routes}</AppShell> : routes;
 };

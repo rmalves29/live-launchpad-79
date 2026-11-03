@@ -1,4 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'bun:test';
+
+const store: Record<string, string> = {};
+(globalThis as any).localStorage = { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; }, clear: () => { for (const k in store) delete store[k]; } };
+(globalThis as any).document = { cookie: '' };
 import { getActiveRef, rememberRef, whatsappText } from './affiliate-ref';
 
 describe('referência de afiliado', () => {
