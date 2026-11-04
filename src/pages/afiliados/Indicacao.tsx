@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { getActiveRef, rememberRef } from '@/lib/affiliate-ref';
 import cartzyLogo from '@/assets/cartzy-logo.png';
+import { SelfSignupForm } from '@/components/affiliates/SelfSignupForm';
 
 const TZ = { timeZone: 'America/Sao_Paulo' } as const;
 const dayKey = (iso: string) => new Date(iso).toLocaleDateString('en-CA', TZ);
@@ -36,6 +37,8 @@ export default function Indicacao() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [price, setPrice] = useState(299);
+  const [showMeeting, setShowMeeting] = useState(false);
 
   const loadSlots = () => {
     setLoadingSlots(true);
@@ -43,7 +46,10 @@ export default function Indicacao() {
       .then(({ data }) => { setAffiliate(data?.affiliate ?? null); setSlots(data?.slots || []); })
       .finally(() => setLoadingSlots(false));
   };
-  useEffect(() => { document.title = 'Cartzy — venda em live sem bagunça'; loadSlots(); }, [ref]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    document.title = 'Cartzy — venda em live sem bagunça'; loadSlots();
+    supabase.functions.invoke('self-signup', { body: { action: 'config' } }).then(({ data }) => { if (data?.price) setPrice(Number(data.price)); });
+  }, [ref]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const byDay = useMemo(() => {
     const m = new Map<string, string[]>();
@@ -66,7 +72,8 @@ export default function Indicacao() {
     } catch { setError('Não foi possível agendar agora'); } finally { setSending(false); }
   };
 
-  const scrollToForm = () => document.getElementById('quero-conhecer')?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToForm = () => { setShowMeeting(true); setTimeout(() => document.getElementById('quero-conhecer')?.scrollIntoView({ behavior: 'smooth' }), 50); };
+  const scrollToSignup = () => document.getElementById('contratar')?.scrollIntoView({ behavior: 'smooth' });
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -84,9 +91,14 @@ export default function Indicacao() {
           <p className="mt-5 max-w-xl text-lg text-muted-foreground">
             Pedido, pagamento, frete e WhatsApp organizados sozinhos — para você focar em vender.
           </p>
-          <Button size="lg" className="mt-8 h-12 px-8 text-base" onClick={scrollToForm}>
-            Quero conhecer <ArrowRight className="ml-2 h-5 w-5" />
-          </Button>
+          <div className="mt-8 flex flex-col items-start gap-3">
+            <Button size="lg" className="h-12 px-8 text-base" onClick={scrollToSignup}>
+              Contratar agora <ArrowRight className="ml-2 h-5 w-5" />
+            </Button>
+            <button type="button" onClick={scrollToForm} className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground">
+              Prefiro conversar antes — agendar uma apresentação
+            </button>
+          </div>
         </div>
       </header>
 
@@ -106,7 +118,16 @@ export default function Indicacao() {
         ))}
       </section>
 
-      <section id="quero-conhecer" className="mx-auto max-w-md px-5 pb-20">
+      <section id="contratar" className="mx-auto max-w-md px-5 pb-10">
+        <SelfSignupForm refCode={ref} price={price} />
+        {!showMeeting && (
+          <button type="button" onClick={scrollToForm} className="mt-4 block w-full text-center text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground">
+            Prefiro conversar antes — agendar uma apresentação
+          </button>
+        )}
+      </section>
+
+      {showMeeting && <section id="quero-conhecer" className="mx-auto max-w-md px-5 pb-20">
         {done ? (
           <div className="rounded-2xl border bg-card p-6 shadow-lg space-y-3 text-center">
             <CalendarCheck className="mx-auto h-10 w-10 text-primary" />
