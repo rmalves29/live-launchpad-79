@@ -392,27 +392,32 @@ export default function EmpresasIndex() {
         // Atualizar ou criar credencial se email/senha foram fornecidos
         if (formAdminEmail) {
           if (formAdminPassword) {
-            // Salvar senha em texto puro
+            // Cria (ou recria) o login de verdade e liga à empresa; a senha não fica salva no banco.
+            const { data: adminData, error: adminError } = await supabase.functions.invoke('create-tenant-admin', {
+              body: { tenant_id: editingTenant.id, email: formAdminEmail, password: formAdminPassword, role: formAccessType },
+            });
+            let adminMsg: string | null = null;
+            if (adminError) {
+              adminMsg = adminError.message;
+              try {
+                const ctx: any = (adminError as any).context;
+                if (ctx && typeof ctx.json === 'function') { const body = await ctx.json(); if (body?.error) adminMsg = body.error; }
+              } catch { /* ignore */ }
+            } else if (adminData && (adminData as any).error) {
+              adminMsg = (adminData as any).error;
+            }
+            if (adminMsg) throw new Error(`Não foi possível criar/atualizar o login do administrador: ${adminMsg}`);
+
             if (existingCredential) {
               const { error: credentialError } = await supabase
                 .from('tenant_credentials')
-                .update({
-                  email: formAdminEmail,
-                  password_hash: formAdminPassword,
-                })
+                .update({ email: formAdminEmail, password_hash: '' })
                 .eq('tenant_id', editingTenant.id);
-
               if (credentialError) throw credentialError;
             } else {
               const { error: credentialError } = await supabase
                 .from('tenant_credentials')
-                .insert({
-                  tenant_id: editingTenant.id,
-                  email: formAdminEmail,
-                  password_hash: formAdminPassword,
-                  is_active: true
-                });
-
+                .insert({ tenant_id: editingTenant.id, email: formAdminEmail, password_hash: '', is_active: true });
               if (credentialError) throw credentialError;
             }
           } else if (existingCredential && formAdminEmail !== existingCredential.email) {
