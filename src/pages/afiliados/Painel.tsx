@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import cartzyLogo from '@/assets/cartzy-logo.png';
+import { IndicateDialog } from '@/components/affiliates/IndicateDialog';
+import { LEAD_STATUS } from '@/components/affiliates/lead-status';
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const SITE = 'https://app.cartzy.com.br';
@@ -49,7 +51,7 @@ export default function AfiliadoPainel() {
     const [a, c, l, m, p, cl] = await Promise.all([
       supabase.from('platform_affiliates' as any).select('*').eq('user_id', user.id).maybeSingle(),
       supabase.from('platform_affiliate_clicks' as any).select('created_at').gte('created_at', since),
-      supabase.from('platform_affiliate_leads' as any).select('nome, created_at, tenant_id').order('created_at', { ascending: false }),
+      supabase.from('platform_affiliate_leads' as any).select('id, nome, empresa, status, meeting_at, created_at, tenant_id').order('created_at', { ascending: false }),
       supabase.from('platform_affiliate_commissions' as any).select('*').order('created_at', { ascending: false }),
       supabase.from('platform_affiliate_payouts' as any).select('*').order('paid_at', { ascending: false }),
       supabase.rpc('my_platform_affiliate_clients' as any),
@@ -142,6 +144,22 @@ export default function AfiliadoPainel() {
               <Label>Chave PIX</Label>
               <div className="flex gap-2"><Input value={pix} onChange={(e) => setPix(e.target.value)} /><Button onClick={savePix}>Salvar</Button></div>
               {pixMsg && <p className="text-sm text-muted-foreground">{pixMsg}</p>}
+            </section>
+
+            <section className="rounded-xl border bg-card p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-semibold">Minhas indicações</div>
+                <IndicateDialog disabled={aff.status !== 'aprovado'} onDone={load} />
+              </div>
+              {leads.length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma indicação ainda.</p> : leads.map((l) => (
+                <div key={l.id} className="flex flex-wrap items-center justify-between gap-2 text-sm py-2 border-b last:border-0">
+                  <span><strong>{l.empresa || l.nome}</strong>{l.empresa ? <span className="text-muted-foreground"> · {l.nome}</span> : null}</span>
+                  <span className="flex items-center gap-2">
+                    {l.meeting_at && l.status === 'reuniao_agendada' && <span className="text-muted-foreground">{new Date(l.meeting_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>}
+                    <Badge variant={l.status === 'perdido' ? 'secondary' : l.status === 'pagando' || l.status === 'fechado' ? 'default' : 'outline'}>{LEAD_STATUS[l.status] || l.status}</Badge>
+                  </span>
+                </div>
+              ))}
             </section>
 
             <section className="rounded-xl border bg-card p-4">
