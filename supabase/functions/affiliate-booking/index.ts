@@ -47,7 +47,7 @@ async function agenda() {
 
 async function bookedSlots() {
   const { data } = await sb.from("platform_affiliate_leads").select("meeting_at")
-    .eq("status", "reuniao_agendada").gte("meeting_at", new Date().toISOString());
+    .or("status.eq.reuniao_agendada,meeting_type.eq.onboarding").gte("meeting_at", new Date().toISOString());
   return (data || []).map((r: any) => r.meeting_at as string);
 }
 
