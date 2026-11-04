@@ -167,11 +167,6 @@ Deno.serve(async (req) => {
 
     if (action === "google_status") return json({ success: true, connected: googleConfigured() });
 
-    if (action === "admin_lookup_conflict") {
-      const { data } = await sb.rpc("platform_lead_register", { _affiliate_id: null, _nome: "", _empresa: "", _whatsapp: "", _instagram: "", _vende_live: null, _origem: "manual" });
-      return json({ success: true, data });
-    }
-
     const leadId = s(body.lead_id, 40);
     const { data: lead } = await sb.from("platform_affiliate_leads").select("*").eq("id", leadId).maybeSingle();
     if (!lead) return json({ success: false, error: "Lead não encontrado" });

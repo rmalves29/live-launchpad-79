@@ -16,6 +16,8 @@ function json(body: unknown, status = 200) {
   });
 }
 
+const now0 = () => new Date().toISOString();
+
 function parseCodeForTenant(code?: string | null): { tenant_id?: string; plan_id?: string } {
   if (!code) return {};
   // orderzap-sub-<TENANT_UUID>-<PLAN> (formato legado)
@@ -152,6 +154,25 @@ Deno.serve(async (req) => {
     }
 
     if (!tenantId) {
+      // Links recorrentes compartilhados (pagarme_recurring_links) chegam sem tenant: atribui ao tenant pelo pagador
+      // (mapeamento salvo, documento, e-mail ou telefone) só para comissão de afiliado; sem casar, fica "sem empresa vinculada".
+      if (type === "charge.paid" && charge?.id) {
+        const c = charge?.customer || {};
+        const mp = c?.phones?.mobile_phone || c?.phones?.home_phone || null;
+        const { data: att, error: attErr } = await supabase.rpc("platform_pagarme_payment", {
+          _payment_ref: String(charge.id),
+          _amount: Number(charge?.paid_amount ?? charge?.amount ?? 0) / 100,
+          _paid_at: charge?.paid_at || now0(),
+          _customer_id: c?.id || charge?.customer_id || null,
+          _subscription_id: subscriptionId || null,
+          _email: c?.email || null,
+          _phone: mp ? `${mp.country_code || ""}${mp.area_code || ""}${mp.number || ""}` : null,
+          _document: c?.document || null,
+          _name: c?.name || null,
+        });
+        if (attErr) console.error("[pagarme-sub-webhook] atribuição link recorrente falhou:", attErr.message);
+        else console.log("[pagarme-sub-webhook] atribuição link recorrente:", JSON.stringify(att));
+      }
       await supabase.from("webhook_logs").insert({
         webhook_type: `pagarme_subscription:unmatched:${type}`,
         status_code: 200,
