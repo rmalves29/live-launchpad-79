@@ -65,7 +65,8 @@ export default function AdminAfiliados() {
       const { error } = await supabase.from('platform_affiliate_settings' as any).update({
         affiliate_whatsapp: (settings.affiliate_whatsapp || '').replace(/\D/g, '') || null,
         default_percent: Number(settings.default_percent), default_months: settings.default_months ? Number(settings.default_months) : null,
-        min_payout: Number(settings.min_payout), updated_at: new Date().toISOString(),
+        min_payout: Number(settings.min_payout), plan_price: Number(String(settings.plan_price ?? 299).replace(',', '.')) || 299,
+        fallback_payment_url: (settings.fallback_payment_url || '').trim() || null, updated_at: new Date().toISOString(),
       }).eq('id', 1);
       if (error) {
         setMsg({ ok: false, text: error.message });
@@ -133,6 +134,8 @@ export default function AdminAfiliados() {
           <div className="md:col-span-2"><Label>WhatsApp da landing (com DDI)</Label><Input value={settings.affiliate_whatsapp || ''} placeholder="5511999999999" onChange={(e) => setSettings({ ...settings, affiliate_whatsapp: e.target.value })} /></div>
           <div><Label>% padrão (novos)</Label><Input value={settings.default_percent} onChange={(e) => setSettings({ ...settings, default_percent: e.target.value })} /></div>
           <div><Label>Saque mínimo (R$)</Label><Input value={settings.min_payout} onChange={(e) => setSettings({ ...settings, min_payout: e.target.value })} /></div>
+          <div><Label>Valor do plano (R$)</Label><Input value={settings.plan_price ?? 299} onChange={(e) => setSettings({ ...settings, plan_price: e.target.value })} /></div>
+          <div className="md:col-span-3"><Label>Link fixo de pagamento (reserva, se o link por empresa falhar)</Label><Input value={settings.fallback_payment_url || ''} placeholder="https://payment-link-v3.pagar.me/..." onChange={(e) => setSettings({ ...settings, fallback_payment_url: e.target.value })} /></div>
           <Button onClick={saveSettings} disabled={savingSettings}>{savingSettings ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}{savingSettings ? 'Salvando...' : 'Salvar'}</Button>
         </section>
       )}
