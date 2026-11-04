@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
+import { toast } from 'sonner';
 
 const brl = (v: number) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -23,6 +24,7 @@ export default function AdminAfiliados() {
   const [payFor, setPayFor] = useState<any>(null);
   const [file, setFile] = useState<File | null>(null);
   const [paying, setPaying] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,12 +58,26 @@ export default function AdminAfiliados() {
   };
 
   const saveSettings = async () => {
-    const { error } = await supabase.from('platform_affiliate_settings' as any).update({
-      affiliate_whatsapp: (settings.affiliate_whatsapp || '').replace(/\D/g, '') || null,
-      default_percent: Number(settings.default_percent), default_months: settings.default_months ? Number(settings.default_months) : null,
-      min_payout: Number(settings.min_payout), updated_at: new Date().toISOString(),
-    }).eq('id', 1);
-    setMsg(error ? { ok: false, text: error.message } : { ok: true, text: 'Configurações salvas.' });
+    setSavingSettings(true);
+    try {
+      const { error } = await supabase.from('platform_affiliate_settings' as any).update({
+        affiliate_whatsapp: (settings.affiliate_whatsapp || '').replace(/\D/g, '') || null,
+        default_percent: Number(settings.default_percent), default_months: settings.default_months ? Number(settings.default_months) : null,
+        min_payout: Number(settings.min_payout), updated_at: new Date().toISOString(),
+      }).eq('id', 1);
+      if (error) {
+        setMsg({ ok: false, text: error.message });
+        toast.error(error.message);
+      } else {
+        setMsg({ ok: true, text: 'Configurações salvas.' });
+        toast.success('Configurações salvas');
+        // recarrega do banco para refletir exatamente o que foi gravado
+        const { data } = await supabase.from('platform_affiliate_settings' as any).select('*').eq('id', 1).maybeSingle();
+        setSettings(data);
+      }
+    } finally {
+      setSavingSettings(false);
+    }
   };
 
   const byAff = useMemo(() => {
@@ -107,7 +123,7 @@ export default function AdminAfiliados() {
           <div className="md:col-span-2"><Label>WhatsApp da landing (com DDI)</Label><Input value={settings.affiliate_whatsapp || ''} placeholder="5511999999999" onChange={(e) => setSettings({ ...settings, affiliate_whatsapp: e.target.value })} /></div>
           <div><Label>% padrão (novos)</Label><Input value={settings.default_percent} onChange={(e) => setSettings({ ...settings, default_percent: e.target.value })} /></div>
           <div><Label>Saque mínimo (R$)</Label><Input value={settings.min_payout} onChange={(e) => setSettings({ ...settings, min_payout: e.target.value })} /></div>
-          <Button onClick={saveSettings}><Save className="h-4 w-4 mr-1" />Salvar</Button>
+          <Button onClick={saveSettings} disabled={savingSettings}>{savingSettings ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}{savingSettings ? 'Salvando...' : 'Salvar'}</Button>
         </section>
       )}
 
