@@ -40,6 +40,15 @@ async function sendWhatsApp(phone: string | null, message: string): Promise<stri
   return null;
 }
 
+async function isSuperAdmin(req: Request): Promise<boolean> {
+  const auth = req.headers.get("Authorization") || "";
+  if (!auth.startsWith("Bearer ")) return false;
+  const { data } = await createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: auth } } }).auth.getUser();
+  if (!data?.user) return false;
+  const { data: p } = await sb.from("profiles").select("role").eq("id", data.user.id).maybeSingle();
+  return p?.role === "super_admin";
+}
+
 async function rateLimited(ip: string): Promise<boolean> {
   const hour = new Date(); hour.setMinutes(0, 0, 0);
   const key = `self_signup:${ip}`;
@@ -165,7 +174,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = s(body?.action, 30);
     const isService = req.headers.get("Authorization") === `Bearer ${serviceKey}`;
-    DRY = body?.dry_run === true && isService;
+    DRY = body?.dry_run === true && (isService || await isSuperAdmin(req)); // teste: só sistema ou super_admin
 
     if (action === "welcome") {
       if (!isService) return json({ error: "Unauthorized" }, 401);
