@@ -970,7 +970,17 @@ const Produtos = () => {
     try {
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data);
-      const sheetName = workbook.SheetNames[0];
+      // Usa a aba que estava aberta quando o arquivo foi salvo (não sempre a primeira).
+      const activeIdx = Number((workbook as any).Workbook?.WBView?.[0]?.activeTab ?? 0);
+      const sheetName = workbook.SheetNames[activeIdx] ?? workbook.SheetNames[0];
+      if (workbook.SheetNames.length > 1) {
+        const ok = window.confirm(
+          `Esta planilha tem ${workbook.SheetNames.length} abas (${workbook.SheetNames.join(', ')}).\n\n` +
+          `Vamos importar a aba "${sheetName}". Continuar?\n\n` +
+          `Se for outra aba, cancele, deixe só a aba certa no arquivo e envie de novo.`
+        );
+        if (!ok) { setImporting(false); return; }
+      }
       const worksheet = workbook.Sheets[sheetName];
       // raw:false faz o xlsx aplicar formatação (preserva zeros à esquerda e evita 51461 virar 51461.0)
       const rawData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { raw: false, defval: '' });
