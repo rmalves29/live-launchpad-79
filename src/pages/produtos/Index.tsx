@@ -1027,6 +1027,41 @@ const Produtos = () => {
       const skippedDetails: string[] = [];
       const insertedCodes: string[] = [];
       const notFoundUpdateOnly: string[] = [];
+      // Prévia antes de gravar: evita importar o arquivo errado (ex.: "Produtos.csv" no lugar de "Produtos (2).csv")
+      {
+        const norm = (v: unknown) => String(v ?? '').trim().toLowerCase();
+        const valid = jsonData.filter((r) => r.codigo && r.nome && String(r.preco ?? '').trim() !== '');
+        const existing: { code: string; name: string }[] = [];
+        for (let from = 0; ; from += 1000) {
+          const { data: page } = await supabaseTenant.from('products').select('code, name').range(from, from + 999);
+          existing.push(...((page || []) as any));
+          if (!page || page.length < 1000) break;
+        }
+        const byCode = new Map(existing.map((p) => [norm(p.code), p.name]));
+        const names = new Set(existing.map((p) => norm(p.name)));
+        const overwrite = valid.filter((r) => byCode.has(norm(r.codigo)) && norm(byCode.get(norm(r.codigo))) !== norm(r.nome));
+        const sameName = valid.filter((r) => !byCode.has(norm(r.codigo)) && names.has(norm(r.nome)));
+        const codes = valid.map((r) => String(r.codigo).trim());
+        const lines = [
+          `Arquivo: ${file.name}`,
+          `Produtos encontrados: ${valid.length}` + (jsonData.length !== valid.length ? ` (${jsonData.length - valid.length} linhas incompletas serão ignoradas)` : ''),
+          codes.length ? `Códigos: ${codes.slice(0, 3).join(', ')}${codes.length > 3 ? ` … ${codes[codes.length - 1]}` : ''}` : '',
+        ];
+        if (overwrite.length) {
+          lines.push('', `⚠️ ${overwrite.length} código(s) já existem com OUTRO produto e serão SUBSTITUÍDOS:`,
+            ...overwrite.slice(0, 5).map((r) => `• ${r.codigo}: "${String(byCode.get(norm(r.codigo))).slice(0, 40)}" → "${String(r.nome).slice(0, 40)}"`));
+        }
+        if (sameName.length) {
+          lines.push('', `⚠️ ${sameName.length} produto(s) já estão cadastrados com o mesmo nome e outro código (vão ficar duplicados).`);
+        }
+        lines.push('', 'Confirma a importação?');
+        if (!window.confirm(lines.filter((l) => l !== undefined).join('\n'))) {
+          setImporting(false);
+          if (e.target) e.target.value = '';
+          return;
+        }
+      }
+
       let updatedCount = 0;
       let insertedCount = 0;
       let skippedCount = 0;
