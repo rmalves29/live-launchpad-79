@@ -177,6 +177,10 @@ Deno.serve(async (req) => {
       return json({ success: !err, error: err });
     }
 
+    if (action === "config") {
+      return json({ success: true, price: Number((await settings()).plan_price || 299) });
+    }
+
     if (action === "slots") {
       const a = normalizeAgenda((await settings()).agenda);
       return json({ success: true, slots: listSlots(a, new Date(), await bookedSlots()) });

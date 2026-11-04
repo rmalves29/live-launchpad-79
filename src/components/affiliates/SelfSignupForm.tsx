@@ -29,7 +29,6 @@ export function SelfSignupForm({ refCode, price }: { refCode: string | null; pri
       const { senha2: _s2, ...payload } = f;
       const { data } = await supabase.functions.invoke('self-signup', { body: { action: 'create', ...payload, terms, ref: refCode, started_at: startedAt.current } });
       if (!data?.success) { setError(data?.error || 'Não foi possível cadastrar agora'); return; }
-      if (data.payment_url) window.open(data.payment_url, '_blank', 'noopener');
       window.location.href = `/contratacao/obrigado?t=${data.token}`;
     } catch { setError('Não foi possível cadastrar agora'); } finally { setSending(false); }
   };
