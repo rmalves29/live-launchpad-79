@@ -73,7 +73,7 @@ export default function Auth() {
       // Buscar dados da tenant
       const { data: tenant, error: tenantError } = await supabase
         .from('tenants')
-        .select('id, name, is_active, is_blocked, subscription_ends_at')
+        .select('id, name, is_active, is_blocked, subscription_ends_at, signup_status')
         .eq('id', profile.tenant_id)
         .maybeSingle();
 
@@ -81,6 +81,11 @@ export default function Auth() {
 
       if (!tenant) {
         return { allowed: false, reason: 'Empresa não encontrada no sistema.' };
+      }
+
+      // Contratação direta ainda sem pagamento: só a tela para concluir o pagamento
+      if (['aguardando_pagamento', 'expirado'].includes((tenant as any).signup_status)) {
+        return { allowed: false, reason: 'signup_unpaid', tenantName: tenant.name };
       }
 
       // Verificar se a empresa está inativa
@@ -149,6 +154,10 @@ export default function Auth() {
         console.log('[Auth] Resultado da verificação:', accessCheck);
         
         if (!accessCheck.allowed) {
+          if (accessCheck.reason === 'signup_unpaid') {
+            navigate('/contratacao/pagamento', { replace: true });
+            return;
+          }
           // Se assinatura expirou, redirecionar para página de renovação
           if (accessCheck.reason === 'subscription_expired') {
             // Verificar escopo para escolher página de renovação correta
