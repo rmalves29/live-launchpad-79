@@ -181,7 +181,7 @@ export default function Indicacao() {
           </Button>
         </form>
         )}
-      </section>
+      </section>}
     </div>
   );
 }
