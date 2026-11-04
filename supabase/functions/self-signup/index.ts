@@ -4,10 +4,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { formatBrt, isValidSlot, listSlots, normalizeAgenda } from "../_shared/affiliate-agenda.ts";
 import { createMeetEvent, googleConfigured } from "../_shared/google-calendar.ts";
+import { availableSlots, isSlotFree } from "../_shared/agenda-availability.ts";
 import { slugFromName, upsertTenantAdmin } from "../_shared/tenant-onboarding.ts";
 import {
   isValidDocument, isValidEmail, looksLikeBot, normInstagram, onlyDigits, parsePlan, PLAN_LABELS, planFlags, planPrice, planPrices,
-  type SignupPlan, welcomeSelfSignup, whatsappKey,
+  newCompanyAlert, onboardingAlert, type SignupPlan, welcomeSelfSignup, whatsappKey,
 } from "./rules.ts";
 
 const corsHeaders = {
@@ -174,11 +175,28 @@ Deno.serve(async (req) => {
 
     if (action === "welcome") {
       if (!isService) return json({ error: "Unauthorized" }, 401);
-      const { data: t } = await sb.from("tenants").select("id, name, admin_email, billing_phone, signup_token, onboarding_meeting_at").eq("id", s(body.tenant_id, 40)).maybeSingle();
+      const { data: t } = await sb.from("tenants").select("id, name, admin_email, billing_phone, signup_token, onboarding_meeting_at, signup_plan, company_document, affiliate_id").eq("id", s(body.tenant_id, 40)).maybeSingle();
       if (!t?.signup_token) return json({ success: false, error: "não é contratação direta" });
-      const { data: lead } = await sb.from("platform_affiliate_leads").select("nome").eq("tenant_id", t.id).order("created_at").limit(1).maybeSingle();
+      const { data: lead } = await sb.from("platform_affiliate_leads").select("nome, instagram").eq("tenant_id", t.id).order("created_at").limit(1).maybeSingle();
       const err = await sendWhatsApp(t.billing_phone, welcomeSelfSignup(lead?.nome || "", t.name, t.admin_email, `${SITE}/contratacao/obrigado?t=${t.signup_token}`));
       if (err) console.warn("[self-signup] boas-vindas:", err);
+      // Aviso para o Rafael: nova empresa paga no sistema
+      const approver = await approverPhone();
+      if (approver) {
+        const plano = parsePlan(t.signup_plan);
+        let afiliada = "-";
+        if (t.affiliate_id) {
+          const { data: af } = await sb.from("platform_affiliates").select("nome, codigo").eq("id", t.affiliate_id).maybeSingle();
+          if (af) afiliada = `${af.nome} (${af.codigo})`;
+        }
+        const aErr = await sendWhatsApp(approver, newCompanyAlert({
+          empresa: t.name, responsavel: lead?.nome || "-", whatsapp: t.billing_phone || "-", email: t.admin_email || "-",
+          documento: t.company_document || "-", instagram: lead?.instagram || "", plano: PLAN_LABELS[plano],
+          valor: planPrice(plano, await settings()), afiliada,
+          onboarding: t.onboarding_meeting_at ? formatBrt(t.onboarding_meeting_at) : null,
+        }));
+        if (aErr) console.warn("[self-signup] aviso nova empresa:", aErr);
+      }
       return json({ success: !err, error: err });
     }
 
@@ -189,7 +207,7 @@ Deno.serve(async (req) => {
 
     if (action === "slots") {
       const a = normalizeAgenda((await settings()).agenda);
-      return json({ success: true, slots: listSlots(a, new Date(), await bookedSlots()) });
+      return json({ success: true, slots: await availableSlots(a, await bookedSlots()) });
     }
 
     if (action === "status") {
@@ -206,7 +224,7 @@ Deno.serve(async (req) => {
       if (t.onboarding_meeting_at) return json({ success: true, meeting_at: t.onboarding_meeting_at, already: true });
       const a = normalizeAgenda((await settings()).agenda);
       const at = s(body.meeting_at, 40);
-      if (!isValidSlot(a, new Date(), at)) return json({ success: false, error: "Horário indisponível. Escolha outro." });
+      if (!(await isSlotFree(a, at, await bookedSlots()))) return json({ success: false, error: "Horário indisponível. Escolha outro." });
       const slotIso = new Date(at).toISOString();
       let { data: lead } = await sb.from("platform_affiliate_leads").select("*").eq("tenant_id", t.id).order("created_at").limit(1).maybeSingle();
       if (!lead) {
@@ -233,7 +251,7 @@ Deno.serve(async (req) => {
         }
       }
       const approver = await approverPhone();
-      if (approver) await sendWhatsApp(approver, `📅 Onboarding agendado: ${t.name}\n${formatBrt(slotIso)} (Brasília)\nWhatsApp: ${t.billing_phone || "-"}`);
+      if (approver) await sendWhatsApp(approver, onboardingAlert({ empresa: t.name, quando: formatBrt(slotIso), whatsapp: t.billing_phone || "-", email: t.admin_email || "-", link }));
       await sendWhatsApp(t.billing_phone, `✅ Sua reunião de onboarding com a Cartzy está marcada para ${formatBrt(slotIso)} (horário de Brasília), 30 minutos.` +
         (link ? `\n\nLink da reunião: ${link}` : `\n\nVocê vai receber o link aqui no horário marcado.`));
       return json({ success: true, meeting_at: slotIso });

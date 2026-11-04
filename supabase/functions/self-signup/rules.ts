@@ -87,3 +87,34 @@ A conta da *${empresa}* já está ativa.
 📅 Agende sua reunião de onboarding (30 min) para configurarmos pagamento, frete e ERP:
 ${link}`;
 }
+
+const brl = (v: number) => `R$ ${v.toFixed(2).replace(".", ",")}`;
+
+/** Aviso ao dono quando uma contratação direta é paga. */
+export function newCompanyAlert(d: {
+  empresa: string; responsavel: string; whatsapp: string; email: string; documento: string; instagram: string;
+  plano: string; valor: number; afiliada: string; onboarding: string | null;
+}): string {
+  return `🎉 *Nova empresa no Cartzy!*
+
+🏪 ${d.empresa}
+👤 ${d.responsavel}
+📱 ${d.whatsapp}
+✉️ ${d.email}
+🧾 ${d.documento}${d.instagram ? `\n📸 @${d.instagram}` : ""}
+
+📦 Plano: ${d.plano} — ${brl(d.valor)}/mês
+🤝 Indicação: ${d.afiliada}
+
+📅 Onboarding: ${d.onboarding ? `${d.onboarding} (Brasília)` : "ainda não agendado — avisamos quando a cliente marcar"}`;
+}
+
+/** Aviso ao dono quando a cliente marca o onboarding. */
+export function onboardingAlert(d: { empresa: string; quando: string; whatsapp: string; email: string; link: string | null }): string {
+  return `📅 *Onboarding agendado*
+
+🏪 ${d.empresa}
+🕒 ${d.quando} (Brasília) · 30 min
+📱 ${d.whatsapp}
+✉️ ${d.email}${d.link ? `\n🔗 ${d.link}` : "\n(Google Agenda não conectado: reunião salva sem link do Meet)"}`;
+}

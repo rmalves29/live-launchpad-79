@@ -3,6 +3,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { formatBrt, isValidSlot, listSlots, normalizeAgenda } from "../_shared/affiliate-agenda.ts";
 import { createMeetEvent, deleteEvent, googleConfigured, moveEvent } from "../_shared/google-calendar.ts";
+import { availableSlots, isSlotFree } from "../_shared/agenda-availability.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -111,7 +112,7 @@ Deno.serve(async (req) => {
     if (action === "slots") {
       const a = await agenda();
       const aff = await approvedByCode(body.ref);
-      return json({ success: true, slots: listSlots(a, new Date(), await bookedSlots()), affiliate: aff ? { nome: aff.nome, codigo: aff.codigo } : null });
+      return json({ success: true, slots: await availableSlots(a, await bookedSlots()), affiliate: aff ? { nome: aff.nome, codigo: aff.codigo } : null });
     }
 
     if (action === "book") {
@@ -119,7 +120,7 @@ Deno.serve(async (req) => {
       const at = s(body.meeting_at, 40);
       if (!nome || !empresa || whatsapp.replace(/\D/g, "").length < 10) return json({ success: false, error: "Informe nome, empresa e WhatsApp com DDD" });
       const a = await agenda();
-      if (!isValidSlot(a, new Date(), at)) return json({ success: false, error: "Horário indisponível. Escolha outro." });
+      if (!(await isSlotFree(a, at, await bookedSlots()))) return json({ success: false, error: "Horário indisponível. Escolha outro." });
       const aff = await approvedByCode(body.ref);
       const { data: reg, error: rErr } = await sb.rpc("platform_lead_register", {
         _affiliate_id: aff?.id ?? null, _nome: nome, _empresa: empresa, _whatsapp: whatsapp, _instagram: instagram,

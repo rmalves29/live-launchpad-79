@@ -50,3 +50,11 @@ export async function moveEvent(id: string, start: string, minutes: number) {
 export async function deleteEvent(id: string) {
   await call("DELETE", `/calendars/${CAL()}/events/${encodeURIComponent(id)}`);
 }
+
+/** Intervalos ocupados na agenda do Google (qualquer compromisso seu, não só reuniões do Cartzy). */
+export async function busyIntervals(fromIso: string, toIso: string): Promise<{ start: string; end: string }[]> {
+  const cal = decodeURIComponent(CAL());
+  const r = await call("POST", `/freeBusy`, { timeMin: fromIso, timeMax: toIso, timeZone: "America/Sao_Paulo", items: [{ id: cal }] });
+  const busy = r?.calendars?.[cal]?.busy;
+  return Array.isArray(busy) ? busy.map((b: any) => ({ start: String(b.start), end: String(b.end) })) : [];
+}
