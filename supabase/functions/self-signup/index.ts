@@ -6,7 +6,7 @@ import { formatBrt, isValidSlot, listSlots, normalizeAgenda } from "../_shared/a
 import { createMeetEvent, googleConfigured } from "../_shared/google-calendar.ts";
 import { slugFromName, upsertTenantAdmin } from "../_shared/tenant-onboarding.ts";
 import {
-  isValidDocument, isValidEmail, looksLikeBot, normInstagram, onlyDigits, planFlags, SIGNUP_PLANS,
+  isValidDocument, isValidEmail, looksLikeBot, normInstagram, onlyDigits, parsePlan, PLAN_LABELS, planFlags, planPrice, planPrices,
   type SignupPlan, welcomeSelfSignup, whatsappKey,
 } from "./rules.ts";
 
@@ -99,25 +99,30 @@ async function pagarme(path: string, body: unknown, apiKey: string) {
 }
 
 /** Link recorrente por empresa (mesmo modelo dos links atuais); sem sucesso usa o link fixo das configurações. */
-async function paymentLink(t: { id: string; name: string; email: string; document: string; phone: string; contato: string }, cfg: any) {
+async function paymentLink(t: { id: string; name: string; email: string; document: string; phone: string; contato: string; plano: SignupPlan }, cfg: any) {
   const fallback = cfg.fallback_payment_url || null;
   const apiKey = Deno.env.get("PAGARME_ORDERZAP_API_KEY");
   if (DRY || !apiKey) return { url: fallback, per_company: false, error: DRY ? null : "sem chave Pagar.me" };
-  const price = Number(cfg.plan_price || 299);
+  const price = planPrice(t.plano, cfg);
   try {
-    let planId = cfg.signup_pagarme_plan_id && Number(cfg.signup_pagarme_plan_price) === price ? cfg.signup_pagarme_plan_id : null;
+    // Um plano Pagar.me por valor (avulso R$ 299, combo R$ 499...), guardado em signup_pagarme_plan_ids
+    const cache: Record<string, string> = (cfg.signup_pagarme_plan_ids && typeof cfg.signup_pagarme_plan_ids === "object") ? { ...cfg.signup_pagarme_plan_ids } : {};
+    const key = price.toFixed(2);
+    let planId: string | null = cache[key]
+      || (cfg.signup_pagarme_plan_id && Number(cfg.signup_pagarme_plan_price) === price ? cfg.signup_pagarme_plan_id : null);
     if (!planId) {
-      const name = `Cartzy mensal R$ ${price.toFixed(2)}`;
+      const name = `Cartzy ${t.plano === "completo" ? "combo" : "mensal"} R$ ${price.toFixed(2)}`;
       const p = await pagarme("/plans", {
         name, currency: "BRL", interval: "month", interval_count: 1, billing_type: "prepaid", payment_methods: ["credit_card"],
         installments: [1], items: [{ name, quantity: 1, pricing_scheme: { scheme_type: "unit", price: Math.round(price * 100) } }],
       }, apiKey);
       if (!p.ok || !p.body?.id) throw new Error(`plano: ${p.status} ${JSON.stringify(p.body).slice(0, 200)}`);
-      planId = p.body.id;
-      await sb.from("platform_affiliate_settings").update({ signup_pagarme_plan_id: planId, signup_pagarme_plan_price: price }).eq("id", 1);
+      planId = p.body.id as string;
+      cache[key] = planId;
+      await sb.from("platform_affiliate_settings").update({ signup_pagarme_plan_ids: cache }).eq("id", 1);
     }
     const base = {
-      type: "subscription", name: `Cartzy · ${t.name}`.slice(0, 64), is_building: false, order_code: t.id,
+      type: "subscription", name: `Cartzy ${PLAN_LABELS[t.plano]} · ${t.name}`.slice(0, 64), is_building: false, order_code: t.id,
       payment_settings: { accepted_payment_methods: ["credit_card"], credit_card_settings: { operation_type: "auth_and_capture" } },
       cart_settings: { recurrences: [{ plan_id: planId, start_in: 1 }] },
     };
@@ -178,7 +183,8 @@ Deno.serve(async (req) => {
     }
 
     if (action === "config") {
-      return json({ success: true, price: Number((await settings()).plan_price || 299) });
+      const prices = planPrices(await settings());
+      return json({ success: true, price: prices.live, prices, labels: PLAN_LABELS });
     }
 
     if (action === "slots") {
@@ -241,7 +247,7 @@ Deno.serve(async (req) => {
       const empresa = s(body.empresa, 120), contato = s(body.nome, 120), cidade = s(body.cidade, 80), uf = s(body.uf, 2).toUpperCase();
       const documento = onlyDigits(body.documento), email = s(body.email, 200).toLowerCase(), senha = String(body.senha ?? "");
       const wa = whatsappKey(body.whatsapp), instagram = normInstagram(body.instagram);
-      const plano = (SIGNUP_PLANS as readonly string[]).includes(body.plano) ? body.plano as SignupPlan : "live";
+      const plano = parsePlan(body.plano);
       if (!empresa || !contato) return json({ success: false, error: "Informe o nome da empresa e do responsável" });
       if (!isValidDocument(documento)) return json({ success: false, error: "CNPJ ou CPF inválido" });
       if (!wa) return json({ success: false, error: "WhatsApp inválido. Use DDD + número." });
@@ -256,7 +262,7 @@ Deno.serve(async (req) => {
       if (await emailInAuth(email)) return json({ success: false, error: "Esse e-mail já tem cadastro. Faça login." });
 
       const aff = await approvedByCode(body.ref);
-      const notas = `Contratação direta · ${cidade || "-"}/${uf || "-"} · ${documento.length === 14 ? "CNPJ" : "CPF"} ${documento}`;
+      const notas = `Contratação direta · ${PLAN_LABELS[plano]} · ${cidade || "-"}/${uf || "-"} · ${documento.length === 14 ? "CNPJ" : "CPF"} ${documento}`;
       const { data: reg, error: rErr } = await sb.rpc("platform_lead_register", {
         _affiliate_id: aff?.id ?? null, _nome: contato, _empresa: empresa, _whatsapp: wa, _instagram: instagram,
         _vende_live: null, _origem: "self_signup", _notas: notas,
@@ -296,9 +302,9 @@ Deno.serve(async (req) => {
       await sb.from("platform_pagarme_customer_map").insert({ tenant_id: tenantId, document: documento, email, phone_key: wa, matched_by: "contratacao" });
 
       const cfg = await settings();
-      const link = await paymentLink({ id: tenantId, name: empresa, email, document: documento, phone: wa, contato }, cfg);
+      const link = await paymentLink({ id: tenantId, name: empresa, email, document: documento, phone: wa, contato, plano }, cfg);
       await sb.from("tenants").update({ signup_payment_url: link.url }).eq("id", tenantId);
-      return json({ success: true, token, payment_url: link.url, per_company: link.per_company, tenant_id: DRY ? tenantId : undefined, lead_id: DRY ? reg.lead_id : undefined, affiliate_id: DRY ? affiliateId : undefined });
+      return json({ success: true, token, payment_url: link.url, plano, price: planPrice(plano, cfg), per_company: link.per_company, tenant_id: DRY ? tenantId : undefined, lead_id: DRY ? reg.lead_id : undefined, affiliate_id: DRY ? affiliateId : undefined });
     }
 
     return json({ success: false, error: "Ação inválida" });

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { getActiveRef, rememberRef } from '@/lib/affiliate-ref';
 import cartzyLogo from '@/assets/cartzy-logo.png';
-import { SelfSignupForm } from '@/components/affiliates/SelfSignupForm';
+import { DEFAULT_PRICES, SelfSignupForm, type PlanPrices } from '@/components/affiliates/SelfSignupForm';
 
 const TZ = { timeZone: 'America/Sao_Paulo' } as const;
 const dayKey = (iso: string) => new Date(iso).toLocaleDateString('en-CA', TZ);
@@ -37,7 +37,7 @@ export default function Indicacao() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
-  const [price, setPrice] = useState(299);
+  const [prices, setPrices] = useState<PlanPrices>(DEFAULT_PRICES);
   const [showMeeting, setShowMeeting] = useState(false);
 
   const loadSlots = () => {
@@ -48,7 +48,7 @@ export default function Indicacao() {
   };
   useEffect(() => {
     document.title = 'Cartzy — venda em live sem bagunça'; loadSlots();
-    supabase.functions.invoke('self-signup', { body: { action: 'config' } }).then(({ data }) => { if (data?.price) setPrice(Number(data.price)); });
+    supabase.functions.invoke('self-signup', { body: { action: 'config' } }).then(({ data }) => { if (data?.prices) setPrices({ ...DEFAULT_PRICES, ...data.prices }); });
   }, [ref]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const byDay = useMemo(() => {
@@ -119,7 +119,7 @@ export default function Indicacao() {
       </section>
 
       <section id="contratar" className="mx-auto max-w-md px-5 pb-10">
-        <SelfSignupForm refCode={ref} price={price} />
+        <SelfSignupForm refCode={ref} prices={prices} />
         {!showMeeting && (
           <button type="button" onClick={scrollToForm} className="mt-4 block w-full text-center text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground">
             Prefiro conversar antes — agendar uma apresentação

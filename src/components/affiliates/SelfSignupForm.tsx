@@ -9,7 +9,18 @@ import { Checkbox } from '@/components/ui/checkbox';
 const UFS = 'AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' ');
 
 /** Contratação direta: cria empresa + acesso e leva ao pagamento do plano. */
-export function SelfSignupForm({ refCode, price }: { refCode: string | null; price: number }) {
+export type SignupPlan = 'live' | 'grupos_vip' | 'completo';
+export type PlanPrices = Record<SignupPlan, number>;
+export const DEFAULT_PRICES: PlanPrices = { live: 299, grupos_vip: 299, completo: 499 };
+
+const PLANS: { id: SignupPlan; nome: string; desc: string }[] = [
+  { id: 'live', nome: 'Sistema de Live', desc: 'Vendas em live no Instagram com carrinho, checkout e frete' },
+  { id: 'grupos_vip', nome: 'Sistema de Grupos WhatsApp', desc: 'Vendas e disparos nos seus grupos VIP de WhatsApp' },
+  { id: 'completo', nome: 'Combo (2 sistemas)', desc: 'Live + Grupos WhatsApp juntos' },
+];
+const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+export function SelfSignupForm({ refCode, prices = DEFAULT_PRICES }: { refCode: string | null; prices?: PlanPrices }) {
   const startedAt = useRef(Date.now());
   const [f, setF] = useState({ empresa: '', documento: '', whatsapp: '', instagram: '', cidade: '', uf: '', nome: '', email: '', senha: '', senha2: '', plano: 'live', website: '' });
   const [terms, setTerms] = useState(false);
@@ -36,7 +47,7 @@ export function SelfSignupForm({ refCode, price }: { refCode: string | null; pri
   return (
     <form onSubmit={submit} className="rounded-2xl border bg-card p-6 shadow-lg space-y-4" autoComplete="on">
       <h2 className="text-2xl font-bold" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Contratar agora</h2>
-      <p className="text-sm text-muted-foreground">Plano mensal de {price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} no cartão. Você cria seu acesso e já vai para o pagamento.</p>
+      <p className="text-sm text-muted-foreground">Escolha o sistema, crie seu acesso e já vá para o pagamento mensal no cartão.</p>
       {/* honeypot anti-robô: invisível para pessoas */}
       <input type="text" name="website" tabIndex={-1} autoComplete="off" value={f.website} onChange={set('website')} className="absolute -left-[9999px] h-0 w-0 opacity-0" aria-hidden="true" />
 
@@ -54,10 +65,28 @@ export function SelfSignupForm({ refCode, price }: { refCode: string | null; pri
       </div>
       <div>
         <Label>Sistema</Label>
-        <div className="mt-1 grid grid-cols-2 gap-2">
-          {([['live', 'Vendas em live'], ['grupos_vip', 'Grupos VIP']] as const).map(([v, l]) => (
-            <Button key={v} type="button" variant={f.plano === v ? 'default' : 'outline'} onClick={() => setF({ ...f, plano: v })}>{l}</Button>
-          ))}
+        <div className="mt-1 grid gap-2" role="radiogroup" aria-label="Sistema">
+          {PLANS.map((p) => {
+            const active = f.plano === p.id;
+            return (
+              <button key={p.id} type="button" role="radio" aria-checked={active} onClick={() => setF({ ...f, plano: p.id })}
+                className={`relative flex items-center justify-between gap-3 rounded-xl border p-3 text-left transition ${active ? 'border-primary bg-primary/5 ring-2 ring-primary' : 'border-input hover:border-primary/50'}`}>
+                <span>
+                  <span className="block font-semibold">{p.nome}</span>
+                  <span className="block text-xs text-muted-foreground">{p.desc}</span>
+                </span>
+                <span className="shrink-0 text-right">
+                  <span className="block font-bold">{brl(prices[p.id])}</span>
+                  <span className="block text-xs text-muted-foreground">por mês</span>
+                </span>
+                {p.id === 'completo' && (
+                  <span className="absolute -top-2 right-3 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground">
+                    Economize {brl(prices.live + prices.grupos_vip - prices.completo)}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -74,7 +103,7 @@ export function SelfSignupForm({ refCode, price }: { refCode: string | null; pri
       </label>
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button type="submit" size="lg" className="w-full h-12" disabled={sending}>
-        {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Criar conta e ir para o pagamento'}
+        {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : `Criar conta e pagar ${brl(prices[f.plano as SignupPlan])}/mês`}
       </Button>
     </form>
   );

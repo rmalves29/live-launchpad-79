@@ -1,85 +1,147 @@
+import type { ReactNode } from "react";
 import LegalLayout from "@/components/legal/LegalLayout";
+import { LEGAL, identificacaoEmpresa } from "@/components/legal/legalInfo";
+
+const H2 = ({ children }: { children: ReactNode }) => (
+  <h2 className="text-lg font-semibold text-primary mt-9 mb-2.5 pb-1.5 border-b-2 border-primary/10">{children}</h2>
+);
+const P = ({ children }: { children: ReactNode }) => <p className="mb-3.5 leading-7">{children}</p>;
+const UL = ({ children }: { children: ReactNode }) => <ul className="list-disc ml-6 mb-3.5 space-y-2">{children}</ul>;
+const B = ({ children }: { children: ReactNode }) => <strong className="text-primary/90">{children}</strong>;
+
+const Contato = () => (
+  <>
+    <a href={`mailto:${LEGAL.EMAIL}`}>{LEGAL.EMAIL}</a> ou pelo WhatsApp{" "}
+    <a href={LEGAL.WHATSAPP_URL} target="_blank" rel="noopener noreferrer">{LEGAL.WHATSAPP}</a>
+  </>
+);
 
 const PrivacyPolicy = () => {
   return (
     <LegalLayout current="privacy">
-        <h1 className="text-3xl font-bold text-primary mb-2 max-sm:text-xl">Política de Privacidade</h1>
-        <p className="text-sm text-muted-foreground mb-8">Última atualização: 16 de outubro de 2026</p>
+      <h1 className="text-3xl font-bold text-primary mb-2 max-sm:text-xl">Política de Privacidade</h1>
+      <p className="text-sm text-muted-foreground mb-8">Última atualização: {LEGAL.ATUALIZADO_EM}</p>
 
-        <p className="mb-3.5 leading-7">
-          A presente Política de Privacidade descreve como o <strong className="text-primary/90">Cartzy</strong> ("nós", "nosso" ou "aplicativo") coleta, utiliza, compartilha e protege as informações pessoais dos usuários ("você", "seu") em conexão com o uso do nosso aplicativo e serviços relacionados. O Cartzy é uma ferramenta desenvolvida para a gestão de pedidos via WhatsApp, operada no Brasil.
-        </p>
-        <p className="mb-3.5 leading-7">
-          Ao utilizar o Cartzy, você concorda com as práticas descritas nesta política. Esta Política de Privacidade foi elaborada em conformidade com a <strong className="text-primary/90">Lei Geral de Proteção de Dados Pessoais (LGPD – Lei nº 13.709/2018)</strong> do Brasil e com os requisitos da Política de Plataforma da Meta.
-        </p>
+      <P>
+        Esta Política explica como o <B>{identificacaoEmpresa()}</B> ("Cartzy", "nós") coleta, usa, compartilha e protege
+        dados pessoais no site <a href={LEGAL.SITE}>cartzy.com.br</a>, na plataforma{" "}
+        <a href={LEGAL.APP}>app.cartzy.com.br</a> e nos serviços relacionados. Ela segue a Lei Geral de Proteção de Dados
+        Pessoais (<B>LGPD – Lei nº 13.709/2018</B>) e os requisitos da Política de Plataforma da Meta.
+      </P>
 
-        <h2 className="text-lg font-semibold text-primary mt-9 mb-2.5 pb-1.5 border-b-2 border-primary/10">1. Informações que Coletamos</h2>
-        <p className="mb-3.5 leading-7">Para fornecer nossos serviços de gestão de pedidos, podemos coletar os seguintes tipos de informações:</p>
-        <ul className="list-disc ml-6 mb-3.5 space-y-2">
-          <li><strong className="text-primary/90">Informações de Conta e Perfil:</strong> Quando você se cadastra ou faz login no Cartzy utilizando o Facebook Login ou outras plataformas da Meta, coletamos informações públicas do seu perfil, como nome, endereço de e-mail e foto de perfil, conforme as permissões concedidas por você.</li>
-          <li><strong className="text-primary/90">Dados de Pedidos e Clientes:</strong> Coletamos informações relacionadas aos pedidos gerenciados através do aplicativo, incluindo dados de contato de clientes (como números de WhatsApp), detalhes dos produtos ou serviços solicitados e histórico de transações.</li>
-          <li><strong className="text-primary/90">Dados da Integração com o Instagram:</strong> Quando um comerciante conecta sua conta comercial do Instagram ao Cartzy, coletamos dados básicos do perfil comercial conectado (nome de usuário, ID da conta e foto de perfil). Durante transmissões ao vivo (Lives), lemos os comentários públicos postados na Live para identificar códigos de produtos mencionados pelos espectadores e enviamos mensagens diretas (DMs) automáticas confirmando o item adicionado ao carrinho e o link de finalização de compra. Armazenamos o ID do comentarista, o texto do comentário relevante ao pedido e o conteúdo da DM enviada, apenas pelo tempo necessário para processar o pedido.</li>
-          <li><strong className="text-primary/90">Dados do Site e da Assinatura:</strong> Em <a href="https://cartzy.com.br">cartzy.com.br</a>, ao agendar uma demonstração ou assinar o Cartzy, coletamos nome, e-mail, WhatsApp, nome da loja e CPF ou CNPJ, além de dados de origem do acesso (como parâmetros de campanha). Os dados de cartão são digitados diretamente no ambiente seguro do provedor de pagamento e não passam pelos nossos servidores.</li>
-          <li><strong className="text-primary/90">Informações de Uso e Dispositivo:</strong> Coletamos automaticamente dados sobre como você interage com o aplicativo, incluindo endereço IP, tipo de navegador, sistema operacional, páginas visitadas e horários de acesso.</li>
-        </ul>
+      <H2>1. Quem é responsável pelos dados</H2>
+      <UL>
+        <li><B>Cartzy como controlador:</B> para os dados de quem visita o site, se cadastra, contrata o Cartzy, agenda reuniões ou participa do Programa de Indicação. Nesses casos, nós decidimos como os dados são usados.</li>
+        <li><B>Cartzy como operador:</B> para os dados dos clientes das lojas (Consumidores Finais) que o Lojista registra ou recebe pela plataforma. O <B>controlador é o Lojista</B>, e nós tratamos esses dados apenas para prestar o serviço, conforme as instruções dele. Pedidos sobre esses dados devem ser feitos primeiro à loja; se você nos procurar, encaminharemos e apoiaremos a resposta.</li>
+      </UL>
 
-        <h2 className="text-lg font-semibold text-primary mt-9 mb-2.5 pb-1.5 border-b-2 border-primary/10">2. Como Utilizamos as Informações</h2>
-        <p className="mb-3.5 leading-7">As informações coletadas são utilizadas para as seguintes finalidades:</p>
-        <ul className="list-disc ml-6 mb-3.5 space-y-2">
-          <li><strong className="text-primary/90">Fornecimento do Serviço:</strong> Para operar, manter e melhorar as funcionalidades do Cartzy.</li>
-          <li><strong className="text-primary/90">Comunicação:</strong> Para enviar atualizações sobre o serviço, responder a solicitações de suporte e fornecer informações administrativas.</li>
-          <li><strong className="text-primary/90">Segurança e Conformidade:</strong> Para monitorar atividades suspeitas, prevenir fraudes e cumprir obrigações legais.</li>
-          <li><strong className="text-primary/90">Integração com a Meta:</strong> Para autenticar usuários e facilitar a integração com os serviços da Meta.</li>
-          <li><strong className="text-primary/90">Automação de Vendas via Instagram Live:</strong> Para identificar, em tempo real, pedidos feitos por comentário durante uma Live e confirmar automaticamente ao comprador, via mensagem direta, que o item foi adicionado ao carrinho, junto com o link para concluir a compra.</li>
-        </ul>
+      <H2>2. Dados que coletamos</H2>
+      <UL>
+        <li><B>Cadastro e contratação:</B> nome do responsável, e-mail, senha (guardada de forma criptografada, que nem nós conseguimos ler), nome da empresa, CPF ou CNPJ, WhatsApp, @ do Instagram, cidade e estado, além do registro do aceite destes documentos.</li>
+        <li><B>Pagamento da assinatura:</B> status das cobranças, valores, datas e identificadores fornecidos pelo provedor de pagamento. Os dados do cartão são digitados diretamente no ambiente do provedor (como a Pagar.me) e não passam pelos nossos servidores.</li>
+        <li><B>Login com Facebook:</B> quando você entra com a Meta, recebemos nome, e-mail e foto do perfil, de acordo com as permissões que você conceder.</li>
+        <li><B>Dados da operação da loja:</B> produtos, pedidos, carrinhos, valores, endereços de entrega, nomes e números de WhatsApp dos Consumidores Finais, mensagens trocadas e informações de envio e cobrança.</li>
+        <li><B>Integração com o Instagram:</B> quando o Lojista conecta sua conta comercial, coletamos nome de usuário, ID e foto do perfil comercial. Durante as Lives, lemos os comentários públicos para identificar códigos de produtos e enviamos uma mensagem direta (DM) ao comprador confirmando o item no carrinho e o link para finalizar a compra. Guardamos o ID de quem comentou, o texto do comentário ligado ao pedido e a DM enviada, apenas pelo tempo necessário para o pedido.</li>
+        <li><B>Agendamento de reuniões:</B> nome, empresa, WhatsApp, @ do Instagram e o horário escolhido para a apresentação ou o onboarding.</li>
+        <li><B>Programa de Indicação:</B> dos Afiliados, nome, e-mail, WhatsApp, senha e chave PIX para o pagamento das comissões; das empresas indicadas, os dados informados na indicação e o código do Afiliado que fez a indicação.</li>
+        <li><B>Navegação e uso:</B> endereço IP, navegador, sistema operacional, páginas acessadas, datas e horários, e a origem do acesso (como parâmetros de campanha e código de indicação no link).</li>
+      </UL>
 
-        <h2 className="text-lg font-semibold text-primary mt-9 mb-2.5 pb-1.5 border-b-2 border-primary/10">3. Compartilhamento de Informações</h2>
-        <p className="mb-3.5 leading-7">Nós <strong className="text-primary/90">não vendemos</strong> suas informações pessoais. Podemos compartilhar nas seguintes circunstâncias:</p>
-        <ul className="list-disc ml-6 mb-3.5 space-y-2">
-          <li><strong className="text-primary/90">Com Provedores de Serviços:</strong> Empresas terceirizadas que auxiliam na operação do aplicativo, sujeitas a obrigações de confidencialidade.</li>
-          <li><strong className="text-primary/90">Com Provedores de Pagamento:</strong> Para cobrar a assinatura do Cartzy e processar pagamentos de pedidos (por exemplo, Asaas, Mercado Pago, Pagar.me e InfinitePay), compartilhamos apenas os dados necessários à cobrança.</li>
-          <li><strong className="text-primary/90">Com a Meta Platforms, Inc.:</strong> Ao utilizar recursos integrados ao Facebook, Instagram ou WhatsApp, certas informações podem ser compartilhadas com a Meta, conforme suas Políticas de Plataforma.</li>
-          <li><strong className="text-primary/90">Requisitos Legais:</strong> Podemos divulgar informações se exigido por lei, ordem judicial ou regulamentação governamental.</li>
-        </ul>
+      <H2>3. Para que usamos e com qual base legal</H2>
+      <UL>
+        <li><B>Criar a conta, cobrar a assinatura e prestar o serviço</B>: execução de contrato (art. 7º, V, da LGPD).</li>
+        <li><B>Processar pedidos, mensagens, envios e cobranças das lojas</B>: em nome do Lojista, que é o controlador desses dados.</li>
+        <li><B>Agendar reuniões, dar suporte e enviar avisos sobre a conta</B> (como boas-vindas, confirmação de pagamento e lembretes de reunião) pelo WhatsApp e por e-mail: execução de contrato e procedimentos preliminares a ele.</li>
+        <li><B>Identificar quem indicou um novo Cliente e calcular e pagar comissões</B>: execução do contrato com o Afiliado.</li>
+        <li><B>Prevenir fraudes, cadastros falsos e abusos, e manter a segurança</B> (incluindo limite de tentativas e verificação contra robôs): legítimo interesse (art. 7º, IX).</li>
+        <li><B>Melhorar o produto e medir o desempenho de campanhas</B>: legítimo interesse, com dados mínimos e, sempre que possível, agregados.</li>
+        <li><B>Cumprir obrigações fiscais e legais e nos defender em processos</B>: obrigação legal e exercício regular de direitos (art. 7º, II e VI).</li>
+        <li><B>Enviar novidades e ofertas do Cartzy</B>: quando houver relação com você ou o seu consentimento; você pode pedir para não receber mais a qualquer momento.</li>
+      </UL>
 
-        <h2 className="text-lg font-semibold text-primary mt-9 mb-2.5 pb-1.5 border-b-2 border-primary/10">4. Retenção e Exclusão de Dados</h2>
-        <p className="mb-3.5 leading-7">
-          Retemos suas informações pessoais apenas pelo tempo necessário para cumprir as finalidades descritas nesta política ou conforme exigido por lei.
-        </p>
-        <p className="mb-3.5 leading-7">
-          <strong className="text-primary/90">Solicitação de Exclusão de Dados:</strong> Você tem o direito de solicitar a exclusão dos seus dados pessoais a qualquer momento. Envie um e-mail para <a href="mailto:cartzy.saas@gmail.com">cartzy.saas@gmail.com</a>, fale pelo WhatsApp (31) 99290-4210 ou utilize a opção de exclusão de conta dentro do aplicativo.
-        </p>
-        <p className="mb-3.5 leading-7">
-          <strong className="text-primary/90">Instruções de Exclusão de Dados do Instagram/Meta:</strong> Se você interagiu com um vendedor que utiliza o Cartzy durante uma Live no Instagram (por exemplo, comentando o código de um produto) e deseja que os dados associados a essa interação (comentário processado e mensagem direta enviada) sejam excluídos, envie um e-mail para <strong className="text-primary/90">cartzy.saas@gmail.com</strong> (ou fale pelo WhatsApp (31) 99290-4210) informando seu nome de usuário do Instagram e a conta do vendedor envolvida. Processaremos a solicitação e excluiremos os dados em até 15 dias úteis, exceto quando a retenção for exigida por lei (por exemplo, registros fiscais de uma compra já concluída). Comerciantes que desejam revogar o acesso do Cartzy à própria conta comercial do Instagram podem clicar em "Desconectar" na tela de Integrações do painel a qualquer momento, o que interrompe imediatamente a coleta de novos dados.
-        </p>
+      <H2>4. Com quem compartilhamos</H2>
+      <P>Nós <B>não vendemos</B> dados pessoais. Compartilhamos apenas o necessário com:</P>
+      <UL>
+        <li><B>Infraestrutura e hospedagem:</B> provedores de nuvem e banco de dados que mantêm a plataforma funcionando.</li>
+        <li><B>Pagamentos:</B> Pagar.me, Mercado Pago, Asaas, InfinitePay e outros provedores escolhidos, para cobrar a assinatura e processar os pagamentos das vendas das lojas.</li>
+        <li><B>Mensagens:</B> provedores de API de WhatsApp usados para enviar confirmações, avisos e as mensagens configuradas pelo Lojista.</li>
+        <li><B>Meta (Facebook, Instagram e WhatsApp):</B> nos recursos integrados, conforme as Políticas de Plataforma da Meta.</li>
+        <li><B>Agenda:</B> Google Agenda e Google Meet, para criar o evento e o link da reunião agendada.</li>
+        <li><B>Envio e notas fiscais:</B> transportadoras, plataformas de frete e emissores de nota fiscal que o Lojista conectar.</li>
+        <li><B>Afiliados:</B> o Afiliado vê o nome da empresa que indicou, a situação da indicação e o valor da comissão. Ele não tem acesso aos dados internos da loja.</li>
+        <li><B>Autoridades:</B> quando exigido por lei, ordem judicial ou autoridade competente.</li>
+      </UL>
+      <P>
+        Alguns desses fornecedores podem armazenar dados em servidores fora do Brasil. Nesses casos, exigimos medidas de
+        proteção compatíveis com a LGPD, conforme os arts. 33 a 36.
+      </P>
 
-        <h2 className="text-lg font-semibold text-primary mt-9 mb-2.5 pb-1.5 border-b-2 border-primary/10">5. Seus Direitos (LGPD)</h2>
-        <p className="mb-3.5 leading-7">De acordo com a LGPD, você possui os seguintes direitos:</p>
-        <ul className="list-disc ml-6 mb-3.5 space-y-2">
-          <li>Confirmação da existência de tratamento;</li>
-          <li>Acesso aos dados;</li>
-          <li>Correção de dados incompletos, inexatos ou desatualizados;</li>
-          <li>Anonimização, bloqueio ou eliminação de dados desnecessários ou excessivos;</li>
-          <li>Portabilidade dos dados a outro fornecedor de serviço;</li>
-          <li>Eliminação dos dados pessoais tratados com o consentimento;</li>
-          <li>Informação sobre o compartilhamento de dados.</li>
-        </ul>
-        <p className="mb-3.5 leading-7">Para exercer esses direitos, envie um e-mail para <a href="mailto:cartzy.saas@gmail.com">cartzy.saas@gmail.com</a> ou fale pelo WhatsApp (31) 99290-4210.</p>
+      <H2>5. Cookies e armazenamento no navegador</H2>
+      <P>
+        Usamos cookies e armazenamento local essenciais para manter você conectado, lembrar preferências e registrar o
+        código de indicação de quem chegou por um link de Afiliado. Também podemos usar ferramentas de medição para
+        entender o uso do site. Você pode apagar ou bloquear cookies no navegador, mas algumas funções podem deixar de
+        funcionar.
+      </P>
 
-        <h2 className="text-lg font-semibold text-primary mt-9 mb-2.5 pb-1.5 border-b-2 border-primary/10">6. Segurança das Informações</h2>
-        <p className="mb-3.5 leading-7">
-          Implementamos medidas de segurança técnicas e organizacionais adequadas para proteger suas informações pessoais contra acesso não autorizado, perda, destruição ou alteração.
-        </p>
+      <H2>6. Por quanto tempo guardamos</H2>
+      <UL>
+        <li><B>Conta ativa:</B> enquanto a assinatura estiver vigente.</li>
+        <li><B>Após o cancelamento:</B> até 90 dias, para permitir a exportação ou a reativação; depois, os dados são excluídos ou anonimizados.</li>
+        <li><B>Cadastros não pagos:</B> ficam marcados como expirados após 7 dias e podem ser excluídos mediante pedido.</li>
+        <li><B>Indicações sem contratação:</B> até 12 meses.</li>
+        <li><B>Dados fiscais, de cobrança e de comissões:</B> pelo prazo exigido pela legislação (em geral, 5 anos).</li>
+        <li><B>Registros de acesso:</B> pelo menos 6 meses, como determina o Marco Civil da Internet.</li>
+      </UL>
 
-        <h2 className="text-lg font-semibold text-primary mt-9 mb-2.5 pb-1.5 border-b-2 border-primary/10">7. Alterações a esta Política</h2>
-        <p className="mb-3.5 leading-7">
-          Podemos atualizar esta Política de Privacidade periodicamente. Notificaremos sobre quaisquer alterações significativas publicando a nova política em nosso site e atualizando a data de "Última atualização".
-        </p>
+      <H2>7. Seus direitos</H2>
+      <P>Pela LGPD, você pode pedir, a qualquer momento:</P>
+      <UL>
+        <li>confirmação de que tratamos seus dados e acesso a eles;</li>
+        <li>correção de dados incompletos, errados ou desatualizados;</li>
+        <li>anonimização, bloqueio ou eliminação de dados desnecessários ou tratados em desacordo com a lei;</li>
+        <li>portabilidade a outro fornecedor;</li>
+        <li>eliminação dos dados tratados com base no consentimento e revogação desse consentimento;</li>
+        <li>informação sobre com quem compartilhamos seus dados;</li>
+        <li>revisão de decisões tomadas apenas de forma automatizada.</li>
+      </UL>
+      <P>
+        Envie o pedido para <Contato />. Responderemos em até 15 dias. Você também pode reclamar à Autoridade Nacional de
+        Proteção de Dados (ANPD).
+      </P>
 
-        <h2 className="text-lg font-semibold text-primary mt-9 mb-2.5 pb-1.5 border-b-2 border-primary/10">8. Contato</h2>
-        <p className="mb-3.5 leading-7">
-          Se você tiver dúvidas, escreva para <a href="mailto:cartzy.saas@gmail.com">cartzy.saas@gmail.com</a> ou fale conosco pelo WhatsApp <a href="http://api.whatsapp.com/send?l=pt&phone=5531992904210" target="_blank" rel="noopener noreferrer">(31) 99290-4210</a> ou pelo site <a href="https://cartzy.com.br">cartzy.com.br</a>.
-        </p>
+      <H2>8. Exclusão de dados do Instagram e da Meta</H2>
+      <P>
+        Se você comentou em uma Live de uma loja que usa o Cartzy e quer apagar os dados dessa interação (comentário
+        processado e DM enviada), envie para <Contato /> o seu nome de usuário do Instagram e a conta da loja. Excluiremos
+        os dados em até 15 dias úteis, exceto o que a lei obrigar a guardar (por exemplo, registros fiscais de uma compra
+        concluída). O Lojista pode revogar o acesso do Cartzy à conta comercial a qualquer momento, clicando em
+        "Desconectar" na tela de Integrações, o que interrompe imediatamente a coleta de novos dados.
+      </P>
+
+      <H2>9. Segurança</H2>
+      <P>
+        Usamos conexão criptografada (HTTPS), senhas protegidas por criptografia, controle de acesso por conta e por
+        empresa, registros de atividade e limites contra tentativas abusivas. Nenhum sistema é 100% invulnerável; se
+        ocorrer um incidente de segurança com risco relevante, avisaremos os afetados e a ANPD, conforme a lei.
+      </P>
+
+      <H2>10. Crianças e adolescentes</H2>
+      <P>
+        O Cartzy é destinado a maiores de 18 anos e não coleta intencionalmente dados de menores de idade como usuários
+        da plataforma.
+      </P>
+
+      <H2>11. Encarregado de dados (DPO)</H2>
+      <P>
+        O canal do encarregado pelo tratamento de dados pessoais do Cartzy é <Contato />.
+      </P>
+
+      <H2>12. Alterações desta Política</H2>
+      <P>
+        Podemos atualizar esta Política. A versão vigente fica sempre nesta página, com a data da última atualização. Se
+        as mudanças forem relevantes, avisaremos por e-mail, WhatsApp ou dentro da plataforma.
+      </P>
     </LegalLayout>
   );
 };

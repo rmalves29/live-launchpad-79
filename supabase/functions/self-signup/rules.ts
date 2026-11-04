@@ -50,12 +50,30 @@ export function looksLikeBot(honeypot: unknown, startedAt: unknown, now = Date.n
   return !Number.isFinite(t) || now - t < MIN_FILL_MS;
 }
 
-export const SIGNUP_PLANS = ["live", "grupos_vip"] as const;
+export const SIGNUP_PLANS = ["live", "grupos_vip", "completo"] as const;
 export type SignupPlan = typeof SIGNUP_PLANS[number];
+export const PLAN_LABELS: Record<SignupPlan, string> = {
+  live: "Sistema de Live",
+  grupos_vip: "Sistema de Grupos WhatsApp",
+  completo: "Combo Live + Grupos WhatsApp",
+};
+export const parsePlan = (v: unknown): SignupPlan =>
+  (SIGNUP_PLANS as readonly string[]).includes(String(v)) ? v as SignupPlan : "live";
+
+/** Preço mensal de cada opção: sistemas avulsos usam plan_price e o combo usa combo_price. */
+export function planPrice(p: SignupPlan, cfg: { plan_price?: unknown; combo_price?: unknown } | null | undefined): number {
+  const n = (v: unknown, d: number) => { const x = Number(v); return Number.isFinite(x) && x > 0 ? x : d; };
+  return p === "completo" ? n(cfg?.combo_price, 499) : n(cfg?.plan_price, 299);
+}
+export const planPrices = (cfg: { plan_price?: unknown; combo_price?: unknown } | null | undefined) =>
+  Object.fromEntries(SIGNUP_PLANS.map((p) => [p, planPrice(p, cfg)])) as Record<SignupPlan, number>;
+
 export const planFlags = (p: SignupPlan) =>
   p === "grupos_vip"
     ? { enable_live: false, enable_loja_live: false, enable_sendflow: true, access_scope: "fluxo_envio" as string | null }
-    : { enable_live: true, enable_loja_live: true, enable_sendflow: false, access_scope: null as string | null };
+    : p === "completo"
+      ? { enable_live: true, enable_loja_live: true, enable_sendflow: true, access_scope: null as string | null }
+      : { enable_live: true, enable_loja_live: true, enable_sendflow: false, access_scope: null as string | null };
 
 export function welcomeSelfSignup(contato: string, empresa: string, email: string, link: string): string {
   return `Olá, ${contato.split(" ")[0] || ""}! 👋 Pagamento confirmado — seja bem-vinda ao Cartzy!

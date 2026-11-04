@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { isValidCnpj, isValidCpf, looksLikeBot, normInstagram, planFlags, welcomeSelfSignup, whatsappKey } from "./rules.ts";
+import { isValidCnpj, isValidCpf, looksLikeBot, normInstagram, parsePlan, planFlags, planPrice, welcomeSelfSignup, whatsappKey } from "./rules.ts";
 
 Deno.test("CPF e CNPJ válidos/ inválidos", () => {
   assert(isValidCpf("529.982.247-25"));
@@ -36,4 +36,15 @@ Deno.test("boas-vindas não contém senha", () => {
   const m = welcomeSelfSignup("Ana Souza", "Loja", "a@b.com", "https://x/y");
   assert(m.includes("a que você criou"));
   assert(m.includes("https://x/y"));
+});
+
+Deno.test("combo: libera live e grupos, preço próprio", () => {
+  assertEquals(planFlags("completo").enable_live, true);
+  assertEquals(planFlags("completo").enable_sendflow, true);
+  assertEquals(planFlags("completo").access_scope, null);
+  assertEquals(planPrice("completo", { plan_price: 299, combo_price: 499 }), 499);
+  assertEquals(planPrice("grupos_vip", { plan_price: 299, combo_price: 499 }), 299);
+  assertEquals(planPrice("completo", null), 499);
+  assertEquals(parsePlan("xyz"), "live");
+  assertEquals(parsePlan("completo"), "completo");
 });
