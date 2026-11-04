@@ -27,7 +27,8 @@ import {
   Activity,
   Bell,
   PlayCircle,
-  Link as LinkIcon, Store } from 'lucide-react';
+  Link as LinkIcon, Store,
+  BadgePercent } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
@@ -295,6 +296,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
                 {renderItem({ path: '/admin/comunicados', label: 'Comunicados', icon: Bell }, true)}
                 {renderItem({ path: '/admin/relatorio-global', label: 'Relatório Global', icon: BarChart3 }, true)}
                 {renderItem({ path: '/admin/links', label: 'Links do Sistema', icon: LinkIcon }, true)}
+                {renderItem({ path: '/admin/afiliados', label: 'Afiliados', icon: BadgePercent }, true)}
                 
                 
                 {isRafael && renderItem({ path: '/admin/erros', label: 'Monitor de Erros', icon: Bug }, true)}
