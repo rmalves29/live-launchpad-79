@@ -4231,33 +4231,69 @@ export type Database = {
       platform_affiliate_leads: {
         Row: {
           affiliate_id: string | null
+          alert_sent_at: string | null
           created_at: string
+          empresa: string | null
+          google_error: string | null
+          google_event_id: string | null
           id: string
           instagram: string | null
+          link_sent_at: string | null
+          meeting_at: string | null
+          meeting_link: string | null
           nome: string | null
+          notas: string | null
           origem: string
+          status: string
+          status_updated_at: string
           tenant_id: string | null
+          vende_live: boolean | null
           whatsapp: string | null
+          whatsapp_key: string | null
         }
         Insert: {
           affiliate_id?: string | null
+          alert_sent_at?: string | null
           created_at?: string
+          empresa?: string | null
+          google_error?: string | null
+          google_event_id?: string | null
           id?: string
           instagram?: string | null
+          link_sent_at?: string | null
+          meeting_at?: string | null
+          meeting_link?: string | null
           nome?: string | null
+          notas?: string | null
           origem?: string
+          status?: string
+          status_updated_at?: string
           tenant_id?: string | null
+          vende_live?: boolean | null
           whatsapp?: string | null
+          whatsapp_key?: string | null
         }
         Update: {
           affiliate_id?: string | null
+          alert_sent_at?: string | null
           created_at?: string
+          empresa?: string | null
+          google_error?: string | null
+          google_event_id?: string | null
           id?: string
           instagram?: string | null
+          link_sent_at?: string | null
+          meeting_at?: string | null
+          meeting_link?: string | null
           nome?: string | null
+          notas?: string | null
           origem?: string
+          status?: string
+          status_updated_at?: string
           tenant_id?: string | null
+          vende_live?: boolean | null
           whatsapp?: string | null
+          whatsapp_key?: string | null
         }
         Relationships: [
           {
@@ -4324,6 +4360,7 @@ export type Database = {
       platform_affiliate_settings: {
         Row: {
           affiliate_whatsapp: string | null
+          agenda: Json
           attribution_days: number
           default_months: number | null
           default_percent: number
@@ -4334,6 +4371,7 @@ export type Database = {
         }
         Insert: {
           affiliate_whatsapp?: string | null
+          agenda?: Json
           attribution_days?: number
           default_months?: number | null
           default_percent?: number
@@ -4344,6 +4382,7 @@ export type Database = {
         }
         Update: {
           affiliate_whatsapp?: string | null
+          agenda?: Json
           attribution_days?: number
           default_months?: number | null
           default_percent?: number
@@ -4398,6 +4437,114 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      platform_pagarme_customer_map: {
+        Row: {
+          created_at: string
+          id: string
+          matched_by: string | null
+          pagarme_customer_id: string | null
+          pagarme_subscription_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          matched_by?: string | null
+          pagarme_customer_id?: string | null
+          pagarme_subscription_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          matched_by?: string | null
+          pagarme_customer_id?: string | null
+          pagarme_subscription_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_pagarme_customer_map_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_pagarme_customer_map_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      platform_unmatched_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          customer_document: string | null
+          customer_email: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          id: string
+          linked_at: string | null
+          pagarme_customer_id: string | null
+          pagarme_subscription_id: string | null
+          paid_at: string | null
+          payment_ref: string
+          status: string
+          tenant_id: string | null
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          customer_document?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          linked_at?: string | null
+          pagarme_customer_id?: string | null
+          pagarme_subscription_id?: string | null
+          paid_at?: string | null
+          payment_ref: string
+          status?: string
+          tenant_id?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          customer_document?: string | null
+          customer_email?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          id?: string
+          linked_at?: string | null
+          pagarme_customer_id?: string | null
+          pagarme_subscription_id?: string | null
+          paid_at?: string | null
+          payment_ref?: string
+          status?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_unmatched_payments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_unmatched_payments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       product_categories: {
         Row: {
@@ -5973,6 +6120,7 @@ export type Database = {
           error_message: string | null
           expires_at: string
           id: string
+          instagram: string | null
           logo_url: string | null
           notes: string | null
           password_suffix: string
@@ -6005,6 +6153,7 @@ export type Database = {
           error_message?: string | null
           expires_at?: string
           id?: string
+          instagram?: string | null
           logo_url?: string | null
           notes?: string | null
           password_suffix: string
@@ -6037,6 +6186,7 @@ export type Database = {
           error_message?: string | null
           expires_at?: string
           id?: string
+          instagram?: string | null
           logo_url?: string | null
           notes?: string | null
           password_suffix?: string
@@ -6112,6 +6262,8 @@ export type Database = {
           auto_cancel_unpaid_enabled: boolean
           auto_cancel_unpaid_hours: number
           auto_cancel_unpaid_minutes: number | null
+          billing_email: string | null
+          billing_phone: string | null
           company_address: string | null
           company_cep: string | null
           company_city: string | null
@@ -6169,6 +6321,8 @@ export type Database = {
           auto_cancel_unpaid_enabled?: boolean
           auto_cancel_unpaid_hours?: number
           auto_cancel_unpaid_minutes?: number | null
+          billing_email?: string | null
+          billing_phone?: string | null
           company_address?: string | null
           company_cep?: string | null
           company_city?: string | null
@@ -6226,6 +6380,8 @@ export type Database = {
           auto_cancel_unpaid_enabled?: boolean
           auto_cancel_unpaid_hours?: number
           auto_cancel_unpaid_minutes?: number | null
+          billing_email?: string | null
+          billing_phone?: string | null
           company_address?: string | null
           company_cep?: string | null
           company_city?: string | null
@@ -7300,12 +7456,25 @@ export type Database = {
       normalize_phone_regional: { Args: { phone: string }; Returns: string }
       phone_match_key: { Args: { p: string }; Returns: string }
       platform_affiliate_attach_tenant: {
-        Args: { _affiliate_id: string; _phone?: string; _tenant_id: string }
+        Args: {
+          _affiliate_id: string
+          _instagram?: string
+          _phone?: string
+          _tenant_id: string
+        }
         Returns: boolean
       }
       platform_affiliate_cancel_commission: {
         Args: { _payment_ref: string }
         Returns: number
+      }
+      platform_affiliate_lookup_lead: {
+        Args: { _instagram: string; _phone: string }
+        Returns: {
+          affiliate_id: string
+          affiliate_nome: string
+          lead_id: string
+        }[]
       }
       platform_affiliate_match_lead: {
         Args: { _phone: string }
@@ -7338,6 +7507,58 @@ export type Database = {
         Returns: Json
       }
       platform_affiliate_release_due: { Args: never; Returns: number }
+      platform_lead_register: {
+        Args: {
+          _affiliate_id: string
+          _empresa: string
+          _instagram: string
+          _nome: string
+          _notas?: string
+          _origem: string
+          _vende_live: boolean
+          _whatsapp: string
+        }
+        Returns: Json
+      }
+      platform_link_unmatched_payment: {
+        Args: { _tenant_id: string; _unmatched_id: string }
+        Returns: Json
+      }
+      platform_match_tenant_by_payer: {
+        Args: { _document: string; _email: string; _phone: string }
+        Returns: {
+          matched_by: string
+          tenant_id: string
+        }[]
+      }
+      platform_norm_instagram: { Args: { _t: string }; Returns: string }
+      platform_norm_whatsapp: { Args: { _t: string }; Returns: string }
+      platform_pagarme_payment: {
+        Args: {
+          _amount: number
+          _customer_id: string
+          _document: string
+          _email: string
+          _name: string
+          _paid_at: string
+          _payment_ref: string
+          _phone: string
+          _subscription_id: string
+        }
+        Returns: Json
+      }
+      platform_payment_attribute: {
+        Args: {
+          _amount: number
+          _customer_id: string
+          _matched_by: string
+          _paid_at: string
+          _payment_ref: string
+          _subscription_id: string
+          _tenant_id: string
+        }
+        Returns: Json
+      }
       public_register_instagram: {
         Args: {
           p_instagram: string
