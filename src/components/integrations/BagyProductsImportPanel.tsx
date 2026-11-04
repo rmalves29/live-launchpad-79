@@ -107,14 +107,37 @@ export default function BagyProductsImportPanel({ tenantId }: Props) {
     let finished = false;
     let firstDebug: any = null;
     try {
-      let pg = 1;
-      for (let i = 0; i < MAX_PAGES && !cancelRef.current; i++) {
+      const fetchPart = async (pg: number) => {
         const data = await call({ tenant_id: tenantId, action: 'preview', page: pg, search: '', only_stock: onlyStock, bulk: true });
         for (const r of data.rows as PreviewRow[]) map.set(r.bagy_id, r);
         if (!firstDebug && data.debug) firstDebug = data.debug;
         setLoaded(map.size);
-        if (!data.has_more) { finished = true; break; }
-        pg = data.next_page || pg + 1;
+        return data;
+      };
+
+      // 1ª chamada: já traz um grupo de páginas e diz quantas existem no total
+      let data = await fetchPart(1);
+      if (!data.has_more) {
+        finished = true;
+      } else if (data.last_page) {
+        // sabendo o total, os demais grupos de páginas são pedidos em paralelo (2 por vez, para não sobrecarregar a Bagy)
+        const step = data.pages_per_call || 5;
+        const starts: number[] = [];
+        for (let s = data.next_page; s <= data.last_page; s += step) starts.push(s);
+        let idx = 0;
+        const worker = async () => {
+          while (!cancelRef.current && idx < starts.length) await fetchPart(starts[idx++]);
+        };
+        await Promise.all([worker(), worker()]);
+        finished = !cancelRef.current;
+      } else {
+        // a Bagy não informou o total: segue uma chamada por vez, até acabar
+        let pg = data.next_page || 2;
+        for (let i = 0; i < MAX_PAGES && !cancelRef.current; i++) {
+          data = await fetchPart(pg);
+          if (!data.has_more) { finished = true; break; }
+          pg = data.next_page || pg + 1;
+        }
       }
       const list = Array.from(map.values());
       setDebug(firstDebug);

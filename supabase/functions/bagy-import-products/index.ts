@@ -19,14 +19,19 @@ const corsHeaders = {
 const BAGY = "https://api.dooca.store";
 const MAX_IMPORT = 8;
 const MAX_PAGES_PER_PREVIEW = 4; // sem filtro de estoque na API: junta algumas páginas até achar produtos
+const BULK_PAGES = 5; // "carregar tudo": páginas buscadas ao mesmo tempo em cada chamada
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
 async function bagyGet(token: string, path: string): Promise<{ ok: boolean; status: number; data: any }> {
-  const res = await fetch(`${BAGY}${path}`, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
-  const data = await res.json().catch(() => ({}));
-  return { ok: res.ok, status: res.status, data };
+  // 429 = a Bagy pediu para esperar: tenta de novo até 2 vezes antes de desistir
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${BAGY}${path}`, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+    if (res.status === 429 && attempt < 2) { await new Promise((r) => setTimeout(r, 800 * (attempt + 1))); continue; }
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data };
+  }
 }
 
 const listOf = (d: any): any[] => {
@@ -103,12 +108,9 @@ serve(async (req) => {
       let page = startPage;
       let hasMore = false;
       let scanned = 0;
-      for (let i = 0; i < MAX_PAGES_PER_PREVIEW; i++) {
-        let path = `/products?page=${page}&active=1`;
-        if (search) path += `&name=${encodeURIComponent(search)}`;
-        const r = await bagyGet(token, path);
-        if (!r.ok) return json({ error: errMsg(r) }, r.status === 401 || r.status === 403 ? 401 : 400);
-        const items = listOf(r.data);
+      let lastPage = 0;
+      const pathFor = (pg: number) => `/products?page=${pg}&active=1${search ? `&name=${encodeURIComponent(search)}` : ""}`;
+      const take = (items: any[]) => {
         scanned += items.length;
         for (const p of items) {
           const vars: any[] = Array.isArray(p.variations) ? p.variations : [];
@@ -116,11 +118,37 @@ serve(async (req) => {
           if (onlyStock && total <= 0) continue;
           collected.push({ p, vars, total });
         }
-        const last = num(r.data?.meta?.last_page);
-        const current = num(r.data?.meta?.current_page) || page;
-        hasMore = last ? current < last : items.length >= 25;
-        page = current + 1;
-        if (!hasMore || collected.length >= (body.bulk === true ? 100 : 10)) break;
+      };
+
+      if (body.bulk === true) {
+        // "Carregar tudo": a 1ª página diz quantas existem; as outras do grupo vêm todas ao mesmo tempo
+        const first = await bagyGet(token, pathFor(startPage));
+        if (!first.ok) return json({ error: errMsg(first) }, first.status === 401 || first.status === 403 ? 401 : 400);
+        lastPage = num(first.data?.meta?.last_page);
+        const firstItems = listOf(first.data);
+        take(firstItems);
+        let lastItems = firstItems;
+        const endPage = lastPage ? Math.min(lastPage, startPage + BULK_PAGES - 1) : startPage;
+        const rest = await Promise.all(Array.from({ length: Math.max(0, endPage - startPage) }, (_, i) => bagyGet(token, pathFor(startPage + 1 + i))));
+        for (const r of rest) {
+          if (!r.ok) return json({ error: errMsg(r) }, r.status === 401 || r.status === 403 ? 401 : 400);
+          lastItems = listOf(r.data);
+          take(lastItems);
+        }
+        hasMore = lastPage ? endPage < lastPage : lastItems.length >= 25;
+        page = endPage + 1;
+      } else {
+        for (let i = 0; i < MAX_PAGES_PER_PREVIEW; i++) {
+          const r = await bagyGet(token, pathFor(page));
+          if (!r.ok) return json({ error: errMsg(r) }, r.status === 401 || r.status === 403 ? 401 : 400);
+          const items = listOf(r.data);
+          take(items);
+          const last = num(r.data?.meta?.last_page);
+          const current = num(r.data?.meta?.current_page) || page;
+          hasMore = last ? current < last : items.length >= 25;
+          page = current + 1;
+          if (!hasMore || collected.length >= 10) break;
+        }
       }
 
       // o que já existe no Cartzy
@@ -160,7 +188,7 @@ serve(async (req) => {
       });
       const semSku = rows.filter((r) => r.codigo === "—").length;
       const debug = semSku && collected[0] ? { sem_sku: semSku, produto: peek(collected[0].p), variacao: peek(collected[0].vars[0]) } : null;
-      return json({ ok: true, next_page: page, has_more: hasMore, scanned, rows, debug });
+      return json({ ok: true, next_page: page, has_more: hasMore, last_page: lastPage, pages_per_call: BULK_PAGES, scanned, rows, debug });
     }
 
     // ======================= IMPORTAÇÃO =======================

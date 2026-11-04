@@ -99,6 +99,17 @@ export default function Indicacao() {
               Prefiro conversar antes — agendar uma apresentação
             </button>
           </div>
+          <div className="mt-10 max-w-3xl overflow-hidden rounded-2xl border bg-black shadow-lg">
+            <video
+              className="aspect-video w-full"
+              src="/indicacao-demo.mp4"
+              poster="/indicacao-demo-poster.jpg"
+              controls
+              playsInline
+              preload="none"
+              aria-label="Veja o Cartzy funcionando"
+            />
+          </div>
         </div>
       </header>
 
