@@ -1371,6 +1371,11 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
                         <TableCell>
                           <div>
                             <p className="font-medium">{tenant.name}</p>
+                            {['aguardando_pagamento', 'expirado'].includes((tenant as any).signup_status) && (
+                              <Badge variant={(tenant as any).signup_status === 'expirado' ? 'destructive' : 'outline'} className="mt-1">
+                                {(tenant as any).signup_status === 'expirado' ? 'Contratação expirada' : 'Aguardando pagamento'}
+                              </Badge>
+                            )}
                             <p className="text-xs text-muted-foreground">{tenant.slug}</p>
                             {tenant.email && (
                               <p className="text-xs text-muted-foreground mt-1">{tenant.email}</p>
