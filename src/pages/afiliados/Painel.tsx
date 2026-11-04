@@ -51,7 +51,7 @@ export default function AfiliadoPainel() {
     const [a, c, l, m, p, cl] = await Promise.all([
       supabase.from('platform_affiliates' as any).select('*').eq('user_id', user.id).maybeSingle(),
       supabase.from('platform_affiliate_clicks' as any).select('created_at').gte('created_at', since),
-      supabase.from('platform_affiliate_leads' as any).select('id, nome, empresa, status, meeting_at, created_at, tenant_id').order('created_at', { ascending: false }),
+      supabase.from('platform_affiliate_leads' as any).select('id, nome, empresa, status, meeting_at, created_at, tenant_id, origem').order('created_at', { ascending: false }),
       supabase.from('platform_affiliate_commissions' as any).select('*').order('created_at', { ascending: false }),
       supabase.from('platform_affiliate_payouts' as any).select('*').order('paid_at', { ascending: false }),
       supabase.rpc('my_platform_affiliate_clients' as any),
@@ -160,6 +160,23 @@ export default function AfiliadoPainel() {
                   </span>
                 </div>
               ))}
+            </section>
+
+            <section className="rounded-xl border bg-card p-4">
+              <div className="font-semibold mb-2">Contratações diretas pelo seu link</div>
+              {leads.filter((l) => l.origem === 'self_signup').length === 0 ? <p className="text-sm text-muted-foreground">Nenhuma ainda.</p> : leads.filter((l) => l.origem === 'self_signup').map((l) => {
+                const paid = ['fechado', 'pagando'].includes(l.status);
+                const total = comms.filter((c) => c.tenant_id && c.tenant_id === l.tenant_id && c.status !== 'cancelada').reduce((acc, c) => acc + Number(c.valor_comissao || 0), 0);
+                return (
+                  <div key={l.id} className="flex flex-wrap items-center justify-between gap-2 text-sm py-2 border-b last:border-0">
+                    <span><strong>{l.empresa || l.nome}</strong> <span className="text-muted-foreground">· {new Date(l.created_at).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</span></span>
+                    <span className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Comissão: {brl(total)}</span>
+                      <Badge variant={paid ? 'default' : l.status === 'expirado' ? 'secondary' : 'outline'}>{paid ? 'Pago' : l.status === 'expirado' ? 'Expirado' : 'Aguardando pagamento'}</Badge>
+                    </span>
+                  </div>
+                );
+              })}
             </section>
 
             <section className="rounded-xl border bg-card p-4">
