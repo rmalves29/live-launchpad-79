@@ -105,6 +105,10 @@ export default function Indicacao() {
               src="/indicacao-demo.mp4"
               poster="/indicacao-demo-poster.jpg"
               controls
+              controlsList="nodownload noplaybackrate"
+              disablePictureInPicture
+              disableRemotePlayback
+              onContextMenu={(e) => e.preventDefault()}
               playsInline
               preload="none"
               aria-label="Veja o Cartzy funcionando"
