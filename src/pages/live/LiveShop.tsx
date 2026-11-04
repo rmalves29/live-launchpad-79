@@ -922,7 +922,7 @@ export default function LiveShop() {
             {gifts.map((g) => (
               <div className="cp gift" key={g.name}>
                 <span className="ic">{svg(GIFT)}</span>
-                <div className="tx"><b>Brinde: {g.name}</b><small>em compras acima de {brl(g.minimum_purchase_amount)}{g.left != null ? ` · restam ${g.left}` : ''}</small></div>
+                <div className="tx"><b>{g.name}</b><small>em compras acima de {brl(g.minimum_purchase_amount)}{g.left != null ? ` · restam ${g.left}` : ''}</small></div>
               </div>
             ))}
           </div>
@@ -1046,7 +1046,7 @@ export default function LiveShop() {
     <div className="gift-row">
       <div className="ph" style={{ display: 'grid', placeItems: 'center', fontSize: 28 }}>🎁</div>
       <div>
-        <div className="t" style={{ fontSize: 14 }}><span className="brinde">Brinde</span>{gift.name}</div>
+        <div className="t" style={{ fontSize: 14 }}>{gift.name}</div>
         <div className="note" style={{ marginTop: 6 }}>R$ 0,00 · x1</div>
       </div>
     </div>
@@ -1097,7 +1097,7 @@ export default function LiveShop() {
             {freeMin != null && (subtotal - couponOff >= freeMin
               ? <div className="bene ship">🚚 Você ganhou frete grátis!</div>
               : <div className="bene ship" style={{ background: 'var(--bg)', color: 'var(--muted)' }}>🚚 Faltam {brl(freeMin - (subtotal - couponOff))} para o frete grátis</div>)}
-            {gift && <div className="bene gift">🎁 Você ganhou um brinde</div>}
+            {gift && <div className="bene gift">🎁 Você ganhou {gift.name}</div>}
             {cart.map((l) => lineRow(l, true))}
             {giftRow}
             {couponBlock()}
