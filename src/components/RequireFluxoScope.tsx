@@ -12,6 +12,7 @@ export default function RequireFluxoScope({ children }: { children: ReactNode })
   const { user, profile, isLoading } = useAuth();
   const [checking, setChecking] = useState(true);
   const [needsPayment, setNeedsPayment] = useState(false);
+  const [signupUnpaid, setSignupUnpaid] = useState(false);
   // Fallback: sessão lida diretamente do Supabase (evita corrida com o contexto)
   const [directSession, setDirectSession] = useState<'unknown' | 'yes' | 'no'>('unknown');
   const [directProfile, setDirectProfile] = useState<{ tenant_id: string | null; access_scope?: string | null; role?: string | null } | null>(null);
@@ -71,10 +72,12 @@ export default function RequireFluxoScope({ children }: { children: ReactNode })
 
       const { data } = await supabase
         .from('tenants')
-        .select('plan_type, subscription_ends_at, trial_ends_at')
+        .select('plan_type, subscription_ends_at, trial_ends_at, signup_status')
         .eq('id', effectiveProfile.tenant_id)
         .maybeSingle();
-      if (data) {
+      if (data && ['aguardando_pagamento', 'expirado'].includes((data as any).signup_status)) {
+        setSignupUnpaid(true); // contratação direta ainda não paga: tela própria de pagamento
+      } else if (data) {
         const ends = data.subscription_ends_at || data.trial_ends_at;
         const expired = ends ? new Date(ends).getTime() < Date.now() : true;
         const isTrial = !data.plan_type || data.plan_type === 'trial';
@@ -98,6 +101,7 @@ export default function RequireFluxoScope({ children }: { children: ReactNode })
   if (!hasUser) return <Navigate to="/fluxo-envio" replace />;
   // super_admin não tem tenant_id fixo (usa "preview tenant" dinâmico) — não exigir aqui.
   if (!isSuperAdmin && !effectiveProfile?.tenant_id) return <Navigate to="/fluxo-envio" replace />;
+  if (signupUnpaid) return <Navigate to="/contratacao/pagamento" replace />;
   if (needsPayment) return <Navigate to="/fluxo-envio/pagamento" replace />;
   return <>{children}</>;
 }

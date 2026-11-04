@@ -4241,6 +4241,7 @@ export type Database = {
           link_sent_at: string | null
           meeting_at: string | null
           meeting_link: string | null
+          meeting_type: string
           nome: string | null
           notas: string | null
           origem: string
@@ -4263,6 +4264,7 @@ export type Database = {
           link_sent_at?: string | null
           meeting_at?: string | null
           meeting_link?: string | null
+          meeting_type?: string
           nome?: string | null
           notas?: string | null
           origem?: string
@@ -4285,6 +4287,7 @@ export type Database = {
           link_sent_at?: string | null
           meeting_at?: string | null
           meeting_link?: string | null
+          meeting_type?: string
           nome?: string | null
           notas?: string | null
           origem?: string
@@ -4364,9 +4367,13 @@ export type Database = {
           attribution_days: number
           default_months: number | null
           default_percent: number
+          fallback_payment_url: string | null
           hold_days: number
           id: number
           min_payout: number
+          plan_price: number
+          signup_pagarme_plan_id: string | null
+          signup_pagarme_plan_price: number | null
           updated_at: string
         }
         Insert: {
@@ -4375,9 +4382,13 @@ export type Database = {
           attribution_days?: number
           default_months?: number | null
           default_percent?: number
+          fallback_payment_url?: string | null
           hold_days?: number
           id?: number
           min_payout?: number
+          plan_price?: number
+          signup_pagarme_plan_id?: string | null
+          signup_pagarme_plan_price?: number | null
           updated_at?: string
         }
         Update: {
@@ -4386,9 +4397,13 @@ export type Database = {
           attribution_days?: number
           default_months?: number | null
           default_percent?: number
+          fallback_payment_url?: string | null
           hold_days?: number
           id?: number
           min_payout?: number
+          plan_price?: number
+          signup_pagarme_plan_id?: string | null
+          signup_pagarme_plan_price?: number | null
           updated_at?: string
         }
         Relationships: []
@@ -4441,26 +4456,35 @@ export type Database = {
       platform_pagarme_customer_map: {
         Row: {
           created_at: string
+          document: string | null
+          email: string | null
           id: string
           matched_by: string | null
           pagarme_customer_id: string | null
           pagarme_subscription_id: string | null
+          phone_key: string | null
           tenant_id: string
         }
         Insert: {
           created_at?: string
+          document?: string | null
+          email?: string | null
           id?: string
           matched_by?: string | null
           pagarme_customer_id?: string | null
           pagarme_subscription_id?: string | null
+          phone_key?: string | null
           tenant_id: string
         }
         Update: {
           created_at?: string
+          document?: string | null
+          email?: string | null
           id?: string
           matched_by?: string | null
           pagarme_customer_id?: string | null
           pagarme_subscription_id?: string | null
+          phone_key?: string | null
           tenant_id?: string
         }
         Relationships: [
@@ -6295,12 +6319,19 @@ export type Database = {
           max_products: number | null
           max_whatsapp_groups: number | null
           name: string
+          onboarding_meeting_at: string | null
           order_merge_days: number | null
           order_merge_enabled: boolean
           phone: string | null
           plan_type: string | null
           primary_color: string | null
           secondary_color: string | null
+          signup_created_at: string | null
+          signup_paid_at: string | null
+          signup_payment_url: string | null
+          signup_plan: string | null
+          signup_status: string | null
+          signup_token: string | null
           slug: string
           subdomain: string | null
           subscription_ends_at: string | null
@@ -6354,12 +6385,19 @@ export type Database = {
           max_products?: number | null
           max_whatsapp_groups?: number | null
           name: string
+          onboarding_meeting_at?: string | null
           order_merge_days?: number | null
           order_merge_enabled?: boolean
           phone?: string | null
           plan_type?: string | null
           primary_color?: string | null
           secondary_color?: string | null
+          signup_created_at?: string | null
+          signup_paid_at?: string | null
+          signup_payment_url?: string | null
+          signup_plan?: string | null
+          signup_status?: string | null
+          signup_token?: string | null
           slug: string
           subdomain?: string | null
           subscription_ends_at?: string | null
@@ -6413,12 +6451,19 @@ export type Database = {
           max_products?: number | null
           max_whatsapp_groups?: number | null
           name?: string
+          onboarding_meeting_at?: string | null
           order_merge_days?: number | null
           order_merge_enabled?: boolean
           phone?: string | null
           plan_type?: string | null
           primary_color?: string | null
           secondary_color?: string | null
+          signup_created_at?: string | null
+          signup_paid_at?: string | null
+          signup_payment_url?: string | null
+          signup_plan?: string | null
+          signup_status?: string | null
+          signup_token?: string | null
           slug?: string
           subdomain?: string | null
           subscription_ends_at?: string | null
@@ -7559,6 +7604,11 @@ export type Database = {
         }
         Returns: Json
       }
+      platform_signup_activate: {
+        Args: { _tenant_id: string }
+        Returns: boolean
+      }
+      platform_signup_expire: { Args: never; Returns: number }
       public_register_instagram: {
         Args: {
           p_instagram: string

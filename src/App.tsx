@@ -27,7 +27,7 @@ const WhatsAppSupportButton = lazy(() =>
 const SupportButtonGate = () => {
   const { pathname } = useLocation();
   if (/^\/t\/[^/]+\/live(\/a\/[^/]+)?\/?$/.test(pathname) || /^\/t\/[^/]+\/afiliada\/[^/]+\/?$/.test(pathname)) return null;
-  if (pathname === '/indicacao' || pathname === '/afiliado' || pathname === '/afiliados/cadastro' || pathname.startsWith('/i/')) return null;
+  if (pathname.startsWith('/contratacao/') || pathname === '/indicacao' || pathname === '/afiliado' || pathname === '/afiliados/cadastro' || pathname.startsWith('/i/')) return null;
   return <Suspense fallback={null}><WhatsAppSupportButton /></Suspense>;
 };
 
@@ -98,6 +98,8 @@ const ReferralRedirect = lazy(() => import("./pages/afiliados/ReferralRedirect")
 const Indicacao = lazy(() => import("./pages/afiliados/Indicacao"));
 const AfiliadoCadastro = lazy(() => import("./pages/afiliados/Cadastro"));
 const AfiliadoPainel = lazy(() => import("./pages/afiliados/Painel"));
+const ContratacaoObrigado = lazy(() => import("./pages/contratacao/Obrigado"));
+const ContratacaoPagamento = lazy(() => import("./pages/contratacao/Pagamento"));
 const AdminAfiliados = lazy(() => import("./pages/admin/Afiliados"));
 
 const queryClient = new QueryClient({
@@ -113,7 +115,7 @@ const queryClient = new QueryClient({
 const AppContent = () => {
   const location = useLocation();
   const { tenant, isMainSite } = useTenantContext();
-  const showShell = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && location.pathname !== '/politica-de-privacidade' && location.pathname !== '/termos-de-uso' && location.pathname !== '/design-preview' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/') && location.pathname !== '/fluxo-envio' && !location.pathname.startsWith('/fluxo-envio/app') && location.pathname !== '/fluxo-envio/pagamento' && !location.pathname.startsWith('/i/') && location.pathname !== '/indicacao' && location.pathname !== '/afiliados/cadastro' && location.pathname !== '/afiliado';
+  const showShell = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && location.pathname !== '/politica-de-privacidade' && location.pathname !== '/termos-de-uso' && location.pathname !== '/design-preview' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/') && location.pathname !== '/fluxo-envio' && !location.pathname.startsWith('/fluxo-envio/app') && location.pathname !== '/fluxo-envio/pagamento' && !location.pathname.startsWith('/i/') && location.pathname !== '/indicacao' && location.pathname !== '/afiliados/cadastro' && location.pathname !== '/afiliado' && !location.pathname.startsWith('/contratacao/');
   
   // Atualiza o título da aba do navegador baseado na página atual
   usePageTitle();
@@ -173,6 +175,8 @@ const AppContent = () => {
       <Route path="/indicacao" element={<Indicacao />} />
       <Route path="/afiliados/cadastro" element={<AfiliadoCadastro />} />
       <Route path="/afiliado" element={<AfiliadoPainel />} />
+      <Route path="/contratacao/obrigado" element={<ContratacaoObrigado />} />
+      <Route path="/contratacao/pagamento" element={<RequireAuth><ContratacaoPagamento /></RequireAuth>} />
 
         
         {/* Rota principal - Index ou TenantAuth dependendo do contexto */}

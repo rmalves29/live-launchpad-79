@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
     // 1) alerta 5 min antes (janela: começa em até 5 min e ainda não começou)
     const { data: soon } = await sb.from("platform_affiliate_leads")
       .update({ alert_sent_at: iso(now) })
-      .eq("status", "reuniao_agendada").is("alert_sent_at", null)
+      .or("status.eq.reuniao_agendada,meeting_type.eq.onboarding").is("alert_sent_at", null)
       .gt("meeting_at", iso(now)).lte("meeting_at", iso(now + 5 * 60e3))
       .select("id, nome, empresa, whatsapp, instagram, meeting_at, meeting_link, affiliate_id");
     for (const l of soon || []) {
@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     // 2) link do Meet ao lead no horário (até 30 min de atraso)
     const { data: due } = await sb.from("platform_affiliate_leads")
       .update({ link_sent_at: iso(now) })
-      .eq("status", "reuniao_agendada").is("link_sent_at", null)
+      .or("status.eq.reuniao_agendada,meeting_type.eq.onboarding").is("link_sent_at", null)
       .lte("meeting_at", iso(now)).gt("meeting_at", iso(now - 30 * 60e3))
       .select("id, nome, whatsapp, meeting_link");
     for (const l of due || []) {

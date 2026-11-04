@@ -5,6 +5,7 @@ import { useTenantContext } from "@/contexts/TenantContext";
 import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useSignupStatus, OnboardingBanner } from "@/components/SignupGate";
 
 interface RequireTenantAuthProps {
   children: ReactNode;
@@ -27,6 +28,8 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
   
   // Ativar timeout de sessão apenas quando logado
   useSessionTimeout();
+  // Contratação direta sem pagamento: só a tela de pagamento
+  const signup = useSignupStatus(profile?.role === 'super_admin' ? null : profile?.tenant_id ?? null);
 
   // Verificar status da assinatura quando o tenant carregar
   useEffect(() => {
@@ -100,6 +103,10 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
   // Se não há usuário logado, redireciona para login
   if (!user) {
     return <Navigate to="/auth" replace />;
+  }
+
+  if (signup && ['aguardando_pagamento', 'expirado'].includes(signup.signup_status || '')) {
+    return <Navigate to="/contratacao/pagamento" replace />;
   }
 
   // Usuários com escopo restrito só podem acessar /fluxo-envio/app
@@ -188,5 +195,5 @@ export default function RequireTenantAuth({ children }: RequireTenantAuthProps) 
   hasInitiallyLoaded = true;
   hasRenderedOnce.current = true;
   
-  return <>{children}</>;
+  return <><OnboardingBanner status={signup} />{children}</>;
 }

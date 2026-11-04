@@ -12,7 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
-import { LEAD_STATUS, LEAD_STATUS_ORDER } from './lead-status';
+import { LEAD_ORIGEM, LEAD_STATUS, LEAD_STATUS_ORDER, MEETING_TYPE, SIGNUP_STATUS } from './lead-status';
 
 const TZ = { timeZone: 'America/Sao_Paulo' } as const;
 const fmt = (iso: string) => new Date(iso).toLocaleString('pt-BR', { ...TZ, weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -47,15 +47,18 @@ export function AdminLeadsTab({ affiliates }: { affiliates: { id: string; nome: 
   const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
   const [tSearch, setTSearch] = useState('');
   const [tPick, setTPick] = useState<string | null>(null);
+  const [signup, setSignup] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [l, u, s, g] = await Promise.all([
+    const [l, u, s, g, ts] = await Promise.all([
       supabase.from('platform_affiliate_leads' as any).select('*').order('created_at', { ascending: false }).limit(1000),
       supabase.from('platform_unmatched_payments' as any).select('*').eq('status', 'pendente').order('paid_at', { ascending: false }),
       supabase.from('platform_affiliate_settings' as any).select('agenda').eq('id', 1).maybeSingle(),
       invoke({ action: 'google_status' }),
+      supabase.from('tenants').select('id, signup_status, signup_created_at').not('signup_status', 'is', null),
     ]);
+    setSignup(Object.fromEntries((((ts as any).data as any[]) || []).map((t) => [t.id, t.signup_status])));
     setLeads((l.data as any) || []); setUnmatched((u.data as any) || []);
     setAgenda((s.data as any)?.agenda ?? null); setGoogle(g?.success ? !!g.connected : null);
     setLoading(false);
@@ -183,12 +186,13 @@ export function AdminLeadsTab({ affiliates }: { affiliates: { id: string; nome: 
                   <div className="text-muted-foreground">{l.whatsapp || '-'}{l.instagram ? ` · @${l.instagram}` : ''}</div>
                   <div className="flex flex-wrap gap-1">
                     <Badge variant="outline">{l.affiliate_id ? affName[l.affiliate_id] || 'afiliada' : 'sem afiliada'}</Badge>
-                    <Badge variant="secondary">{l.origem}</Badge>
+                    <Badge variant={l.origem === 'self_signup' ? 'default' : 'secondary'}>{LEAD_ORIGEM[l.origem] || l.origem}</Badge>
+                    {l.tenant_id && signup[l.tenant_id] && <Badge variant={signup[l.tenant_id] === 'pago' ? 'default' : signup[l.tenant_id] === 'expirado' ? 'destructive' : 'outline'}>{SIGNUP_STATUS[signup[l.tenant_id]]}</Badge>}
                     {l.vende_live != null && <Badge variant="secondary">{l.vende_live ? 'vende em live' : 'não vende em live'}</Badge>}
                   </div>
-                  {l.meeting_at && <div className="flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" />{fmt(l.meeting_at)}</div>}
+                  {l.meeting_at && <div className="flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" />{MEETING_TYPE[l.meeting_type] || 'Apresentação'} · {fmt(l.meeting_at)}</div>}
                   {l.meeting_link && <a href={l.meeting_link} target="_blank" rel="noreferrer" className="text-primary underline break-all">{l.meeting_link}</a>}
-                  {l.google_error && l.status === 'reuniao_agendada' && <div className="text-destructive">{l.google_error}</div>}
+                  {l.google_error && (l.status === 'reuniao_agendada' || l.meeting_type === 'onboarding') && <div className="text-destructive">{l.google_error}</div>}
                   {l.notas && <div className="whitespace-pre-wrap rounded bg-muted p-1.5">{l.notas}</div>}
                   <Select value={l.status} onValueChange={(v) => setStatus(l, v)}>
                     <SelectTrigger className="h-7 text-xs"><SelectValue /></SelectTrigger>

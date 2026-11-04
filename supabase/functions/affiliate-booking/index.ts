@@ -47,7 +47,7 @@ async function agenda() {
 
 async function bookedSlots() {
   const { data } = await sb.from("platform_affiliate_leads").select("meeting_at")
-    .eq("status", "reuniao_agendada").gte("meeting_at", new Date().toISOString());
+    .or("status.eq.reuniao_agendada,meeting_type.eq.onboarding").gte("meeting_at", new Date().toISOString());
   return (data || []).map((r: any) => r.meeting_at as string);
 }
 
@@ -80,9 +80,11 @@ async function syncGoogle(lead: any, minutes: number) {
 }
 
 /** Marca o horário (constraint única impede dois no mesmo slot). */
-async function setMeeting(leadId: string, at: string): Promise<{ lead?: any; error?: string }> {
+async function setMeeting(leadId: string, at: string, onboarding = false): Promise<{ lead?: any; error?: string }> {
+  // Onboarding (contratação direta) mantém o status do funil; apresentação volta para 'reuniao_agendada'
+  const patch = onboarding ? { meeting_at: at, alert_sent_at: null, link_sent_at: null } : { meeting_at: at, status: "reuniao_agendada", meeting_type: "apresentacao" };
   const { data, error } = await sb.from("platform_affiliate_leads")
-    .update({ meeting_at: at, status: "reuniao_agendada" }).eq("id", leadId).select("*").single();
+    .update(patch).eq("id", leadId).select("*").single();
   if (error) return { error: error.code === "23505" ? "Esse horário acabou de ser reservado. Escolha outro." : "Não foi possível agendar agora" };
   return { lead: data };
 }
@@ -175,7 +177,9 @@ Deno.serve(async (req) => {
     if (action === "admin_reschedule") {
       const t = new Date(s(body.meeting_at, 40));
       if (isNaN(t.getTime()) || t.getTime() < Date.now()) return json({ success: false, error: "Escolha um horário futuro" });
-      const r = await setMeeting(lead.id, t.toISOString());
+      const onb = lead.meeting_type === "onboarding";
+      const r = await setMeeting(lead.id, t.toISOString(), onb);
+      if (onb && lead.tenant_id) await sb.from("tenants").update({ onboarding_meeting_at: t.toISOString() }).eq("id", lead.tenant_id);
       if (r.error) return json({ success: false, error: r.error });
       const g = await syncGoogle(r.lead, a.duracao);
       const wErr = await sendWhatsApp(lead.whatsapp, `Olá, ${lead.nome.split(" ")[0]}! Sua reunião com a Cartzy foi remarcada para ${formatBrt(t.toISOString())} (horário de Brasília).` +
@@ -187,8 +191,10 @@ Deno.serve(async (req) => {
       if (lead.google_event_id && !DRY && googleConfigured()) {
         try { await deleteEvent(lead.google_event_id); } catch (e) { console.error("[affiliate-booking] delete:", (e as Error).message); }
       }
+      const onb = lead.meeting_type === "onboarding";
+      if (onb && lead.tenant_id) await sb.from("tenants").update({ onboarding_meeting_at: null }).eq("id", lead.tenant_id);
       await sb.from("platform_affiliate_leads").update({
-        status: "indicado", meeting_at: null, meeting_link: null, google_event_id: null, google_error: null,
+        ...(onb ? { meeting_type: "apresentacao" } : { status: "indicado" }), meeting_at: null, meeting_link: null, google_event_id: null, google_error: null,
       }).eq("id", lead.id);
       if (lead.meeting_at && new Date(lead.meeting_at).getTime() > Date.now() && body.notify !== false) {
         await sendWhatsApp(lead.whatsapp, `Olá, ${lead.nome.split(" ")[0]}! Sua reunião com a Cartzy de ${formatBrt(lead.meeting_at)} foi cancelada. Se quiser, é só responder aqui para marcarmos outro horário.`);
@@ -197,7 +203,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "admin_retry_google") {
-      if (!lead.meeting_at || lead.status !== "reuniao_agendada") return json({ success: false, error: "Lead sem reunião agendada" });
+      if (!lead.meeting_at || (lead.status !== "reuniao_agendada" && lead.meeting_type !== "onboarding")) return json({ success: false, error: "Lead sem reunião agendada" });
       const g = await syncGoogle(lead, a.duracao);
       return json(g.error ? { success: false, error: g.error } : { success: true, link: g.link });
     }

@@ -102,7 +102,7 @@ export default function EmpresasIndex() {
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [showPasswords, setShowPasswords] = useState<{[key: string]: boolean}>({});
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive' | 'blocked' | 'expired'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive' | 'blocked' | 'expired' | 'awaiting'>('all');
   const [filterPrazo, setFilterPrazo] = useState<'all' | 'expired' | 'critical' | 'warning' | 'ok' | 'unlimited'>('all');
   const [activeTab, setActiveTab] = useState<'cartzy' | 'fluxo'>('cartzy');
   const [fluxoTenantIds, setFluxoTenantIds] = useState<Set<string>>(new Set());
@@ -195,7 +195,7 @@ export default function EmpresasIndex() {
 
       const { data, error: fetchError } = await supabase
         .from('tenants')
-        .select('id, name, slug, email, logo_url, is_active, is_blocked, trial_ends_at, subscription_ends_at, plan_type, admin_email, created_at')
+        .select('id, name, slug, email, logo_url, is_active, is_blocked, trial_ends_at, subscription_ends_at, plan_type, admin_email, created_at, signup_status, signup_created_at')
         .order('name');
 
       if (fetchError) throw fetchError;
@@ -734,6 +734,10 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
           break;
         case 'expired':
           if (!isExpired) return false;
+          break;
+        case 'awaiting':
+          // Contratação direta sem pagamento (inclui expiradas após 7 dias, que nunca são apagadas)
+          if (!['aguardando_pagamento', 'expirado'].includes((tenant as any).signup_status)) return false;
           break;
       }
     }
@@ -1289,6 +1293,7 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
                   <option value="inactive">Inativas</option>
                   <option value="blocked">Bloqueadas</option>
                   <option value="expired">Expiradas</option>
+                  <option value="awaiting">Aguardando pagamento</option>
                 </select>
               </div>
               
@@ -1366,6 +1371,11 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
                         <TableCell>
                           <div>
                             <p className="font-medium">{tenant.name}</p>
+                            {['aguardando_pagamento', 'expirado'].includes((tenant as any).signup_status) && (
+                              <Badge variant={(tenant as any).signup_status === 'expirado' ? 'destructive' : 'outline'} className="mt-1">
+                                {(tenant as any).signup_status === 'expirado' ? 'Contratação expirada' : 'Aguardando pagamento'}
+                              </Badge>
+                            )}
                             <p className="text-xs text-muted-foreground">{tenant.slug}</p>
                             {tenant.email && (
                               <p className="text-xs text-muted-foreground mt-1">{tenant.email}</p>
