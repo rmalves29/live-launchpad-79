@@ -40,7 +40,7 @@ export function whatsappKey(v: unknown): string | null {
 export const normInstagram = (v: unknown) =>
   String(v ?? "").trim().toLowerCase().replace(/^https?:\/\/(www\.)?instagram\.com\//, "").replace(/^@/, "").replace(/[/?#].*$/, "").slice(0, 60);
 
-export const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
+export const isValidEmail = (v: string) => /^[^\s@,()]+@[^\s@,()]+\.[^\s@,()]{2,}$/.test(v);
 
 export const MIN_FILL_MS = 4000;
 /** Anti-bot: honeypot preenchido ou formulário enviado rápido demais. */

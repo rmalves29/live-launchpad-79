@@ -172,6 +172,11 @@ Deno.serve(async (req) => {
         });
         if (attErr) console.error("[pagarme-sub-webhook] atribuição link recorrente falhou:", attErr.message);
         else console.log("[pagarme-sub-webhook] atribuição link recorrente:", JSON.stringify(att));
+        // Contratação direta: o pagamento ativou a empresa → boas-vindas (sem senha) com o link de agendamento
+        if (!attErr && (att as any)?.activated && (att as any)?.tenant_id) {
+          const { error: wErr } = await supabase.functions.invoke("self-signup", { body: { action: "welcome", tenant_id: (att as any).tenant_id } });
+          if (wErr) console.error("[pagarme-sub-webhook] boas-vindas contratação direta:", wErr.message);
+        }
       }
       await supabase.from("webhook_logs").insert({
         webhook_type: `pagarme_subscription:unmatched:${type}`,
