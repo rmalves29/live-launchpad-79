@@ -9,6 +9,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useConfirmDialog } from '@/hooks/useConfirmDialog';
 import { toast } from 'sonner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AdminLeadsTab } from '@/components/affiliates/AdminLeadsTab';
 
 const brl = (v: number) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -118,6 +120,14 @@ export default function AdminAfiliados() {
       </div>
       {msg && <Alert variant={msg.ok ? 'default' : 'destructive'}><AlertDescription>{msg.text}</AlertDescription></Alert>}
 
+      <Tabs defaultValue="afiliados" className="space-y-6">
+      <TabsList>
+        <TabsTrigger value="afiliados">Afiliados</TabsTrigger>
+        <TabsTrigger value="leads">Leads e reuniões</TabsTrigger>
+      </TabsList>
+      <TabsContent value="leads"><AdminLeadsTab affiliates={affs} /></TabsContent>
+      <TabsContent value="afiliados" className="space-y-6">
+
       {settings && (
         <section className="rounded-xl border bg-card p-4 grid gap-3 md:grid-cols-5 items-end">
           <div className="md:col-span-2"><Label>WhatsApp da landing (com DDI)</Label><Input value={settings.affiliate_whatsapp || ''} placeholder="5511999999999" onChange={(e) => setSettings({ ...settings, affiliate_whatsapp: e.target.value })} /></div>
@@ -166,6 +176,8 @@ export default function AdminAfiliados() {
           </tbody>
         </table>
       </section>
+      </TabsContent>
+      </Tabs>
 
       <Dialog open={!!payFor} onOpenChange={(o) => { if (!o) { setPayFor(null); setFile(null); } }}>
         <DialogContent>
