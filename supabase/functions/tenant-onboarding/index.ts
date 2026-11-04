@@ -91,6 +91,7 @@ async function approve(id: string): Promise<{ ok: boolean; text: string; status:
       name: row.company_name, slug, email: row.company_email || row.admin_email, logo_url: row.logo_url || null,
       plan_type: row.plan, is_active: true, is_blocked: false, subscription_ends_at: end, trial_ends_at: null,
       whatsapp_provider: row.whatsapp_provider, ...access.flags,
+      billing_phone: row.contact_phone || null, billing_email: row.admin_email || null,
     }).select("id").single();
     if (error) { if (error.code === "23505") continue; return await fail(`empresa: ${error.message}`); }
     tenantId = data.id;
@@ -109,7 +110,7 @@ async function approve(id: string): Promise<{ ok: boolean; text: string; status:
   }
 
   if (row.affiliate_id) {
-    const { error: affErr } = await sb.rpc("platform_affiliate_attach_tenant", { _tenant_id: tenantId, _affiliate_id: row.affiliate_id, _phone: row.contact_phone });
+    const { error: affErr } = await sb.rpc("platform_affiliate_attach_tenant", { _tenant_id: tenantId, _affiliate_id: row.affiliate_id, _phone: row.contact_phone, _instagram: row.instagram ?? null });
     if (affErr) console.error("[tenant-onboarding] vincular afiliado:", affErr.message);
   }
 
@@ -189,7 +190,7 @@ Deno.serve(async (req) => {
           company_email: s(body.company_email, 200) || admin_email,
           contact_name: s(body.contact_name, 120) || null, contact_phone: s(body.contact_phone, 30).replace(/\D/g, "") || null,
           sells_live: !!body.sells_live, sells_bazar: !!body.sells_bazar,
-          cnpj: s(body.cnpj, 30) || null, address: s(body.address, 400) || null, notes: s(body.notes, 2000) || null,
+          cnpj: s(body.cnpj, 30) || null, instagram: s(body.instagram, 120) || null, address: s(body.address, 400) || null, notes: s(body.notes, 2000) || null,
           logo_url: s(body.logo_url, 500) || null, password_suffix: suffix, created_by: u.user.id,
           affiliate_id: /^[0-9a-f-]{36}$/i.test(String(body.affiliate_id || "")) ? body.affiliate_id : null,
         }).select("*").single();

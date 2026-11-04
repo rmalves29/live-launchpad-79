@@ -127,6 +127,7 @@ export default function EmpresasIndex() {
   const [formAccessType, setFormAccessType] = useState<'tenant_admin' | 'super_admin'>('tenant_admin');
   const [formAffiliateId, setFormAffiliateId] = useState<string | null>(null);
   const [affKey, setAffKey] = useState(0);
+  const [formInstagram, setFormInstagram] = useState('');
   
   // Logo upload states
   const [formLogoUrl, setFormLogoUrl] = useState<string | null>(null);
@@ -299,6 +300,7 @@ export default function EmpresasIndex() {
       setFormAdminPassword(generateAdminPassword());
       setFormContactName('');
       setFormContactPhone('');
+      setFormInstagram('');
       setFormTrialDays('7');
       setFormPlan('trial_teste');
       setFormIsActive(true);
@@ -346,6 +348,8 @@ export default function EmpresasIndex() {
 
       // Gerar slug apenas para novos tenants
       if (!editingTenant) {
+        tenantData.billing_phone = formContactPhone.replace(/\D/g, '') || null;
+        tenantData.billing_email = formAdminEmail.trim().toLowerCase() || null;
         tenantData.slug = formName
           .toLowerCase()
           .normalize("NFD")
@@ -433,7 +437,7 @@ export default function EmpresasIndex() {
 
         if (formAffiliateId) {
           const { error: affErr } = await supabase.rpc('platform_affiliate_attach_tenant' as any, {
-            _tenant_id: tenantId, _affiliate_id: formAffiliateId, _phone: formContactPhone || null,
+            _tenant_id: tenantId, _affiliate_id: formAffiliateId, _phone: formContactPhone || null, _instagram: formInstagram || null,
           });
           if (affErr) console.error('Erro ao vincular afiliado:', affErr);
         }
@@ -1019,7 +1023,13 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
                 </div>
 
                 {!editingTenant && (
-                  <AffiliateSelect key={affKey} value={formAffiliateId} onChange={setFormAffiliateId} phone={formContactPhone} />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="instagram_lookup">@ do Instagram</Label>
+                      <Input id="instagram_lookup" value={formInstagram} onChange={(e) => setFormInstagram(e.target.value)} placeholder="@loja" />
+                    </div>
+                    <AffiliateSelect key={affKey} value={formAffiliateId} onChange={setFormAffiliateId} phone={formContactPhone} instagram={formInstagram} />
+                  </div>
                 )}
 
                 <div className="grid grid-cols-2 gap-4">

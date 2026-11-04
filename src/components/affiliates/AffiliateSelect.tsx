@@ -9,10 +9,11 @@ interface Props {
   value: string | null;
   onChange: (id: string | null) => void;
   phone?: string;
+  instagram?: string;
 }
 
-/** "Indicado por": afiliados aprovados; pré-preenche pelo WhatsApp de um lead dos últimos 60 dias. */
-export function AffiliateSelect({ value, onChange, phone }: Props) {
+/** "Indicado por": afiliados aprovados; pré-preenche pelo WhatsApp ou @Instagram de um lead dos últimos 60 dias. */
+export function AffiliateSelect({ value, onChange, phone, instagram }: Props) {
   const [list, setList] = useState<{ id: string; nome: string; codigo: string }[]>([]);
   const [hint, setHint] = useState<string | null>(null);
   const touched = useRef(false);
@@ -24,16 +25,18 @@ export function AffiliateSelect({ value, onChange, phone }: Props) {
 
   useEffect(() => {
     const digits = (phone || '').replace(/\D/g, '');
-    if (touched.current || value || digits.length < 10) return;
+    const ig = (instagram || '').trim();
+    if (touched.current || (digits.length < 10 && ig.length < 2)) return;
     const t = setTimeout(async () => {
-      const { data } = await supabase.rpc('platform_affiliate_match_lead' as any, { _phone: digits });
-      if (data && !touched.current) {
-        onChange(data as string);
-        setHint('Sugerido pelo WhatsApp de um lead recente');
+      const { data } = await supabase.rpc('platform_affiliate_lookup_lead' as any, { _phone: digits || null, _instagram: ig || null });
+      const row = Array.isArray(data) ? (data as any[])[0] : null;
+      if (row && !touched.current) {
+        if (value !== row.affiliate_id) onChange(row.affiliate_id);
+        setHint(`Indicação de ${row.affiliate_nome}`);
       }
     }, 600);
     return () => clearTimeout(t);
-  }, [phone, value, onChange]);
+  }, [phone, instagram, value, onChange]);
 
   return (
     <div className="space-y-2">
@@ -45,7 +48,7 @@ export function AffiliateSelect({ value, onChange, phone }: Props) {
           {list.map((a) => <SelectItem key={a.id} value={a.id}>{a.nome} ({a.codigo})</SelectItem>)}
         </SelectContent>
       </Select>
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {hint && <p className="text-xs font-medium text-primary">{hint}</p>}
     </div>
   );
 }

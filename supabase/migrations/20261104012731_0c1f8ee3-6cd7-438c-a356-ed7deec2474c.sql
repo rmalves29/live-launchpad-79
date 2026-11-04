@@ -1,0 +1,1 @@
+ALTER TABLE public.platform_affiliate_leads DROP CONSTRAINT IF EXISTS platform_affiliate_leads_origem_check;

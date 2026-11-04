@@ -29,7 +29,7 @@ interface Req {
   welcome_sent_at: string | null; approval_sent_at: string | null;
 }
 
-const EMPTY = { company_name: '', admin_email: '', company_email: '', contact_name: '', contact_phone: '', cnpj: '', address: '', notes: '', logo_url: '', sells_live: true, sells_bazar: false };
+const EMPTY = { company_name: '', admin_email: '', company_email: '', contact_name: '', contact_phone: '', instagram: '', cnpj: '', address: '', notes: '', logo_url: '', sells_live: true, sells_bazar: false };
 
 async function call(body: Record<string, unknown>) {
   const { data, error } = await supabase.functions.invoke('tenant-onboarding', { body });
@@ -149,7 +149,8 @@ export function OnboardingRequestsDialog({ onTenantCreated }: { onTenantCreated?
               <div><Label>CNPJ</Label><Input value={form.cnpj} onChange={(e) => set('cnpj', e.target.value)} /></div>
               <div><Label>Responsável</Label><Input value={form.contact_name} onChange={(e) => set('contact_name', e.target.value)} /></div>
               <div><Label>WhatsApp do responsável</Label><Input value={form.contact_phone} onChange={(e) => set('contact_phone', e.target.value)} /></div>
-              <div className="md:col-span-2"><AffiliateSelect key={affKey} value={affiliateId} onChange={setAffiliateId} phone={form.contact_phone} /></div>
+              <div><Label>@ do Instagram</Label><Input value={form.instagram} onChange={(e) => set('instagram', e.target.value)} placeholder="@loja" /></div>
+              <div><AffiliateSelect key={affKey} value={affiliateId} onChange={setAffiliateId} phone={form.contact_phone} instagram={form.instagram} /></div>
               <div className="md:col-span-2"><Label>Endereço</Label><Input value={form.address} onChange={(e) => set('address', e.target.value)} /></div>
               <div className="md:col-span-2"><Label>Logo (URL, opcional)</Label><Input value={form.logo_url} onChange={(e) => set('logo_url', e.target.value)} /></div>
               <div className="md:col-span-2"><Label>Observações</Label><Textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} /></div>
