@@ -125,14 +125,22 @@ Deno.serve(async (req) => {
       // Respostas recebidas no WhatsApp da OrderZap, só de números que o agente abordou.
       const since = body.since ? new Date(body.since) : new Date(Date.now() - 24 * 3600e3);
       if (isNaN(since.getTime())) return json({ success: false, error: "since inválido" }, 400);
-      const { data: leads } = await admin.from("prospect_leads").select("whatsapp, nome_loja, handle").in("status", ["enviado", "descartado"]);
+      const { data: leads } = await admin.from("prospect_leads").select("whatsapp, nome_loja, handle, enviado_em").in("status", ["enviado", "descartado"]);
       const byKey = new Map((leads || []).map((l: any) => [phoneKey(l.whatsapp), l]));
       const { data: msgs, error } = await admin.from("whatsapp_messages")
-        .select("id, phone, message, received_at, created_at")
+        .select("id, phone, message, received_at, created_at, whatsapp_group_name")
         .eq("tenant_id", ORDERZAP_TENANT_ID).eq("type", "incoming").gt("created_at", since.toISOString())
         .order("created_at", { ascending: true }).limit(500);
       if (error) return json({ success: false, error: error.message });
-      const out = (msgs || []).filter((m: any) => byKey.has(phoneKey(m.phone))).map((m: any) => {
+      // Só conversa privada com a loja, depois da primeira mensagem: mensagens de grupo
+      // (pedidos por código, "[WEBHOOK] Processado: ...") não são resposta à abordagem.
+      const out = (msgs || []).filter((m: any) => {
+        const l: any = byKey.get(phoneKey(m.phone));
+        if (!l || m.whatsapp_group_name) return false;
+        if (String(m.message || "").startsWith("[WEBHOOK]")) return false;
+        if (l.enviado_em && new Date(m.created_at) < new Date(l.enviado_em)) return false;
+        return true;
+      }).map((m: any) => {
         const l: any = byKey.get(phoneKey(m.phone));
         return { id: String(m.id), phone: normalizePhone(l.whatsapp), text: m.message || "", at: m.received_at || m.created_at, nome_loja: l.nome_loja, handle: l.handle };
       });
