@@ -131,6 +131,26 @@ const mostraPlanosNovos = (planType?: string | null, endsAt?: string | null) => 
   return diasVencido > DIAS_SEM_ACESSO_PLANO_NOVO;
 };
 
+// Plano do que a loja usa: só Live = Sistema Live (R$ 299), só grupos = Grupos VIP (R$ 299), os dois = Pacote Completo (R$ 499).
+const modulePlanIdFor = (t: { enable_live?: boolean | null; enable_sendflow?: boolean | null }): string | null => {
+  if (t.enable_sendflow && !t.enable_live) return "grupos_vip";
+  if (t.enable_live && !t.enable_sendflow) return "live";
+  if (t.enable_live && t.enable_sendflow) return "completo";
+  return null;
+};
+
+// O que a tela de renovação oferece. Loja só Live ou só grupos vê apenas o plano dela. Quem usa os dois vê só o Pacote
+// Completo quando já está nos planos novos; cliente antigo com os dois módulos continua vendo o plano antigo, para o preço não mudar.
+const plansForTenant = (
+  info: { subscription_ends_at: string | null; plan_type?: string | null; enable_live?: boolean | null; enable_sendflow?: boolean | null },
+  tenantId?: string | null,
+): Plan[] => {
+  const novos = mostraPlanosNovos(info.plan_type, info.subscription_ends_at);
+  const modId = modulePlanIdFor(info);
+  if (modId && (modId !== "completo" || novos)) return getModulePlans().filter((p) => p.id === modId);
+  return novos ? getModulePlans() : getPlans(tenantId);
+};
+
 export default function RenovarAssinatura() {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -147,6 +167,8 @@ export default function RenovarAssinatura() {
     name: string;
     subscription_ends_at: string | null;
     plan_type?: string | null;
+    enable_live?: boolean | null;
+    enable_sendflow?: boolean | null;
   } | null>(null);
   const [recurringDialog, setRecurringDialog] = useState<Plan | null>(null);
   const [activeRecurring, setActiveRecurring] = useState<any | null>(null);
@@ -219,7 +241,7 @@ export default function RenovarAssinatura() {
       
       const { data } = await supabase
         .from("tenants")
-        .select("name, subscription_ends_at, plan_type")
+        .select("name, subscription_ends_at, plan_type, enable_live, enable_sendflow")
         .eq("id", tenantId)
         .maybeSingle();
 
@@ -239,6 +261,8 @@ export default function RenovarAssinatura() {
     return new Date(dateStr).toLocaleDateString("pt-BR");
   };
 
+
+  const visiblePlans: Plan[] = tenantInfo ? plansForTenant(tenantInfo, currentTenantId) : [];
 
   const isExpired = tenantInfo?.subscription_ends_at
     ? new Date(tenantInfo.subscription_ends_at) < new Date()
@@ -316,32 +340,30 @@ export default function RenovarAssinatura() {
               <>
                 Seu plano expirou em{" "}
                 <strong>{formatDate(tenantInfo?.subscription_ends_at ?? null)}</strong>.
-                Selecione um dos planos abaixo para renovar seu acesso.
+                {visiblePlans.length === 1 ? "Assine o plano abaixo para renovar seu acesso." : "Selecione um dos planos abaixo para renovar seu acesso."}
               </>
             ) : (
               <>
-                Seu acesso está bloqueado. Selecione um plano para continuar
-                utilizando o sistema.
+                {visiblePlans.length === 1
+                  ? "Seu acesso está bloqueado. Assine o plano abaixo para continuar utilizando o sistema."
+                  : "Seu acesso está bloqueado. Selecione um plano para continuar utilizando o sistema."}
               </>
             )}
           </AlertDescription>
         </Alert>
 
         {/* Cards de Planos */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className={`grid grid-cols-1 gap-6 ${visiblePlans.length === 1 ? "max-w-md mx-auto" : "md:grid-cols-3"}`}>
           {/* Enquanto os dados da empresa não chegam, não mostra preço (evita piscar o plano errado) */}
-          {(!tenantInfo
-            ? []
-            : mostraPlanosNovos(tenantInfo.plan_type, tenantInfo.subscription_ends_at)
-              ? getModulePlans()
-              : getPlans(currentTenantId)
-          ).map((plan) => (
+          {visiblePlans.map((plan) => (
             <Card
               key={plan.id}
               className={`relative transition-all duration-300 hover:shadow-xl ${
-                plan.popular
+                plan.popular && visiblePlans.length > 1
                   ? "border-primary shadow-lg scale-105 md:scale-110"
-                  : "hover:border-primary/50"
+                  : plan.popular
+                    ? "border-primary shadow-lg"
+                    : "hover:border-primary/50"
               }`}
             >
               {plan.popular && (
