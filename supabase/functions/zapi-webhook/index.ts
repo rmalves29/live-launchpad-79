@@ -991,6 +991,20 @@ serve(async (req) => {
          });
        }
        
+       // Prospecção (Harvey): respostas privadas que chegam no WhatsApp da OrderZap
+       // ficam guardadas para o prospect-agent ler (ele só devolve as de lojas abordadas).
+       if (!fromMe && messageText && (payload as any).uazapi_tenant_id === 'd5671cfb-9c42-4c44-8f94-0a19a39473d8') {
+         const { error: inErr } = await supabase.from('whatsapp_messages').insert({
+           tenant_id: 'd5671cfb-9c42-4c44-8f94-0a19a39473d8',
+           phone: senderPhone,
+           message: messageText,
+           type: 'incoming',
+           received_at: new Date().toISOString(),
+           zapi_message_id: messageId || null,
+         });
+         if (inErr) console.warn('[zapi-webhook] Falha ao guardar resposta privada da OrderZap:', inErr.message);
+       }
+
        // If not a confirmation response, skip - only group messages create orders
        console.log('[zapi-webhook] ⏭️ Private message not a confirmation - only group messages create orders');
        return new Response(JSON.stringify({ 
