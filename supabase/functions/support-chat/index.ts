@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { CARTZY_FAQ } from "./cartzy_faq.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -146,9 +147,10 @@ serve(async (req) => {
       .single();
 
     // Montar contexto da base de conhecimento
-    const knowledgeContext = knowledgeBase?.map(kb => 
-      `## ${kb.title} (${kb.category})\n${kb.content}`
-    ).join("\n\n") || "Nenhum documento na base de conhecimento.";
+    const knowledgeContext = [
+      CARTZY_FAQ,
+      ...(knowledgeBase || []).map(kb => `## ${kb.title} (${kb.category})\n${kb.content}`),
+    ].join("\n\n");
 
     const systemPrompt = `Você é um assistente de suporte ao cliente do Cartzy - Sistema de Gestão de Pedidos via WhatsApp.
 
