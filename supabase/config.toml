@@ -16,3 +16,6 @@ verify_jwt = false
 
 [functions.platform-affiliates]
 verify_jwt = false
+
+[functions.prospect-agent]
+verify_jwt = false
