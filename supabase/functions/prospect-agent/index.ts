@@ -74,7 +74,6 @@ Deno.serve(async (req) => {
       const phone = normalizePhone(body.phone);
       const message = typeof body.message === "string" ? body.message.trim() : "";
       if (phone.length < 12 || !message) return json({ success: false, error: "phone e message são obrigatórios" }, 400);
-      if (message.length > 1500) return json({ success: false, error: "mensagem longa demais" }, 400);
       // test=true: mensagem de teste do Rafael. Vale a qualquer hora, não conta no limite
       // diário e não registra o número como lead. O Harvey nunca manda esse campo.
       const isTest = body.test === true;
