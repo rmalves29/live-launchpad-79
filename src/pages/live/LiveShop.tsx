@@ -132,6 +132,7 @@ export default function LiveShop() {
   const [direct, setDirect] = useState<CartLine[] | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const leavingRef = useRef(false);
 
   const [customer, setCustomer] = useState<LiveCustomer | null>(null);
   const [recognizedBy, setRecognizedBy] = useState<'device' | 'ip' | null>(null);
@@ -733,7 +734,11 @@ export default function LiveShop() {
 
   const cepForShipping = customer?.cep || '';
   useEffect(() => {
-    if (screen !== 'checkout' || !meta || !cepForShipping || lines.length === 0) return;
+    if (screen !== 'checkout' || !meta || !cepForShipping || lines.length === 0) {
+      // sem o que cotar (ex.: o carrinho esvaziou no meio da consulta): não deixa "Calculando frete…" preso
+      setShipLoading(false);
+      return;
+    }
     let alive = true;
     (async () => {
       setShipLoading(true);
@@ -752,6 +757,16 @@ export default function LiveShop() {
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen, meta?.tenant.id, cepForShipping, JSON.stringify(lines.map((l) => [l.product_id, l.qty]))]);
+
+  // Carrinho vazio na tela de pagamento (peça esgotou, reserva venceu ou foi removida): volta para o carrinho em vez de
+  // deixar uma tela com total R$ 0,00. Não age enquanto o pagamento está sendo aberto (o carrinho é limpo de propósito).
+  useEffect(() => {
+    if (screen !== 'checkout' || busy || leavingRef.current || lines.length > 0) return;
+    toast('Seu carrinho ficou vazio. Escolha as peças de novo.');
+    setDirect(null);
+    setScreen('cart');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, busy, lines.length]);
 
   // Aquece o frete enquanto a cliente ainda está na vitrine/carrinho: ao abrir "Finalizar pedido" o valor já está em cache.
   useEffect(() => {
@@ -824,6 +839,7 @@ export default function LiveShop() {
 
       const url = data?.init_point || data?.sandbox_init_point;
       if (url) {
+        leavingRef.current = true; // o carrinho é limpo de propósito: não é "carrinho vazio"
         if (!direct) { setCart([]); writeLS(`live_cart_${slug}`, []); }
         window.location.href = url;
         return;
@@ -1188,12 +1204,12 @@ export default function LiveShop() {
           {(original - subtotal + couponOff) > 0 && <div className="save">Você está economizando {brl(original - subtotal + couponOff)} neste pedido</div>}
           {/* Um toque na forma de pagamento já cria o pedido e abre a página de pagamento (sem botão "Fazer pedido") */}
           {meta?.payment.pix && (
-            <button className="cta block" onClick={() => placeOrder('pix')} disabled={busy || !selectedShip} type="button">
+            <button className="cta block" onClick={() => placeOrder('pix')} disabled={busy || !selectedShip || lines.length === 0} type="button">
               {busy ? 'Abrindo o pagamento…' : `Pagar com Pix · ${brl(baseTotal - pixDiscountOnBase)}${pixPctMeta > 0 ? ` (${pixPctMeta}% off)` : ''}`}
             </button>
           )}
           {meta?.payment.card && (
-            <button className={meta?.payment.pix ? 'cta block alt' : 'cta block'} style={meta?.payment.pix ? { marginTop: 8, background: 'transparent', color: 'var(--accent)', border: '1.5px solid var(--accent)' } : undefined} onClick={() => placeOrder('card')} disabled={busy || !selectedShip} type="button">
+            <button className={meta?.payment.pix ? 'cta block alt' : 'cta block'} style={meta?.payment.pix ? { marginTop: 8, background: 'transparent', color: 'var(--accent)', border: '1.5px solid var(--accent)' } : undefined} onClick={() => placeOrder('card')} disabled={busy || !selectedShip || lines.length === 0} type="button">
               {busy ? 'Abrindo o pagamento…' : `Pagar com cartão · ${brl(baseTotal)}`}
             </button>
           )}

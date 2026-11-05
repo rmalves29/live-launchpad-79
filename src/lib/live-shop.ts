@@ -223,6 +223,15 @@ export function validCpf(cpf: string) {
 }
 
 // ---------------------------------------------------------------- frete (mesma lógica do checkout público)
+// Os Correios devolvem o preço como texto brasileiro ("21,39"); parseFloat leria só "21". Aceita "21,39", "1.234,56" e 21.39.
+function parsePrice(v: unknown): number {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+  const s = String(v ?? '').trim();
+  if (!s) return 0;
+  const n = s.includes(',') ? Number(s.replace(/\./g, '').replace(',', '.')) : Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function filterCarrierOptions(options: any[], provider: ShippingProvider) {
   const norm = (v: unknown) => String(v || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   return options.filter((o) => {
@@ -323,7 +332,7 @@ export async function calculateLiveShipping(params: {
         id: o.id,
         name: o.name,
         company: o.company,
-        price: parseFloat(o.custom_price || o.price) || 0,
+        price: parsePrice(o.custom_price || o.price),
         delivery_time: o.delivery_time,
       }));
       params.onPartial?.(free(options));
@@ -368,7 +377,7 @@ export async function calculateLiveShipping(params: {
               provider: active.provider,
               name: String(o.service_name || o.name || 'Transportadora'),
               company: display,
-              price: parseFloat(o.custom_price || o.price || 0) || 0,
+              price: parsePrice(o.custom_price || o.price),
               delivery_time: String(o.delivery_time || '5-10 dias'),
             } as ShippingOption;
           });
