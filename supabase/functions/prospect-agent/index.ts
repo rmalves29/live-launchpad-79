@@ -75,14 +75,17 @@ Deno.serve(async (req) => {
       const message = typeof body.message === "string" ? body.message.trim() : "";
       if (phone.length < 12 || !message) return json({ success: false, error: "phone e message são obrigatórios" }, 400);
       if (message.length > 1500) return json({ success: false, error: "mensagem longa demais" }, 400);
+      // test=true: mensagem de teste do Rafael. Vale a qualquer hora, não conta no limite
+      // diário e não registra o número como lead. O Harvey nunca manda esse campo.
+      const isTest = body.test === true;
       const h = brtHour();
-      if (h >= QUIET_START || h < QUIET_END) return json({ success: false, error: "fora do horário de envio (8h às 20h)", retry: true });
+      if (!isTest && (h >= QUIET_START || h < QUIET_END)) return json({ success: false, error: "fora do horário de envio (8h às 20h)", retry: true });
 
       const key = phoneKey(phone);
       const { data: known } = await admin.from("prospect_leads").select("id, whatsapp, status");
       const same = (known || []).filter((l: any) => phoneKey(l.whatsapp) === key);
       if (same.some((l: any) => l.status === "descartado")) return json({ success: false, error: "contato pediu para não receber mensagens" });
-      if (kind === "first") {
+      if (kind === "first" && !isTest) {
         if (same.some((l: any) => ["enviado"].includes(l.status))) return json({ success: false, error: "primeira mensagem já enviada para este número" });
         if ((await sentToday()) >= DAILY_CAP) return json({ success: false, error: `limite diário de ${DAILY_CAP} atingido`, retry: true });
       }
@@ -96,7 +99,7 @@ Deno.serve(async (req) => {
       });
       if (!sent.success) return json({ success: false, error: `envio: ${sent.error}` });
 
-      if (kind === "first") {
+      if (kind === "first" && !isTest) {
         const lead = {
           handle: String(body.handle || "").slice(0, 80) || null,
           nome_loja: String(body.nome_loja || body.company || "").slice(0, 120) || null,
