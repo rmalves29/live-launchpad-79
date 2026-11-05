@@ -8,7 +8,7 @@ import {
 
 const ORDERZAP_TENANT_ID = "d5671cfb-9c42-4c44-8f94-0a19a39473d8";
 const LABEL_NAME = "lead";
-const DAILY_CAP = Number(Deno.env.get("PROSPECT_AGENT_DAILY_CAP") || 90); // primeiras mensagens por dia
+const DAILY_CAP = Number(Deno.env.get("PROSPECT_AGENT_DAILY_CAP") || 50); // primeiras mensagens por dia
 const QUIET_START = 20, QUIET_END = 8; // horário de Brasília: não envia das 20h às 8h
 
 const json = (b: unknown, status = 200) =>
