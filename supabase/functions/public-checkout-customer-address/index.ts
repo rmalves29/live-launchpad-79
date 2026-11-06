@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { enforceRateLimit } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,9 +24,16 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
+    // Seguranca: limita consultas por IP (um cliente real chama 1 ou 2 vezes)
+    const limited = await enforceRateLimit(req, supabase, "checkout_address", 15, 600);
+    if (limited) return limited;
+
     const { data, error } = await supabase
       .from("customers")
-      .select("name, email, cpf, cep, street, number, complement, neighborhood, city, state")
+      // Seguranca (LGPD): funcao publica, quem chama so sabe tenant + telefone.
+      // Devolve so o necessario para pre-preencher a entrega; CPF, e-mail, numero e complemento
+      // o cliente digita no checkout.
+      .select("name, cep, street, neighborhood, city, state")
       .eq("tenant_id", tenant_id)
       .eq("phone", String(phone).replace(/\D/g, ""))
       .maybeSingle();
