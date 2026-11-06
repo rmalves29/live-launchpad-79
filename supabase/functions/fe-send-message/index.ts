@@ -11,6 +11,7 @@ import {
   getGroupParticipants as evoGetGroupParticipants,
 } from "../_shared/evolution-api.ts";
 import { sendMedia as uazSendMedia } from "../_shared/uazapi-api.ts";
+import { authorizeTenantCaller, guardResponse } from "../_shared/auth-guard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -223,6 +224,9 @@ serve(async (req) => {
 
     const body: SendRequest = await req.json();
     const { tenant_id, group_ids, message_ids, content_type, content_text, media_url, mention_all, poll_options, poll_selectable_count } = body;
+    // Seguranca: so a propria loja, super admin ou chamada interna podem agir sobre este tenant_id
+    const guard = await authorizeTenantCaller(req, supabase, tenant_id);
+    if (!guard.ok) return guardResponse(guard, corsHeaders);
 
 
     if (!tenant_id || !group_ids?.length) {
