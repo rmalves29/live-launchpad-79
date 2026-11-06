@@ -23,6 +23,7 @@ const MAX_EXECUTION_MS = 120_000;
 
 interface ProductVariation {
   code: string;
+  color?: string | null;
   size?: string | null;
   stock?: number | null;
   price?: number | null;
@@ -163,11 +164,13 @@ function personalizeMessage(rawTemplate: string, product: Product): string {
   if (activeVariations.length > 0) {
     const variationsText = activeVariations
       .map((v) => {
-        const label = (v.size && v.size.trim()) ? v.size.trim() : v.code.trim();
+        // Cor e tamanho vêm antes do código: "(Dourado / 16) C77238-01 - R$ 59,90". Sem nenhum dos dois, só o código.
+        const attrs = [v.color, v.size].map((x) => (x || "").trim()).filter(Boolean);
+        const prefix = attrs.length > 0 ? `(${attrs.join(" / ")}) ` : "";
         const priceValue = (v.promotional_price && v.promotional_price > 0)
           ? v.promotional_price
           : (v.price && v.price > 0 ? v.price : product.promotional_price || product.price);
-        return `(${label}) ${v.code.trim()} - ${formatPrice(priceValue as number)}`;
+        return `${prefix}${v.code.trim()} - ${formatPrice(priceValue as number)}`;
       })
       .join("\n");
     message = message.replace(/\{\{?\s*variacoes\s*\}?\}/gi, variationsText);
@@ -501,7 +504,7 @@ async function processTaskQueue({
   const { data: variationsData } = parentIds.length > 0
     ? await supabase
         .from("products")
-        .select("id, code, size, stock, price, promotional_price, parent_product_id")
+        .select("id, code, color, size, stock, price, promotional_price, parent_product_id")
         .eq("tenant_id", tenantId)
         .eq("is_active", true)
         .in("parent_product_id", parentIds)
@@ -511,7 +514,7 @@ async function processTaskQueue({
   for (const v of (variationsData || []) as any[]) {
     if (!v.parent_product_id) continue;
     const list = variationsByParent.get(v.parent_product_id) || [];
-    list.push({ code: v.code, size: v.size, stock: v.stock, price: v.price, promotional_price: v.promotional_price });
+    list.push({ code: v.code, color: v.color, size: v.size, stock: v.stock, price: v.price, promotional_price: v.promotional_price });
     variationsByParent.set(v.parent_product_id, list);
   }
 
