@@ -5,6 +5,13 @@
 // 2. Polling em GET /prepostagem/v1/prepostagens/rotulo/assincrono/{idRecibo}
 // 3. Retorna PDF base64 ou pending: true
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { authorizeTenantCaller, guardResponse } from "../_shared/auth-guard.ts";
+import {
+  mensagemErroCorreios,
+  montarCorpoPrePostagem,
+  servicoDoPedido,
+  type PessoaPostagem,
+} from "../_shared/correios-prepostagem.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -138,6 +145,7 @@ async function getCorreiosToken(
   clientId: string,
   clientSecret: string,
   cartaoPostagem: string,
+  contrato?: string | null,
 ): Promise<{ token: string; cartaoData: CorreiosCartaoData }> {
   const cacheKey = `${clientId}:${cartaoPostagem}`;
   const cached = tokenCache.get(cacheKey);
@@ -150,18 +158,26 @@ async function getCorreiosToken(
   const url = `${CORREIOS_BASE}/token/v1/autentica/cartaopostagem`;
 
   log("Autenticando | POST /token/v1/autentica/cartaopostagem");
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${basic}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({ numero: cartaoPostagem }),
-  });
-
-  const text = await resp.text();
+  const autenticar = (corpo: Record<string, unknown>) =>
+    fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${basic}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(corpo),
+    });
+  let resp = await autenticar({ numero: cartaoPostagem });
+  let text = await resp.text();
   log(`Auth status: ${resp.status} | body: ${text.slice(0, 500)}`);
+  // Alguns cartões só autenticam informando o contrato junto (é o que o Troca Fácil faz)
+  if (!resp.ok && contrato) {
+    log("Auth recusada só com o cartão: tentando com o contrato");
+    resp = await autenticar({ numero: cartaoPostagem, contrato });
+    text = await resp.text();
+    log(`Auth (com contrato) status: ${resp.status} | body: ${text.slice(0, 500)}`);
+  }
 
   if (!resp.ok) {
     throw new Error(`Falha na autenticação Correios (${resp.status}): ${text}`);
@@ -194,6 +210,7 @@ async function getCorreiosToken(
 
 // ----- Buscar credenciais do tenant -----
 interface CorreiosCredentials {
+  tenant_id: string;
   client_id: string;
   client_secret: string;
   cartao_postagem: string;
@@ -227,6 +244,7 @@ async function getCredentials(
   }
 
   return {
+    tenant_id: tenantId,
     client_id: clientId,
     client_secret: clientSecret,
     cartao_postagem: cartaoPostagem,
@@ -503,147 +521,148 @@ function isPrePostadoStatus(status: string | null | undefined): boolean {
   return VALID_PRE_POSTADO_STATUS.has(normalized) || normalized.includes("POSTADO");
 }
 
-// Busca dados do pedido e cria nova pré-postagem nos Correios.
-// Usado quando o melhor_envio_shipment_id armazenado é um UUID (ex: ID do Melhor Envio antigo)
-// ou quando a consulta retorna 404 (pré-postagem não existe no sistema dos Correios).
+// Monta o remetente: dados salvos na integração (save_sender) ou, se não houver, os dados da empresa.
+async function remetenteDaEmpresa(supabase: any, creds: CorreiosCredentials): Promise<PessoaPostagem> {
+  const salvo = normalizeRemetente(creds.webhook_secret, creds.from_cep);
+  if (salvo && salvo.endereco?.logradouro) {
+    return {
+      nome: salvo.nome,
+      cpfCnpj: salvo.cpfCnpj,
+      email: salvo.email,
+      telefone: `${salvo.ddd || ""}${salvo.telefone || ""}`,
+      logradouro: salvo.endereco.logradouro,
+      numero: salvo.endereco.numero,
+      complemento: salvo.endereco.complemento,
+      bairro: salvo.endereco.bairro,
+      cidade: salvo.endereco.cidade,
+      uf: salvo.endereco.uf,
+      cep: salvo.endereco.cep,
+    };
+  }
+  const { data: t, error } = await supabase
+    .from("tenants")
+    .select("name, email, phone, company_name, company_document, company_email, company_phone, company_address, company_number, company_complement, company_district, company_city, company_state, company_cep")
+    .eq("id", creds.tenant_id)
+    .maybeSingle();
+  if (error || !t) throw new Error("Não foi possível ler os dados da empresa para o remetente.");
+  return {
+    nome: t.company_name || t.name,
+    cpfCnpj: t.company_document,
+    email: t.company_email || t.email,
+    telefone: t.company_phone || t.phone,
+    logradouro: t.company_address,
+    numero: t.company_number,
+    complemento: t.company_complement,
+    bairro: t.company_district,
+    cidade: t.company_city,
+    uf: t.company_state,
+    // o CEP de origem da integração vale quando a empresa não tem CEP próprio
+    cep: t.company_cep || creds.from_cep,
+  };
+}
+
+// Cria a pré-postagem nos Correios e devolve o id e o código do objeto. Se os Correios recusarem a descrição
+// como objeto proibido (PPN-330), tenta uma vez com uma descrição genérica.
+async function enviarPrePostagem(token: string, corpo: any): Promise<{ id: string; codigoObjeto: string | null }> {
+  const url = `${CORREIOS_BASE}/prepostagem/v1/prepostagens`;
+  const enviar = async (b: any) => {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(b),
+    });
+    return { resp: r, texto: await r.text() };
+  };
+  log(`📦 pré-postagem | payload: ${JSON.stringify(corpo)}`);
+  let { resp, texto } = await enviar(corpo);
+  if (!resp.ok && /PPN-330/.test(texto)) {
+    log("PPN-330: repetindo com descrição genérica");
+    corpo = { ...corpo, itensDeclaracaoConteudo: [{ ...corpo.itensDeclaracaoConteudo[0], conteudo: "Acessorios" }] };
+    ({ resp, texto } = await enviar(corpo));
+  }
+  log(`📦 pré-postagem | status: ${resp.status} | body: ${texto.slice(0, 800)}`);
+  if (!resp.ok) throw new Error(mensagemErroCorreios(resp.status, texto));
+  let json: any;
+  try { json = JSON.parse(texto); } catch { throw new Error(`Resposta inválida dos Correios: ${texto.slice(0, 300)}`); }
+  const id = json.id || json.idPrePostagem || json.numero;
+  if (!id) throw new Error(`Os Correios não devolveram o id da pré-postagem. Resposta: ${texto.slice(0, 300)}`);
+  return { id: String(id), codigoObjeto: json.codigoObjeto || json.numeroEtiqueta || null };
+}
+
+// Cria a pré-postagem de um pedido usando os dados do próprio pedido (endereço, produtos, serviço escolhido no
+// checkout), no formato validado no Troca Fácil, e grava o id e o rastreio no pedido.
 async function recreatePrepostagemFromOrder(
   supabase: any,
   creds: CorreiosCredentials,
   orderId: number | string,
 ): Promise<{ idPrePostagem: string; codigoObjeto: string | null }> {
-  log(`🔄 Recriando pré-postagem para pedido ${orderId}`);
+  log(`🔄 Criando pré-postagem para o pedido ${orderId}`);
 
   const { data: order, error } = await supabase
     .from("orders")
-    .select("id, customer_name, customer_phone, customer_cep, customer_street, customer_number, customer_complement, customer_neighborhood, customer_city, customer_state, observation, total_amount, shipping_service_id")
+    .select("id, customer_name, customer_phone, customer_cep, customer_street, customer_number, customer_complement, customer_neighborhood, customer_city, customer_state, observation, total_amount, cart_id")
     .eq("id", orderId)
+    .eq("tenant_id", creds.tenant_id)
     .maybeSingle();
-
   if (error) throw new Error(`Erro ao buscar pedido ${orderId}: ${error.message}`);
   if (!order) throw new Error(`Pedido ${orderId} não encontrado`);
 
-  // Validação mínima de endereço
-  if (!order.customer_cep || !order.customer_city || !order.customer_state) {
-    throw new Error(`Pedido ${orderId} não possui endereço completo (CEP/cidade/UF)`);
-  }
+  const [itensRes, cliRes, cfgRes] = await Promise.all([
+    order.cart_id
+      ? supabase.from("cart_items").select("product_name, product_code, qty, unit_price").eq("cart_id", order.cart_id)
+      : Promise.resolve({ data: [] }),
+    order.customer_phone
+      ? supabase.from("customers").select("cpf, email").eq("tenant_id", creds.tenant_id).eq("phone", order.customer_phone).maybeSingle()
+      : Promise.resolve({ data: null }),
+    supabase.from("app_settings").select("default_weight_kg, default_width_cm, default_height_cm, default_length_cm").limit(1).maybeSingle(),
+  ]);
 
-  // Detecta serviço a partir da observação (mesma lógica do front)
-  const obsUpper = String(order.observation || "").toUpperCase();
-  let codigoServico = "03220"; // PAC contrato padrão
-  if (obsUpper.includes("SEDEX 12") || obsUpper.includes("SEDEX12")) codigoServico = "03140";
-  else if (obsUpper.includes("SEDEX")) codigoServico = "03298";
-  else if (obsUpper.includes("MINI")) codigoServico = "04227";
+  const itens: any[] = itensRes.data || [];
+  const qtd = itens.reduce((s: number, i: any) => s + (Number(i.qty) || 1), 0) || 1;
+  const valor = itens.reduce((s: number, i: any) => s + (Number(i.unit_price) || 0) * (Number(i.qty) || 1), 0) || Number(order.total_amount) || 1;
+  const descricao = itens.map((i: any) => i.product_name || i.product_code).filter(Boolean).join(", ") || "Semijoia";
+  const cfg: any = cfgRes.data || {};
+  const pesoKg = Number(cfg.default_weight_kg) > 0 ? Number(cfg.default_weight_kg) : 0.05;
 
-  const payload = {
-    order_id: order.id,
-    codigoServico,
+  const corpo = montarCorpoPrePostagem({
+    remetente: await remetenteDaEmpresa(supabase, creds),
     destinatario: {
       nome: order.customer_name || "Cliente",
+      cpfCnpj: cliRes.data?.cpf,
+      email: cliRes.data?.email,
       telefone: order.customer_phone,
-      endereco: {
-        cep: order.customer_cep,
-        logradouro: order.customer_street || "",
-        numero: order.customer_number || "S/N",
-        complemento: order.customer_complement || "",
-        bairro: order.customer_neighborhood || "",
-        cidade: order.customer_city,
-        uf: order.customer_state,
-      },
+      logradouro: order.customer_street || "",
+      numero: order.customer_number,
+      complemento: order.customer_complement,
+      bairro: order.customer_neighborhood || "",
+      cidade: order.customer_city || "",
+      uf: order.customer_state || "",
+      cep: order.customer_cep || "",
     },
-  };
-
-  const { token } = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem);
-
-  // Reaproveita a lógica de criação (sanitização + POST + update do pedido)
-  const dest = payload.destinatario;
-  const destEnd = dest.endereco;
-  const destinatario = {
-    nome: dest.nome.slice(0, 50),
-    telefone: sanitizePhone(dest.telefone),
-    endereco: {
-      cep: sanitizeCEP(destEnd.cep),
-      logradouro: destEnd.logradouro.slice(0, 50),
-      numero: String(destEnd.numero).slice(0, 6),
-      complemento: destEnd.complemento.slice(0, 30),
-      bairro: destEnd.bairro.slice(0, 30),
-      cidade: destEnd.cidade.slice(0, 50),
-      uf: sanitizeUF(destEnd.uf),
+    codigoServico: servicoDoPedido(order.observation),
+    pesoGramas: Math.max(1, qtd * pesoKg * 1000),
+    dimensoesCm: {
+      altura: Number(cfg.default_height_cm) || 6,
+      largura: Number(cfg.default_width_cm) || 13,
+      comprimento: Number(cfg.default_length_cm) || 16,
     },
-  };
-
-  let remetente: any = normalizeRemetente(creds.webhook_secret, creds.from_cep);
-  if (!remetente) throw new Error("Remetente não configurado nos Correios. Configure em Integrações → Correios.");
-
-  // Validações que correspondem aos erros conhecidos da API Correios
-  if (!remetente.telefone) {
-    throw new Error("Telefone do remetente não configurado. Edite o cadastro do remetente na integração Correios.");
-  }
-  if (!remetente.endereco.logradouro) {
-    throw new Error("Logradouro do remetente não configurado (RTL-032). Edite o cadastro do remetente.");
-  }
-  if (!remetente.endereco.bairro) {
-    throw new Error("Bairro do remetente não configurado. Edite o cadastro do remetente.");
-  }
-
-  const declaracaoConteudo = buildDeclaracaoConteudo(order.total_amount, order.observation);
-
-  const createBody = {
-    remetente,
-    destinatario,
-    codigoServico,
-    cartaoPostagem: creds.cartao_postagem,
-    pesoInformado: "300",
-    codigoFormatoObjetoInformado: "2",
-    alturaInformada: "2",
-    larguraInformada: "11",
-    comprimentoInformado: "16",
-    diametroInformado: "0",
-    servicosAdicionais: [],
-    observacao: "",
-    itensDeclaracaoConteudo: declaracaoConteudo,
-    rfidObjeto: "",
-  };
-
-  const createUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens`;
-  log(`🔄 recreate payload completo: ${JSON.stringify(createBody)}`);
-  const resp = await fetch(createUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(createBody),
+    descricaoConteudo: descricao,
+    valorDeclarado: valor,
   });
 
-  const text = await resp.text();
-  log(`🔄 recreate prepostagem | status: ${resp.status} | body: ${text.slice(0, 1000)}`);
+  const { token } = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem, creds.contrato);
+  const criada = await enviarPrePostagem(token, corpo);
 
-  if (!resp.ok) {
-    throw new Error(`Falha ao recriar pré-postagem nos Correios (${resp.status}): ${text.slice(0, 500)}`);
-  }
-
-  let json: any;
-  try { json = JSON.parse(text); } catch {
-    throw new Error(`Resposta inválida ao recriar pré-postagem: ${text.slice(0, 300)}`);
-  }
-
-  const idPrePostagem = json.id || json.idPrePostagem || json.numero;
-  const codigoObjeto = json.codigoObjeto || json.numeroEtiqueta || null;
-  if (!idPrePostagem) throw new Error(`idPrePostagem não retornado ao recriar. Body: ${text.slice(0, 300)}`);
-
-  // Salva o NOVO id no pedido
-  const updateData: Record<string, unknown> = { melhor_envio_shipment_id: String(idPrePostagem) };
-  if (codigoObjeto) {
-    updateData.melhor_envio_tracking_code = String(codigoObjeto);
-    // A pré-postagem apenas reserva o código; não confirma que o objeto foi enviado.
+  // A pré-postagem apenas reserva o código; não confirma que o objeto foi enviado.
+  const updateData: Record<string, unknown> = { melhor_envio_shipment_id: criada.id };
+  if (criada.codigoObjeto) {
+    updateData.melhor_envio_tracking_code = criada.codigoObjeto;
     updateData.tracking_posted = false;
   }
-  const { error: upErr } = await supabase.from("orders").update(updateData).eq("id", orderId);
-  if (upErr) log(`⚠️ Erro ao salvar novo idPrePostagem no pedido ${orderId}: ${upErr.message}`);
-  else log(`✅ Pedido ${orderId} atualizado com novo idPrePostagem: ${idPrePostagem}`);
+  const { error: upErr } = await supabase.from("orders").update(updateData).eq("id", orderId).eq("tenant_id", creds.tenant_id);
+  if (upErr) log(`⚠️ Erro ao salvar a pré-postagem no pedido ${orderId}: ${upErr.message}`);
 
-  return { idPrePostagem: String(idPrePostagem), codigoObjeto };
+  return { idPrePostagem: criada.id, codigoObjeto: criada.codigoObjeto };
 }
 
 async function actionDownloadLabel(
@@ -656,6 +675,7 @@ async function actionDownloadLabel(
     creds.client_id,
     creds.client_secret,
     creds.cartao_postagem,
+    creds.contrato,
   );
 
   let effectiveId = prePostagemId;
@@ -742,6 +762,11 @@ async function actionDownloadLabel(
   // imprimeRemetente (S | N), layoutImpressao (PADRAO | LINEAR_100_150 | etc.)
   const asyncUrl = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/pdf`;
   const bodyVariants: Array<{ label: string; body: Record<string, unknown> }> = [
+    {
+      // pedido mínimo, o mesmo que funciona em produção no Troca Fácil
+      label: "troca-facil",
+      body: { idsPrePostagem: [String(effectiveId)], tipoRotulo: "P" },
+    },
     {
       label: "oficial-padrao",
       body: {
@@ -890,7 +915,7 @@ async function actionCreatePrepostagem(
   creds: CorreiosCredentials,
   payload: any,
 ) {
-  const { token } = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem);
+  const { token } = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem, creds.contrato);
 
   // Sanitização de dados (mantém o que já funciona)
   const dest = payload.destinatario || {};
@@ -1048,6 +1073,10 @@ Deno.serve(async (req) => {
 
     log(`action: ${action} | tenant: ${tenant_id}`);
 
+    // Só usuário logado da própria empresa (ou super admin) pode criar, imprimir ou cancelar etiqueta
+    const guard = await authorizeTenantCaller(req, supabase, tenant_id);
+    if (!guard.ok) return guardResponse(guard, corsHeaders);
+
     if (action === "save_sender") {
       const result = await actionSaveSender(supabase, tenant_id, body.sender || {});
       return new Response(JSON.stringify(result), {
@@ -1062,6 +1091,85 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify(result), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // ----- Ações usadas pela tela de Etiquetas (por pedido) -----
+    const respostaJson = (obj: unknown) =>
+      new Response(JSON.stringify(obj), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    const orderIdBody = body.order_id ?? body.orderId;
+
+    if (action === "create_shipment") {
+      if (!orderIdBody) return respostaJson({ success: false, error: "order_id é obrigatório" });
+      try {
+        const { data: ja } = await supabase
+          .from("orders")
+          .select("melhor_envio_shipment_id, melhor_envio_tracking_code")
+          .eq("id", orderIdBody)
+          .eq("tenant_id", tenant_id)
+          .maybeSingle();
+        // Pedido que já tem pré-postagem dos Correios não gasta outra etiqueta
+        if (ja?.melhor_envio_shipment_id && isCorreiosNativeId(String(ja.melhor_envio_shipment_id))) {
+          return respostaJson({ success: true, already: true, shipment_id: ja.melhor_envio_shipment_id, tracking_code: ja.melhor_envio_tracking_code || null });
+        }
+        const criada = await recreatePrepostagemFromOrder(supabase, creds, orderIdBody);
+        return respostaJson({ success: true, shipment_id: criada.idPrePostagem, tracking_code: criada.codigoObjeto });
+      } catch (e) {
+        log(`ERRO create_shipment: ${(e as Error).message}`);
+        return respostaJson({ success: false, error: (e as Error).message });
+      }
+    }
+
+    if (action === "get_label") {
+      if (!orderIdBody) return respostaJson({ success: false, error: "order_id é obrigatório" });
+      try {
+        const { data: ped } = await supabase
+          .from("orders")
+          .select("melhor_envio_shipment_id")
+          .eq("id", orderIdBody)
+          .eq("tenant_id", tenant_id)
+          .maybeSingle();
+        if (!ped?.melhor_envio_shipment_id) return respostaJson({ success: false, error: "Este pedido ainda não tem remessa nos Correios. Crie a remessa primeiro." });
+        const r = await actionDownloadLabel(creds, String(ped.melhor_envio_shipment_id), supabase, orderIdBody);
+        if (r.success && r.labelPdfBase64) return respostaJson({ success: true, labelPdfBase64: r.labelPdfBase64 });
+        return respostaJson({ success: false, error: r.pending ? "A etiqueta ainda está sendo processada pelos Correios. Tente de novo em 1 minuto." : (r.error || "Não foi possível gerar a etiqueta.") });
+      } catch (e) {
+        log(`ERRO get_label: ${(e as Error).message}`);
+        return respostaJson({ success: false, error: (e as Error).message });
+      }
+    }
+
+    if (action === "cancel_shipment") {
+      if (!orderIdBody) return respostaJson({ success: false, error: "order_id é obrigatório" });
+      try {
+        const { data: ped } = await supabase
+          .from("orders")
+          .select("melhor_envio_shipment_id")
+          .eq("id", orderIdBody)
+          .eq("tenant_id", tenant_id)
+          .maybeSingle();
+        const idPrePost = ped?.melhor_envio_shipment_id ? String(ped.melhor_envio_shipment_id) : "";
+        if (!idPrePost) return respostaJson({ success: false, error: "Este pedido não tem remessa para cancelar." });
+        if (isCorreiosNativeId(idPrePost)) {
+          const { token } = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem, creds.contrato);
+          const r = await fetch(`${CORREIOS_BASE}/prepostagem/v1/prepostagens/${encodeURIComponent(idPrePost)}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+          });
+          const t = await r.text();
+          log(`cancel_shipment | status: ${r.status} | body: ${t.slice(0, 500)}`);
+          // objeto já postado não pode ser cancelado (PPN-288)
+          if (!r.ok && r.status !== 404) throw new Error(mensagemErroCorreios(r.status, t));
+        }
+        await supabase
+          .from("orders")
+          .update({ melhor_envio_shipment_id: null, melhor_envio_tracking_code: null, tracking_posted: false })
+          .eq("id", orderIdBody)
+          .eq("tenant_id", tenant_id);
+        return respostaJson({ success: true });
+      } catch (e) {
+        log(`ERRO cancel_shipment: ${(e as Error).message}`);
+        return respostaJson({ success: false, error: (e as Error).message });
+      }
     }
 
     if (action === "download_label") {

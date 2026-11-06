@@ -88,6 +88,8 @@ export const SHIPPING_LABEL_PROVIDERS: Record<string, { label: string; functionN
   mandabem: { label: 'Manda Bem', functionName: 'mandabem-labels', createAction: 'create_order' },
   frenet: { label: 'Frenet', functionName: 'frenet-labels', createAction: 'create_shipping' },
   superfrete: { label: 'SuperFrete', functionName: 'superfrete-labels', createAction: 'create_shipment' },
+  // Correios (contrato direto): pré-postagem + etiqueta pela API dos Correios. A etiqueta não tem prazo: fica ativa até os Correios cancelarem.
+  correios: { label: 'Correios', functionName: 'correios-labels', createAction: 'create_shipment' },
 };
 
 const SHIPPING_PROVIDER_LABELS: Record<string, string> = {
@@ -734,7 +736,12 @@ const Etiquetas = () => {
         throw new Error(errorMessage);
       }
 
-      const url = data?.data?.url || data?.label_url || data?.url;
+      let url = data?.data?.url || data?.label_url || data?.url;
+      if (!url && data?.success && data?.labelPdfBase64) {
+        // Correios: o PDF vem em base64; abre como arquivo
+        const bytes = Uint8Array.from(atob(data.labelPdfBase64), (c) => c.charCodeAt(0));
+        url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      }
       if (data?.success && url) {
         window.open(url, '_blank', 'noopener');
         if (data.manual) {
@@ -1208,7 +1215,7 @@ const Etiquetas = () => {
         </TabsList>
 
         <TabsContent value="etiquetas" className="space-y-4">
-          {isCorreiosProvider && (
+          {isCorreiosProvider && !isProviderHandledInLabelsPage && (
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>Use o módulo específico do {activeProviderLabel}</AlertTitle>
@@ -1521,14 +1528,14 @@ const Etiquetas = () => {
                             </Button>
                           )}
 
-                          {!order.melhor_envio_shipment_id && isOrderCorreios(order) && (
+                          {!order.melhor_envio_shipment_id && isOrderCorreios(order) && !isOrderHandledHere(order) && (
                             <Button onClick={openIntegrationsPage} variant="outline" size="sm" className="justify-center">
                               <ExternalLink className="h-4 w-4 mr-2" />
                               Abrir {orderProviderLabel(order)}
                             </Button>
                           )}
 
-                          {order.melhor_envio_shipment_id && !isMandae && (
+                          {order.melhor_envio_shipment_id && !isMandae && providerOfOrder(order) !== 'correios' && (
                             <Button
                               onClick={() => buyShipment(order.id)}
                               disabled={processingOrders.has(order.id)}
@@ -1562,7 +1569,7 @@ const Etiquetas = () => {
                             </Button>
                           )}
 
-                          {order.melhor_envio_shipment_id && (
+                          {order.melhor_envio_shipment_id && providerOfOrder(order) !== 'correios' && (
                             <Button
                               onClick={() => checkOrderStatus(order.id)}
                               disabled={processingOrders.has(order.id)}
@@ -1579,7 +1586,7 @@ const Etiquetas = () => {
                             </Button>
                           )}
 
-                          {order.melhor_envio_shipment_id && !order.melhor_envio_tracking_code && (
+                          {order.melhor_envio_shipment_id && (!order.melhor_envio_tracking_code || providerOfOrder(order) === 'correios') && (
                             <Button
                               onClick={() => cancelShipment(order.id)}
                               disabled={cancellingOrders.has(order.id) || processingOrders.has(order.id)}
