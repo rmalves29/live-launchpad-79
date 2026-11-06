@@ -30,10 +30,7 @@ Deno.serve(async (req) => {
 
     const { data, error } = await supabase
       .from("customers")
-      // Seguranca (LGPD): funcao publica, quem chama so sabe tenant + telefone.
-      // Devolve so o necessario para pre-preencher a entrega; CPF, e-mail, numero e complemento
-      // o cliente digita no checkout.
-      .select("name, cep, street, neighborhood, city, state")
+      .select("name, email, cpf, cep, street, number, complement, neighborhood, city, state")
       .eq("tenant_id", tenant_id)
       .eq("phone", String(phone).replace(/\D/g, ""))
       .maybeSingle();
