@@ -31,7 +31,15 @@ interface SendRequest {
   mention_all?: boolean;
   
   async?: boolean;
+  // Envio em lotes (async): espera antes de começar este lote, em ms.
+  batch_delay_ms?: number;
 }
+
+// Cada execução tem limite de tempo (~400 s) e cada grupo leva ~20 s (digitação
+// simulada e pausas). Por isso o envio assíncrono vai de 10 em 10 grupos: cada
+// lote chama o próximo, que começa depois de uma pausa.
+const BATCH_SIZE = 10;
+const BATCH_PAUSE_MS = 45_000;
 
 async function getCredentials(supabase: any, tenantId: string) {
   const { data, error } = await supabase
@@ -284,10 +292,10 @@ serve(async (req) => {
       for (const row of vo || []) viewOnceByMessage.set(row.id, row.view_once === true);
     }
 
-    const processGroups = async () => {
+    const processGroups = async (list: typeof groups = groups) => {
       const results: Array<{ group_id: string; group_name: string; success: boolean; error?: string }> = [];
 
-      for (const group of groups) {
+      for (const group of list) {
         try {
           if (results.length > 0) {
             await new Promise((r) => setTimeout(r, 500 + Math.random() * 1000));
@@ -373,11 +381,34 @@ serve(async (req) => {
     };
 
     if (body.async) {
+      const batch = groups.slice(0, BATCH_SIZE);
+      const rest = groups.slice(BATCH_SIZE);
+      const runBatch = async () => {
+        const wait = Math.max(0, Math.min(Number(body.batch_delay_ms) || 0, 120_000));
+        if (wait) await new Promise((r) => setTimeout(r, wait));
+        await processGroups(batch);
+        if (rest.length) {
+          const restIds = rest.map((g) => g.id);
+          console.log(`[fe-send-message] Lote de ${batch.length} concluído; próximo lote de ${Math.min(rest.length, BATCH_SIZE)} em ${BATCH_PAUSE_MS / 1000}s (restam ${rest.length}).`);
+          const res = await fetch(`${supabaseUrl}/functions/v1/fe-send-message`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseKey}`, apikey: supabaseKey },
+            body: JSON.stringify({
+              ...body,
+              group_ids: restIds,
+              message_ids: Array.isArray(message_ids) ? restIds.map((id) => groupToMessageId.get(id) || "") : undefined,
+              async: true,
+              batch_delay_ms: BATCH_PAUSE_MS,
+            }),
+          });
+          if (res.status >= 300) console.error(`[fe-send-message] Falha ao chamar o próximo lote: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
+        }
+      };
       EdgeRuntime.waitUntil(
-        processGroups().catch((err) => console.error("[fe-send-message] Async processing error:", err?.message || err))
+        runBatch().catch((err) => console.error("[fe-send-message] Async processing error:", err?.message || err))
       );
       return new Response(
-        JSON.stringify({ queued: true, total: groups.length, sent: 0 }),
+        JSON.stringify({ queued: true, total: groups.length, sent: 0, batches: Math.ceil(groups.length / BATCH_SIZE) }),
         { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
