@@ -13,6 +13,7 @@ import { Loader2, Package, CheckCircle2, XCircle, TestTube, Eye, EyeOff, Setting
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ShippingServiceSelector from './ShippingServiceSelector';
 import CorreiosCWSLabels from './CorreiosCWSLabels';
+import CorreiosDeclaration from './CorreiosDeclaration';
 
 interface CorreiosIntegrationProps {
   tenantId: string;
@@ -302,7 +303,10 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
         </TabsContent>
 
         <TabsContent value="labels" className="mt-4">
-          <CorreiosCWSLabels tenantId={tenantId} />
+          <div className="space-y-4">
+            <CorreiosCWSLabels tenantId={tenantId} />
+            <CorreiosDeclaration tenantId={tenantId} />
+          </div>
         </TabsContent>
       </Tabs>
     </div>
