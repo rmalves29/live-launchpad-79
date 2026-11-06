@@ -37,6 +37,7 @@ export const CARTZY_FAQ = `## Cartzy — Perguntas frequentes (base geral)
 
 ### Sistema de Grupos VIP (WhatsApp)
 - Você conecta o telefone, o sistema lê os grupos e dispara os produtos nos grupos automaticamente, numa mensagem com layout e o código do produto.
+- Como fica a mensagem no grupo: foto do produto e, embaixo, o nome do produto com o código entre parênteses (ex.: KIT BRINCO E COLAR (C006)), a cor ou variação, o preço ("De: R$ 45,00") e a chamada "Para comprar, digite apenas o código: C006". A mensagem sai com o nome da loja. A cliente só digita o código no grupo para comprar.
 - Quando a cliente comenta o código, o sistema reconhece, registra a venda e manda um WhatsApp para ela dizendo que o produto foi adicionado, já com o link de pagamento.
 - Dá para mandar uma mensagem de cobrança para todas as clientes com pedido pendente.
 - No máximo 3 grupos ao mesmo tempo na venda automática.
