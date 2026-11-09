@@ -435,7 +435,7 @@ async function tryDownloadAsyncLabel(idRecibo: string, token: string, deadline =
     const message = String(
       json?.mensagem || json?.message || json?.descricao || json?.detail || json?.title || json?.msgs?.[0] || "",
     );
-    if (/PPN-295|rótulo não foi gerado|rotulo nao foi gerado|nova solicitação|nova solicitacao/i.test(message)) {
+    if (/PPN-295|PPN-297|rótulo não foi gerado|rotulo nao foi gerado|Geração do rótulo não realizada|nova solicitação|nova solicitacao/i.test(message)) {
       return {
         ok: false as const,
         retryable: false,
@@ -1239,7 +1239,8 @@ Deno.serve(async (req) => {
     }
 
     if (action === "get_labels_batch") {
-      // Várias etiquetas em UM PDF: um único pedido de rótulo com todas as pré-postagens (até 30 por chamada)
+      // Várias etiquetas num PDF só. Os Correios travam quando várias pré-postagens vão no mesmo pedido de rótulo (PPN-291 sem fim),
+      // então pedimos UMA por pré-postagem, em paralelo, e juntamos os PDFs aqui.
       try {
         const ids: number[] = Array.isArray(body.order_ids) ? body.order_ids.map((x: unknown) => Number(x)).filter((n: number) => Number.isFinite(n)) : [];
         if (!ids.length) return respostaJson({ success: false, error: "Selecione pelo menos um pedido." });
@@ -1253,23 +1254,57 @@ Deno.serve(async (req) => {
         if (!prIds.length) return respostaJson({ success: false, error: "Nenhum dos pedidos tem remessa dos Correios criada." });
         const { token } = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem, creds.contrato);
         const deadline = Date.now() + LABEL_WAIT_BUDGET_MS;
-        let idRecibo: string | undefined = body.id_recibo ? String(body.id_recibo) : undefined;
-        if (!idRecibo) {
-          const r = await fetchComLimite(`${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/pdf`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json" },
-            body: JSON.stringify({ idsPrePostagem: prIds, tipoRotulo: "P" }),
-          });
-          const t = await r.text();
-          log(`get_labels_batch | ${prIds.length} etiquetas | HTTP ${r.status} | ${t.slice(0, 300)}`);
-          if (!r.ok) return respostaJson({ success: false, error: mensagemErroCorreios(r.status, t) });
-          idRecibo = (JSON.parse(t) || {}).idRecibo;
-          if (!idRecibo) return respostaJson({ success: false, error: `Os Correios não devolveram o recibo: ${t.slice(0, 200)}` });
+        // A4 = layout padrão dos Correios; Zebra = etiqueta térmica 100 x 150 mm
+        const layoutZebra = body.formato === "zebra";
+        const recibosAnt: Record<string, string> = body.recibos && typeof body.recibos === "object" ? body.recibos : {};
+        const recibos: Record<string, string> = { ...recibosAnt };
+
+        type Res = { pr: string; pdf?: string; pending?: boolean; erro?: string };
+        const um = async (pr: string): Promise<Res> => {
+          try {
+            let idRecibo = recibos[pr];
+            if (!idRecibo) {
+              const r = await fetchComLimite(`${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/pdf`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json" },
+                body: JSON.stringify({ idsPrePostagem: [pr], tipoRotulo: "P", ...(layoutZebra ? { layoutImpressao: "LINEAR_100_150" } : {}) }),
+              });
+              const t = await r.text();
+              if (!r.ok) return { pr, erro: mensagemErroCorreios(r.status, t) };
+              idRecibo = (JSON.parse(t) || {}).idRecibo;
+              if (!idRecibo) return { pr, erro: `sem recibo: ${t.slice(0, 120)}` };
+              recibos[pr] = idRecibo;
+            }
+            const dl = await tryDownloadAsyncLabel(idRecibo, token, deadline);
+            if (dl.ok) return { pr, pdf: dl.base64 };
+            if (dl.regenerate) { delete recibos[pr]; return { pr, pending: true }; } // recibo expirou: pede de novo na próxima rodada
+            if (dl.retryable) return { pr, pending: true };
+            return { pr, erro: dl.bodyText };
+          } catch (e) {
+            return { pr, pending: true, erro: (e as Error).message };
+          }
+        };
+        // até 10 pedidos ao mesmo tempo
+        const resultados: Res[] = [];
+        for (let i = 0; i < prIds.length; i += 10) {
+          resultados.push(...(await Promise.all(prIds.slice(i, i + 10).map(um))));
         }
-        const dl = await tryDownloadAsyncLabel(idRecibo, token, deadline);
-        if (dl.ok) return respostaJson({ success: true, labelPdfBase64: dl.base64, total: prIds.length });
-        if (!dl.regenerate && dl.retryable) return respostaJson({ success: false, pending: true, id_recibo: idRecibo });
-        return respostaJson({ success: false, error: `Os Correios não geraram o PDF: ${dl.bodyText}` });
+        log(`get_labels_batch | ${prIds.length} etiquetas | prontas: ${resultados.filter((r) => r.pdf).length} | pendentes: ${resultados.filter((r) => r.pending).length} | erros: ${resultados.filter((r) => r.erro && !r.pending).length}`);
+        const erros = resultados.filter((r) => r.erro && !r.pending);
+        if (erros.length) return respostaJson({ success: false, error: `Os Correios recusaram ${erros.length} etiqueta(s): ${erros[0].erro}` });
+        if (resultados.some((r) => r.pending)) return respostaJson({ success: false, pending: true, recibos });
+
+        const { PDFDocument } = await import("npm:pdf-lib@1.17.1");
+        const saida = await PDFDocument.create();
+        for (const r of resultados) {
+          const origem = await PDFDocument.load(Uint8Array.from(atob(r.pdf!), (c) => c.charCodeAt(0)));
+          const paginas = await saida.copyPages(origem, origem.getPageIndices());
+          paginas.forEach((pg: any) => saida.addPage(pg));
+        }
+        const bytes: Uint8Array = await saida.save();
+        let bin = "";
+        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        return respostaJson({ success: true, labelPdfBase64: btoa(bin), total: prIds.length });
       } catch (e) {
         log(`ERRO get_labels_batch: ${(e as Error).message}`);
         return respostaJson({ success: false, error: (e as Error).message });

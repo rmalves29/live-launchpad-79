@@ -7,7 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Download, Clock, Package, Info, RefreshCcw } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { baixarEtiquetasCorreios, lerFormatoSalvo, salvarFormato, type FormatoEtiqueta } from '@/lib/correios-labels-download';
+import { Loader2, Download, Clock, Package, Info, RefreshCcw, Copy } from 'lucide-react';
 
 interface CorreiosCWSLabelsProps {
   tenantId: string;
@@ -29,6 +31,50 @@ interface OrderRow {
 export default function CorreiosCWSLabels({ tenantId }: CorreiosCWSLabelsProps) {
   const { toast } = useToast();
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkDownloading, setBulkDownloading] = useState(false);
+  const [formato, setFormato] = useState<FormatoEtiqueta>(lerFormatoSalvo);
+  const trocarFormato = (f: FormatoEtiqueta) => {
+    setFormato(f);
+    salvarFormato(f);
+  };
+
+  const invokeLabels = (body: Record<string, unknown>) => supabase.functions.invoke('correios-labels', { body });
+
+  const toggle = (id: number) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const baixarVarias = async (ids: number[]) => {
+    if (ids.length === 0) return;
+    setBulkDownloading(true);
+    try {
+      const n = await baixarEtiquetasCorreios(invokeLabels, tenantId, ids, () =>
+        toast({ title: 'Aguardando os Correios', description: 'Eles ainda estão gerando as etiquetas…' }),
+        formato,
+      );
+      toast({ title: 'Etiquetas baixadas', description: `${n} etiqueta(s) em PDF.` });
+      setSelected(new Set());
+    } catch (err: any) {
+      toast({ title: 'Erro ao baixar etiquetas', description: err.message || 'Erro desconhecido', variant: 'destructive' });
+    } finally {
+      setBulkDownloading(false);
+    }
+  };
+
+  const copiarCodigos = (lista: OrderRow[]) => {
+    const comCodigo = lista.filter((o) => o.melhor_envio_tracking_code);
+    if (comCodigo.length === 0) {
+      toast({ title: 'Nenhum código para copiar', variant: 'destructive' });
+      return;
+    }
+    navigator.clipboard.writeText(comCodigo.map((o) => o.melhor_envio_tracking_code).join('\n'));
+    toast({ title: 'Códigos copiados', description: `${comCodigo.length} código(s), um por linha.` });
+  };
 
   const { data: orders, isLoading, refetch } = useQuery({
     queryKey: ['correios-labels-history', tenantId],
@@ -53,46 +99,11 @@ export default function CorreiosCWSLabels({ tenantId }: CorreiosCWSLabelsProps) 
   const handleDownload = async (order: OrderRow) => {
     if (!order.melhor_envio_shipment_id) return;
     setDownloadingId(String(order.id));
-
     try {
-      const { data, error } = await supabase.functions.invoke('correios-labels', {
-        body: {
-          action: 'download_label',
-          tenant_id: tenantId,
-          prePostagem_id: order.melhor_envio_shipment_id,
-          order_id: order.id,
-        },
-      });
-
-      if (error) throw error;
-
-      if (data?.success && data?.labelPdfBase64) {
-        // Abrir PDF base64 em nova aba
-        const byteChars = atob(data.labelPdfBase64);
-        const byteNumbers = new Array(byteChars.length);
-        for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
-        const blob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        window.open(url, '_blank');
-        toast({ title: 'Etiqueta baixada', description: `Pedido #${order.id}` });
-      } else if (data?.pending) {
-        toast({
-          title: 'Em processamento',
-          description: 'Rótulo ainda em processamento, tente novamente em 1 minuto',
-        });
-      } else {
-        toast({
-          title: 'Erro',
-          description: data?.error || 'Falha desconhecida ao baixar etiqueta',
-          variant: 'destructive',
-        });
-      }
+      await baixarEtiquetasCorreios(invokeLabels, tenantId, [order.id], undefined, formato);
+      toast({ title: 'Etiqueta baixada', description: `Pedido #${order.id}` });
     } catch (err: any) {
-      toast({
-        title: 'Erro ao baixar etiqueta',
-        description: err.message || 'Erro desconhecido',
-        variant: 'destructive',
-      });
+      toast({ title: 'Erro ao baixar etiqueta', description: err.message || 'Erro desconhecido', variant: 'destructive' });
     } finally {
       setDownloadingId(null);
     }
@@ -137,6 +148,40 @@ export default function CorreiosCWSLabels({ tenantId }: CorreiosCWSLabelsProps) 
               </AlertDescription>
             </Alert>
 
+            {orders && orders.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 text-sm">
+                  Formato:
+                  <select
+                    className="h-9 rounded-md border bg-background px-2 text-sm"
+                    value={formato}
+                    onChange={(e) => trocarFormato(e.target.value as FormatoEtiqueta)}
+                  >
+                    <option value="a4">A4 (folha)</option>
+                    <option value="zebra">Zebra (100 x 150 mm)</option>
+                  </select>
+                </label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelected(selected.size === orders.length ? new Set() : new Set(orders.map((o) => o.id)))}
+                >
+                  {selected.size === orders.length ? 'Limpar seleção' : 'Selecionar todas'}
+                </Button>
+                <Button size="sm" onClick={() => baixarVarias([...selected])} disabled={selected.size === 0 || bulkDownloading}>
+                  {bulkDownloading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Download className="h-4 w-4 mr-1" />}
+                  Baixar selecionadas{selected.size > 0 && ` (${selected.size})`}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => baixarVarias(orders.map((o) => o.id))} disabled={bulkDownloading}>
+                  Baixar todas ({orders.length})
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => copiarCodigos(selected.size > 0 ? orders.filter((o) => selected.has(o.id)) : orders)}>
+                  <Copy className="h-4 w-4 mr-1" />
+                  Copiar códigos{selected.size > 0 ? ` (${selected.size})` : ''}
+                </Button>
+              </div>
+            )}
+
             {isLoading ? (
               <div className="flex justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin" />
@@ -155,6 +200,12 @@ export default function CorreiosCWSLabels({ tenantId }: CorreiosCWSLabelsProps) 
                       key={order.id}
                       className="flex items-center justify-between gap-3 p-3 border rounded-md"
                     >
+                      <Checkbox
+                        checked={selected.has(order.id)}
+                        onCheckedChange={() => toggle(order.id)}
+                        disabled={bulkDownloading}
+                        aria-label={`Selecionar pedido ${order.id}`}
+                      />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium">Pedido #{order.id}</span>

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { baixarEtiquetasCorreios, lerFormatoSalvo, salvarFormato, type FormatoEtiqueta } from '@/lib/correios-labels-download';
 import { Package, Printer, Send, Loader2, Truck, MapPin, User, Phone, Copy, CheckCircle, CalendarIcon, FileText, RefreshCw, Settings, AlertCircle, ExternalLink, Pencil, Save, X, Square, CheckSquare, Ban, RotateCcw } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -127,6 +128,11 @@ const Etiquetas = () => {
   // Etiquetas (PDF) a baixar: pedidos que já têm remessa dos Correios
   const [labelSelection, setLabelSelection] = useState<Set<number>>(new Set());
   const [downloadingLabels, setDownloadingLabels] = useState(false);
+  const [formatoEtiqueta, setFormatoEtiqueta] = useState<FormatoEtiqueta>(lerFormatoSalvo);
+  const trocarFormatoEtiqueta = (f: FormatoEtiqueta) => {
+    setFormatoEtiqueta(f);
+    salvarFormato(f);
+  };
   const [batchProcessing, setBatchProcessing] = useState(false);
   
   // Estado para cancelamento de remessa
@@ -719,6 +725,19 @@ const Etiquetas = () => {
       const cfg = SHIPPING_LABEL_PROVIDERS[providerKey];
       const functionName = cfg?.functionName || 'melhor-envio-labels';
 
+      // Correios: mesmo caminho do "Baixar selecionadas" (um PDF, A4 ou Zebra), que baixa o arquivo direto
+      if (providerKey === 'correios' && /^PR/i.test(shipId)) {
+        await baixarEtiquetasCorreios(
+          (body) => supabaseTenant.functions.invoke('correios-labels', { body }),
+          supabaseTenant.getTenantId(),
+          [orderId],
+          () => toast.info('Os Correios ainda estão gerando a etiqueta. Aguardando mais um pouco…'),
+          formatoEtiqueta,
+        );
+        toast.success('Etiqueta baixada!');
+        return;
+      }
+
       // Correios: a etiqueta é gerada de forma assíncrona e às vezes demora mais
       // de um minuto. A função devolve "pending" com o id do recibo antes de
       // estourar o tempo, e aqui continuamos esperando o MESMO recibo.
@@ -1028,50 +1047,25 @@ const Etiquetas = () => {
     });
   };
 
-  // Baixa várias etiquetas de uma vez: um PDF com até 30 etiquetas por vez
+  // Baixa várias etiquetas de uma vez: um PDF com até 30 etiquetas por vez, em A4 ou Zebra
   const downloadLabelsBatch = async (orderIds: number[]) => {
     if (orderIds.length === 0) {
       toast.error('Nenhuma etiqueta para baixar.');
       return;
     }
     setDownloadingLabels(true);
-    let baixadas = 0;
     try {
-      for (let i = 0; i < orderIds.length; i += 30) {
-        const lote = orderIds.slice(i, i + 30);
-        let idRecibo: string | undefined;
-        let data: any = null;
-        let error: any = null;
-        for (let rodada = 1; rodada <= 4; rodada++) {
-          ({ data, error } = await supabaseTenant.functions.invoke('correios-labels', {
-            body: {
-              action: 'get_labels_batch',
-              order_ids: lote,
-              tenant_id: supabaseTenant.getTenantId(),
-              ...(idRecibo ? { id_recibo: idRecibo } : {}),
-            },
-          }));
-          if (error || !data?.pending || !data?.id_recibo) break;
-          idRecibo = data.id_recibo;
-          if (rodada < 4) toast.info('Os Correios ainda estão gerando as etiquetas. Aguardando mais um pouco…');
-        }
-        if (error) throw new Error(data?.error || error.message || 'Erro ao baixar etiquetas');
-        if (data?.pending) throw new Error('Os Correios ainda não terminaram de gerar as etiquetas. Tente de novo em alguns minutos.');
-        if (!data?.success || !data?.labelPdfBase64) throw new Error(data?.error || 'Erro ao baixar etiquetas');
-        const bytes = Uint8Array.from(atob(data.labelPdfBase64), (c) => c.charCodeAt(0));
-        const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `etiquetas-correios-${new Date().toISOString().slice(0, 10)}-${Math.floor(i / 30) + 1}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        baixadas += data.total || lote.length;
-      }
-      toast.success(`${baixadas} etiqueta(s) baixada(s).`);
+      const n = await baixarEtiquetasCorreios(
+        (body) => supabaseTenant.functions.invoke('correios-labels', { body }),
+        supabaseTenant.getTenantId(),
+        orderIds,
+        () => toast.info('Os Correios ainda estão gerando as etiquetas. Aguardando mais um pouco…'),
+        formatoEtiqueta,
+      );
+      toast.success(`${n} etiqueta(s) baixada(s).`);
       setLabelSelection(new Set());
     } catch (e: any) {
-      toast.error(`Erro ao baixar etiquetas${baixadas ? ` (${baixadas} já baixadas)` : ''}: ${e.message}`);
+      toast.error(`Erro ao baixar etiquetas: ${e.message}`);
     } finally {
       setDownloadingLabels(false);
     }
@@ -1262,6 +1256,17 @@ const Etiquetas = () => {
             </Button>
             {downloadableLabelOrders.length > 0 && (
               <>
+                <label className="flex items-center gap-2 text-sm">
+                  Formato:
+                  <select
+                    className="h-9 rounded-md border bg-background px-2 text-sm"
+                    value={formatoEtiqueta}
+                    onChange={(e) => trocarFormatoEtiqueta(e.target.value as FormatoEtiqueta)}
+                  >
+                    <option value="a4">A4 (folha)</option>
+                    <option value="zebra">Zebra (100 x 150 mm)</option>
+                  </select>
+                </label>
                 <Button
                   variant="outline"
                   onClick={() => downloadLabelsBatch([...labelSelection].filter(id => downloadableLabelOrders.some(o => o.id === id)))}
