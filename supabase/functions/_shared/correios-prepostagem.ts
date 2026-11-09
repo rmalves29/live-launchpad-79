@@ -29,21 +29,44 @@ export interface DadosPrePostagem {
   valorDeclarado: number;
 }
 
-// Serviços de contrato (os mesmos códigos usados na cotação do frete, em correios-shipping)
+// Serviços de contrato (os códigos da cotação do frete, em correios-shipping)
 export const SERVICO_PAC = "04669";
 export const SERVICO_SEDEX = "04162";
 export const SERVICO_SEDEX_12 = "03140";
 export const SERVICO_MINI_ENVIOS = "04227";
+// Códigos antigos dos mesmos serviços: alguns cartões só aceitam esses na pré-postagem
+const SERVICO_PAC_ANTIGO = "03298";
+const SERVICO_SEDEX_ANTIGO = "03220";
+const SERVICOS_CONHECIDOS = new Set([SERVICO_PAC, SERVICO_SEDEX, SERVICO_SEDEX_12, SERVICO_MINI_ENVIOS, SERVICO_PAC_ANTIGO, SERVICO_SEDEX_ANTIGO]);
 
 const digits = (v: unknown) => String(v ?? "").replace(/\D/g, "");
 
-/** Serviço escolhido no checkout, gravado na observação do pedido ("[FRETE] Correios - SEDEX | ..."). */
-export function servicoDoPedido(observacao: string | null | undefined): string {
+/**
+ * Serviço que o cliente escolheu no checkout: primeiro o `shipping_service_id` gravado no pedido (o zero à esquerda se perde,
+ * 4227 = 04227); se não houver, o nome na observação ("[FRETE] Correios - SEDEX | ..."). Devolve null quando o pedido não diz
+ * qual serviço é: nesse caso é melhor avisar do que adivinhar e postar no serviço errado.
+ */
+export function servicoDoPedido(observacao: string | null | undefined, shippingServiceId?: string | number | null): string | null {
+  const id = shippingServiceId != null ? digits(shippingServiceId).padStart(5, "0") : "";
+  if (id && SERVICOS_CONHECIDOS.has(id)) return id;
   const o = String(observacao || "").toUpperCase();
   if (o.includes("SEDEX 12") || o.includes("SEDEX12")) return SERVICO_SEDEX_12;
   if (o.includes("SEDEX")) return SERVICO_SEDEX;
   if (o.includes("MINI")) return SERVICO_MINI_ENVIOS;
-  return SERVICO_PAC;
+  if (o.includes("PAC")) return SERVICO_PAC;
+  return null;
+}
+
+/** Códigos a tentar, na ordem, para o MESMO serviço (nunca troca PAC por SEDEX). */
+export function codigosParaTentar(servico: string): string[] {
+  if (servico === SERVICO_PAC || servico === SERVICO_PAC_ANTIGO) return [SERVICO_PAC, SERVICO_PAC_ANTIGO].sort((a, b) => (a === servico ? -1 : b === servico ? 1 : 0));
+  if (servico === SERVICO_SEDEX || servico === SERVICO_SEDEX_ANTIGO) return [SERVICO_SEDEX, SERVICO_SEDEX_ANTIGO].sort((a, b) => (a === servico ? -1 : b === servico ? 1 : 0));
+  return [servico];
+}
+
+/** Os Correios dizem "Serviços 04669 não encontrados para o cartão de postagem ...": o código não existe nesse cartão. */
+export function codigoNaoExisteNoCartao(texto: string): boolean {
+  return /Servi[cç]os?\s+\d+\s+n[aã]o\s+encontrados?/i.test(String(texto || ""));
 }
 
 function separarTelefone(raw?: string | null) {

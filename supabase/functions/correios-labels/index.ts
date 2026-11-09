@@ -7,6 +7,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { authorizeTenantCaller, guardResponse } from "../_shared/auth-guard.ts";
 import {
+  codigoNaoExisteNoCartao,
+  codigosParaTentar,
   mensagemErroCorreios,
   montarCorpoPrePostagem,
   servicoDoPedido,
@@ -600,7 +602,7 @@ async function recreatePrepostagemFromOrder(
 
   const { data: order, error } = await supabase
     .from("orders")
-    .select("id, customer_name, customer_phone, customer_cep, customer_street, customer_number, customer_complement, customer_neighborhood, customer_city, customer_state, observation, total_amount, cart_id")
+    .select("id, customer_name, customer_phone, customer_cep, customer_street, customer_number, customer_complement, customer_neighborhood, customer_city, customer_state, observation, total_amount, cart_id, shipping_service_id")
     .eq("id", orderId)
     .eq("tenant_id", creds.tenant_id)
     .maybeSingle();
@@ -624,7 +626,11 @@ async function recreatePrepostagemFromOrder(
   const cfg: any = cfgRes.data || {};
   const pesoKg = Number(cfg.default_weight_kg) > 0 ? Number(cfg.default_weight_kg) : 0.05;
 
-  const corpo = montarCorpoPrePostagem({
+  const servicoBase = servicoDoPedido(order.observation, order.shipping_service_id);
+  if (!servicoBase) {
+    throw new Error("Este pedido não tem o serviço dos Correios escolhido (PAC, SEDEX ou Mini Envios), então não dá para criar a remessa sem arriscar postar no serviço errado.");
+  }
+  const dadosBase = {
     remetente: await remetenteDaEmpresa(supabase, creds),
     destinatario: {
       nome: order.customer_name || "Cliente",
@@ -639,7 +645,7 @@ async function recreatePrepostagemFromOrder(
       uf: order.customer_state || "",
       cep: order.customer_cep || "",
     },
-    codigoServico: servicoDoPedido(order.observation),
+    codigoServico: servicoBase,
     pesoGramas: Math.max(1, qtd * pesoKg * 1000),
     dimensoesCm: {
       altura: Number(cfg.default_height_cm) || 6,
@@ -648,10 +654,23 @@ async function recreatePrepostagemFromOrder(
     },
     descricaoConteudo: descricao,
     valorDeclarado: valor,
-  });
+  };
 
   const { token } = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem, creds.contrato);
-  const criada = await enviarPrePostagem(token, corpo);
+  // Alguns cartões não têm o código novo do serviço: tenta o código equivalente do MESMO serviço
+  let criada: { id: string; codigoObjeto: string | null } | null = null;
+  let ultimoErro: Error | null = null;
+  for (const codigo of codigosParaTentar(servicoBase)) {
+    try {
+      criada = await enviarPrePostagem(token, montarCorpoPrePostagem({ ...dadosBase, codigoServico: codigo }));
+      break;
+    } catch (e) {
+      ultimoErro = e as Error;
+      if (!codigoNaoExisteNoCartao(ultimoErro.message)) throw ultimoErro;
+      log(`Código ${codigo} não existe no cartão; tentando o equivalente`);
+    }
+  }
+  if (!criada) throw ultimoErro || new Error("Não foi possível criar a pré-postagem.");
 
   // A pré-postagem apenas reserva o código; não confirma que o objeto foi enviado.
   const updateData: Record<string, unknown> = { melhor_envio_shipment_id: criada.id };
