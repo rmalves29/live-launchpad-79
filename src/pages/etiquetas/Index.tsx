@@ -41,6 +41,7 @@ interface Order {
   event_date: string;
   melhor_envio_shipment_id?: string;
   melhor_envio_tracking_code?: string;
+  tracking_posted?: boolean;
   items?: any[];
   customer_cpf?: string; // CPF do cliente (buscado da tabela customers)
   observation?: string; // Campo de observação do pedido
@@ -1109,10 +1110,11 @@ const Etiquetas = () => {
   };
 
   const getShipmentStatus = (order: Order) => {
-    if (order.melhor_envio_tracking_code) {
+    // "Enviado" só depois que a transportadora confirmou a postagem (tracking_posted); só ter o código de rastreio não basta.
+    if (order.melhor_envio_tracking_code && order.tracking_posted) {
       return { status: 'shipped', label: 'Enviado', variant: 'default' as const };
     }
-    if (order.melhor_envio_shipment_id) {
+    if (order.melhor_envio_shipment_id || order.melhor_envio_tracking_code) {
       return { status: 'ready', label: 'Remessa Criada', variant: 'secondary' as const };
     }
     return { status: 'pending', label: 'Pendente', variant: 'outline' as const };
@@ -1269,7 +1271,7 @@ const Etiquetas = () => {
                     <SelectItem value="all">Todos os status</SelectItem>
                     <SelectItem value="pending">Aguardando postagem</SelectItem>
                     <SelectItem value="ready">Remessa Criada</SelectItem>
-                    <SelectItem value="shipped">Em trânsito / Enviado</SelectItem>
+                    <SelectItem value="shipped">Enviado (postado)</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -1345,7 +1347,7 @@ const Etiquetas = () => {
 
                 const statusBadgeLabel =
                   shipmentStatus.status === 'shipped'
-                    ? 'Em trânsito'
+                    ? 'Enviado'
                     : shipmentStatus.status === 'ready'
                       ? 'Remessa criada'
                       : 'Aguardando postagem';

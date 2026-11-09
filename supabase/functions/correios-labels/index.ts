@@ -11,6 +11,7 @@ import {
   codigoNaoExisteNoCartao,
   codigosParaTentar,
   mensagemErroCorreios,
+  situacaoRastreio,
   montarCorpoPrePostagem,
   servicoDoPedido,
   type PessoaPostagem,
@@ -1240,6 +1241,39 @@ Deno.serve(async (req) => {
         return respostaJson({ success: true });
       } catch (e) {
         log(`ERRO cancel_shipment: ${(e as Error).message}`);
+        return respostaJson({ success: false, error: (e as Error).message });
+      }
+    }
+
+    if (action === "get_tracking") {
+      // Consulta o rastreio oficial; quando o objeto já foi postado, marca tracking_posted = true (o gatilho do banco dispara o WhatsApp).
+      if (!orderIdBody) return respostaJson({ success: false, error: "order_id é obrigatório" });
+      try {
+        const { data: ped } = await supabase
+          .from("orders")
+          .select("melhor_envio_tracking_code, tracking_posted")
+          .eq("id", orderIdBody)
+          .eq("tenant_id", tenant_id)
+          .maybeSingle();
+        const codigo = String(ped?.melhor_envio_tracking_code || "").trim();
+        if (!codigo) return respostaJson({ success: true, posted: false, reason: "sem_rastreio" });
+        if (ped?.tracking_posted) return respostaJson({ success: true, posted: true, already: true });
+        const { token } = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem, creds.contrato);
+        const r = await fetch(`${CORREIOS_BASE}/srorastro/v1/objetos?resultado=U&codigosObjetos=${encodeURIComponent(codigo)}`, {
+          headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        });
+        const t = await r.text();
+        log(`get_tracking ${codigo} | HTTP ${r.status} | ${t.slice(0, 400)}`);
+        if (!r.ok) return respostaJson({ success: false, error: mensagemErroCorreios(r.status, t) });
+        let eventos: any[] = [];
+        try { eventos = JSON.parse(t)?.objetos?.[0]?.eventos || []; } catch { /* sem eventos */ }
+        const situacao = situacaoRastreio(eventos);
+        if (situacao === "postado") {
+          await supabase.from("orders").update({ tracking_posted: true }).eq("id", orderIdBody).eq("tenant_id", tenant_id);
+        }
+        return respostaJson({ success: true, posted: situacao === "postado", situacao });
+      } catch (e) {
+        log(`ERRO get_tracking: ${(e as Error).message}`);
         return respostaJson({ success: false, error: (e as Error).message });
       }
     }

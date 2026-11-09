@@ -80,7 +80,13 @@ serve(async (req: Request) => {
       // Identificar o provedor pelo prefixo do shipment_id
       let fnName: string | null = null;
       let action: string | null = null;
-      if (shipmentId.startsWith("mandae_")) {
+      let bearer = anonKey;
+      if (/^PR/i.test(shipmentId)) {
+        // Pré-postagem nativa dos Correios (a função exige service role quando chamada pelo cron)
+        fnName = "correios-labels";
+        action = "get_tracking";
+        bearer = serviceKey;
+      } else if (shipmentId.startsWith("mandae_")) {
         fnName = "mandae-labels";
         action = "get_tracking";
       } else if (shipmentId.startsWith("mandabem_")) {
@@ -105,6 +111,7 @@ serve(async (req: Request) => {
           frenet: ["frenet-labels", "get_tracking"],
           superfrete: ["superfrete-labels", "get_status"],
           melhor_envio: ["melhor-envio-labels", "get_status"],
+          correios: ["correios-labels", "get_tracking"],
         };
         // Pedido com transportadora gravada no checkout usa ela; senão, a integração ativa da empresa
         const provider = order.shipping_provider || providerByTenant.get(order.tenant_id) || "";
@@ -114,6 +121,7 @@ serve(async (req: Request) => {
           continue;
         }
         [fnName, action] = route;
+        if (fnName === "correios-labels") bearer = serviceKey;
       }
 
       try {
@@ -121,7 +129,7 @@ serve(async (req: Request) => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${anonKey}`,
+            "Authorization": `Bearer ${bearer}`,
           },
           body: JSON.stringify({ action, tenant_id: order.tenant_id, order_id: order.id }),
         });

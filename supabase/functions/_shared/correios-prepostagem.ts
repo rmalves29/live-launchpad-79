@@ -166,3 +166,15 @@ export function mensagemErroCorreios(status: number, corpo: string): string {
   } catch { /* corpo não é JSON: usa o texto bruto */ }
   return `Falha na API dos Correios (HTTP ${status}): ${detalhe}`;
 }
+
+/**
+ * Situação do objeto a partir do rastreio oficial (SRO), eventos do mais recente para o mais antigo.
+ * "FC" = etiqueta emitida, aguardando postagem (ou cancelada, se a descrição disser). Qualquer outro evento
+ * (postado, em trânsito, entregue...) significa que o objeto já está com os Correios. Sem eventos = ainda não postado.
+ */
+export function situacaoRastreio(eventos: Array<{ codigo?: string; descricao?: string }>): "aguardando" | "cancelada" | "postado" {
+  const ultimo = eventos?.[0];
+  if (!ultimo) return "aguardando";
+  if (String(ultimo.codigo || "").toUpperCase() === "FC") return /cancelad/i.test(String(ultimo.descricao || "")) ? "cancelada" : "aguardando";
+  return "postado";
+}
