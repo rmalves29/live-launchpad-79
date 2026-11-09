@@ -7,6 +7,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { authorizeTenantCaller, guardResponse } from "../_shared/auth-guard.ts";
 import {
+  ajustarDimensoes,
   codigoNaoExisteNoCartao,
   codigosParaTentar,
   mensagemErroCorreios,
@@ -609,7 +610,7 @@ async function recreatePrepostagemFromOrder(
   if (error) throw new Error(`Erro ao buscar pedido ${orderId}: ${error.message}`);
   if (!order) throw new Error(`Pedido ${orderId} não encontrado`);
 
-  const [itensRes, cliRes, cfgRes] = await Promise.all([
+  const [itensRes, cliRes, cfgRes, caixaRes] = await Promise.all([
     order.cart_id
       ? supabase.from("cart_items").select("product_name, product_code, qty, unit_price").eq("cart_id", order.cart_id)
       : Promise.resolve({ data: [] }),
@@ -617,6 +618,7 @@ async function recreatePrepostagemFromOrder(
       ? supabase.from("customers").select("cpf, email").eq("tenant_id", creds.tenant_id).eq("phone", order.customer_phone).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.from("app_settings").select("default_weight_kg, default_width_cm, default_height_cm, default_length_cm").limit(1).maybeSingle(),
+    supabase.from("tenants").select("shipping_box_length_cm, shipping_box_width_cm, shipping_box_height_cm").eq("id", creds.tenant_id).maybeSingle(),
   ]);
 
   const itens: any[] = itensRes.data || [];
@@ -624,11 +626,29 @@ async function recreatePrepostagemFromOrder(
   const valor = itens.reduce((s: number, i: any) => s + (Number(i.unit_price) || 0) * (Number(i.qty) || 1), 0) || Number(order.total_amount) || 1;
   const descricao = itens.map((i: any) => i.product_name || i.product_code).filter(Boolean).join(", ") || "Semijoia";
   const cfg: any = cfgRes.data || {};
+  const caixa: any = caixaRes.data || {};
   const pesoKg = Number(cfg.default_weight_kg) > 0 ? Number(cfg.default_weight_kg) : 0.05;
 
   const servicoBase = servicoDoPedido(order.observation, order.shipping_service_id);
   if (!servicoBase) {
-    throw new Error("Este pedido não tem o serviço dos Correios escolhido (PAC, SEDEX ou Mini Envios), então não dá para criar a remessa sem arriscar postar no serviço errado.");
+    // Pedido sem frete próprio costuma ser compra juntada com outro da mesma cliente: aponta o pedido principal
+    let dica = "";
+    if (order.customer_phone) {
+      const { data: outro } = await supabase
+        .from("orders")
+        .select("id, shipping_service_id")
+        .eq("tenant_id", creds.tenant_id)
+        .eq("customer_phone", order.customer_phone)
+        .eq("is_paid", true)
+        .neq("id", orderId)
+        .not("shipping_service_id", "is", null)
+        .gte("created_at", new Date(Date.now() - 10 * 86400_000).toISOString())
+        .order("id", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (outro?.id) dica = ` Esta cliente tem outro pedido recente com frete (#${outro.id}): se este foi juntado a ele, envie na mesma remessa do #${outro.id}.`;
+    }
+    throw new Error(`Este pedido não tem o serviço dos Correios escolhido (PAC, SEDEX ou Mini Envios), então não dá para criar a remessa sem arriscar postar no serviço errado.${dica}`);
   }
   const dadosBase = {
     remetente: await remetenteDaEmpresa(supabase, creds),
@@ -647,11 +667,12 @@ async function recreatePrepostagemFromOrder(
     },
     codigoServico: servicoBase,
     pesoGramas: Math.max(1, qtd * pesoKg * 1000),
-    dimensoesCm: {
-      altura: Number(cfg.default_height_cm) || 6,
-      largura: Number(cfg.default_width_cm) || 13,
-      comprimento: Number(cfg.default_length_cm) || 16,
-    },
+    // caixa padrão da empresa (Correios > Configuração); sem ela, as medidas padrão do sistema. O Mini Envios limita a altura em 4 cm.
+    dimensoesCm: ajustarDimensoes(servicoBase, {
+      altura: Number(caixa.shipping_box_height_cm) || Number(cfg.default_height_cm) || 6,
+      largura: Number(caixa.shipping_box_width_cm) || Number(cfg.default_width_cm) || 13,
+      comprimento: Number(caixa.shipping_box_length_cm) || Number(cfg.default_length_cm) || 16,
+    }),
     descricaoConteudo: descricao,
     valorDeclarado: valor,
   };

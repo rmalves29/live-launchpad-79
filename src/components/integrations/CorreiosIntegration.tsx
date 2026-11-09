@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ShippingServiceSelector from './ShippingServiceSelector';
 import CorreiosCWSLabels from './CorreiosCWSLabels';
 import CorreiosDeclaration from './CorreiosDeclaration';
+import CorreiosBoxSettings from './CorreiosBoxSettings';
 
 interface CorreiosIntegrationProps {
   tenantId: string;
@@ -291,6 +292,8 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
           )}
         </CardContent>
       </Card>
+
+      <CorreiosBoxSettings tenantId={tenantId} />
 
       <ShippingServiceSelector
         services={CORREIOS_SERVICES}

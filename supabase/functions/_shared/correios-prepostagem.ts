@@ -57,6 +57,17 @@ export function servicoDoPedido(observacao: string | null | undefined, shippingS
   return null;
 }
 
+/** O Mini Envios só aceita pacote de até 4 cm de altura (PPN-055); acima disso os Correios recusam a pré-postagem. */
+export const MINI_ENVIOS_ALTURA_MAX_CM = 4;
+
+export function ajustarDimensoes(
+  servico: string,
+  dim: { altura: number; largura: number; comprimento: number },
+): { altura: number; largura: number; comprimento: number } {
+  if (servico === SERVICO_MINI_ENVIOS && dim.altura > MINI_ENVIOS_ALTURA_MAX_CM) return { ...dim, altura: MINI_ENVIOS_ALTURA_MAX_CM };
+  return dim;
+}
+
 /** Códigos a tentar, na ordem, para o MESMO serviço (nunca troca PAC por SEDEX). */
 export function codigosParaTentar(servico: string): string[] {
   if (servico === SERVICO_PAC || servico === SERVICO_PAC_ANTIGO) return [SERVICO_PAC, SERVICO_PAC_ANTIGO].sort((a, b) => (a === servico ? -1 : b === servico ? 1 : 0));
