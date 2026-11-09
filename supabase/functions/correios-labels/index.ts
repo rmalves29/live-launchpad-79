@@ -495,7 +495,9 @@ async function fetchPrePostagemStatus(
   }
 
   // Tenta múltiplos nomes de campo (a API varia)
+  // `statusAtual` é o texto do status (PRE_POSTADO...); `status` pode vir como código numérico (ex.: 405) e não serve para decidir.
   const status: string | null =
+    json?.statusAtual ||
     json?.status ||
     json?.situacao ||
     json?.statusPrePostagem ||
@@ -773,7 +775,11 @@ async function actionDownloadLabel(
         details: { originalId: prePostagemId, originalHttpStatus: statusCheck.httpStatus, originalStatus: statusCheck.status, recreateError: msg },
       };
     }
-  } else if (!isPrePostadoStatus(statusCheck.status)) {
+  } else if (
+    !isPrePostadoStatus(statusCheck.status) &&
+    !(isNative && /^\d+$/.test(String(statusCheck.status ?? "").trim()))
+  ) {
+    // (status só numérico em ID nativo: não dá para decidir pelo código; segue e deixa os Correios responderem na emissão)
     const currentStatus = statusCheck.status || "DESCONHECIDO";
     const baseMsg = `Pré-postagem ${effectiveId} está com status "${currentStatus}" — rótulo só pode ser emitido quando status == "PRE_POSTADO".`;
     const errMsg = isNative
