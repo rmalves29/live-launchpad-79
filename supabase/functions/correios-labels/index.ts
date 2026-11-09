@@ -360,7 +360,8 @@ function fetchComLimite(url: string, init: RequestInit = {}, ms = CORREIOS_FETCH
 }
 const POLL_INTERVAL_MS = 5_000;
 
-async function tryDownloadAsyncLabel(idRecibo: string, token: string, deadline = Date.now() + 50_000) {
+async function tryDownloadAsyncLabel(idRecibo: string, token: string, deadline = Date.now() + 50_000, intervalMs = POLL_INTERVAL_MS) {
+  const POLL_INTERVAL_MS = intervalMs;
   const url = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/download/assincrono/${idRecibo}`;
   const maxAttempts = Math.max(1, Math.ceil((deadline - Date.now()) / POLL_INTERVAL_MS));
 
@@ -1259,45 +1260,69 @@ Deno.serve(async (req) => {
         const recibosAnt: Record<string, string> = body.recibos && typeof body.recibos === "object" ? body.recibos : {};
         const recibos: Record<string, string> = { ...recibosAnt };
 
-        type Res = { pr: string; pdf?: string; pending?: boolean; erro?: string };
-        const um = async (pr: string): Promise<Res> => {
-          try {
-            let idRecibo = recibos[pr];
-            if (!idRecibo) {
-              const r = await fetchComLimite(`${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/pdf`, {
-                method: "POST",
-                headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json" },
-                body: JSON.stringify({ idsPrePostagem: [pr], tipoRotulo: "P", ...(layoutZebra ? { layoutImpressao: "LINEAR_100_150" } : {}) }),
-              });
-              const t = await r.text();
-              if (!r.ok) return { pr, erro: mensagemErroCorreios(r.status, t) };
-              idRecibo = (JSON.parse(t) || {}).idRecibo;
-              if (!idRecibo) return { pr, erro: `sem recibo: ${t.slice(0, 120)}` };
-              recibos[pr] = idRecibo;
-            }
-            const dl = await tryDownloadAsyncLabel(idRecibo, token, deadline);
-            if (dl.ok) return { pr, pdf: dl.base64 };
-            if (dl.regenerate) { delete recibos[pr]; return { pr, pending: true }; } // recibo expirou: pede de novo na próxima rodada
-            if (dl.retryable) return { pr, pending: true };
-            return { pr, erro: dl.bodyText };
-          } catch (e) {
-            return { pr, pending: true, erro: (e as Error).message };
-          }
+        // Pedidos de etiqueta em paralelo fazem os Correios falharem (PPN-295 depois de ~1 min).
+        // Por isso: UMA etiqueta por vez nos Correios. Quando acaba o tempo desta chamada,
+        // devolvemos "pending" com os recibos e o navegador chama de novo para continuar.
+        const pdfs: Record<string, string> = {};
+        const erros: Array<{ pr: string; erro: string }> = [];
+        const pedirRecibo = async (pr: string): Promise<string> => {
+          const r = await fetchComLimite(`${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/pdf`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ idsPrePostagem: [pr], tipoRotulo: "P", ...(layoutZebra ? { layoutImpressao: "LINEAR_100_150" } : {}) }),
+          });
+          const t = await r.text();
+          if (!r.ok) throw Object.assign(new Error(mensagemErroCorreios(r.status, t)), { terminal: true });
+          let id: string | undefined;
+          try { id = (JSON.parse(t) || {}).idRecibo; } catch { id = undefined; }
+          if (!id) throw Object.assign(new Error(`sem recibo: ${t.slice(0, 120)}`), { terminal: true });
+          return id;
         };
-        // até 10 pedidos ao mesmo tempo
-        const resultados: Res[] = [];
-        for (let i = 0; i < prIds.length; i += 10) {
-          resultados.push(...(await Promise.all(prIds.slice(i, i + 10).map(um))));
+
+        // 1) Recibos já pedidos em rodadas anteriores: uma consulta rápida para cada um.
+        for (const pr of prIds) {
+          const rec = recibos[pr];
+          if (!rec) continue;
+          if (Date.now() > deadline - 5_000) break;
+          const dl = await tryDownloadAsyncLabel(rec, token, Date.now() + 1);
+          if (dl.ok) pdfs[pr] = dl.base64;
+          else if (dl.regenerate) delete recibos[pr];
+          else if (!dl.retryable) { erros.push({ pr, erro: dl.bodyText }); delete recibos[pr]; }
         }
-        log(`get_labels_batch | ${prIds.length} etiquetas | prontas: ${resultados.filter((r) => r.pdf).length} | pendentes: ${resultados.filter((r) => r.pending).length} | erros: ${resultados.filter((r) => r.erro && !r.pending).length}`);
-        const erros = resultados.filter((r) => r.erro && !r.pending);
+
+        // 2) Etiquetas que faltam: uma de cada vez, esperando cada uma ficar pronta.
+        let falhasSeguidas = 0;
+        for (const pr of prIds) {
+          if (pdfs[pr] || erros.some((e) => e.pr === pr)) continue;
+          if (Date.now() > deadline - 15_000) break;
+          try {
+            if (!recibos[pr]) recibos[pr] = await pedirRecibo(pr);
+            const dl = await tryDownloadAsyncLabel(recibos[pr], token, deadline, 2_000);
+            if (dl.ok) { pdfs[pr] = dl.base64; falhasSeguidas = 0; continue; }
+            if (dl.regenerate) {
+              // falha pontual nos Correios: pede de novo na próxima rodada
+              delete recibos[pr];
+              if (++falhasSeguidas >= 3) break;
+              continue;
+            }
+            if (dl.retryable) break; // acabou o tempo desta chamada esperando esta etiqueta
+            erros.push({ pr, erro: dl.bodyText });
+            delete recibos[pr];
+          } catch (e) {
+            if ((e as any)?.terminal) erros.push({ pr, erro: (e as Error).message });
+            else break; // Correios não responderam: tenta de novo na próxima rodada
+          }
+        }
+
+        const prontas = Object.keys(pdfs).length;
+        log(`get_labels_batch | ${prIds.length} etiquetas | prontas: ${prontas} | pendentes: ${prIds.length - prontas - erros.length} | erros: ${erros.length}`);
         if (erros.length) return respostaJson({ success: false, error: `Os Correios recusaram ${erros.length} etiqueta(s): ${erros[0].erro}` });
-        if (resultados.some((r) => r.pending)) return respostaJson({ success: false, pending: true, recibos });
+        if (prontas < prIds.length) return respostaJson({ success: false, pending: true, recibos, prontas, total: prIds.length });
 
         const { PDFDocument } = await import("npm:pdf-lib@1.17.1");
         const saida = await PDFDocument.create();
-        for (const r of resultados) {
-          const origem = await PDFDocument.load(Uint8Array.from(atob(r.pdf!), (c) => c.charCodeAt(0)));
+        for (const pr of prIds) {
+          const origem = await PDFDocument.load(Uint8Array.from(atob(pdfs[pr]), (c) => c.charCodeAt(0)));
           const paginas = await saida.copyPages(origem, origem.getPageIndices());
           paginas.forEach((pg: any) => saida.addPage(pg));
         }
