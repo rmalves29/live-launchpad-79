@@ -1238,6 +1238,44 @@ Deno.serve(async (req) => {
       }
     }
 
+    if (action === "get_labels_batch") {
+      // Várias etiquetas em UM PDF: um único pedido de rótulo com todas as pré-postagens (até 30 por chamada)
+      try {
+        const ids: number[] = Array.isArray(body.order_ids) ? body.order_ids.map((x: unknown) => Number(x)).filter((n: number) => Number.isFinite(n)) : [];
+        if (!ids.length) return respostaJson({ success: false, error: "Selecione pelo menos um pedido." });
+        if (ids.length > 30) return respostaJson({ success: false, error: "No máximo 30 etiquetas por PDF." });
+        const { data: peds } = await supabase
+          .from("orders")
+          .select("id, melhor_envio_shipment_id")
+          .eq("tenant_id", tenant_id)
+          .in("id", ids);
+        const prIds: string[] = (peds || []).map((p: any) => String(p.melhor_envio_shipment_id || "")).filter((v: string) => isCorreiosNativeId(v));
+        if (!prIds.length) return respostaJson({ success: false, error: "Nenhum dos pedidos tem remessa dos Correios criada." });
+        const { token } = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem, creds.contrato);
+        const deadline = Date.now() + LABEL_WAIT_BUDGET_MS;
+        let idRecibo: string | undefined = body.id_recibo ? String(body.id_recibo) : undefined;
+        if (!idRecibo) {
+          const r = await fetchComLimite(`${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/pdf`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ idsPrePostagem: prIds, tipoRotulo: "P" }),
+          });
+          const t = await r.text();
+          log(`get_labels_batch | ${prIds.length} etiquetas | HTTP ${r.status} | ${t.slice(0, 300)}`);
+          if (!r.ok) return respostaJson({ success: false, error: mensagemErroCorreios(r.status, t) });
+          idRecibo = (JSON.parse(t) || {}).idRecibo;
+          if (!idRecibo) return respostaJson({ success: false, error: `Os Correios não devolveram o recibo: ${t.slice(0, 200)}` });
+        }
+        const dl = await tryDownloadAsyncLabel(idRecibo, token, deadline);
+        if (dl.ok) return respostaJson({ success: true, labelPdfBase64: dl.base64, total: prIds.length });
+        if (!dl.regenerate && dl.retryable) return respostaJson({ success: false, pending: true, id_recibo: idRecibo });
+        return respostaJson({ success: false, error: `Os Correios não geraram o PDF: ${dl.bodyText}` });
+      } catch (e) {
+        log(`ERRO get_labels_batch: ${(e as Error).message}`);
+        return respostaJson({ success: false, error: (e as Error).message });
+      }
+    }
+
     if (action === "cancel_shipment") {
       if (!orderIdBody) return respostaJson({ success: false, error: "order_id é obrigatório" });
       try {

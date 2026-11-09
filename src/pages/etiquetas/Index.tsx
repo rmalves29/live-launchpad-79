@@ -124,6 +124,9 @@ const Etiquetas = () => {
   
   // Estado para seleção de pedidos em lote
   const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
+  // Etiquetas (PDF) a baixar: pedidos que já têm remessa dos Correios
+  const [labelSelection, setLabelSelection] = useState<Set<number>>(new Set());
+  const [downloadingLabels, setDownloadingLabels] = useState(false);
   const [batchProcessing, setBatchProcessing] = useState(false);
   
   // Estado para cancelamento de remessa
@@ -1012,6 +1015,68 @@ const Etiquetas = () => {
     });
   };
   
+  // Pedidos com remessa dos Correios (PR...) cuja etiqueta pode ser baixada
+  const hasCorreiosLabel = (o: Order) => isOrderCorreios(o) && /^PR/i.test(String(o.melhor_envio_shipment_id || ''));
+  const downloadableLabelOrders = orders.filter(hasCorreiosLabel);
+  const pendingLabelOrders = downloadableLabelOrders.filter(o => !o.tracking_posted);
+
+  const toggleLabelSelection = (orderId: number) => {
+    setLabelSelection(prev => {
+      const next = new Set(prev);
+      if (next.has(orderId)) next.delete(orderId); else next.add(orderId);
+      return next;
+    });
+  };
+
+  // Baixa várias etiquetas de uma vez: um PDF com até 30 etiquetas por vez
+  const downloadLabelsBatch = async (orderIds: number[]) => {
+    if (orderIds.length === 0) {
+      toast.error('Nenhuma etiqueta para baixar.');
+      return;
+    }
+    setDownloadingLabels(true);
+    let baixadas = 0;
+    try {
+      for (let i = 0; i < orderIds.length; i += 30) {
+        const lote = orderIds.slice(i, i + 30);
+        let idRecibo: string | undefined;
+        let data: any = null;
+        let error: any = null;
+        for (let rodada = 1; rodada <= 4; rodada++) {
+          ({ data, error } = await supabaseTenant.functions.invoke('correios-labels', {
+            body: {
+              action: 'get_labels_batch',
+              order_ids: lote,
+              tenant_id: supabaseTenant.getTenantId(),
+              ...(idRecibo ? { id_recibo: idRecibo } : {}),
+            },
+          }));
+          if (error || !data?.pending || !data?.id_recibo) break;
+          idRecibo = data.id_recibo;
+          if (rodada < 4) toast.info('Os Correios ainda estão gerando as etiquetas. Aguardando mais um pouco…');
+        }
+        if (error) throw new Error(data?.error || error.message || 'Erro ao baixar etiquetas');
+        if (data?.pending) throw new Error('Os Correios ainda não terminaram de gerar as etiquetas. Tente de novo em alguns minutos.');
+        if (!data?.success || !data?.labelPdfBase64) throw new Error(data?.error || 'Erro ao baixar etiquetas');
+        const bytes = Uint8Array.from(atob(data.labelPdfBase64), (c) => c.charCodeAt(0));
+        const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `etiquetas-correios-${new Date().toISOString().slice(0, 10)}-${Math.floor(i / 30) + 1}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        baixadas += data.total || lote.length;
+      }
+      toast.success(`${baixadas} etiqueta(s) baixada(s).`);
+      setLabelSelection(new Set());
+    } catch (e: any) {
+      toast.error(`Erro ao baixar etiquetas${baixadas ? ` (${baixadas} já baixadas)` : ''}: ${e.message}`);
+    } finally {
+      setDownloadingLabels(false);
+    }
+  };
+
   // Selecionar/desselecionar todos os pedidos válidos
   const toggleSelectAll = () => {
     if (selectedOrders.size === validSelectableOrders.length && validSelectableOrders.length > 0) {
@@ -1195,6 +1260,26 @@ const Etiquetas = () => {
               )}
               Sincronizar Rastreios
             </Button>
+            {downloadableLabelOrders.length > 0 && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => downloadLabelsBatch([...labelSelection].filter(id => downloadableLabelOrders.some(o => o.id === id)))}
+                  disabled={labelSelection.size === 0 || downloadingLabels}
+                >
+                  {downloadingLabels ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Printer className="h-4 w-4 mr-2" />}
+                  Baixar selecionadas{labelSelection.size > 0 && ` (${labelSelection.size})`}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => downloadLabelsBatch(pendingLabelOrders.map(o => o.id))}
+                  disabled={pendingLabelOrders.length === 0 || downloadingLabels}
+                >
+                  <Printer className="h-4 w-4 mr-2" />
+                  Baixar todas ({pendingLabelOrders.length})
+                </Button>
+              </>
+            )}
             <Button
               onClick={createBatchShipments}
               disabled={selectedOrders.size === 0 || batchProcessing}
@@ -1365,6 +1450,15 @@ const Etiquetas = () => {
                         {/* CLIENTE */}
                         <div className="space-y-1.5">
                           <div className="flex items-center gap-2">
+                            {!canSelect && hasCorreiosLabel(order) && (
+                              <Checkbox
+                                checked={labelSelection.has(order.id)}
+                                onCheckedChange={() => toggleLabelSelection(order.id)}
+                                disabled={downloadingLabels}
+                                className="h-4 w-4"
+                                title="Selecionar para baixar a etiqueta"
+                              />
+                            )}
                             {canSelect && (
                               <Checkbox
                                 checked={isSelected}
