@@ -53,8 +53,8 @@ export default function CorreiosCWSLabels({ tenantId }: CorreiosCWSLabelsProps) 
     if (ids.length === 0) return;
     setBulkDownloading(true);
     try {
-      const n = await baixarEtiquetasCorreios(invokeLabels, tenantId, ids, () =>
-        toast({ title: 'Aguardando os Correios', description: 'Eles ainda estão gerando as etiquetas…' }),
+      const n = await baixarEtiquetasCorreios(invokeLabels, tenantId, ids, (prontas, total) =>
+        toast({ title: 'Aguardando os Correios', description: `Gerando as etiquetas… ${prontas} de ${total} prontas.` }),
         formato,
       );
       toast({ title: 'Etiquetas baixadas', description: `${n} etiqueta(s) em PDF.` });

@@ -5171,173 +5171,6 @@ export type Database = {
         }
         Relationships: []
       }
-      referral_commissions: {
-        Row: {
-          amount: number
-          base_amount: number
-          cancel_reason: string | null
-          canceled_at: string | null
-          created_at: string
-          id: string
-          paid_at: string
-          paid_out_at: string | null
-          partner_id: string
-          payment_ref: string
-          payout_note: string | null
-          percent: number
-          release_at: string
-          source: string
-          tenant_id: string | null
-          tenant_name: string | null
-        }
-        Insert: {
-          amount: number
-          base_amount: number
-          cancel_reason?: string | null
-          canceled_at?: string | null
-          created_at?: string
-          id?: string
-          paid_at: string
-          paid_out_at?: string | null
-          partner_id: string
-          payment_ref: string
-          payout_note?: string | null
-          percent: number
-          release_at: string
-          source: string
-          tenant_id?: string | null
-          tenant_name?: string | null
-        }
-        Update: {
-          amount?: number
-          base_amount?: number
-          cancel_reason?: string | null
-          canceled_at?: string | null
-          created_at?: string
-          id?: string
-          paid_at?: string
-          paid_out_at?: string | null
-          partner_id?: string
-          payment_ref?: string
-          payout_note?: string | null
-          percent?: number
-          release_at?: string
-          source?: string
-          tenant_id?: string | null
-          tenant_name?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "referral_commissions_partner_id_fkey"
-            columns: ["partner_id"]
-            isOneToOne: false
-            referencedRelation: "referral_partners"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "referral_commissions_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "referral_commissions_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: false
-            referencedRelation: "tenants_public"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      referral_partners: {
-        Row: {
-          commission_months: number | null
-          commission_percent: number
-          created_at: string
-          email: string | null
-          id: string
-          is_active: boolean
-          name: string
-          notes: string | null
-          phone: string | null
-          pix_key: string | null
-          release_days: number
-        }
-        Insert: {
-          commission_months?: number | null
-          commission_percent?: number
-          created_at?: string
-          email?: string | null
-          id?: string
-          is_active?: boolean
-          name: string
-          notes?: string | null
-          phone?: string | null
-          pix_key?: string | null
-          release_days?: number
-        }
-        Update: {
-          commission_months?: number | null
-          commission_percent?: number
-          created_at?: string
-          email?: string | null
-          id?: string
-          is_active?: boolean
-          name?: string
-          notes?: string | null
-          phone?: string | null
-          pix_key?: string | null
-          release_days?: number
-        }
-        Relationships: []
-      }
-      referral_tenants: {
-        Row: {
-          created_at: string
-          notes: string | null
-          partner_id: string
-          started_at: string
-          tenant_id: string
-        }
-        Insert: {
-          created_at?: string
-          notes?: string | null
-          partner_id: string
-          started_at?: string
-          tenant_id: string
-        }
-        Update: {
-          created_at?: string
-          notes?: string | null
-          partner_id?: string
-          started_at?: string
-          tenant_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "referral_tenants_partner_id_fkey"
-            columns: ["partner_id"]
-            isOneToOne: false
-            referencedRelation: "referral_partners"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "referral_tenants_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: true
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "referral_tenants_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: true
-            referencedRelation: "tenants_public"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       report_cache: {
         Row: {
           computed_at: string
@@ -5712,6 +5545,7 @@ export type Database = {
           refresh_token: string | null
           sandbox: boolean
           scope: string | null
+          service_codes: Json | null
           tenant_id: string | null
           token_type: string | null
           updated_at: string | null
@@ -5734,6 +5568,7 @@ export type Database = {
           refresh_token?: string | null
           sandbox?: boolean
           scope?: string | null
+          service_codes?: Json | null
           tenant_id?: string | null
           token_type?: string | null
           updated_at?: string | null
@@ -5756,6 +5591,7 @@ export type Database = {
           refresh_token?: string | null
           sandbox?: boolean
           scope?: string | null
+          service_codes?: Json | null
           tenant_id?: string | null
           token_type?: string | null
           updated_at?: string | null
@@ -6326,6 +6162,9 @@ export type Database = {
           plan_type: string | null
           primary_color: string | null
           secondary_color: string | null
+          shipping_box_height_cm: number | null
+          shipping_box_length_cm: number | null
+          shipping_box_width_cm: number | null
           signup_created_at: string | null
           signup_paid_at: string | null
           signup_payment_url: string | null
@@ -6392,6 +6231,9 @@ export type Database = {
           plan_type?: string | null
           primary_color?: string | null
           secondary_color?: string | null
+          shipping_box_height_cm?: number | null
+          shipping_box_length_cm?: number | null
+          shipping_box_width_cm?: number | null
           signup_created_at?: string | null
           signup_paid_at?: string | null
           signup_payment_url?: string | null
@@ -6458,6 +6300,9 @@ export type Database = {
           plan_type?: string | null
           primary_color?: string | null
           secondary_color?: string | null
+          shipping_box_height_cm?: number | null
+          shipping_box_length_cm?: number | null
+          shipping_box_width_cm?: number | null
           signup_created_at?: string | null
           signup_paid_at?: string | null
           signup_payment_url?: string | null
@@ -7136,10 +6981,6 @@ export type Database = {
         Args: { p_product_id: number; p_quantity_delta: number }
         Returns: number
       }
-      admin_add_referral_payment: {
-        Args: { p_amount: number; p_paid_at?: string; p_tenant: string }
-        Returns: string
-      }
       admin_global_report: {
         Args: { p_from: string; p_to: string }
         Returns: Json
@@ -7622,16 +7463,6 @@ export type Database = {
       rate_limit_hit: {
         Args: { p_key: string; p_max: number; p_window_seconds: number }
         Returns: boolean
-      }
-      record_referral_commission: {
-        Args: {
-          p_amount: number
-          p_paid_at?: string
-          p_ref: string
-          p_source: string
-          p_tenant: string
-        }
-        Returns: string
       }
       release_product_stock: {
         Args: { p_product_id: number; p_qty: number }
