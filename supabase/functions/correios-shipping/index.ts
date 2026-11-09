@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { parseCodigosServico } from "../_shared/correios-prepostagem.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,11 +56,10 @@ async function getCorreiosToken(credentials: CorreiosCredentials, tenantId: stri
   return tokenData.token;
 }
 
-async function calcularPreco(token: string, cepOrigem: string, cepDestino: string, produtos: any[], codigoServico: string): Promise<any> {
+async function calcularPreco(token: string, cepOrigem: string, cepDestino: string, produtos: any[], codigoServico: string, isMiniEnvios = false): Promise<any> {
   let pesoTotal = 0;
   for (const p of produtos) pesoTotal += (p.weight || 0.3) * (p.quantity || 1);
 
-  const isMiniEnvios = codigoServico === CORREIOS_SERVICES.MINI_ENVIOS;
   pesoTotal = Math.max(pesoTotal, isMiniEnvios ? 0.01 : 0.3);
 
   const comprimento = isMiniEnvios ? "16" : "20";
@@ -223,6 +223,8 @@ serve(async (req) => {
 
     const cepDestino = to_postal_code.replace(/\D/g, "");
     const enabledServices = parseEnabledServices(integration.enabled_services);
+    // Cada contrato tem os seus códigos (ex.: PAC 03298 / SEDEX 03220); serviço sem código cadastrado usa o padrão.
+    const codigos = parseCodigosServico(integration.service_codes);
 
     const credentials: CorreiosCredentials = {
       clientId: integration.client_id || "",
@@ -241,9 +243,11 @@ serve(async (req) => {
     for (const p of productsList) pesoTotal += (p.weight || 0.3) * (p.quantity || 1);
     pesoTotal = Math.max(pesoTotal, 0.3);
 
-    // Chave: origem + faixa de peso (50 g) + serviços habilitados. Mudou a configuração da loja, a chave muda.
-    const enabledKey = Object.entries(enabledServices || {}).filter(([, v]) => v !== false).map(([k]) => k).sort().join(",");
-    const cacheKey = `${cepOrigem}|w${Math.ceil(pesoTotal * 20)}|${enabledKey}`;
+    // Chave: origem + faixa de peso (50 g) + serviços (ligados/desligados) + códigos do contrato. Mudou a configuração da
+    // loja, a chave muda — inclusive ao DESLIGAR um serviço (antes só os ligados entravam e a cotação antiga seguia valendo).
+    const enabledKey = Object.entries(enabledServices || {}).map(([k, v]) => `${k}=${v !== false ? 1 : 0}`).sort().join(",");
+    const codigosKey = Object.entries(codigos).map(([k, v]) => `${k}=${v}`).sort().join(",");
+    const cacheKey = `${cepOrigem}|w${Math.ceil(pesoTotal * 20)}|${enabledKey}|${codigosKey}`;
     const cachePrefix = cepDestino.slice(0, 5);
     const cached = cepDestino.length === 8 ? await readQuoteCache(supabase, tenant_id, cachePrefix, cacheKey) : null;
     if (cached) {
@@ -260,9 +264,9 @@ serve(async (req) => {
         const token = await getCorreiosToken(credentials, tenant_id);
 
         const allServices = [
-          { code: CORREIOS_SERVICES.PAC_CONTRATO, name: "PAC", company: "Correios" },
-          { code: CORREIOS_SERVICES.SEDEX_CONTRATO, name: "SEDEX", company: "Correios" },
-          { code: CORREIOS_SERVICES.MINI_ENVIOS, name: "Mini Envios", company: "Correios" },
+          { code: codigos.PAC || CORREIOS_SERVICES.PAC_CONTRATO, name: "PAC", company: "Correios" },
+          { code: codigos.SEDEX || CORREIOS_SERVICES.SEDEX_CONTRATO, name: "SEDEX", company: "Correios" },
+          { code: codigos["Mini Envios"] || CORREIOS_SERVICES.MINI_ENVIOS, name: "Mini Envios", company: "Correios" },
         ];
 
         const servicesToCheck = allServices.filter(s => isServiceEnabled(enabledServices, s.name));
@@ -271,7 +275,7 @@ serve(async (req) => {
         const results = await Promise.allSettled(
           servicesToCheck.map(async (service) => {
             const [precoResult, prazoResult] = await Promise.all([
-              calcularPreco(token, cepOrigem, cepDestino, productsList, service.code),
+              calcularPreco(token, cepOrigem, cepDestino, productsList, service.code, service.name === "Mini Envios"),
               calcularPrazo(token, cepOrigem, cepDestino, service.code),
             ]);
             if (precoResult && prazoResult) {

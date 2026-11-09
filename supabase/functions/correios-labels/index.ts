@@ -11,9 +11,11 @@ import {
   codigoNaoExisteNoCartao,
   codigosParaTentar,
   mensagemErroCorreios,
+  parseCodigosServico,
   situacaoRastreio,
   montarCorpoPrePostagem,
   servicoDoPedido,
+  type CodigosServico,
   type PessoaPostagem,
 } from "../_shared/correios-prepostagem.ts";
 
@@ -222,6 +224,8 @@ interface CorreiosCredentials {
   from_cep: string;
   webhook_secret: string | null; // armazena JSON do remetente (sender)
   integration_id: string;
+  // códigos de PAC / SEDEX / Mini Envios no contrato desta empresa (vazio = códigos padrão do sistema)
+  codigos_servico: CodigosServico;
 }
 
 async function getCredentials(
@@ -230,7 +234,7 @@ async function getCredentials(
 ): Promise<CorreiosCredentials> {
   const { data, error } = await supabase
     .from("shipping_integrations")
-    .select("id, client_id, client_secret, refresh_token, scope, from_cep, webhook_secret")
+    .select("id, client_id, client_secret, refresh_token, scope, from_cep, webhook_secret, service_codes")
     .eq("tenant_id", tenantId)
     .eq("provider", "correios")
     .maybeSingle();
@@ -256,6 +260,7 @@ async function getCredentials(
     from_cep: record.from_cep ? String(record.from_cep) : "",
     webhook_secret: record.webhook_secret ? String(record.webhook_secret) : null,
     integration_id: String(record.id || ""),
+    codigos_servico: parseCodigosServico(record.service_codes),
   };
 }
 
@@ -652,7 +657,7 @@ async function recreatePrepostagemFromOrder(
   const caixa: any = caixaRes.data || {};
   const pesoKg = Number(cfg.default_weight_kg) > 0 ? Number(cfg.default_weight_kg) : 0.05;
 
-  const servicoBase = servicoDoPedido(order.observation, order.shipping_service_id);
+  const servicoBase = servicoDoPedido(order.observation, order.shipping_service_id, creds.codigos_servico);
   if (!servicoBase) {
     // Pedido sem frete próprio costuma ser compra juntada com outro da mesma cliente: aponta o pedido principal
     let dica = "";
@@ -695,7 +700,7 @@ async function recreatePrepostagemFromOrder(
       altura: Number(caixa.shipping_box_height_cm) || Number(cfg.default_height_cm) || 6,
       largura: Number(caixa.shipping_box_width_cm) || Number(cfg.default_width_cm) || 13,
       comprimento: Number(caixa.shipping_box_length_cm) || Number(cfg.default_length_cm) || 16,
-    }),
+    }, creds.codigos_servico),
     descricaoConteudo: descricao,
     valorDeclarado: valor,
   };
@@ -704,7 +709,7 @@ async function recreatePrepostagemFromOrder(
   // Alguns cartões não têm o código novo do serviço: tenta o código equivalente do MESMO serviço
   let criada: { id: string; codigoObjeto: string | null } | null = null;
   let ultimoErro: Error | null = null;
-  for (const codigo of codigosParaTentar(servicoBase)) {
+  for (const codigo of codigosParaTentar(servicoBase, creds.codigos_servico)) {
     try {
       criada = await enviarPrePostagem(token, montarCorpoPrePostagem({ ...dadosBase, codigoServico: codigo }));
       break;

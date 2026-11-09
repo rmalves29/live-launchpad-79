@@ -42,18 +42,58 @@ const SERVICOS_CONHECIDOS = new Set([SERVICO_PAC, SERVICO_SEDEX, SERVICO_SEDEX_1
 const digits = (v: unknown) => String(v ?? "").replace(/\D/g, "");
 
 /**
+ * Códigos dos serviços no contrato de CADA empresa (coluna `shipping_integrations.service_codes`). Cada cartão de postagem
+ * tem os seus: o de uma empresa pode ter PAC 03298 e SEDEX 03220 e não ter 04669/04162. Serviço que não estiver aqui usa o
+ * código padrão do sistema.
+ */
+export interface CodigosServico {
+  PAC?: string;
+  SEDEX?: string;
+  "Mini Envios"?: string;
+}
+
+/** Lê o JSON salvo na integração e descarta o que não for código de serviço (4 ou 5 dígitos). */
+export function parseCodigosServico(raw: unknown): CodigosServico {
+  let obj: unknown = raw;
+  if (typeof raw === "string") {
+    try { obj = JSON.parse(raw); } catch { return {}; }
+  }
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
+  const out: CodigosServico = {};
+  for (const nome of ["PAC", "SEDEX", "Mini Envios"] as const) {
+    const d = digits((obj as Record<string, unknown>)[nome]);
+    if (d.length >= 4 && d.length <= 5) out[nome] = d.padStart(5, "0");
+  }
+  return out;
+}
+
+/** Código do mesmo serviço no contrato da empresa: PAC (04669/03298) vira o PAC dela, SEDEX (04162/03220) vira o SEDEX dela. */
+function codigoDoContrato(servico: string, codigos?: CodigosServico): string {
+  if (!codigos) return servico;
+  if ((servico === SERVICO_PAC || servico === SERVICO_PAC_ANTIGO) && codigos.PAC) return codigos.PAC;
+  if ((servico === SERVICO_SEDEX || servico === SERVICO_SEDEX_ANTIGO) && codigos.SEDEX) return codigos.SEDEX;
+  if (servico === SERVICO_MINI_ENVIOS && codigos["Mini Envios"]) return codigos["Mini Envios"];
+  return servico;
+}
+
+/**
  * Serviço que o cliente escolheu no checkout: primeiro o `shipping_service_id` gravado no pedido (o zero à esquerda se perde,
  * 4227 = 04227); se não houver, o nome na observação ("[FRETE] Correios - SEDEX | ..."). Devolve null quando o pedido não diz
  * qual serviço é: nesse caso é melhor avisar do que adivinhar e postar no serviço errado.
+ * Com `codigos`, o resultado já vem no código do contrato da empresa (PAC 04669 do pedido antigo vira o 03298 dela).
  */
-export function servicoDoPedido(observacao: string | null | undefined, shippingServiceId?: string | number | null): string | null {
+export function servicoDoPedido(
+  observacao: string | null | undefined,
+  shippingServiceId?: string | number | null,
+  codigos?: CodigosServico,
+): string | null {
   const id = shippingServiceId != null ? digits(shippingServiceId).padStart(5, "0") : "";
-  if (id && SERVICOS_CONHECIDOS.has(id)) return id;
+  if (id && (SERVICOS_CONHECIDOS.has(id) || Object.values(codigos || {}).includes(id))) return codigoDoContrato(id, codigos);
   const o = String(observacao || "").toUpperCase();
   if (o.includes("SEDEX 12") || o.includes("SEDEX12")) return SERVICO_SEDEX_12;
-  if (o.includes("SEDEX")) return SERVICO_SEDEX;
-  if (o.includes("MINI")) return SERVICO_MINI_ENVIOS;
-  if (o.includes("PAC")) return SERVICO_PAC;
+  if (o.includes("SEDEX")) return codigoDoContrato(SERVICO_SEDEX, codigos);
+  if (o.includes("MINI")) return codigoDoContrato(SERVICO_MINI_ENVIOS, codigos);
+  if (o.includes("PAC")) return codigoDoContrato(SERVICO_PAC, codigos);
   return null;
 }
 
@@ -66,12 +106,18 @@ export const CAIXA_MINI_ENVIOS_CM = { comprimento: 16, largura: 11, altura: 3 };
 export function ajustarDimensoes(
   servico: string,
   dim: { altura: number; largura: number; comprimento: number },
+  codigos?: CodigosServico,
 ): { altura: number; largura: number; comprimento: number } {
-  return servico === SERVICO_MINI_ENVIOS ? { ...CAIXA_MINI_ENVIOS_CM } : dim;
+  const mini = codigos?.["Mini Envios"] || SERVICO_MINI_ENVIOS;
+  return servico === mini ? { ...CAIXA_MINI_ENVIOS_CM } : dim;
 }
 
-/** Códigos a tentar, na ordem, para o MESMO serviço (nunca troca PAC por SEDEX). */
-export function codigosParaTentar(servico: string): string[] {
+/**
+ * Códigos a tentar, na ordem, para o MESMO serviço (nunca troca PAC por SEDEX). Se o código é o que a empresa cadastrou no
+ * contrato, é só ele: não faz sentido tentar o de outro contrato.
+ */
+export function codigosParaTentar(servico: string, codigos?: CodigosServico): string[] {
+  if (codigos && Object.values(codigos).includes(servico)) return [servico];
   if (servico === SERVICO_PAC || servico === SERVICO_PAC_ANTIGO) return [SERVICO_PAC, SERVICO_PAC_ANTIGO].sort((a, b) => (a === servico ? -1 : b === servico ? 1 : 0));
   if (servico === SERVICO_SEDEX || servico === SERVICO_SEDEX_ANTIGO) return [SERVICO_SEDEX, SERVICO_SEDEX_ANTIGO].sort((a, b) => (a === servico ? -1 : b === servico ? 1 : 0));
   return [servico];
