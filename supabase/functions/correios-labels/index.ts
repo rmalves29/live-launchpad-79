@@ -348,6 +348,11 @@ async function tryDownloadPdfFromUrl(url: string, token: string) {
 // com o idRecibo: o navegador chama de novo e continua esperando O MESMO recibo,
 // em vez de pedir uma etiqueta nova (o que recomeçava a fila nos Correios).
 const LABEL_WAIT_BUDGET_MS = 100_000;
+// Nenhuma chamada aos Correios pode ficar pendurada: sem limite, uma resposta que não chega faz a função inteira estourar os 150 s.
+const CORREIOS_FETCH_TIMEOUT_MS = 20_000;
+function fetchComLimite(url: string, init: RequestInit = {}, ms = CORREIOS_FETCH_TIMEOUT_MS): Promise<Response> {
+  return fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
+}
 const POLL_INTERVAL_MS = 5_000;
 
 async function tryDownloadAsyncLabel(idRecibo: string, token: string, deadline = Date.now() + 50_000) {
@@ -355,24 +360,36 @@ async function tryDownloadAsyncLabel(idRecibo: string, token: string, deadline =
   const maxAttempts = Math.max(1, Math.ceil((deadline - Date.now()) / POLL_INTERVAL_MS));
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const resp = await fetch(url, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json, application/pdf",
-      },
-    });
+    let resp: Response;
+    let contentType = "";
+    let bodyText = "";
+    try {
+      resp = await fetchComLimite(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json, application/pdf",
+        },
+      });
+      contentType = resp.headers.get("content-type") || "";
 
-    const contentType = resp.headers.get("content-type") || "";
+      // Caso a API entregue PDF binário direto
+      if (resp.ok && contentType.includes("application/pdf")) {
+        const base64 = await pdfResponseToBase64(resp);
+        log(`[recibo ${idRecibo}] PDF binário recebido na tentativa ${attempt}`);
+        return { ok: true as const, base64, url, status: resp.status, contentType, bodyText: "" };
+      }
 
-    // Caso a API entregue PDF binário direto
-    if (resp.ok && contentType.includes("application/pdf")) {
-      const base64 = await pdfResponseToBase64(resp);
-      log(`[recibo ${idRecibo}] PDF binário recebido na tentativa ${attempt}`);
-      return { ok: true as const, base64, url, status: resp.status, contentType, bodyText: "" };
+      bodyText = await resp.text();
+    } catch (e) {
+      // Os Correios não responderam a tempo: tenta de novo (ou devolve "pendente" quando acabar o tempo)
+      log(`[recibo ${idRecibo}] poll ${attempt}/${maxAttempts} sem resposta: ${(e as Error).message}`);
+      if (attempt < maxAttempts && Date.now() + POLL_INTERVAL_MS < deadline) {
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        continue;
+      }
+      break;
     }
-
-    const bodyText = await resp.text();
     log(
       `[recibo ${idRecibo}] poll ${attempt}/${maxAttempts} | http: ${resp.status} | content-type: ${contentType} | body: ${bodyText.slice(0, 400)}`,
     );
@@ -480,7 +497,7 @@ async function fetchPrePostagemStatus(
   const url = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/${encodeURIComponent(prePostagemId)}`;
   log(`📋 Consultando status da pré-postagem | GET ${url}`);
 
-  const resp = await fetch(url, {
+  const resp = await fetchComLimite(url, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -772,9 +789,11 @@ async function actionDownloadLabel(
   }
 
   // ETAPA 0b: Consulta status antes de qualquer tentativa de geração
-  const statusCheck = await fetchPrePostagemStatus(token, effectiveId);
-
   const isNative = isCorreiosNativeId(effectiveId);
+  // Para ID nativo (PR...) a API de GET da pré-postagem responde 405 e só gasta tempo: o próprio pedido de rótulo diz se não pode emitir.
+  const statusCheck = isNative
+    ? { ok: true, status: "PRE_POSTADO" as string | null, rawJson: null as any, httpStatus: 200, bodyText: "" }
+    : await fetchPrePostagemStatus(token, effectiveId);
 
   // REGRA: IDs nativos dos Correios (PR...) NUNCA são recriados.
   // Apenas IDs estrangeiros (UUID) podem disparar recreatePrepostagemFromOrder.
@@ -884,7 +903,7 @@ async function actionDownloadLabel(
         `Variação ${index + 1} | tentativa de geração ${generationAttempt}/3 | body: ${JSON.stringify(variant.body)}`,
       );
 
-      const response = await fetch(asyncUrl, {
+      const response = await fetchComLimite(asyncUrl, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1260,7 +1279,8 @@ Deno.serve(async (req) => {
         if (ped?.tracking_posted) return respostaJson({ success: true, posted: true, already: true });
         const { token } = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem, creds.contrato);
         const r = await fetch(`${CORREIOS_BASE}/srorastro/v1/objetos?resultado=U&codigosObjetos=${encodeURIComponent(codigo)}`, {
-          headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+          // SRO-018: o rastreio exige idioma válido (pt-BR/en/es-ES); sem o cabeçalho, o ambiente da função manda um valor que os Correios recusam
+          headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Accept-Language": "pt-BR" },
         });
         const t = await r.text();
         log(`get_tracking ${codigo} | HTTP ${r.status} | ${t.slice(0, 400)}`);
