@@ -1,6 +1,6 @@
 /**
  * Baixa etiquetas dos Correios (um PDF por lote de até 30 pedidos) usando a ação get_labels_batch da função correios-labels.
- * Se os Correios ainda estiverem gerando, continua com os MESMOS recibos (até 4 rodadas) em vez de pedir etiqueta nova.
+ * Se os Correios ainda estiverem gerando, continua com os MESMOS recibos enquanto houver avanço, em vez de pedir etiqueta nova.
  */
 export interface InvokeResult {
   data: any;
@@ -29,11 +29,14 @@ export function salvarFormato(f: FormatoEtiqueta) {
   }
 }
 
+export const MAX_RODADAS = 25;
+export const RODADAS_SEM_AVANCO = 3;
+
 export async function baixarEtiquetasCorreios(
   invoke: InvokeFn,
   tenantId: string,
   orderIds: number[],
-  onAguardando?: () => void,
+  onAguardando?: (prontas: number, total: number) => void,
   formato: FormatoEtiqueta = 'a4',
 ): Promise<number> {
   let baixadas = 0;
@@ -42,7 +45,11 @@ export async function baixarEtiquetasCorreios(
     let recibos: Record<string, string> | undefined;
     let data: any = null;
     let error: any = null;
-    for (let rodada = 1; rodada <= 4; rodada++) {
+    // Os Correios geram uma etiqueta por vez: continua enquanto houver avanço.
+    // Para depois de 3 rodadas seguidas sem nenhuma etiqueta nova (ou no máximo 25 rodadas).
+    let melhor = -1;
+    let semAvanco = 0;
+    for (let rodada = 1; rodada <= MAX_RODADAS; rodada++) {
       ({ data, error } = await invoke({
         action: 'get_labels_batch',
         order_ids: lote,
@@ -52,7 +59,12 @@ export async function baixarEtiquetasCorreios(
       }));
       if (error || !data?.pending || !data?.recibos) break;
       recibos = data.recibos;
-      if (rodada < 4) onAguardando?.();
+      const prontas = typeof data.prontas === 'number' ? data.prontas : 0;
+      if (prontas > melhor) {
+        melhor = prontas;
+        semAvanco = 0;
+      } else if (++semAvanco >= RODADAS_SEM_AVANCO) break;
+      if (rodada < MAX_RODADAS) onAguardando?.(baixadas + prontas, orderIds.length);
     }
     if (error) throw new Error(data?.error || error.message || 'Erro ao baixar etiquetas');
     if (data?.pending) throw new Error('Os Correios ainda não terminaram de gerar as etiquetas. Tente de novo em alguns minutos.');

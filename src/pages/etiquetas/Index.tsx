@@ -1059,7 +1059,7 @@ const Etiquetas = () => {
         (body) => supabaseTenant.functions.invoke('correios-labels', { body }),
         supabaseTenant.getTenantId(),
         orderIds,
-        () => toast.info('Os Correios ainda estão gerando as etiquetas. Aguardando mais um pouco…'),
+        (prontas, total) => toast.info(`Os Correios estão gerando as etiquetas: ${prontas} de ${total} prontas. Aguardando…`),
         formatoEtiqueta,
       );
       toast.success(`${n} etiqueta(s) baixada(s).`);
