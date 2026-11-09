@@ -667,7 +667,7 @@ async function recreatePrepostagemFromOrder(
     },
     codigoServico: servicoBase,
     pesoGramas: Math.max(1, qtd * pesoKg * 1000),
-    // caixa padrão da empresa (Correios > Configuração); sem ela, as medidas padrão do sistema. O Mini Envios limita a altura em 4 cm.
+    // caixa padrão da empresa (Correios > Configuração) para PAC/SEDEX; sem ela, as medidas padrão do sistema. O Mini Envios usa a caixa 16 x 11 x 3.
     dimensoesCm: ajustarDimensoes(servicoBase, {
       altura: Number(caixa.shipping_box_height_cm) || Number(cfg.default_height_cm) || 6,
       largura: Number(caixa.shipping_box_width_cm) || Number(cfg.default_width_cm) || 13,

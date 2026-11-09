@@ -1,6 +1,6 @@
 /**
  * Caixa padrão de envio da empresa (cm). É a medida que vai na pré-postagem dos Correios.
- * Mini Envios aceita no máximo 4 cm de altura: nesse serviço o sistema usa 4 cm mesmo com a caixa maior.
+ * O Mini Envios tem caixa própria (16 x 11 x 3 cm) e não usa esta.
  */
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
@@ -72,7 +72,7 @@ export default function CorreiosBoxSettings({ tenantId }: Props) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base"><Package className="h-4 w-4" /> Caixa padrão de envio</CardTitle>
         <CardDescription>
-          Medidas da caixa usada na etiqueta dos Correios, em centímetros. No Mini Envios a altura máxima é 4 cm: nesse serviço o sistema usa 4 cm.
+          Medidas da caixa usada na etiqueta dos Correios para PAC e SEDEX, em centímetros. O Mini Envios usa sempre a caixa 16 x 11 x 3 cm.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

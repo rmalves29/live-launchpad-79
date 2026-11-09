@@ -57,15 +57,17 @@ export function servicoDoPedido(observacao: string | null | undefined, shippingS
   return null;
 }
 
-/** O Mini Envios só aceita pacote de até 4 cm de altura (PPN-055); acima disso os Correios recusam a pré-postagem. */
-export const MINI_ENVIOS_ALTURA_MAX_CM = 4;
+/**
+ * O Mini Envios tem caixa própria: 16 x 11 x 3 cm. Os Correios só aceitam até 4 cm de altura nesse serviço (PPN-055),
+ * então a caixa padrão da empresa (por exemplo 15 x 11 x 6) não vale para ele. PAC e SEDEX usam a caixa da empresa.
+ */
+export const CAIXA_MINI_ENVIOS_CM = { comprimento: 16, largura: 11, altura: 3 };
 
 export function ajustarDimensoes(
   servico: string,
   dim: { altura: number; largura: number; comprimento: number },
 ): { altura: number; largura: number; comprimento: number } {
-  if (servico === SERVICO_MINI_ENVIOS && dim.altura > MINI_ENVIOS_ALTURA_MAX_CM) return { ...dim, altura: MINI_ENVIOS_ALTURA_MAX_CM };
-  return dim;
+  return servico === SERVICO_MINI_ENVIOS ? { ...CAIXA_MINI_ENVIOS_CM } : dim;
 }
 
 /** Códigos a tentar, na ordem, para o MESMO serviço (nunca troca PAC por SEDEX). */
