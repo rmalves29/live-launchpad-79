@@ -342,10 +342,18 @@ async function tryDownloadPdfFromUrl(url: string, token: string) {
 // Fluxo CORRETO da API CWS dos Correios para etiquetas assíncronas:
 // 1) POST /rotulo/assincrono/pdf                           -> retorna idRecibo
 // 2) GET  /rotulo/download/assincrono/{idRecibo}           -> polling: 202 = ainda processando | 200 com JSON {dados: <pdf base64>} = pronto
-async function tryDownloadAsyncLabel(idRecibo: string, token: string) {
-  const url = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/download/assincrono/${idRecibo}`;
+// Tempo máximo que uma chamada espera pela etiqueta. A requisição do navegador cai
+// em 150 s (limite da Supabase), então paramos bem antes e devolvemos "pending"
+// com o idRecibo: o navegador chama de novo e continua esperando O MESMO recibo,
+// em vez de pedir uma etiqueta nova (o que recomeçava a fila nos Correios).
+const LABEL_WAIT_BUDGET_MS = 100_000;
+const POLL_INTERVAL_MS = 5_000;
 
-  for (let attempt = 1; attempt <= 10; attempt++) {
+async function tryDownloadAsyncLabel(idRecibo: string, token: string, deadline = Date.now() + 50_000) {
+  const url = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/download/assincrono/${idRecibo}`;
+  const maxAttempts = Math.max(1, Math.ceil((deadline - Date.now()) / POLL_INTERVAL_MS));
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const resp = await fetch(url, {
       method: "GET",
       headers: {
@@ -359,13 +367,13 @@ async function tryDownloadAsyncLabel(idRecibo: string, token: string) {
     // Caso a API entregue PDF binário direto
     if (resp.ok && contentType.includes("application/pdf")) {
       const base64 = await pdfResponseToBase64(resp);
-      log(`[recibo ${idRecibo}] PDF binário recebido na tentativa ${attempt}/10`);
+      log(`[recibo ${idRecibo}] PDF binário recebido na tentativa ${attempt}`);
       return { ok: true as const, base64, url, status: resp.status, contentType, bodyText: "" };
     }
 
     const bodyText = await resp.text();
     log(
-      `[recibo ${idRecibo}] poll ${attempt}/10 | http: ${resp.status} | content-type: ${contentType} | body: ${bodyText.slice(0, 400)}`,
+      `[recibo ${idRecibo}] poll ${attempt}/${maxAttempts} | http: ${resp.status} | content-type: ${contentType} | body: ${bodyText.slice(0, 400)}`,
     );
 
     let json: any = null;
@@ -386,7 +394,7 @@ async function tryDownloadAsyncLabel(idRecibo: string, token: string) {
 
       if (typeof candidate === "string" && candidate.length > 100) {
         const base64 = candidate.startsWith("data:") ? candidate.split(",")[1] || candidate : candidate;
-        log(`[recibo ${idRecibo}] PDF base64 extraído do JSON na tentativa ${attempt}/10`);
+        log(`[recibo ${idRecibo}] PDF base64 extraído do JSON na tentativa ${attempt}`);
         return { ok: true as const, base64, url, status: resp.status, contentType, bodyText: "" };
       }
 
@@ -418,18 +426,11 @@ async function tryDownloadAsyncLabel(idRecibo: string, token: string) {
 
     // 202 / 204 = ainda processando -> aguarda 5s e tenta de novo
     if (resp.status === 202 || resp.status === 204) {
-      if (attempt < 10) {
-        await new Promise((r) => setTimeout(r, 5000));
+      if (attempt < maxAttempts && Date.now() + POLL_INTERVAL_MS < deadline) {
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
         continue;
       }
-      return {
-        ok: false as const,
-        retryable: true,
-        url,
-        status: resp.status,
-        contentType,
-        bodyText: `Timeout: recibo ${idRecibo} ainda processando após 10 tentativas (50s)`,
-      };
+      break;
     }
 
     // Erro terminal (4xx ≠ 404, 5xx) com mensagem
@@ -444,9 +445,11 @@ async function tryDownloadAsyncLabel(idRecibo: string, token: string) {
       };
     }
 
-    // 404 ou resposta sem PDF/dados claros -> aguarda e tenta de novo
-    if (attempt < 10) {
-      await new Promise((r) => setTimeout(r, 5000));
+    // 404, PPN-291 ("ainda não foi gerado") ou resposta sem PDF -> aguarda e tenta de novo
+    if (attempt < maxAttempts && Date.now() + POLL_INTERVAL_MS < deadline) {
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    } else {
+      break;
     }
   }
 
@@ -456,7 +459,7 @@ async function tryDownloadAsyncLabel(idRecibo: string, token: string) {
     url,
     status: 408,
     contentType: "",
-    bodyText: `Timeout: recibo ${idRecibo} não retornou PDF após 10 tentativas (50s)`,
+    bodyText: `Recibo ${idRecibo}: os Correios ainda estão gerando a etiqueta`,
   };
 }
 
@@ -712,13 +715,32 @@ async function actionDownloadLabel(
   prePostagemId: string,
   supabase?: any,
   orderId?: number | string,
+  existingRecibo?: string,
 ): Promise<DownloadLabelResult> {
+  const deadline = Date.now() + LABEL_WAIT_BUDGET_MS;
   const { token, cartaoData } = await getCorreiosToken(
     creds.client_id,
     creds.client_secret,
     creds.cartao_postagem,
     creds.contrato,
   );
+
+  // Continuação: os Correios já receberam o pedido da etiqueta nesta remessa;
+  // só esperamos o mesmo recibo (pedir outro recomeçaria a fila).
+  if (existingRecibo) {
+    log(`⏳ Continuando a espera do recibo ${existingRecibo} (pré-postagem ${prePostagemId})`);
+    const cont = await tryDownloadAsyncLabel(existingRecibo, token, deadline);
+    if (cont.ok) {
+      return { success: true, labelPdfBase64: cont.base64, idRecibo: existingRecibo, idPrePostagem: prePostagemId };
+    }
+    if (!cont.regenerate && cont.retryable) {
+      return { success: false, pending: true, idRecibo: existingRecibo, idPrePostagem: prePostagemId };
+    }
+    if (!cont.regenerate) {
+      return { success: false, idRecibo: existingRecibo, error: `Os Correios recusaram a etiqueta: ${cont.bodyText}` };
+    }
+    log(`Recibo ${existingRecibo} expirou nos Correios (PPN-295); pedindo uma etiqueta nova`);
+  }
 
   let effectiveId = prePostagemId;
   let recreated = false;
@@ -904,9 +926,8 @@ async function actionDownloadLabel(
 
       log(`idRecibo obtido: ${idRecibo}`);
 
-      // tryDownloadAsyncLabel já faz polling interno (até 10x com 5s) na etapa 2
-      // e baixa o arquivo na etapa 3, então basta uma chamada por geração.
-      const asyncDownload = await tryDownloadAsyncLabel(idRecibo, token);
+      // Espera o recibo até o fim do tempo desta chamada.
+      const asyncDownload = await tryDownloadAsyncLabel(idRecibo, token, deadline);
       log(
         `Resultado download | url: ${asyncDownload.url} | status: ${asyncDownload.status} | content-type: ${asyncDownload.contentType} | ${asyncDownload.ok ? "PDF recebido" : `body: ${asyncDownload.bodyText}`}`,
       );
@@ -917,7 +938,7 @@ async function actionDownloadLabel(
 
       lastError = asyncDownload.bodyText || responseText;
 
-      if (asyncDownload.regenerate && generationAttempt < 3) {
+      if (asyncDownload.regenerate && generationAttempt < 3 && Date.now() + 20_000 < deadline) {
         log(`Correios retornou PPN-295 para o recibo ${idRecibo}; refazendo solicitação do rótulo`);
         await new Promise((r) => setTimeout(r, 1500));
         continue;
@@ -932,10 +953,11 @@ async function actionDownloadLabel(
         };
       }
 
-      if (asyncDownload.retryable && generationAttempt < 3) {
-        log(`Timeout no polling do recibo ${idRecibo}; refazendo solicitação`);
-        await new Promise((r) => setTimeout(r, 1500));
-        continue;
+      if (asyncDownload.retryable) {
+        // Os Correios só estão demorando: NÃO pedir outra etiqueta. O navegador
+        // chama de novo com este idRecibo e continua a espera.
+        log(`Recibo ${idRecibo} ainda em processamento; devolvendo "pending" para o navegador continuar`);
+        return { success: false, pending: true, idRecibo, idPrePostagem: effectiveId, recreated };
       }
 
       return {
@@ -1175,9 +1197,13 @@ Deno.serve(async (req) => {
           .eq("tenant_id", tenant_id)
           .maybeSingle();
         if (!ped?.melhor_envio_shipment_id) return respostaJson({ success: false, error: "Este pedido ainda não tem remessa nos Correios. Crie a remessa primeiro." });
-        const r = await actionDownloadLabel(creds, String(ped.melhor_envio_shipment_id), supabase, orderIdBody);
+        const reciboAnterior = typeof body.id_recibo === "string" && body.id_recibo.trim() ? body.id_recibo.trim() : undefined;
+        const r = await actionDownloadLabel(creds, String(ped.melhor_envio_shipment_id), supabase, orderIdBody, reciboAnterior);
         if (r.success && r.labelPdfBase64) return respostaJson({ success: true, labelPdfBase64: r.labelPdfBase64 });
-        return respostaJson({ success: false, error: r.pending ? "A etiqueta ainda está sendo processada pelos Correios. Tente de novo em 1 minuto." : (r.error || "Não foi possível gerar a etiqueta.") });
+        if (r.pending) {
+          return respostaJson({ success: false, pending: true, id_recibo: r.idRecibo, error: "Os Correios ainda estão gerando a etiqueta." });
+        }
+        return respostaJson({ success: false, error: r.error || "Não foi possível gerar a etiqueta." });
       } catch (e) {
         log(`ERRO get_label: ${(e as Error).message}`);
         return respostaJson({ success: false, error: (e as Error).message });

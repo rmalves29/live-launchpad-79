@@ -715,13 +715,28 @@ const Etiquetas = () => {
       const cfg = SHIPPING_LABEL_PROVIDERS[providerKey];
       const functionName = cfg?.functionName || 'melhor-envio-labels';
 
-      const { data, error } = await supabaseTenant.functions.invoke(functionName, {
-        body: {
-          action: 'get_label',
-          order_id: orderId,
-          tenant_id: supabaseTenant.getTenantId()
-        }
-      });
+      // Correios: a etiqueta é gerada de forma assíncrona e às vezes demora mais
+      // de um minuto. A função devolve "pending" com o id do recibo antes de
+      // estourar o tempo, e aqui continuamos esperando o MESMO recibo.
+      let idRecibo: string | undefined;
+      let data: any = null;
+      let error: any = null;
+      for (let rodada = 1; rodada <= 4; rodada++) {
+        ({ data, error } = await supabaseTenant.functions.invoke(functionName, {
+          body: {
+            action: 'get_label',
+            order_id: orderId,
+            tenant_id: supabaseTenant.getTenantId(),
+            ...(idRecibo ? { id_recibo: idRecibo } : {}),
+          }
+        }));
+        if (error || !data?.pending || !data?.id_recibo) break;
+        idRecibo = data.id_recibo;
+        if (rodada < 4) toast.info('Os Correios ainda estão gerando a etiqueta. Aguardando mais um pouco…');
+      }
+      if (!error && data?.pending) {
+        throw new Error('Os Correios ainda não terminaram de gerar a etiqueta. Tente imprimir de novo em alguns minutos.');
+      }
 
       if (error) {
         console.error('❌ [ETIQUETAS] Erro ao gerar etiqueta:', error, 'Data:', data);
