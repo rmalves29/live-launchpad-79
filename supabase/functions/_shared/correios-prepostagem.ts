@@ -27,6 +27,8 @@ export interface DadosPrePostagem {
   dimensoesCm: { altura: number; largura: number; comprimento: number };
   descricaoConteudo: string;
   valorDeclarado: number;
+  /** true = logística reversa (logisticaReversa "S"), como no Troca Fácil */
+  logisticaReversa?: boolean;
 }
 
 // Serviços de contrato (os códigos da cotação do frete, em correios-shipping)
@@ -50,6 +52,8 @@ export interface CodigosServico {
   PAC?: string;
   SEDEX?: string;
   "Mini Envios"?: string;
+  /** Serviço de logística reversa do contrato (mesmo modelo do Troca Fácil). Preenchido = as remessas saem como reversa. */
+  Reversa?: string;
 }
 
 /** Lê o JSON salvo na integração e descarta o que não for código de serviço (4 ou 5 dígitos). */
@@ -60,7 +64,7 @@ export function parseCodigosServico(raw: unknown): CodigosServico {
   }
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
   const out: CodigosServico = {};
-  for (const nome of ["PAC", "SEDEX", "Mini Envios"] as const) {
+  for (const nome of ["PAC", "SEDEX", "Mini Envios", "Reversa"] as const) {
     const d = digits((obj as Record<string, unknown>)[nome]);
     if (d.length >= 4 && d.length <= 5) out[nome] = d.padStart(5, "0");
   }
@@ -192,6 +196,7 @@ export function montarCorpoPrePostagem(d: DadosPrePostagem) {
     larguraInformada: String(Math.max(1, Math.round(dim.largura))),
     comprimentoInformado: String(Math.max(1, Math.round(dim.comprimento))),
     cienteObjetoNaoProibido: "1",
+    ...(d.logisticaReversa ? { logisticaReversa: "S" } : {}),
     itensDeclaracaoConteudo: [
       {
         conteudo: String(d.descricaoConteudo || "Semijoia").slice(0, 200),

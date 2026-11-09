@@ -657,7 +657,9 @@ async function recreatePrepostagemFromOrder(
   const caixa: any = caixaRes.data || {};
   const pesoKg = Number(cfg.default_weight_kg) > 0 ? Number(cfg.default_weight_kg) : 0.05;
 
-  const servicoBase = servicoDoPedido(order.observation, order.shipping_service_id, creds.codigos_servico);
+  // Logística reversa (modelo Troca Fácil): se a empresa cadastrou o código do serviço de reversa, toda remessa sai com ele
+  const codigoReversa = creds.codigos_servico.Reversa || "";
+  const servicoBase = codigoReversa || servicoDoPedido(order.observation, order.shipping_service_id, creds.codigos_servico);
   if (!servicoBase) {
     // Pedido sem frete próprio costuma ser compra juntada com outro da mesma cliente: aponta o pedido principal
     let dica = "";
@@ -694,13 +696,14 @@ async function recreatePrepostagemFromOrder(
       cep: order.customer_cep || "",
     },
     codigoServico: servicoBase,
+    logisticaReversa: !!codigoReversa,
     pesoGramas: Math.max(1, qtd * pesoKg * 1000),
     // caixa padrão da empresa (Correios > Configuração) para PAC/SEDEX; sem ela, as medidas padrão do sistema. O Mini Envios usa a caixa 16 x 11 x 3.
-    dimensoesCm: ajustarDimensoes(servicoBase, {
+    dimensoesCm: (codigoReversa ? (d: any) => d : (d: any) => ajustarDimensoes(servicoBase, d, creds.codigos_servico))({
       altura: Number(caixa.shipping_box_height_cm) || Number(cfg.default_height_cm) || 6,
       largura: Number(caixa.shipping_box_width_cm) || Number(cfg.default_width_cm) || 13,
       comprimento: Number(caixa.shipping_box_length_cm) || Number(cfg.default_length_cm) || 16,
-    }, creds.codigos_servico),
+    }),
     descricaoConteudo: descricao,
     valorDeclarado: valor,
   };

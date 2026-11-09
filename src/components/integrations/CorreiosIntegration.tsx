@@ -15,6 +15,7 @@ import ShippingServiceSelector from './ShippingServiceSelector';
 import CorreiosCWSLabels from './CorreiosCWSLabels';
 import CorreiosDeclaration from './CorreiosDeclaration';
 import CorreiosBoxSettings from './CorreiosBoxSettings';
+import CorreiosReversaSettings from './CorreiosReversaSettings';
 
 interface CorreiosIntegrationProps {
   tenantId: string;
@@ -294,6 +295,8 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
       </Card>
 
       <CorreiosBoxSettings tenantId={tenantId} />
+
+      <CorreiosReversaSettings tenantId={tenantId} />
 
       <ShippingServiceSelector
         services={CORREIOS_SERVICES}
