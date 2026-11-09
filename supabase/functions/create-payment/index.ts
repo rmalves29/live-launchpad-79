@@ -219,6 +219,8 @@ serve(async (req) => {
     }
 
     const payload = parsed.data;
+    // "Pagar na retirada": não gera link de pagamento; o pedido fica aguardando pagamento até o dono marcar como pago
+    const isPickupPay = String(payload.payment_method || "").toLowerCase() === "pay_on_pickup";
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -275,7 +277,7 @@ serve(async (req) => {
     lap("leituras iniciais");
 
     const effectiveMpAccessToken = getActiveTenantMpToken(mpIntegration);
-    if (!(infinitepayIntegration?.is_active && infinitepayIntegration?.handle) &&
+    if (!isPickupPay && !(infinitepayIntegration?.is_active && infinitepayIntegration?.handle) &&
         !(appmaxIntegration?.is_active && appmaxIntegration?.access_token) &&
         !(pagarmeIntegration?.is_active && pagarmeIntegration?.api_key) &&
         !effectiveMpAccessToken) {
@@ -436,6 +438,7 @@ serve(async (req) => {
         .replace(/\n?\[PIX_DISCOUNT\][^\n]*/g, "")
         .replace(/\n?\[COUPON_DISCOUNT\][^\n]*/g, "")
         .replace(/\n?\[MERGE\][^\n]*/g, "")
+        .replace(/\n?\[PAGAMENTO\][^\n]*/g, "")
         .trim();
 
       const isFirst = i === 0;
@@ -450,7 +453,8 @@ serve(async (req) => {
         ? `[COUPON_DISCOUNT] R$ ${couponShare.toFixed(2)}${payload.coupon_code ? ` (${payload.coupon_code})` : ""}`
         : "";
 
-      const nextObs = [cleaned, freightNoteForThisOrder, pixNote, couponNote, mergeNote].filter(Boolean).join("\n");
+      const pickupNote = isPickupPay ? "[PAGAMENTO] Pagar na retirada" : "";
+      const nextObs = [cleaned, freightNoteForThisOrder, pixNote, couponNote, mergeNote, pickupNote].filter(Boolean).join("\n");
 
       const productsTotal = ctx.productsTotal > 0 ? ctx.productsTotal : fallbackPayloadSubtotal;
       const newTotal = Math.max(0, productsTotal - pixShare - couponShare) + freightForThisOrder;
@@ -478,6 +482,7 @@ serve(async (req) => {
           coupon_code: couponShare > 0 ? (payload.coupon_code ?? null) : null,
           shipping_service_id: shippingServiceId,
           shipping_provider: shippingProvider,
+          ...(isPickupPay ? { payment_method: "pay_on_pickup" } : {}),
         })
         .eq("id", orderId)
         .then(({ error: updateError }: any) => {
@@ -487,6 +492,25 @@ serve(async (req) => {
     // Todos os pedidos são gravados ao mesmo tempo (o InfinitePay lê o total do banco, então espera terminar).
     await Promise.all(orderUpdates);
     lap("pedidos gravados");
+
+    if (isPickupPay) {
+      // A chave é do dono da loja (Configurações > Fretes) e só vale para frete Retirada.
+      const { data: tn } = await sb.from("tenants").select("pay_on_pickup_enabled").eq("id", payload.tenant_id).maybeSingle();
+      const entrega = payload.shippingData;
+      const ehRetirada = !entrega || String(entrega.company_name || "").trim() === "Retirada";
+      if (!tn?.pay_on_pickup_enabled || !ehRetirada) {
+        // desfaz a marca nos pedidos (a gravação acima já aconteceu)
+        await sb.from("orders").update({ payment_method: null }).in("id", orderIds).eq("payment_method", "pay_on_pickup");
+        return new Response(
+          JSON.stringify({ success: false, error: !tn?.pay_on_pickup_enabled ? "Esta loja não aceita pagamento na retirada." : "Pagamento na retirada só vale para o frete Retirada." }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ success: true, pay_on_pickup: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // 3) Determinar qual integração de pagamento usar (dados já lidos no início)
     // Prioridade: InfinitePay > App Max > Pagar.me > Mercado Pago

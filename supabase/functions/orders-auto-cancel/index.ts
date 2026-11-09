@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
 
       const { data: orders, error: ordersError } = await supabase
         .from('orders')
-        .select('id, cart_id, tenant_id, tenant_order_number, total_amount, customer_phone, event_type, created_at, bagy_order_id')
+        .select('id, cart_id, tenant_id, tenant_order_number, total_amount, customer_phone, event_type, created_at, bagy_order_id, payment_method')
         .eq('tenant_id', t.id)
         .eq('is_paid', false)
         .or('is_cancelled.is.null,is_cancelled.eq.false')
@@ -71,6 +71,8 @@ Deno.serve(async (req) => {
       const cancelledIds: number[] = [];
 
       for (const order of orders || []) {
+        // "Pagar na retirada": o pagamento é feito na loja, então não cancela por falta de pagamento
+        if ((order as any).payment_method === 'pay_on_pickup') continue;
         const effectiveMinutes = liveMinutes && (order as any).event_type === 'INSTAGRAM_LIVE' ? liveMinutes : minutes;
         if (Date.now() - new Date((order as any).created_at).getTime() < effectiveMinutes * 60_000) continue;
         const deadlineLabel = labelFor(effectiveMinutes);

@@ -19,6 +19,7 @@ import { AvailabilitySettings } from '@/components/AvailabilitySettings';
 import { TenantSimulator } from '@/components/TenantSimulator';
 import IntegrationsChecklist from '@/components/IntegrationsChecklist';
 import { ShippingOptionsManager } from '@/components/ShippingOptionsManager';
+import { PayOnPickupSettings } from '@/components/PayOnPickupSettings';
 import { PrinterSettings } from '@/components/PrinterSettings';
 import { useToast } from '@/hooks/use-toast';
 import { formatBrasiliaDate } from '@/lib/date-utils';
@@ -396,6 +397,7 @@ const Config = () => {
 
               <TabsContent value="shipping" className="space-y-6 mt-6">
                 <ShippingOptionsManager />
+                <PayOnPickupSettings />
               </TabsContent>
 
               <TabsContent value="groups" className="space-y-6 mt-6">

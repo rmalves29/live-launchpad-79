@@ -9,7 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, User, MapPin, Search, ShoppingCart, Package, Store, Phone, AlertTriangle, Truck, CreditCard, Percent, Gift, Eye, History, CheckCircle2, Ban, Merge } from 'lucide-react';
+import { Loader2, User, MapPin, Search, ShoppingCart, Package, Store, Phone, AlertTriangle, Truck, CreditCard, Percent, Gift, Eye, History, CheckCircle2, Ban, Merge, Store } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage } from '@/lib/phone-utils';
 import { formatBrasiliaDate, formatBrasiliaDateLong } from '@/lib/date-utils';
@@ -202,7 +202,11 @@ const PublicCheckout = () => {
   // Pagamento
   const [loadingPayment, setLoadingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card'>('pix');
+  const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card' | 'pay_on_pickup'>('pix');
+  // "Pagar na retirada": ligado pelo dono da loja (Configurações > Fretes); só aparece com frete Retirada
+  const [payOnPickupEnabled, setPayOnPickupEnabled] = useState(false);
+  const isPickupShipping = selectedShipping === 'retirada' || shippingOptions.find((o) => o.id === selectedShipping)?.company === 'Retirada';
+  const showPayOnPickup = payOnPickupEnabled && !!isPickupShipping;
   const [pixDiscountPercent, setPixDiscountPercent] = useState<number | null>(null);
   const [pixDiscountLoading, setPixDiscountLoading] = useState(true);
   const [pixDiscountValue, setPixDiscountValue] = useState(0);
@@ -230,6 +234,13 @@ const PublicCheckout = () => {
     phone ? normalizeForStorage(phone) : null
   );
 
+  // Pagar na retirada só vale com frete Retirada: ao trocar o frete, volta para uma forma online
+  useEffect(() => {
+    if (paymentMethod === 'pay_on_pickup' && !showPayOnPickup) {
+      setPaymentMethod(acceptPix ? 'pix' : 'card');
+    }
+  }, [paymentMethod, showPayOnPickup, acceptPix]);
+
   // Carregar tenant pelo slug
   useEffect(() => {
     const loadTenant = async () => {
@@ -243,7 +254,7 @@ const PublicCheckout = () => {
         // Buscar diretamente da tabela para obter todos os campos incluindo logo_url
         const { data: tenantData, error } = await (supabase as any)
           .from('tenants_public')
-          .select('id, name, slug, logo_url, primary_color, is_active')
+          .select('id, name, slug, logo_url, primary_color, is_active, pay_on_pickup_enabled')
           .eq('slug', slug)
           .eq('is_active', true)
           .maybeSingle();
@@ -253,6 +264,7 @@ const PublicCheckout = () => {
         if (!tenantData) {
           setTenantError('Loja não encontrada');
         } else {
+          setPayOnPickupEnabled(!!tenantData.pay_on_pickup_enabled);
           setTenant({
             id: tenantData.id,
             name: tenantData.name,
@@ -1032,7 +1044,7 @@ const PublicCheckout = () => {
     }
 
     // InfinitePay exige e-mail real válido — sem isso o checkout retorna "Algo deu errado"
-    if (activePaymentProvider === 'infinitepay') {
+    if (activePaymentProvider === 'infinitepay' && paymentMethod !== 'pay_on_pickup') {
       const email = (customerData.email || '').trim();
       const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
       if (!isValidEmail) {
@@ -1160,6 +1172,10 @@ const PublicCheckout = () => {
         // Mantém o botão travado até a página trocar (evita clique duplo gerando outro link)
         redirecting = true;
         window.location.href = paymentUrl;
+      } else if (data?.pay_on_pickup) {
+        toast({ title: 'Pedido confirmado!', description: 'Você escolheu pagar na retirada. Pague na loja quando retirar o pedido.' });
+        setPaymentMethod(acceptPix ? 'pix' : 'card');
+        await searchOrders();
       } else if (data?.free_order) {
         toast({ title: 'Pedido confirmado', description: 'Pedido gratuito processado com sucesso!' });
       } else {
@@ -2103,6 +2119,33 @@ const PublicCheckout = () => {
                       </div>
                     </>
                   )}
+                  {showPayOnPickup && (
+                    <>
+                      <Separator />
+                      <div className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+                        <h4 className="font-medium mb-3 flex items-center gap-2">
+                          <Store className="h-4 w-4 text-amber-600" />
+                          Pagamento na loja
+                        </h4>
+                        <div
+                          className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                            paymentMethod === 'pay_on_pickup'
+                              ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-950/20'
+                              : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                          }`}
+                          onClick={() => setPaymentMethod('pay_on_pickup')}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input type="radio" checked={paymentMethod === 'pay_on_pickup'} onChange={() => setPaymentMethod('pay_on_pickup')} className="w-4 h-4" />
+                            <div>
+                              <span className="font-medium">Pagar na Retirada</span>
+                              <p className="text-xs text-muted-foreground">Você paga na loja na hora de retirar o pedido.</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
                   <Separator />
 
                   {/* Cupom de Desconto ou Brinde */}
@@ -2249,7 +2292,7 @@ const PublicCheckout = () => {
                     ) : (
                       <CreditCard className="h-4 w-4 mr-2" />
                     )}
-                    {paymentMethod === 'pix' && pixDiscountLoading ? 'Carregando desconto…' : 'Fazer Pagamento Agora'}
+                    {paymentMethod === 'pix' && pixDiscountLoading ? 'Carregando desconto…' : paymentMethod === 'pay_on_pickup' ? 'Confirmar pedido (pagar na retirada)' : 'Fazer Pagamento Agora'}
                   </Button>
                 </CardContent>
               </Card>

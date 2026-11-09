@@ -10,6 +10,7 @@ export type PaymentMethodInfo = {
 
 const LABEL_MAP: Record<string, string> = {
   pix: 'PIX',
+  pay_on_pickup: 'Pagar na retirada',
   credit_card: 'Cartão de Crédito',
   creditcard: 'Cartão de Crédito',
   credit: 'Cartão de Crédito',
