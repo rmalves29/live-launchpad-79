@@ -1252,65 +1252,63 @@ Deno.serve(async (req) => {
           .in("id", ids);
         const prIds: string[] = (peds || []).map((p: any) => String(p.melhor_envio_shipment_id || "")).filter((v: string) => isCorreiosNativeId(v));
         if (!prIds.length) return respostaJson({ success: false, error: "Nenhum dos pedidos tem remessa dos Correios criada." });
-        const { token } = await getCorreiosToken(creds.client_id, creds.client_secret, creds.cartao_postagem, creds.contrato);
         const deadline = Date.now() + LABEL_WAIT_BUDGET_MS;
         // A4 = layout padrão dos Correios; Zebra = etiqueta térmica 100 x 150 mm
-        const layoutZebra = body.formato === "zebra";
+        const formato = body.formato === "zebra" ? "zebra" : null;
         const recibosAnt: Record<string, string> = body.recibos && typeof body.recibos === "object" ? body.recibos : {};
         const recibos: Record<string, string> = { ...recibosAnt };
 
-        // Pedidos de etiqueta em paralelo fazem os Correios falharem (PPN-295 depois de ~1 min).
-        // Por isso: UMA etiqueta por vez nos Correios. Quando acaba o tempo desta chamada,
-        // devolvemos "pending" com os recibos e o navegador chama de novo para continuar.
+        // Os pedidos de etiqueta feitos daqui (servidor de funções) ficam presos nos Correios
+        // ("ainda não foi gerado" e depois PPN-295), enquanto os mesmos pedidos feitos pelo banco
+        // saem em 1–2 s. Por isso a conversa com os Correios para gerar/baixar o rótulo é feita
+        // pela função do banco correios_rotulo, uma etiqueta por vez.
         const pdfs: Record<string, string> = {};
         const erros: Array<{ pr: string; erro: string }> = [];
-        const pedirRecibo = async (pr: string): Promise<string> => {
-          const r = await fetchComLimite(`${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/assincrono/pdf`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "application/json" },
-            body: JSON.stringify({ idsPrePostagem: [pr], tipoRotulo: "P", ...(layoutZebra ? { layoutImpressao: "LINEAR_100_150" } : {}) }),
+        type Rot = { status: "ok" | "pendente" | "falha" | "erro"; recibo?: string; dados?: string; mensagem?: string };
+        const rotulo = async (pr: string, recibo?: string): Promise<Rot> => {
+          const { data, error } = await supabase.rpc("correios_rotulo", {
+            _tenant_id: tenant_id,
+            _pre_postagem: pr,
+            _layout: formato,
+            _recibo: recibo ?? null,
           });
-          const t = await r.text();
-          if (!r.ok) throw Object.assign(new Error(mensagemErroCorreios(r.status, t)), { terminal: true });
-          let id: string | undefined;
-          try { id = (JSON.parse(t) || {}).idRecibo; } catch { id = undefined; }
-          if (!id) throw Object.assign(new Error(`sem recibo: ${t.slice(0, 120)}`), { terminal: true });
-          return id;
+          if (error) return { status: "pendente", recibo, mensagem: error.message };
+          return data as Rot;
         };
 
-        // 1) Recibos já pedidos em rodadas anteriores: uma consulta rápida para cada um.
+        // 1) Recibos já pedidos em rodadas anteriores: confere cada um.
         for (const pr of prIds) {
           const rec = recibos[pr];
           if (!rec) continue;
-          if (Date.now() > deadline - 5_000) break;
-          const dl = await tryDownloadAsyncLabel(rec, token, Date.now() + 1);
-          if (dl.ok) pdfs[pr] = dl.base64;
-          else if (dl.regenerate) delete recibos[pr];
-          else if (!dl.retryable) { erros.push({ pr, erro: dl.bodyText }); delete recibos[pr]; }
+          if (Date.now() > deadline - 10_000) break;
+          const r = await rotulo(pr, rec);
+          if (r.status === "ok" && r.dados) pdfs[pr] = r.dados;
+          else if (r.status === "falha") delete recibos[pr];
+          else if (r.status === "erro") { erros.push({ pr, erro: r.mensagem || "erro" }); delete recibos[pr]; }
         }
 
-        // 2) Etiquetas que faltam: uma de cada vez, esperando cada uma ficar pronta.
+        // 2) Etiquetas que faltam: uma de cada vez.
         let falhasSeguidas = 0;
         for (const pr of prIds) {
           if (pdfs[pr] || erros.some((e) => e.pr === pr)) continue;
-          if (Date.now() > deadline - 15_000) break;
-          try {
-            if (!recibos[pr]) recibos[pr] = await pedirRecibo(pr);
-            const dl = await tryDownloadAsyncLabel(recibos[pr], token, deadline, 2_000);
-            if (dl.ok) { pdfs[pr] = dl.base64; falhasSeguidas = 0; continue; }
-            if (dl.regenerate) {
-              // falha pontual nos Correios: pede de novo na próxima rodada
-              delete recibos[pr];
-              if (++falhasSeguidas >= 3) break;
-              continue;
-            }
-            if (dl.retryable) break; // acabou o tempo desta chamada esperando esta etiqueta
-            erros.push({ pr, erro: dl.bodyText });
-            delete recibos[pr];
-          } catch (e) {
-            if ((e as any)?.terminal) erros.push({ pr, erro: (e as Error).message });
-            else break; // Correios não responderam: tenta de novo na próxima rodada
+          if (Date.now() > deadline - 10_000) break;
+          let r = await rotulo(pr, recibos[pr]);
+          // ainda gerando: continua no MESMO recibo enquanto houver tempo
+          while (r.status === "pendente" && r.recibo && Date.now() < deadline - 10_000) {
+            recibos[pr] = r.recibo;
+            await new Promise((ok) => setTimeout(ok, 1_500));
+            r = await rotulo(pr, r.recibo);
           }
+          if (r.status === "ok" && r.dados) { pdfs[pr] = r.dados; falhasSeguidas = 0; continue; }
+          if (r.status === "falha") {
+            log(`[${pr}] ${r.mensagem}`);
+            delete recibos[pr];
+            if (++falhasSeguidas >= 3) break;
+            continue;
+          }
+          if (r.status === "erro") { erros.push({ pr, erro: r.mensagem || "erro" }); delete recibos[pr]; continue; }
+          if (r.recibo) recibos[pr] = r.recibo;
+          break; // acabou o tempo desta chamada
         }
 
         const prontas = Object.keys(pdfs).length;

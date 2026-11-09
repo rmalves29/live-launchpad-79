@@ -7052,6 +7052,15 @@ export type Database = {
         Returns: undefined
       }
       cleanup_stale_sessions: { Args: never; Returns: undefined }
+      correios_rotulo: {
+        Args: {
+          _layout?: string
+          _pre_postagem: string
+          _recibo?: string
+          _tenant_id: string
+        }
+        Returns: Json
+      }
       count_cron_logs: { Args: { cutoff: string }; Returns: number }
       delete_cron_logs: {
         Args: { cutoff: string; max_runid: number; min_runid: number }
