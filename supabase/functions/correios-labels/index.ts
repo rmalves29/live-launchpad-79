@@ -361,9 +361,8 @@ function fetchComLimite(url: string, init: RequestInit = {}, ms = CORREIOS_FETCH
 const POLL_INTERVAL_MS = 5_000;
 
 async function tryDownloadAsyncLabel(idRecibo: string, token: string, deadline = Date.now() + 50_000, intervalMs = POLL_INTERVAL_MS) {
-  const POLL_INTERVAL_MS = intervalMs;
   const url = `${CORREIOS_BASE}/prepostagem/v1/prepostagens/rotulo/download/assincrono/${idRecibo}`;
-  const maxAttempts = Math.max(1, Math.ceil((deadline - Date.now()) / POLL_INTERVAL_MS));
+  const maxAttempts = Math.max(1, Math.ceil((deadline - Date.now()) / intervalMs));
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let resp: Response;
@@ -390,8 +389,8 @@ async function tryDownloadAsyncLabel(idRecibo: string, token: string, deadline =
     } catch (e) {
       // Os Correios não responderam a tempo: tenta de novo (ou devolve "pendente" quando acabar o tempo)
       log(`[recibo ${idRecibo}] poll ${attempt}/${maxAttempts} sem resposta: ${(e as Error).message}`);
-      if (attempt < maxAttempts && Date.now() + POLL_INTERVAL_MS < deadline) {
-        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+      if (attempt < maxAttempts && Date.now() + intervalMs < deadline) {
+        await new Promise((r) => setTimeout(r, intervalMs));
         continue;
       }
       break;
@@ -450,8 +449,8 @@ async function tryDownloadAsyncLabel(idRecibo: string, token: string, deadline =
 
     // 202 / 204 = ainda processando -> aguarda 5s e tenta de novo
     if (resp.status === 202 || resp.status === 204) {
-      if (attempt < maxAttempts && Date.now() + POLL_INTERVAL_MS < deadline) {
-        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+      if (attempt < maxAttempts && Date.now() + intervalMs < deadline) {
+        await new Promise((r) => setTimeout(r, intervalMs));
         continue;
       }
       break;
@@ -470,8 +469,8 @@ async function tryDownloadAsyncLabel(idRecibo: string, token: string, deadline =
     }
 
     // 404, PPN-291 ("ainda não foi gerado") ou resposta sem PDF -> aguarda e tenta de novo
-    if (attempt < maxAttempts && Date.now() + POLL_INTERVAL_MS < deadline) {
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    if (attempt < maxAttempts && Date.now() + intervalMs < deadline) {
+      await new Promise((r) => setTimeout(r, intervalMs));
     } else {
       break;
     }
