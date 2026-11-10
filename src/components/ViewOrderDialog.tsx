@@ -412,9 +412,15 @@ export const ViewOrderDialog = ({ open, onOpenChange, order, onOrderUpdated }: V
                     )}
                     <div>
                       <strong>Status:</strong>
-                      <Badge variant={order.is_paid ? 'default' : 'secondary'} className="ml-2">
-                        {order.is_paid ? 'Pago' : 'Pendente'}
-                      </Badge>
+                      {!order.is_paid && order.payment_method === 'pay_on_pickup' ? (
+                        <Badge title="Pagar na retirada: o pagamento ainda não foi recebido" className="ml-2 bg-[#fef9c3] text-[#dc2626] ring-2 ring-[#eab308] hover:bg-[#fef9c3]">
+                          Pago
+                        </Badge>
+                      ) : (
+                        <Badge variant={order.is_paid ? 'default' : 'secondary'} className="ml-2">
+                          {order.is_paid ? 'Pago' : 'Pendente'}
+                        </Badge>
+                      )}
                     </div>
                     <div>
                       <strong>Data:</strong> {formatBrasiliaDate(order.created_at)}

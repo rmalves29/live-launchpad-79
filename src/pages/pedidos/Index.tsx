@@ -28,6 +28,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { formatPhoneForDisplay, normalizeForStorage, normalizeForSending } from '@/lib/phone-utils';
 import { printMultipleThermalReceipts } from '@/components/ThermalReceipt';
 
+// "Pagar na retirada": o cliente confirmou o pedido, mas o pagamento só acontece na loja.
+// Fica como alerta (amarelo, "Pago" em vermelho) até o dono marcar o pedido como pago.
+const isPickupAwaitingPayment = (o: { is_paid?: boolean; is_cancelled?: boolean; payment_method?: string | null }) =>
+  !o.is_paid && !o.is_cancelled && o.payment_method === 'pay_on_pickup';
+const PICKUP_ALERT_BADGE = 'bg-[#fef9c3] text-[#dc2626] ring-2 ring-[#eab308] hover:bg-[#fef9c3]';
+
 // Nome inválido = vazio ou só números (CEP/telefone salvos por engano no campo nome)
 const isInvalidCustomerName = (n?: string | null) => !n || !n.trim() || /^[\d\s\-.\/()+]+$/.test(n.trim());
 const displayCustomerName = (order: { customer_name?: string | null; customer?: { name?: string | null } | null }) => {
@@ -46,6 +52,7 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
     is_paid: boolean;
     paid_at?: string | null;
     is_cancelled?: boolean;
+    payment_method?: string | null;
     payment_link?: string;
     created_at: string;
     cart_id?: number;
@@ -1932,6 +1939,8 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
                     statusBadge = <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#ffedd5] text-[#c2410c]">Envio Pendente</Badge>;
                   } else if (order.is_paid && order.order_status === 'liberado_retirada') {
                     statusBadge = <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#e0e7ff] text-[#4338ca]">Liberado p/ Retirada</Badge>;
+                  } else if (isPickupAwaitingPayment(order)) {
+                    statusBadge = <Badge title="Pagar na retirada: o pagamento ainda não foi recebido" className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${PICKUP_ALERT_BADGE}`}>Pago</Badge>;
                   } else {
                     statusBadge = <Badge className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${order.is_paid ? 'bg-[#dcfce7] text-[#16a34a]' : 'bg-[#fef9c3] text-[#ca8a04]'}`}>{order.is_paid ? 'Pago' : 'Pendente'}</Badge>;
                   }
@@ -2020,10 +2029,10 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
                         <div className="flex items-center gap-1.5">
                           <span className="text-[11px] text-muted-foreground">Pago:</span>
                           <Switch
-                            checked={order.is_paid}
+                            checked={order.is_paid || isPickupAwaitingPayment(order)}
                             onCheckedChange={() => togglePaidStatus(order.id, order.is_paid)}
                             disabled={processingIds.has(order.id) || order.is_cancelled}
-                            className="data-[state=checked]:bg-[#16a34a]"
+                            className={isPickupAwaitingPayment(order) ? 'data-[state=checked]:bg-[#eab308] ring-2 ring-[#eab308]' : 'data-[state=checked]:bg-[#16a34a]'}
                           />
                           {processingIds.has(order.id) && <Loader2 className="h-3 w-3 animate-spin" />}
                           <MessageCircle className={cn("h-4 w-4 ml-1", order.item_added_delivered ? "text-green-500" : "text-muted-foreground/40")} />
@@ -2160,10 +2169,10 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
                         ) : (
                           <div className="flex items-center justify-center gap-1">
                             <Switch
-                              checked={order.is_paid}
+                              checked={order.is_paid || isPickupAwaitingPayment(order)}
                               onCheckedChange={() => togglePaidStatus(order.id, order.is_paid)}
                               disabled={processingIds.has(order.id) || order.is_cancelled}
-                              className="scale-75 data-[state=checked]:bg-[#16a34a]"
+                              className={isPickupAwaitingPayment(order) ? 'scale-75 data-[state=checked]:bg-[#eab308] ring-2 ring-[#eab308]' : 'scale-75 data-[state=checked]:bg-[#16a34a]'}
                             />
                             {(() => {
                               const hasTracking = !!(order.melhor_envio_tracking_code && order.melhor_envio_tracking_code.trim());
@@ -2178,6 +2187,9 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
                               }
                               if (order.is_paid && order.order_status === 'liberado_retirada') {
                                 return <Badge className="text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 bg-[#e0e7ff] text-[#4338ca] hover:bg-[#e0e7ff]">Liberado p/ Retirada</Badge>;
+                              }
+                              if (isPickupAwaitingPayment(order)) {
+                                return <Badge title="Pagar na retirada: o pagamento ainda não foi recebido" className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${PICKUP_ALERT_BADGE}`}>Pago</Badge>;
                               }
                               return (
                                 <Badge className={`text-[11px] font-semibold rounded-full px-2 py-0.5 border-0 ${order.is_paid ? 'bg-[#dcfce7] text-[#16a34a] hover:bg-[#dcfce7]' : 'bg-[#fef9c3] text-[#ca8a04] hover:bg-[#fef9c3]'}`}>
