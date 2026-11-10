@@ -5,6 +5,7 @@
 // 2. Polling em GET /prepostagem/v1/prepostagens/rotulo/assincrono/{idRecibo}
 // 3. Retorna PDF base64 ou pending: true
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { desenharDeclaracao, faltaNaDeclaracao, type Declaracao } from "./declaracao.ts";
 import { authorizeTenantCaller, guardResponse } from "../_shared/auth-guard.ts";
 import {
   ajustarDimensoes,
@@ -1247,11 +1248,59 @@ Deno.serve(async (req) => {
         if (ids.length > 30) return respostaJson({ success: false, error: "No máximo 30 etiquetas por PDF." });
         const { data: peds } = await supabase
           .from("orders")
-          .select("id, melhor_envio_shipment_id")
+          .select("id, melhor_envio_shipment_id, customer_name, customer_phone, customer_cep, customer_street, customer_number, customer_complement, customer_neighborhood, customer_city, customer_state, cart_id")
           .eq("tenant_id", tenant_id)
           .in("id", ids);
-        const prIds: string[] = (peds || []).map((p: any) => String(p.melhor_envio_shipment_id || "")).filter((v: string) => isCorreiosNativeId(v));
+        // na ordem em que os pedidos foram selecionados
+        const pedPorId = new Map((peds || []).map((p: any) => [Number(p.id), p]));
+        const pedidosComRemessa = ids.map((id) => pedPorId.get(id)).filter((p: any) => p && isCorreiosNativeId(String(p.melhor_envio_shipment_id || "")));
+        const prIds: string[] = pedidosComRemessa.map((p: any) => String(p.melhor_envio_shipment_id));
         if (!prIds.length) return respostaJson({ success: false, error: "Nenhum dos pedidos tem remessa dos Correios criada." });
+
+        // Declaração de conteúdo de cada pedido: montada ANTES das etiquetas, para nunca sair
+        // etiqueta sem declaração (nem declaração sem etiqueta). Cada pedido vira "etiqueta + declaração".
+        const comDeclaracao = body.com_declaracao !== false;
+        const declaracoes = new Map<string, Declaracao>();
+        if (comDeclaracao) {
+          const cartIds = pedidosComRemessa.map((p: any) => p.cart_id).filter((x: any) => x != null);
+          const fones = [...new Set(pedidosComRemessa.map((p: any) => p.customer_phone).filter(Boolean))];
+          const [{ data: itens }, { data: clientes }, { data: emp }, { data: ajustes }] = await Promise.all([
+            cartIds.length ? supabase.from("cart_items").select("cart_id, product_name, qty, unit_price").in("cart_id", cartIds) : Promise.resolve({ data: [] }),
+            fones.length ? supabase.from("customers").select("phone, cpf").eq("tenant_id", tenant_id).in("phone", fones) : Promise.resolve({ data: [] }),
+            supabase.from("tenants").select("name, company_name, company_document, company_address, company_number, company_complement, company_district, company_city, company_state, company_cep").eq("id", tenant_id).maybeSingle(),
+            supabase.from("app_settings").select("default_weight_kg").limit(1).maybeSingle(),
+          ]);
+          const itensPorCarrinho = new Map<number, any[]>();
+          for (const it of (itens || []) as any[]) itensPorCarrinho.set(it.cart_id, [...(itensPorCarrinho.get(it.cart_id) || []), it]);
+          const cpfPorFone = new Map<string, string>();
+          for (const c of (clientes || []) as any[]) if (c.cpf) cpfPorFone.set(c.phone, c.cpf);
+          const pesoUnit = Number((ajustes as any)?.default_weight_kg) > 0 ? Number((ajustes as any).default_weight_kg) : 0.01;
+          const e: any = emp || {};
+          const faltas: string[] = [];
+          for (const p of pedidosComRemessa as any[]) {
+            const its = p.cart_id != null ? itensPorCarrinho.get(p.cart_id) || [] : [];
+            const qtd = its.reduce((s: number, i: any) => s + (Number(i.qty) || 1), 0);
+            const d: Declaracao = {
+              pedidoId: p.id,
+              pesoKg: Math.max(0.01, qtd * pesoUnit),
+              remetente: {
+                nome: e.company_name || e.name || "", documento: e.company_document, rua: e.company_address || "", numero: e.company_number,
+                complemento: e.company_complement, bairro: e.company_district, cidade: e.company_city || "", uf: e.company_state || "", cep: e.company_cep || "",
+              },
+              destinatario: {
+                nome: p.customer_name || "Cliente", documento: cpfPorFone.get(p.customer_phone) || null, rua: p.customer_street || "", numero: p.customer_number,
+                complemento: p.customer_complement, bairro: p.customer_neighborhood, cidade: p.customer_city || "", uf: p.customer_state || "", cep: p.customer_cep || "",
+              },
+              itens: its.map((i: any) => ({ descricao: i.product_name || "Produto", quantidade: Number(i.qty) || 1, valorUnit: Number(i.unit_price) || 0 })),
+            };
+            const falta = faltaNaDeclaracao(d);
+            if (falta.length) faltas.push(`Pedido #${p.id}: falta ${falta.join(", ")}`);
+            declaracoes.set(String(p.melhor_envio_shipment_id), d);
+          }
+          if (faltas.length) {
+            return respostaJson({ success: false, error: `Não dá para gerar a declaração de conteúdo, então nenhuma etiqueta foi impressa. ${faltas.slice(0, 3).join(" · ")}${faltas.length > 3 ? ` (e mais ${faltas.length - 3})` : ""}` });
+          }
+        }
         const deadline = Date.now() + LABEL_WAIT_BUDGET_MS;
         // A4 = layout padrão dos Correios; Zebra = etiqueta térmica 100 x 150 mm
         const formato = body.formato === "zebra" ? "zebra" : null;
@@ -1322,11 +1371,14 @@ Deno.serve(async (req) => {
           const origem = await PDFDocument.load(Uint8Array.from(atob(pdfs[pr]), (c) => c.charCodeAt(0)));
           const paginas = await saida.copyPages(origem, origem.getPageIndices());
           paginas.forEach((pg: any) => saida.addPage(pg));
+          // logo depois da etiqueta, a declaração de conteúdo do MESMO pedido
+          const decl = declaracoes.get(pr);
+          if (decl) await desenharDeclaracao(saida, decl, formato === "zebra");
         }
         const bytes: Uint8Array = await saida.save();
         let bin = "";
         for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-        return respostaJson({ success: true, labelPdfBase64: btoa(bin), total: prIds.length });
+        return respostaJson({ success: true, labelPdfBase64: btoa(bin), total: prIds.length, com_declaracao: declaracoes.size });
       } catch (e) {
         log(`ERRO get_labels_batch: ${(e as Error).message}`);
         return respostaJson({ success: false, error: (e as Error).message });

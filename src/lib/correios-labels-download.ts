@@ -73,7 +73,7 @@ export async function baixarEtiquetasCorreios(
     const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `etiquetas-correios-${formato}-${new Date().toISOString().slice(0, 10)}${orderIds.length > 30 ? `-${Math.floor(i / 30) + 1}` : ''}.pdf`;
+    a.download = `etiquetas-e-declaracoes-correios-${formato}-${new Date().toISOString().slice(0, 10)}${orderIds.length > 30 ? `-${Math.floor(i / 30) + 1}` : ''}.pdf`;
     document.body.appendChild(a);
     a.click();
     a.remove();

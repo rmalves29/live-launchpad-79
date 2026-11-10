@@ -734,7 +734,7 @@ const Etiquetas = () => {
           () => toast.info('Os Correios ainda estão gerando a etiqueta. Aguardando mais um pouco…'),
           formatoEtiqueta,
         );
-        toast.success('Etiqueta baixada!');
+        toast.success('Etiqueta e declaração de conteúdo baixadas no mesmo PDF!');
         return;
       }
 
@@ -1062,7 +1062,7 @@ const Etiquetas = () => {
         (prontas, total) => toast.info(`Os Correios estão gerando as etiquetas: ${prontas} de ${total} prontas. Aguardando…`),
         formatoEtiqueta,
       );
-      toast.success(`${n} etiqueta(s) baixada(s).`);
+      toast.success(`${n} etiqueta(s) baixada(s), cada uma seguida da sua declaração de conteúdo.`);
       setLabelSelection(new Set());
     } catch (e: any) {
       toast.error(`Erro ao baixar etiquetas: ${e.message}`);
