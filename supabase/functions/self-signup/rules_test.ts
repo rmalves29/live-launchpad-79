@@ -24,6 +24,8 @@ Deno.test("anti-bot: honeypot e tempo mínimo de 4s", () => {
   assert(looksLikeBot("spam", now - 10_000, now));
   assert(looksLikeBot("", now - 3_000, now));
   assert(!looksLikeBot("", now - 5_000, now));
+  // isca completada pelo preenchimento automático numa pessoa que levou mais de 30 s
+  assert(!looksLikeBot("https://minhaloja.com", now - 90_000, now));
 });
 
 Deno.test("plano Grupos VIP só libera Fluxo de Envio", () => {

@@ -43,11 +43,15 @@ export const normInstagram = (v: unknown) =>
 export const isValidEmail = (v: string) => /^[^\s@,()]+@[^\s@,()]+\.[^\s@,()]{2,}$/.test(v);
 
 export const MIN_FILL_MS = 4000;
-/** Anti-bot: honeypot preenchido ou formulário enviado rápido demais. */
+// O preenchimento automático do navegador às vezes completa o campo-isca. Robô
+// preenche e envia em segundos; uma pessoa leva bem mais que isso para passar
+// pelas 3 etapas. Isca preenchida só barra quando o envio foi rápido.
+export const HONEYPOT_HUMAN_MS = 30_000;
+/** Anti-bot: formulário enviado rápido demais, ou campo-isca preenchido num envio rápido. */
 export function looksLikeBot(honeypot: unknown, startedAt: unknown, now = Date.now()): boolean {
-  if (String(honeypot ?? "").trim() !== "") return true;
   const t = Number(startedAt);
-  return !Number.isFinite(t) || now - t < MIN_FILL_MS;
+  if (!Number.isFinite(t) || now - t < MIN_FILL_MS) return true;
+  return String(honeypot ?? "").trim() !== "" && now - t < HONEYPOT_HUMAN_MS;
 }
 
 export const SIGNUP_PLANS = ["live", "grupos_vip", "completo"] as const;

@@ -158,7 +158,7 @@ export function SelfSignupForm({ refCode, prices = DEFAULT_PRICES }: { refCode: 
       </ol>
 
       {/* honeypot anti-robô: invisível para pessoas */}
-      <input type="text" name="website" tabIndex={-1} autoComplete="off" value={f.website} onChange={set('website')} className="absolute -left-[9999px] h-0 w-0 opacity-0" aria-hidden="true" />
+      <input type="text" name="contact_me_by_fax_only" tabIndex={-1} autoComplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" value={f.website} onChange={set('website')} className="absolute -left-[9999px] h-0 w-0 opacity-0" aria-hidden="true" />
 
       <div key={step} data-step className={cn('mt-6 space-y-4 animate-in fade-in duration-300', anim)}>
         {step === 0 && (
