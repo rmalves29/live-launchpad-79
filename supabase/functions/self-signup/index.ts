@@ -66,13 +66,31 @@ async function approvedByCode(codigo: unknown) {
   return data;
 }
 
-async function emailInAuth(email: string): Promise<boolean> {
+async function findAuthUser(email: string): Promise<{ id: string } | null> {
   for (let page = 1; page <= 20; page++) {
     const { data, error } = await sb.auth.admin.listUsers({ page, perPage: 1000 });
     if (error) throw new Error("não foi possível verificar o e-mail");
     const users = data?.users ?? [];
-    if (users.some((u: any) => (u.email ?? "").trim().toLowerCase() === email)) return true;
-    if (users.length < 1000) return false;
+    const u = users.find((x: any) => (x.email ?? "").trim().toLowerCase() === email);
+    if (u) return { id: u.id };
+    if (users.length < 1000) return null;
+  }
+  return null;
+}
+
+/**
+ * O e-mail já tem login, mas pode ser um login "órfão": criado numa tentativa de contratação que não chegou ao fim
+ * (a empresa não existe mais ou nunca foi criada). Nesse caso a cliente refaz o cadastro e o login é reaproveitado.
+ * Continua bloqueado: login com empresa viva, afiliada e administrador da plataforma.
+ */
+async function emailBlocksSignup(userId: string): Promise<boolean> {
+  const { data: prof } = await sb.from("profiles").select("tenant_id, role").eq("id", userId).maybeSingle();
+  if (prof?.role === "super_admin" || prof?.role === "affiliate") return true;
+  const { data: aff } = await sb.from("platform_affiliates").select("id").eq("user_id", userId).limit(1);
+  if ((aff?.length ?? 0) > 0) return true;
+  if (prof?.tenant_id) {
+    const { data: tn } = await sb.from("tenants").select("id").eq("id", prof.tenant_id).maybeSingle();
+    if (tn) return true;
   }
   return false;
 }
@@ -277,7 +295,9 @@ Deno.serve(async (req) => {
       const { data: dupMap } = await sb.from("platform_pagarme_customer_map").select("id").or(`document.eq.${documento},email.eq.${email},phone_key.eq.${wa}`).limit(1);
       const { data: dupTenant } = await sb.rpc("platform_match_tenant_by_payer", { _email: email, _phone: wa, _document: documento });
       if ((dupMap?.length ?? 0) > 0 || (dupTenant?.length ?? 0) > 0) return json({ success: false, error: "Já existe uma empresa com esse CNPJ/CPF, e-mail ou WhatsApp. Faça login ou fale com a gente." });
-      if (await emailInAuth(email)) return json({ success: false, error: "Esse e-mail já tem cadastro. Faça login." });
+      const existingUser = await findAuthUser(email);
+      if (existingUser && await emailBlocksSignup(existingUser.id)) return json({ success: false, error: "Esse e-mail já tem cadastro. Faça login." });
+      if (existingUser) console.log("[self-signup] reaproveitando login sem empresa:", existingUser.id);
 
       const aff = await approvedByCode(body.ref);
       const notas = `Contratação direta · ${PLAN_LABELS[plano]} · ${cidade || "-"}/${uf || "-"} · ${documento.length === 14 ? "CNPJ" : "CPF"} ${documento}`;
@@ -307,8 +327,14 @@ Deno.serve(async (req) => {
       await sb.from("tenant_credentials").insert({ tenant_id: tenantId, email, password_hash: "", is_active: true });
       const admin = await upsertTenantAdmin(sb, { tenant_id: tenantId, email, password: senha, role: "tenant_admin", access_scope: flags.access_scope });
       if (!admin.ok) {
+        console.error("[self-signup] acesso:", admin.status, admin.error);
         await sb.from("tenant_credentials").delete().eq("tenant_id", tenantId);
         await sb.from("tenants").delete().eq("id", tenantId);
+        // login criado agora por esta tentativa e sem empresa: remove, para a cliente poder tentar de novo
+        if (!existingUser) {
+          const created = await findAuthUser(email).catch(() => null);
+          if (created) await sb.auth.admin.deleteUser(created.id).catch(() => null);
+        }
         return json({ success: false, error: admin.status === 409 ? "Esse e-mail já tem cadastro. Faça login." : "Não foi possível criar seu acesso agora" });
       }
 

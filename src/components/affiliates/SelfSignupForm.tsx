@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Loader2, Eye, EyeOff, Check, ChevronLeft, ChevronRight, Building2, LayoutGrid, KeyRound, Radio, Users, Layers } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { getActiveRef } from '@/lib/affiliate-ref';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -121,7 +122,7 @@ export function SelfSignupForm({ refCode, prices = DEFAULT_PRICES }: { refCode: 
     setError(null);
     try {
       const { senha2: _s2, ...payload } = f;
-      const { data } = await supabase.functions.invoke('self-signup', { body: { action: 'create', ...payload, terms, ref: refCode, started_at: startedAt.current } });
+      const { data } = await supabase.functions.invoke('self-signup', { body: { action: 'create', ...payload, terms, ref: refCode || getActiveRef(), started_at: startedAt.current } });
       if (!data?.success) { setError(data?.error || 'Não foi possível cadastrar agora'); return; }
       window.location.href = `/contratacao/obrigado?t=${data.token}`;
     } catch { setError('Não foi possível cadastrar agora'); } finally { setSending(false); }

@@ -2,10 +2,20 @@
 const KEY = 'cz_ref';
 const DAYS = 60;
 
-export function getActiveRef(now = Date.now()): string | null {
+function readCookie(): string | null {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
+    const m = document.cookie.split('; ').find((c) => c.startsWith(`${KEY}=`));
+    return m ? decodeURIComponent(m.slice(KEY.length + 1)) : null;
+  } catch { return null; }
+}
+
+export function getActiveRef(now = Date.now()): string | null {
+  // localStorage primeiro; sem ele (navegador de app, modo privado) vale o cookie gravado junto
+  let raw: string | null = null;
+  try { raw = localStorage.getItem(KEY); } catch { /* sem armazenamento */ }
+  if (!raw) raw = readCookie();
+  if (!raw) return null;
+  try {
     const { codigo, at } = JSON.parse(raw);
     if (!codigo || !at || now - Number(at) > DAYS * 864e5) return null;
     return String(codigo);
