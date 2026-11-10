@@ -497,7 +497,8 @@ serve(async (req) => {
       // A chave é do dono da loja (Configurações > Fretes) e só vale para frete Retirada.
       const { data: tn } = await sb.from("tenants").select("pay_on_pickup_enabled").eq("id", payload.tenant_id).maybeSingle();
       const entrega = payload.shippingData;
-      const ehRetirada = !entrega || String(entrega.company_name || "").trim() === "Retirada";
+      const pareceRetirada = /retir/.test(String(entrega?.service_name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+      const ehRetirada = !entrega || String(entrega.company_name || "").trim() === "Retirada" || pareceRetirada;
       if (!tn?.pay_on_pickup_enabled || !ehRetirada) {
         // desfaz a marca nos pedidos (a gravação acima já aconteceu)
         await sb.from("orders").update({ payment_method: null }).in("id", orderIds).eq("payment_method", "pay_on_pickup");

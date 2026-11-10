@@ -205,7 +205,14 @@ const PublicCheckout = () => {
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card' | 'pay_on_pickup'>('pix');
   // "Pagar na retirada": ligado pelo dono da loja (Configurações > Fretes); só aparece com frete Retirada
   const [payOnPickupEnabled, setPayOnPickupEnabled] = useState(false);
-  const isPickupShipping = selectedShipping === 'retirada' || shippingOptions.find((o) => o.id === selectedShipping)?.company === 'Retirada';
+  // Retirada = opção "retirada", empresa "Retirada" (prazo 0) ou opção cadastrada com nome de retirada (ex.: "Retirar na Loja", mesmo com prazo de 1 dia)
+  const selectedShippingOption = shippingOptions.find((o) => o.id === selectedShipping);
+  const looksLikePickup = (name: unknown) =>
+    /retir/.test(String(name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''));
+  const isPickupShipping =
+    selectedShipping === 'retirada' ||
+    selectedShippingOption?.company === 'Retirada' ||
+    looksLikePickup(selectedShippingOption?.name);
   const showPayOnPickup = payOnPickupEnabled && !!isPickupShipping;
   const [pixDiscountPercent, setPixDiscountPercent] = useState<number | null>(null);
   const [pixDiscountLoading, setPixDiscountLoading] = useState(true);
