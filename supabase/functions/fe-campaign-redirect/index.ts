@@ -155,16 +155,9 @@ serve(async (req) => {
     });
     if (clickError) throw clickError;
 
-    // O contador mantém seu comportamento existente em background.
-    // @ts-ignore EdgeRuntime está disponível no Deno Deploy da Supabase
-    const bg = Promise.all([
-      supabase
-        .from("fe_groups")
-        .update({ participant_count: (selectedGroup.participant_count || 0) + 1 })
-        .eq("id", selectedGroup.id),
-    ]).catch((e) => console.warn("[fe-campaign-redirect] bg write falhou:", e?.message));
-    // @ts-ignore
-    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) EdgeRuntime.waitUntil(bg);
+    // O clique NÃO soma participante: quem entra de fato é contado pelo webhook do grupo (entrou/saiu).
+    // Somar no clique inflava a contagem (cliques sem entrada + entrada contada de novo pelo webhook),
+    // e o grupo "enchia" antes da hora e saía da distribuição do link.
 
     const pixelId = campaign.facebook_pixel_id?.trim();
     const redirectUrl = selectedGroup.invite_link;
