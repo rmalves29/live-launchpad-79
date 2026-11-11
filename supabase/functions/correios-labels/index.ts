@@ -1392,8 +1392,11 @@ Deno.serve(async (req) => {
           if (typeof d === "string" && d.length > 100 && d.length < 3_000_000) pdfs[pr] = d;
         }
         const jaTinha = new Set(Object.keys(pdfs));
+        // Remessas que os Correios já informaram como postadas (não imprimem mais o rótulo).
+        const postados = new Set<string>(Array.isArray(body.postados) ? body.postados.map(String).filter((x: string) => prIds.includes(x)) : []);
+        for (const pr of postados) delete pdfs[pr];
         const erros: Array<{ pr: string; erro: string }> = [];
-        type Rot = { status: "ok" | "pendente" | "falha" | "erro"; recibo?: string; dados?: string; mensagem?: string; rpcErro?: boolean };
+        type Rot = { status: "ok" | "pendente" | "falha" | "erro" | "postado"; recibo?: string; dados?: string; mensagem?: string; rpcErro?: boolean };
         const rotulo = async (pr: string, recibo?: string): Promise<Rot> => {
           const { data, error } = await supabase.rpc("correios_rotulo", {
             _tenant_id: tenant_id,
@@ -1414,10 +1417,11 @@ Deno.serve(async (req) => {
         // 1) Recibos já pedidos em rodadas anteriores: confere cada um.
         for (const pr of prIds) {
           const rec = recibos[pr];
-          if (!rec || pdfs[pr]) continue;
+          if (!rec || pdfs[pr] || postados.has(pr)) continue;
           if (tempoAcabando()) break;
           const r = await rotulo(pr, rec);
           if (r.status === "ok" && r.dados) pdfs[pr] = r.dados;
+          else if (r.status === "postado") { postados.add(pr); delete recibos[pr]; }
           else if (r.status === "falha") delete recibos[pr];
           else if (r.status === "erro") { erros.push({ pr, erro: r.mensagem || "erro" }); delete recibos[pr]; }
         }
@@ -1426,7 +1430,7 @@ Deno.serve(async (req) => {
         // Uma chamada que falhou no caminho (ex.: Correios lentos) não encerra a rodada: tenta de novo e segue para a próxima.
         let falhasSeguidas = 0;
         for (const pr of prIds) {
-          if (pdfs[pr] || erros.some((e) => e.pr === pr)) continue;
+          if (pdfs[pr] || postados.has(pr) || erros.some((e) => e.pr === pr)) continue;
           if (tempoAcabando() || falhasSeguidas >= 4) break;
           let r = await rotulo(pr, recibos[pr]);
           let tentativas = 1;
@@ -1437,6 +1441,7 @@ Deno.serve(async (req) => {
             tentativas++;
           }
           if (r.status === "ok" && r.dados) { pdfs[pr] = r.dados; falhasSeguidas = 0; continue; }
+          if (r.status === "postado") { postados.add(pr); delete recibos[pr]; falhasSeguidas = 0; continue; }
           if (r.status === "erro") { erros.push({ pr, erro: r.mensagem || "erro" }); delete recibos[pr]; continue; }
           if (r.status === "falha") delete recibos[pr];
           else if (r.recibo) recibos[pr] = r.recibo;
@@ -1444,17 +1449,26 @@ Deno.serve(async (req) => {
         }
 
         const prontas = Object.keys(pdfs).length;
-        log(`get_labels_batch | ${prIds.length} etiquetas | prontas: ${prontas} | pendentes: ${prIds.length - prontas - erros.length} | erros: ${erros.length}`);
-        if (erros.length) return respostaJson({ success: false, error: `Os Correios recusaram ${erros.length} etiqueta(s): ${erros[0].erro}` });
-        if (prontas < prIds.length) {
+        const pedidoDoPr = new Map(pedidosComRemessa.map((p: any) => [String(p.melhor_envio_shipment_id), Number(p.id)]));
+        const pedidosPostados = [...postados].map((pr) => pedidoDoPr.get(pr)).filter((x): x is number => x != null);
+        log(`get_labels_batch | ${prIds.length} etiquetas | prontas: ${prontas} | já postadas: ${postados.size} | pendentes: ${prIds.length - prontas - erros.length - postados.size} | erros: ${erros.length}`);
+        if (erros.length) {
+          const quais = erros.slice(0, 3).map((e) => `#${pedidoDoPr.get(e.pr) ?? e.pr}`).join(", ");
+          return respostaJson({ success: false, error: `Os Correios recusaram ${erros.length} etiqueta(s) (pedido ${quais}): ${erros[0].erro}` });
+        }
+        if (postados.size === prIds.length) {
+          return respostaJson({ success: false, error: `${postados.size === 1 ? "Este pedido já foi postado" : "Todos estes pedidos já foram postados"} nos Correios, e os Correios não imprimem mais a etiqueta depois da postagem: ${pedidosPostados.map((n) => `#${n}`).join(", ")}.` });
+        }
+        if (prontas + postados.size < prIds.length) {
           const novos: Record<string, string> = {};
           for (const [pr, d] of Object.entries(pdfs)) if (!jaTinha.has(pr)) novos[pr] = d;
-          return respostaJson({ success: false, pending: true, recibos, prontas, total: prIds.length, pdfs: novos });
+          return respostaJson({ success: false, pending: true, recibos, prontas, total: prIds.length, pdfs: novos, postados: [...postados] });
         }
 
         const { PDFDocument } = await import("npm:pdf-lib@1.17.1");
         const saida = await PDFDocument.create();
         for (const pr of prIds) {
+          if (!pdfs[pr]) continue; // já postada: sem etiqueta
           const origem = await PDFDocument.load(Uint8Array.from(atob(pdfs[pr]), (c) => c.charCodeAt(0)));
           const paginas = await saida.copyPages(origem, origem.getPageIndices());
           paginas.forEach((pg: any) => saida.addPage(pg));
@@ -1465,7 +1479,7 @@ Deno.serve(async (req) => {
         const bytes: Uint8Array = await saida.save();
         let bin = "";
         for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-        return respostaJson({ success: true, labelPdfBase64: btoa(bin), total: prIds.length, com_declaracao: declaracoes.size });
+        return respostaJson({ success: true, labelPdfBase64: btoa(bin), total: prontas, com_declaracao: declaracoes.size, pedidos_postados: pedidosPostados });
       } catch (e) {
         log(`ERRO get_labels_batch: ${(e as Error).message}`);
         return respostaJson({ success: false, error: (e as Error).message });

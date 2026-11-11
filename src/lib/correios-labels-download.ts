@@ -38,13 +38,17 @@ export async function baixarEtiquetasCorreios(
   orderIds: number[],
   onAguardando?: (prontas: number, total: number) => void,
   formato: FormatoEtiqueta = 'a4',
+  /** pedidos que já foram postados nos Correios: ficam fora do PDF (os Correios não imprimem mais) */
+  onJaPostados?: (pedidos: number[]) => void,
 ): Promise<number> {
   let baixadas = 0;
+  const jaPostados: number[] = [];
   for (let i = 0; i < orderIds.length; i += 30) {
     const lote = orderIds.slice(i, i + 30);
     let recibos: Record<string, string> | undefined;
     // Etiquetas já entregues em rodadas anteriores: o servidor não pede de novo aos Correios.
     const pdfs: Record<string, string> = {};
+    let postados: string[] = [];
     let data: any = null;
     let error: any = null;
     // Os Correios geram uma etiqueta por vez: continua enquanto houver avanço.
@@ -59,11 +63,13 @@ export async function baixarEtiquetasCorreios(
         tenant_id: tenantId,
         ...(recibos ? { recibos } : {}),
         ...(Object.keys(pdfs).length ? { pdfs } : {}),
+        ...(postados.length ? { postados } : {}),
       }));
       if (error || !data?.pending || !data?.recibos) break;
       recibos = data.recibos;
       if (data.pdfs && typeof data.pdfs === 'object') Object.assign(pdfs, data.pdfs);
-      const prontas = Math.max(typeof data.prontas === 'number' ? data.prontas : 0, Object.keys(pdfs).length);
+      if (Array.isArray(data.postados)) postados = data.postados;
+      const prontas = Math.max(typeof data.prontas === 'number' ? data.prontas : 0, Object.keys(pdfs).length) + postados.length;
       if (prontas > melhor) {
         melhor = prontas;
         semAvanco = 0;
@@ -81,7 +87,9 @@ export async function baixarEtiquetasCorreios(
     document.body.appendChild(a);
     a.click();
     a.remove();
-    baixadas += data.total || lote.length;
+    baixadas += typeof data.total === 'number' ? data.total : lote.length;
+    if (Array.isArray(data.pedidos_postados)) jaPostados.push(...data.pedidos_postados);
   }
+  if (jaPostados.length) onJaPostados?.(jaPostados);
   return baixadas;
 }
