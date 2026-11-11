@@ -1014,6 +1014,36 @@ export type Database = {
         }
         Relationships: []
       }
+      correios_auto_remessa_log: {
+        Row: {
+          attempts: number
+          created_at: string
+          error: string | null
+          last_attempt_at: string
+          order_id: number
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          error?: string | null
+          last_attempt_at?: string
+          order_id: number
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          error?: string | null
+          last_attempt_at?: string
+          order_id?: number
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       coupons: {
         Row: {
           affiliate_id: string | null
@@ -4365,6 +4395,7 @@ export type Database = {
           affiliate_whatsapp: string | null
           agenda: Json
           attribution_days: number
+          combo_price: number
           default_months: number | null
           default_percent: number
           fallback_payment_url: string | null
@@ -4373,6 +4404,7 @@ export type Database = {
           min_payout: number
           plan_price: number
           signup_pagarme_plan_id: string | null
+          signup_pagarme_plan_ids: Json
           signup_pagarme_plan_price: number | null
           updated_at: string
         }
@@ -4380,6 +4412,7 @@ export type Database = {
           affiliate_whatsapp?: string | null
           agenda?: Json
           attribution_days?: number
+          combo_price?: number
           default_months?: number | null
           default_percent?: number
           fallback_payment_url?: string | null
@@ -4388,6 +4421,7 @@ export type Database = {
           min_payout?: number
           plan_price?: number
           signup_pagarme_plan_id?: string | null
+          signup_pagarme_plan_ids?: Json
           signup_pagarme_plan_price?: number | null
           updated_at?: string
         }
@@ -4395,6 +4429,7 @@ export type Database = {
           affiliate_whatsapp?: string | null
           agenda?: Json
           attribution_days?: number
+          combo_price?: number
           default_months?: number | null
           default_percent?: number
           fallback_payment_url?: string | null
@@ -4403,6 +4438,7 @@ export type Database = {
           min_payout?: number
           plan_price?: number
           signup_pagarme_plan_id?: string | null
+          signup_pagarme_plan_ids?: Json
           signup_pagarme_plan_price?: number | null
           updated_at?: string
         }
@@ -6158,6 +6194,8 @@ export type Database = {
           onboarding_meeting_at: string | null
           order_merge_days: number | null
           order_merge_enabled: boolean
+          pay_on_pickup_available: boolean
+          pay_on_pickup_enabled: boolean
           phone: string | null
           plan_type: string | null
           primary_color: string | null
@@ -6227,6 +6265,8 @@ export type Database = {
           onboarding_meeting_at?: string | null
           order_merge_days?: number | null
           order_merge_enabled?: boolean
+          pay_on_pickup_available?: boolean
+          pay_on_pickup_enabled?: boolean
           phone?: string | null
           plan_type?: string | null
           primary_color?: string | null
@@ -6296,6 +6336,8 @@ export type Database = {
           onboarding_meeting_at?: string | null
           order_merge_days?: number | null
           order_merge_enabled?: boolean
+          pay_on_pickup_available?: boolean
+          pay_on_pickup_enabled?: boolean
           phone?: string | null
           plan_type?: string | null
           primary_color?: string | null
@@ -6925,6 +6967,7 @@ export type Database = {
           logo_url: string | null
           max_whatsapp_groups: number | null
           name: string | null
+          pay_on_pickup_enabled: boolean | null
           primary_color: string | null
           secondary_color: string | null
           slug: string | null
@@ -6945,6 +6988,7 @@ export type Database = {
           logo_url?: string | null
           max_whatsapp_groups?: number | null
           name?: string | null
+          pay_on_pickup_enabled?: never
           primary_color?: string | null
           secondary_color?: string | null
           slug?: string | null
@@ -6965,6 +7009,7 @@ export type Database = {
           logo_url?: string | null
           max_whatsapp_groups?: number | null
           name?: string | null
+          pay_on_pickup_enabled?: never
           primary_color?: string | null
           secondary_color?: string | null
           slug?: string | null
