@@ -38,11 +38,17 @@ export async function baixarEtiquetasCorreios(
   orderIds: number[],
   onAguardando?: (prontas: number, total: number) => void,
   formato: FormatoEtiqueta = 'a4',
+  /** pedidos que já foram postados nos Correios: ficam fora do PDF (os Correios não imprimem mais) */
+  onJaPostados?: (pedidos: number[]) => void,
 ): Promise<number> {
   let baixadas = 0;
+  const jaPostados: number[] = [];
   for (let i = 0; i < orderIds.length; i += 30) {
     const lote = orderIds.slice(i, i + 30);
     let recibos: Record<string, string> | undefined;
+    // Etiquetas já entregues em rodadas anteriores: o servidor não pede de novo aos Correios.
+    const pdfs: Record<string, string> = {};
+    let postados: string[] = [];
     let data: any = null;
     let error: any = null;
     // Os Correios geram uma etiqueta por vez: continua enquanto houver avanço.
@@ -56,10 +62,14 @@ export async function baixarEtiquetasCorreios(
         formato,
         tenant_id: tenantId,
         ...(recibos ? { recibos } : {}),
+        ...(Object.keys(pdfs).length ? { pdfs } : {}),
+        ...(postados.length ? { postados } : {}),
       }));
       if (error || !data?.pending || !data?.recibos) break;
       recibos = data.recibos;
-      const prontas = typeof data.prontas === 'number' ? data.prontas : 0;
+      if (data.pdfs && typeof data.pdfs === 'object') Object.assign(pdfs, data.pdfs);
+      if (Array.isArray(data.postados)) postados = data.postados;
+      const prontas = Math.max(typeof data.prontas === 'number' ? data.prontas : 0, Object.keys(pdfs).length) + postados.length;
       if (prontas > melhor) {
         melhor = prontas;
         semAvanco = 0;
@@ -68,7 +78,12 @@ export async function baixarEtiquetasCorreios(
     }
     if (error) throw new Error(data?.error || error.message || 'Erro ao baixar etiquetas');
     if (data?.pending) throw new Error('Os Correios ainda não terminaram de gerar as etiquetas. Tente de novo em alguns minutos.');
-    if (!data?.success || !data?.labelPdfBase64) throw new Error(data?.error || 'Erro ao baixar etiquetas');
+    if (!data?.success) throw new Error(data?.error || 'Erro ao baixar etiquetas');
+    if (Array.isArray(data.pedidos_postados)) jaPostados.push(...data.pedidos_postados);
+    if (!data.labelPdfBase64) {
+      if (Array.isArray(data.pedidos_postados) && data.pedidos_postados.length) continue; // lote todo já postado
+      throw new Error('Erro ao baixar etiquetas');
+    }
     const bytes = Uint8Array.from(atob(data.labelPdfBase64), (c) => c.charCodeAt(0));
     const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
     const a = document.createElement('a');
@@ -77,7 +92,11 @@ export async function baixarEtiquetasCorreios(
     document.body.appendChild(a);
     a.click();
     a.remove();
-    baixadas += data.total || lote.length;
+    baixadas += typeof data.total === 'number' ? data.total : lote.length;
   }
+  if (!baixadas && jaPostados.length) {
+    throw new Error(`${jaPostados.length === 1 ? 'Este pedido já foi postado' : 'Estes pedidos já foram postados'} nos Correios, e os Correios não imprimem mais a etiqueta depois da postagem: ${jaPostados.map((n) => `#${n}`).join(', ')}.`);
+  }
+  if (jaPostados.length) onJaPostados?.(jaPostados);
   return baixadas;
 }

@@ -56,6 +56,12 @@ export default function CorreiosCWSLabels({ tenantId }: CorreiosCWSLabelsProps) 
       const n = await baixarEtiquetasCorreios(invokeLabels, tenantId, ids, (prontas, total) =>
         toast({ title: 'Aguardando os Correios', description: `Gerando as etiquetas… ${prontas} de ${total} prontas.` }),
         formato,
+        (pedidos) =>
+          toast({
+            title: 'Pedidos já postados',
+            description: `${pedidos.length} pedido(s) ficaram fora do PDF porque já foram postados nos Correios (eles não imprimem mais a etiqueta depois da postagem): ${pedidos.map((p) => `#${p}`).join(', ')}`,
+            duration: 15000,
+          }),
       );
       toast({ title: 'Etiquetas baixadas', description: `${n} etiqueta(s) em PDF.` });
       setSelected(new Set());
