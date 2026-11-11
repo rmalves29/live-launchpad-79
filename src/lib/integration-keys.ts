@@ -6,7 +6,6 @@ export const INTEGRATION_KEYS = [
   { key: 'instagram', label: 'Instagram' },
   { key: 'bagy', label: 'Bagy' },
   { key: 'bling', label: 'Bling ERP' },
-  { key: 'olist', label: 'Tiny/Olist ERP' },
   { key: 'omie', label: 'Omie ERP' },
   { key: 'mercadopago', label: 'Mercado Pago' },
   { key: 'pagarme', label: 'Pagar.me' },

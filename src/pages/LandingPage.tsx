@@ -177,12 +177,12 @@ export default function LandingPage() {
     { icon: Repeat, title: "Campanhas nos grupos", description: "Divulgue produtos em todos os seus grupos com agendamento, fotos e intervalo inteligente que protege seu número de bloqueios." },
     { icon: Gift, title: "Cupons e sorteios", description: "Promoção sem virar caos: cupons de desconto e sorteios com regras claras, direto no sistema." },
     { icon: ShieldCheck, title: "Proteção do seu chip", description: "Envios com ritmo humano, mensagens variadas e controle de consentimento — seu número de WhatsApp protegido contra bloqueio." },
-    { icon: Globe, title: "+11 integrações", description: "Bling, Mercado Pago, Pagar.me, InfinitePay, Correios, Melhor Envio, Mandaê, Olist, Bagy, Omie e mais." },
+    { icon: Globe, title: "+11 integrações", description: "Bling, Mercado Pago, Pagar.me, InfinitePay, Correios, Melhor Envio, Mandaê, Bagy, Omie e mais." },
   ];
 
   const integrations = [
     "WhatsApp", "Bling", "Mercado Pago", "Pagar.me", "InfinitePay", "Correios",
-    "Melhor Envio", "Mandaê", "Olist", "Bagy", "Omie", "Instagram",
+    "Melhor Envio", "Mandaê", "Bagy", "Omie", "Instagram",
   ];
 
   const steps = [

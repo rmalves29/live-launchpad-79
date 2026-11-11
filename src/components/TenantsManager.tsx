@@ -807,7 +807,7 @@ const INTEGRATION_GROUPS: { title: string; keys: string[] }[] = [
   { title: 'WhatsApp', keys: ['zapi', 'uazapi', 'whatsapp_oficial'] },
   { title: 'Meios de Pagamento', keys: ['mercadopago', 'pagarme', 'sipag', 'appmax', 'infinitepay'] },
   { title: 'Fretes', keys: ['melhorenvio', 'mandae', 'mandabem', 'superfrete', 'correios', 'meuscorreios'] },
-  { title: 'ERP', keys: ['bling', 'olist', 'omie'] },
+  { title: 'ERP', keys: ['bling', 'omie'] },
   { title: 'Outros', keys: ['instagram', 'bagy'] },
 ];
 
