@@ -310,6 +310,11 @@ serve(async (req) => {
           name: payload.customerData.name,
           cpf: payload.customerData.cpf ?? null,
           email: payload.customerData.email ?? null,
+          // @ do Instagram opcional, informado no checkout aberto pelo @
+          ...(typeof payload.customerData.instagram === "string" &&
+            /^[A-Za-z0-9._]{1,60}$/.test(payload.customerData.instagram.trim().replace(/^@+/, ""))
+            ? { instagram: payload.customerData.instagram.trim().replace(/^@+/, "") }
+            : {}),
           cep: payload.addressData.cep,
           street: payload.addressData.street,
           number: payload.addressData.number,

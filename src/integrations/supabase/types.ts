@@ -917,6 +917,7 @@ export type Database = {
           created_at: string | null
           customer_instagram: string | null
           customer_phone: string
+          customer_tiktok: string | null
           event_date: string
           event_type: string
           id: number
@@ -928,6 +929,7 @@ export type Database = {
           created_at?: string | null
           customer_instagram?: string | null
           customer_phone: string
+          customer_tiktok?: string | null
           event_date: string
           event_type: string
           id?: number
@@ -939,6 +941,7 @@ export type Database = {
           created_at?: string | null
           customer_instagram?: string | null
           customer_phone?: string
+          customer_tiktok?: string | null
           event_date?: string
           event_type?: string
           id?: number
@@ -1355,6 +1358,7 @@ export type Database = {
           state: string | null
           street: string | null
           tenant_id: string
+          tiktok: string | null
           ultimo_sorteio_ganho: string | null
           updated_at: string | null
         }
@@ -1379,6 +1383,7 @@ export type Database = {
           state?: string | null
           street?: string | null
           tenant_id: string
+          tiktok?: string | null
           ultimo_sorteio_ganho?: string | null
           updated_at?: string | null
         }
@@ -1403,6 +1408,7 @@ export type Database = {
           state?: string | null
           street?: string | null
           tenant_id?: string
+          tiktok?: string | null
           ultimo_sorteio_ganho?: string | null
           updated_at?: string | null
         }

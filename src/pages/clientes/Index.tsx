@@ -20,6 +20,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { formatBrasiliaDate, formatBrasiliaDateTime, getBrasiliaDateISO } from '@/lib/date-utils';
 import { supabase } from '@/integrations/supabase/client';
 import { supabaseTenant } from '@/lib/supabase-tenant';
+import { cleanHandle } from '@/lib/social-handle';
 import { useAuth } from '@/hooks/useAuth';
 import { useTenantContext } from '@/contexts/TenantContext';
 import { normalizeForStorage, formatPhoneForDisplay } from '@/lib/phone-utils';
@@ -30,6 +31,7 @@ interface Customer {
   name: string;
   email?: string;
   instagram?: string;
+  tiktok?: string | null;
   cpf?: string;
   street?: string;
   number?: string;
@@ -95,7 +97,7 @@ const Clientes = () => {
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
-  const [newCustomer, setNewCustomer] = useState({ phone: '', name: '', instagram: '' });
+  const [newCustomer, setNewCustomer] = useState({ phone: '', name: '', instagram: '', tiktok: '' });
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
@@ -292,6 +294,9 @@ const Clientes = () => {
         if (newCustomer.instagram) {
           updateData.instagram = newCustomer.instagram.trim().replace('@', '');
         }
+        if (cleanHandle(newCustomer.tiktok)) {
+          updateData.tiktok = cleanHandle(newCustomer.tiktok);
+        }
 
         const { error: updateError } = await supabaseTenant
           .from('customers')
@@ -313,7 +318,8 @@ const Clientes = () => {
           .insert({
             phone: normalizedPhone,
             name: newCustomer.name,
-            instagram: newCustomer.instagram?.trim().replace('@', '') || null
+            instagram: newCustomer.instagram?.trim().replace('@', '') || null,
+            tiktok: cleanHandle(newCustomer.tiktok) || null,
           });
 
         if (error) throw error;
@@ -324,13 +330,15 @@ const Clientes = () => {
         });
       }
       
-      setNewCustomer({ phone: '', name: '', instagram: '' });
+      setNewCustomer({ phone: '', name: '', instagram: '', tiktok: '' });
       loadCustomers();
     } catch (error: any) {
       console.error('Error creating/updating customer:', error);
       toast({
         title: 'Erro',
-        description: 'Erro ao salvar cliente',
+        description: String(error?.message || '').includes('uq_customers_tenant_tiktok')
+          ? 'Já existe cliente com este @ do TikTok'
+          : 'Erro ao salvar cliente',
         variant: 'destructive'
       });
     } finally {
@@ -461,6 +469,7 @@ const Clientes = () => {
           phone: normalizedPhone,
           email: emailTrimmed || null,
           instagram: editingCustomer.instagram?.trim().replace('@', '') || null,
+          tiktok: cleanHandle(editingCustomer.tiktok) || null,
           cpf: editingCustomer.cpf || null,
           street: editingCustomer.street || null,
           number: editingCustomer.number || null,
@@ -483,7 +492,9 @@ const Clientes = () => {
       loadCustomers();
     } catch (error: any) {
       console.error('Error updating customer:', error);
-      const msg = error?.message?.includes('unique') || error?.message?.includes('duplicate')
+      const msg = error?.message?.includes('uq_customers_tenant_tiktok')
+        ? 'Já existe cliente com este @ do TikTok'
+        : error?.message?.includes('unique') || error?.message?.includes('duplicate')
         ? 'Já existe um cliente com esse telefone nesta empresa'
         : 'Erro ao atualizar cliente';
       toast({
@@ -649,6 +660,7 @@ const Clientes = () => {
       
       // Search by Instagram
       if (customer.instagram && customer.instagram.toLowerCase().includes(searchLower)) return true;
+      if (customer.tiktok && customer.tiktok.toLowerCase().includes(searchLower.replace(/^@/, ''))) return true;
       
       return false;
     } catch (e) {
@@ -1139,6 +1151,11 @@ const Clientes = () => {
                   value={newCustomer.instagram}
                   onChange={(e) => setNewCustomer(prev => ({ ...prev, instagram: e.target.value }))}
                 />
+                <Input
+                  placeholder="@usuario (TikTok)"
+                  value={newCustomer.tiktok}
+                  onChange={(e) => setNewCustomer(prev => ({ ...prev, tiktok: e.target.value }))}
+                />
               </div>
               
               <div className="flex justify-end mt-4">
@@ -1333,6 +1350,7 @@ const Clientes = () => {
                                  </TableCell>
                                 <TableCell>
                                   {customer.instagram ? `@${customer.instagram.replace('@', '')}` : '-'}
+                                  {customer.tiktok ? <span className="block text-xs text-muted-foreground">TikTok: @{customer.tiktok}</span> : null}
                                 </TableCell>
                                <TableCell className="text-right">
                                 <div className="flex justify-end space-x-2">
@@ -1370,6 +1388,10 @@ const Clientes = () => {
                                               <div>
                                                 <Label className="text-sm font-medium">Instagram</Label>
                                                 <p className="text-sm">{selectedCustomer?.instagram ? `@${selectedCustomer.instagram.replace('@', '')}` : '-'}</p>
+                                              </div>
+                                              <div>
+                                                <Label className="text-sm font-medium">TikTok</Label>
+                                                <p className="text-sm">{selectedCustomer?.tiktok ? `@${selectedCustomer.tiktok}` : '-'}</p>
                                               </div>
                                               <div>
                                                 <Label className="text-sm font-medium">E-mail</Label>
@@ -1535,6 +1557,15 @@ const Clientes = () => {
                                                  placeholder="@usuario"
                                                  value={editingCustomer.instagram || ''}
                                                  onChange={(e) => setEditingCustomer(prev => prev ? {...prev, instagram: e.target.value} : null)}
+                                               />
+                                             </div>
+                                             <div>
+                                               <Label htmlFor="tiktok">TikTok</Label>
+                                               <Input
+                                                 id="tiktok"
+                                                 placeholder="@usuario"
+                                                 value={editingCustomer.tiktok || ''}
+                                                 onChange={(e) => setEditingCustomer(prev => prev ? {...prev, tiktok: e.target.value} : null)}
                                                />
                                              </div>
                                              <div>

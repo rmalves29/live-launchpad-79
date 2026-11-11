@@ -209,6 +209,9 @@ const AppContent = () => {
         <Route path="/live" element={
           <RequireTenantAuth><FeatureGate feature="live"><Live /></FeatureGate></RequireTenantAuth>
         } />
+        <Route path="/live-tiktok" element={
+          <RequireTenantAuth><FeatureGate feature="live"><Live key="tiktok" platform="tiktok" /></FeatureGate></RequireTenantAuth>
+        } />
         <Route path="/pedidos" element={
           <RequireTenantAuth><Pedidos /></RequireTenantAuth>
         } />
