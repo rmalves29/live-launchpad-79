@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { enforceRateLimit } from "../_shared/rate-limit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,6 +23,10 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
+
+    // Seguranca: limita consultas por IP (um cliente real chama 1 ou 2 vezes)
+    const limited = await enforceRateLimit(req, supabase, "checkout_address", 15, 600);
+    if (limited) return limited;
 
     const { data, error } = await supabase
       .from("customers")

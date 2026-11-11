@@ -7130,6 +7130,14 @@ export type Database = {
         Returns: Database["public"]["Enums"]["user_role"]
       }
       get_own_tenant_id: { Args: never; Returns: string }
+      has_paid_order_for_merge: {
+        Args: {
+          p_customer_phone: string
+          p_from_date?: string
+          p_tenant_id: string
+        }
+        Returns: boolean
+      }
       get_paid_orders_for_merge: {
         Args: {
           p_customer_phone: string

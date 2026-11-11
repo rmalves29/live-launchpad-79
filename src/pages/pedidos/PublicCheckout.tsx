@@ -517,12 +517,12 @@ const PublicCheckout = () => {
 
   // Adicionar opção de merge quando há pedido pago recente
   useEffect(() => {
-    if (hasPaidOrderWithinPeriod && mergeableOrders.length > 0) {
+    if (hasPaidOrderWithinPeriod) {
       setShippingOptions(prev => {
         // Verificar se já tem a opção de merge
         if (prev.some(opt => opt.id === 'merge_order')) return prev;
         // Adicionar a opção de merge no início
-        console.log(`🎁 Adicionando opção de frete grátis - cliente tem ${mergeableOrders.length} pedido(s) pago(s) nos últimos ${orderMergeDays} dias`);
+        console.log(`🎁 Adicionando opção de frete grátis - cliente tem pedido pago nos últimos ${orderMergeDays} dias`);
         return [MERGE_ORDER_SHIPPING_OPTION, ...prev];
       });
     } else {
