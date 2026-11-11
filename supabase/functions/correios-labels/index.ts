@@ -1146,6 +1146,73 @@ async function actionCreatePrepostagem(
   };
 }
 
+// ----- Criação automática da remessa quando o pedido é pago -----
+// Roda a cada minuto (pg_cron). Só age em empresas que ligaram "Criar remessa ao pagar" (shipping_integrations.service_codes.AutoRemessa)
+// e só em pedidos pagos, não cancelados, com frete dos Correios escolhido e SEM remessa. Cada pedido é "reservado" na tabela
+// correios_auto_remessa_log antes de ser processado, então duas execuções ao mesmo tempo nunca criam duas remessas para o mesmo pedido.
+// A remessa NÃO marca o pedido como enviado nem avisa o cliente: isso só acontece quando os Correios confirmam a postagem.
+async function autoSweep(supabase: any) {
+  const inicio = Date.now();
+  const { data: integs } = await supabase.from("shipping_integrations").select("tenant_id, service_codes").eq("provider", "correios").eq("is_active", true);
+  const tenants: string[] = (integs || [])
+    .filter((i: any) => i.service_codes && (i.service_codes.AutoRemessa === true || i.service_codes.AutoRemessa === "true"))
+    .map((i: any) => i.tenant_id);
+  if (!tenants.length) return { success: true, empresas: 0, criadas: 0 };
+
+  const desde = new Date(Date.now() - 14 * 86400_000).toISOString();
+  const { data: pedidos } = await supabase
+    .from("orders")
+    .select("id, tenant_id, payment_method")
+    .in("tenant_id", tenants)
+    .eq("is_paid", true)
+    .or("is_cancelled.is.null,is_cancelled.eq.false")
+    .is("melhor_envio_shipment_id", null)
+    .not("shipping_service_id", "is", null)
+    .gte("created_at", desde)
+    .order("id", { ascending: true })
+    .limit(60);
+  const candidatos: any[] = (pedidos || []).filter((p: any) => p.payment_method !== "pay_on_pickup");
+  if (!candidatos.length) return { success: true, empresas: tenants.length, criadas: 0 };
+
+  const { data: logs } = await supabase.from("correios_auto_remessa_log").select("order_id, status, attempts, last_attempt_at").in("order_id", candidatos.map((p) => p.id));
+  const logDe = new Map<number, any>((logs || []).map((l: any) => [Number(l.order_id), l]));
+  const credsPorEmpresa = new Map<string, CorreiosCredentials | null>();
+  let criadas = 0, falhas = 0, ignoradas = 0;
+
+  for (const p of candidatos) {
+    if (Date.now() - inicio > 80_000 || criadas + falhas >= 8) break; // o resto fica para a próxima rodada (1 min)
+    const l = logDe.get(Number(p.id));
+    const agora = Date.now();
+    const parado = l && agora - new Date(l.last_attempt_at).getTime() > 10 * 60_000;
+    let reservado = false;
+    if (!l) {
+      const { data: ins } = await supabase.from("correios_auto_remessa_log").upsert({ order_id: p.id, tenant_id: p.tenant_id, status: "processando", attempts: 0 }, { onConflict: "order_id", ignoreDuplicates: true }).select("order_id");
+      reservado = (ins?.length ?? 0) > 0;
+    } else if ((l.status === "erro" && Number(l.attempts) < 3 && parado) || (l.status === "processando" && parado)) {
+      const { data: upd } = await supabase.from("correios_auto_remessa_log").update({ status: "processando", last_attempt_at: new Date().toISOString() })
+        .eq("order_id", p.id).eq("attempts", l.attempts).eq("status", l.status).select("order_id");
+      reservado = (upd?.length ?? 0) > 0;
+    }
+    if (!reservado) { ignoradas++; continue; }
+
+    try {
+      if (!credsPorEmpresa.has(p.tenant_id)) credsPorEmpresa.set(p.tenant_id, await getCredentials(supabase, p.tenant_id).catch(() => null));
+      const creds = credsPorEmpresa.get(p.tenant_id);
+      if (!creds) throw new Error("Credenciais dos Correios incompletas para esta empresa.");
+      const criada = await recreatePrepostagemFromOrder(supabase, creds, p.id);
+      await supabase.from("correios_auto_remessa_log").update({ status: "criada", error: null, last_attempt_at: new Date().toISOString() }).eq("order_id", p.id);
+      log(`auto_sweep: remessa ${criada.idPrePostagem} criada para o pedido ${p.id}`);
+      criadas++;
+    } catch (e) {
+      const msg = String((e as Error).message || e).slice(0, 300);
+      await supabase.from("correios_auto_remessa_log").update({ status: "erro", error: msg, attempts: Number(l?.attempts ?? 0) + 1, last_attempt_at: new Date().toISOString() }).eq("order_id", p.id);
+      log(`auto_sweep: pedido ${p.id} falhou: ${msg}`);
+      falhas++;
+    }
+  }
+  return { success: true, empresas: tenants.length, criadas, falhas, ignoradas };
+}
+
 // ----- Handler principal -----
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -1160,6 +1227,12 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const { action, tenant_id } = body;
+
+    // Chamada do agendamento (pg_cron): não tem empresa nem usuário; só age onde a empresa ligou a criação automática
+    if (action === "auto_sweep") {
+      const r = await autoSweep(supabase);
+      return new Response(JSON.stringify(r), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
 
     if (!tenant_id) {
       return new Response(
