@@ -12,6 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, User, MapPin, Search, ShoppingCart, Package, Store, Phone, AlertTriangle, Truck, CreditCard, Percent, Gift, Eye, History, CheckCircle2, Ban, Merge, Store } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatPhoneForDisplay, normalizeForStorage } from '@/lib/phone-utils';
+import { cleanHandle, missingFieldsForHandleCheckout, type CheckoutLookupType } from '@/lib/social-handle';
 import { formatBrasiliaDate, formatBrasiliaDateLong } from '@/lib/date-utils';
 import { formatCurrency, formatCPF } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
@@ -139,6 +140,14 @@ const PublicCheckout = () => {
   const [tenantError, setTenantError] = useState<string | null>(null);
   
   const [phone, setPhone] = useState('');
+  // Como a cliente buscou os pedidos: telefone, @ do Instagram ou @ do TikTok
+  const [lookupType, setLookupType] = useState<CheckoutLookupType>('phone');
+  const [handleInput, setHandleInput] = useState('');
+  // Modo da última busca feita (o que vale para o formulário de pagamento)
+  const [searchedBy, setSearchedBy] = useState<CheckoutLookupType>('phone');
+  const [contactPhone, setContactPhone] = useState('');
+  const [contactInstagram, setContactInstagram] = useState('');
+  const byHandle = searchedBy !== 'phone';
   const [pushDialogOpen, setPushDialogOpen] = useState(false);
   const pushAutoAskedRef = useRef(false);
 
@@ -243,7 +252,9 @@ const PublicCheckout = () => {
   // Hook para verificar pedidos pagos recentes (juntar pedidos)
   const { hasPaidOrderWithinPeriod, mergeableOrders, orderMergeDays } = useOrderMerge(
     tenant?.id || null,
-    phone ? normalizeForStorage(phone) : null
+    byHandle
+      ? (contactPhone.replace(/\D/g, '').length >= 10 ? normalizeForStorage(contactPhone) : null)
+      : (phone ? normalizeForStorage(phone) : null)
   );
 
   // Pagar na retirada só vale com frete Retirada: ao trocar o frete, volta para uma forma online
@@ -1050,6 +1061,12 @@ const PublicCheckout = () => {
     if (!customerData.city) missingFields.push('Cidade');
     if (!customerData.state) missingFields.push('Estado');
 
+    if (byHandle) {
+      for (const f of missingFieldsForHandleCheckout({ ...customerData, phone: contactPhone })) {
+        if (!missingFields.includes(f)) missingFields.push(f);
+      }
+    }
+
     if (missingFields.length > 0) {
       toast({ title: 'Dados incompletos', description: `Campos obrigatórios faltando: ${missingFields.join(', ')}`, variant: 'destructive' });
       return;
@@ -1140,9 +1157,10 @@ const PublicCheckout = () => {
         })),
         customerData: {
           name: customerData.name,
-          phone: ordersToProcess[0].customer_phone,
+          phone: byHandle ? normalizeForStorage(contactPhone) : ordersToProcess[0].customer_phone,
           cpf: customerData.cpf,
-          email: customerData.email
+          email: customerData.email,
+          ...(byHandle && cleanHandle(contactInstagram) ? { instagram: cleanHandle(contactInstagram) } : {}),
         },
         addressData: {
           cep: customerData.cep,
@@ -1189,9 +1207,10 @@ const PublicCheckout = () => {
         setPaymentMethod(acceptPix ? 'pix' : 'card');
         await searchOrders();
         // o pedido sai dos "em aberto" e aparece no histórico como Pago (a concluir na loja)
-        setHistoryPhone(phone);
+        const historyFrom = byHandle ? contactPhone : phone;
+        setHistoryPhone(historyFrom);
         setHistorySearched(true);
-        await loadPaidOrdersHistory(normalizeForStorage(phone));
+        await loadPaidOrdersHistory(normalizeForStorage(historyFrom));
       } else if (data?.free_order) {
         toast({ title: 'Pedido confirmado', description: 'Pedido gratuito processado com sucesso!' });
       } else {
@@ -1211,8 +1230,14 @@ const PublicCheckout = () => {
   };
 
   const searchOrders = async () => {
-    if (!phone) {
+    const mode = lookupType;
+    const handle = cleanHandle(handleInput);
+    if (mode === 'phone' && !phone) {
       toast({ title: 'Erro', description: 'Informe seu telefone', variant: 'destructive' });
+      return;
+    }
+    if (mode !== 'phone' && !handle) {
+      toast({ title: 'Erro', description: `Informe seu @ do ${mode === 'tiktok' ? 'TikTok' : 'Instagram'}`, variant: 'destructive' });
       return;
     }
 
@@ -1221,9 +1246,11 @@ const PublicCheckout = () => {
       return;
     }
 
-    const normalizedPhone = normalizeForStorage(phone);
+    // No modo @ a chave do aviso de notificações é o próprio @
+    const normalizedPhone = mode === 'phone' ? normalizeForStorage(phone) : `${mode}:${handle.toLowerCase()}`;
     setLoadingOrders(true);
     setSearched(true);
+    setSearchedBy(mode);
     setSelectedOrderIds([]);
     setShowCheckout(false);
 
@@ -1260,7 +1287,9 @@ const PublicCheckout = () => {
 
     try {
       const { data: checkoutOrders, error: checkoutOrdersError } = await supabase.functions.invoke('public-checkout-orders', {
-        body: { tenant_slug: slug!, customer_phone: normalizedPhone }
+        body: mode === 'phone'
+          ? { tenant_slug: slug!, customer_phone: normalizedPhone }
+          : { tenant_slug: slug!, lookup_type: mode, handle }
       });
 
       if (checkoutOrdersError) throw checkoutOrdersError;
@@ -1298,6 +1327,19 @@ const PublicCheckout = () => {
         setCouponDiscount(0);
         setCouponCode(orderWithGift.gift_name.toUpperCase());
         setCouponPreApplied(true);
+      }
+
+      if (mode !== 'phone') {
+        // Pelo @ nada do cadastro é preenchido: a cliente digita telefone, e-mail e endereço.
+        setCustomerData({ name: '', email: '', cpf: '', cep: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '' });
+        setContactPhone('');
+        setContactInstagram(mode === 'instagram' ? handle : '');
+        if (checkoutOrders?.handle_found === false) {
+          toast({ title: 'Não encontramos esse @', description: 'Tente pelo telefone.', variant: 'destructive' });
+        } else if (ordersWithItems.length === 0) {
+          toast({ title: 'Nenhum pedido encontrado', description: 'Não há pedidos em aberto para este @' });
+        }
+        return;
       }
 
       let customer: any = null;
