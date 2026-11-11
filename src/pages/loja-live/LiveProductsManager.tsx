@@ -51,7 +51,8 @@ type Row = {
   inLive: boolean;      // estado salvo no banco (com variações: alguma variação na live)
 };
 
-type Filter = 'all' | 'in' | 'out';
+// 'recent' = já estiveram na live e saíram, os últimos a sair primeiro (usa live_removed_at, gravado quando o produto sai da live)
+type Filter = 'all' | 'in' | 'out' | 'recent';
 
 const money = (v: number | null) => (v == null ? '' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
 
@@ -142,10 +143,14 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
       .is('parent_product_id', null);
     if (q) query = query.or(`code.ilike.%${q}%,name.ilike.%${q}%`);
     if (filter === 'in') query = query.in('sale_type', IN_LIVE);
-    if (filter === 'out') query = query.not('sale_type', 'in', `(${IN_LIVE.join(',')})`);
+    if (filter === 'out' || filter === 'recent') query = query.not('sale_type', 'in', `(${IN_LIVE.join(',')})`);
+    if (filter === 'recent') query = query.not('live_removed_at', 'is', null);
     // No filtro "Na live" a lista segue a ordem da vitrine (posição escolhida; sem posição, ordem de entrada)
     if (filter === 'in') {
       query = query.order('live_position', { ascending: true, nullsFirst: false }).order('live_added_at', { ascending: true }).order('id', { ascending: true });
+    } else if (filter === 'recent' || filter === 'out') {
+      // quem saiu da live mais recentemente aparece primeiro; os que nunca saíram seguem por código
+      query = query.order('live_removed_at', { ascending: false, nullsFirst: false }).order('code', { ascending: true });
     } else {
       query = query.order('code', { ascending: true });
     }
@@ -371,7 +376,7 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
             )}
           </div>
           <div className="inline-flex rounded-lg border p-0.5 text-sm" role="tablist" aria-label="Filtrar produtos">
-            {([['all', 'Todos'], ['in', 'Na live'], ['out', 'Fora da live']] as [Filter, string][]).map(([v, label]) => (
+            {([['all', 'Todos'], ['in', 'Na live'], ['recent', 'Usados recentes'], ['out', 'Fora da live']] as [Filter, string][]).map(([v, label]) => (
               <button key={v} type="button" role="tab" aria-selected={filter === v}
                 onClick={() => { setFilter(v); setPage(0); }}
                 className={`rounded-md px-3 py-1.5 transition ${filter === v ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
