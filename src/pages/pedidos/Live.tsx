@@ -24,6 +24,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTenant } from '@/hooks/useTenant';
 import { normalizeForStorage, formatPhoneForDisplay } from '@/lib/phone-utils';
 import { formatCurrency } from '@/lib/utils';
+import { cleanHandle, escapeLike, type HandlePlatform } from '@/lib/social-handle';
 
 
 interface Product {
@@ -70,7 +71,9 @@ interface Customer {
   instagram: string;
 }
 
-const Live = () => {
+const Live = ({ platform = 'instagram' }: { platform?: HandlePlatform }) => {
+  const isTikTok = platform === 'tiktok';
+  const platformLabel = isTikTok ? 'TikTok' : 'Instagram';
   const { toast } = useToast();
   const { profile } = useAuth();
   const { tenant } = useTenant();
@@ -134,14 +137,29 @@ const Live = () => {
         return;
       }
 
-      const instagramValue = newClientInstagram.trim().replace(/^@/, '') || null;
+      const instagramValue = isTikTok
+        ? (cleanHandle(newClientInstagram) || null)
+        : (newClientInstagram.trim().replace(/^@/, '') || null);
+
+      if (isTikTok && instagramValue) {
+        const { data: existingTikTok } = await supabaseTenant
+          .from('customers')
+          .select('id')
+          .ilike('tiktok', escapeLike(instagramValue))
+          .limit(1);
+        if (existingTikTok && existingTikTok.length > 0) {
+          toast({ title: 'Já existe cliente com este @ do TikTok', variant: 'destructive' });
+          setSavingClient(false);
+          return;
+        }
+      }
 
       const { error } = await supabaseTenant
         .from('customers')
         .insert([{
           phone: normalizedPhone,
           name: newClientName.trim(),
-          instagram: instagramValue,
+          ...(isTikTok ? { tiktok: instagramValue } : { instagram: instagramValue }),
         }]);
 
       if (error) throw error;
@@ -328,16 +346,18 @@ const Live = () => {
   };
 
   const getPhoneFromInstagram = async (instagram: string): Promise<{ phone: string; name: string | null; cep: string | null; street: string | null; number: string | null; complement: string | null; neighborhood: string | null; city: string | null; state: string | null } | '__BLOCKED__' | null> => {
-    const normalized = normalizeInstagram(instagram);
+    const normalized = isTikTok ? cleanHandle(instagram) : normalizeInstagram(instagram);
     
-    const { data, error } = await supabaseTenant
+    const baseQuery = supabaseTenant
       .from('customers')
-      .select('phone, name, is_blocked, cep, street, number, complement, neighborhood, city, state')
-      .eq('instagram', normalized)
-      .maybeSingle();
+      .select('phone, name, is_blocked, cep, street, number, complement, neighborhood, city, state');
+    const { data, error } = await (isTikTok
+      ? baseQuery.ilike('tiktok', escapeLike(normalized))
+      : baseQuery.eq('instagram', normalized)
+    ).maybeSingle();
 
     if (error) {
-      console.error('Error fetching customer by instagram:', error);
+      console.error(`Error fetching customer by ${platform}:`, error);
       return null;
     }
 
@@ -389,7 +409,7 @@ const Live = () => {
     if (!instagram) {
       toast({
         title: 'Erro',
-        description: 'Informe o @ do Instagram do cliente',
+        description: `Informe o @ do ${platformLabel} do cliente`,
         variant: 'destructive'
       });
       return;
@@ -422,7 +442,7 @@ const Live = () => {
       if (!customerResult) {
         toast({
           title: 'Erro',
-          description: `Cliente com Instagram @${normalizeInstagram(instagram)} não encontrado no cadastro`,
+          description: `Cliente com ${platformLabel} @${normalizeInstagram(instagram)} não encontrado no cadastro`,
           variant: 'destructive'
         });
         setProcessingIds(prev => {
@@ -573,7 +593,9 @@ const Live = () => {
           .from('carts')
           .insert({
             customer_phone: normalizedPhone,
-            customer_instagram: normalizeInstagram(instagram),
+            ...(isTikTok
+              ? { customer_tiktok: cleanHandle(instagram) }
+              : { customer_instagram: normalizeInstagram(instagram) }),
             event_type: 'LIVE',
             event_date: today,
             status: 'OPEN'
@@ -895,7 +917,7 @@ const Live = () => {
           <div>
             <h1 className="text-3xl font-bold text-foreground">Vendas Live</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Lançamento por Instagram{tenant?.name ? <> · <span className="font-semibold text-foreground">{tenant.name}</span></> : null}
+              Lançamento por {platformLabel}{tenant?.name ? <> · <span className="font-semibold text-foreground">{tenant.name}</span></> : null}
             </p>
           </div>
 
@@ -918,7 +940,7 @@ const Live = () => {
             <TabsContent value="vendas" className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Instagram Padrão</CardTitle>
+                  <CardTitle>{platformLabel} Padrão</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex gap-2">
@@ -982,7 +1004,7 @@ const Live = () => {
                             <TableHead>Preço</TableHead>
                             <TableHead>Preço Prom.</TableHead>
                             <TableHead>Estoque</TableHead>
-                            <TableHead>Instagram</TableHead>
+                            <TableHead>{platformLabel}</TableHead>
                             <TableHead>Qtd</TableHead>
                             <TableHead>Ação</TableHead>
                           </TableRow>
@@ -1358,7 +1380,7 @@ const Live = () => {
                       </div>
                       <div className="space-y-1.5">
                         <label className="text-sm font-medium">
-                          Instagram <span className="text-muted-foreground font-normal">(@usuario)</span>
+                          {isTikTok ? '@ do TikTok' : 'Instagram'} <span className="text-muted-foreground font-normal">(@usuario)</span>
                         </label>
                         <Input
                           placeholder="@usuario"

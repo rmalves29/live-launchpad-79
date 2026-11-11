@@ -28,7 +28,7 @@ import {
   Bell,
   PlayCircle,
   Link as LinkIcon, Store,
-  BadgePercent } from 'lucide-react';
+  BadgePercent, Music2 } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
@@ -89,7 +89,10 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           label: 'Live',
           entries: [
             ...(enableLoja ? [{ type: 'item' as const, item: { path: '/loja-da-live', label: 'Loja da Live', icon: Store } }] : []),
-            ...(enableLive ? [{ type: 'item' as const, item: { path: '/live', label: 'Live', icon: Radio } }] : []),
+            ...(enableLive ? [
+              { type: 'item' as const, item: { path: '/live', label: 'Lançar pedidos Instagram', icon: Radio } },
+              { type: 'item' as const, item: { path: '/live-tiktok', label: 'Lançar pedidos TikTok', icon: Music2 } },
+            ] : []),
             { type: 'item' as const, item: { path: '/pedidos-manual', label: 'Pedido Manual', icon: PlusCircle } },
           ],
         }]
