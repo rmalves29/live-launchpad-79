@@ -1061,6 +1061,7 @@ const Etiquetas = () => {
         orderIds,
         (prontas, total) => toast.info(`Os Correios estão gerando as etiquetas: ${prontas} de ${total} prontas. Aguardando…`),
         formatoEtiqueta,
+        (pedidos) => toast.warning(`${pedidos.length} pedido(s) ficaram fora do PDF porque já foram postados nos Correios (eles não imprimem mais a etiqueta depois da postagem): ${pedidos.map((n) => `#${n}`).join(', ')}`, { duration: 15000 }),
       );
       toast.success(`${n} etiqueta(s) baixada(s), cada uma seguida da sua declaração de conteúdo.`);
       setLabelSelection(new Set());
