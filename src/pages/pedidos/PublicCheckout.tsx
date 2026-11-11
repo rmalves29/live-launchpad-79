@@ -1659,17 +1659,56 @@ const PublicCheckout = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6">
-            <label className="text-sm font-medium mb-2 block">Telefone do cliente</label>
+            <div className="grid grid-cols-3 gap-2 mb-4" role="radiogroup" aria-label="Buscar pedidos por">
+              {([
+                { value: 'phone', label: 'Telefone' },
+                { value: 'instagram', label: '@ Instagram' },
+                { value: 'tiktok', label: '@ TikTok' },
+              ] as const).map((opt) => (
+                <Button
+                  key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={lookupType === opt.value}
+                  variant={lookupType === opt.value ? 'default' : 'outline'}
+                  className="h-10"
+                  onClick={() => setLookupType(opt.value)}
+                >
+                  {opt.label}
+                </Button>
+              ))}
+            </div>
+            <label className="text-sm font-medium mb-2 block">
+              {lookupType === 'phone' ? 'Telefone do cliente' : lookupType === 'tiktok' ? 'Seu @ do TikTok' : 'Seu @ do Instagram'}
+            </label>
             <div className="flex gap-3">
               <div className="relative flex-1">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="(11) 98765-4321"
-                  value={phone}
-                  onChange={(e) => handlePhoneChange(e.target.value, setPhone)}
-                  onKeyPress={(e) => e.key === 'Enter' && searchOrders()}
-                  className="pl-10 h-12 text-base border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500/20"
-                />
+                {lookupType === 'phone' ? (
+                  <>
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="(11) 98765-4321"
+                      value={phone}
+                      onChange={(e) => handlePhoneChange(e.target.value, setPhone)}
+                      onKeyPress={(e) => e.key === 'Enter' && searchOrders()}
+                      className="pl-10 h-12 text-base border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">@</span>
+                    <Input
+                      placeholder="seuusuario"
+                      value={handleInput}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      maxLength={61}
+                      onChange={(e) => setHandleInput(e.target.value.replace(/^@+/, ''))}
+                      onKeyPress={(e) => e.key === 'Enter' && searchOrders()}
+                      className="pl-9 h-12 text-base border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </>
+                )}
               </div>
               <Button 
                 onClick={searchOrders} 
@@ -1684,7 +1723,7 @@ const PublicCheckout = () => {
               <div className="mt-6 text-center py-6 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
                 <Search className="h-10 w-10 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
                 <p className="text-muted-foreground">
-                  Digite seu telefone para localizar pedidos pendentes
+                  {lookupType === 'phone' ? 'Digite seu telefone para localizar pedidos pendentes' : 'Digite seu @ para localizar pedidos pendentes'}
                 </p>
               </div>
             )}
@@ -1698,7 +1737,7 @@ const PublicCheckout = () => {
               <Alert>
                 <ShoppingCart className="h-4 w-4" />
                 <AlertDescription>
-                  Nenhum pedido em aberto encontrado para este telefone.
+                  {byHandle ? 'Nenhum pedido em aberto encontrado para este @.' : 'Nenhum pedido em aberto encontrado para este telefone.'}
                 </AlertDescription>
               </Alert>
             ) : !showCheckout ? (
@@ -1974,13 +2013,37 @@ const PublicCheckout = () => {
                         )}
                       </div>
                       <div>
-                        <label className="text-sm font-medium mb-1 block">Email</label>
+                        <label className="text-sm font-medium mb-1 block">Email{byHandle ? ' *' : ''}</label>
                         <Input
+                          type="email"
                           placeholder="seu@email.com"
                           value={customerData.email}
                           onChange={(e) => setCustomerData({...customerData, email: e.target.value})}
                         />
                       </div>
+                      {byHandle && (
+                        <>
+                          <div>
+                            <label className="text-sm font-medium mb-1 block">Telefone *</label>
+                            <Input
+                              type="tel"
+                              placeholder="(11) 98765-4321"
+                              value={contactPhone}
+                              onChange={(e) => handlePhoneChange(e.target.value, setContactPhone)}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium mb-1 block">@ do Instagram (opcional)</label>
+                            <Input
+                              placeholder="@seuusuario"
+                              value={contactInstagram}
+                              autoCapitalize="none"
+                              maxLength={61}
+                              onChange={(e) => setContactInstagram(e.target.value)}
+                            />
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
 
