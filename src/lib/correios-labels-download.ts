@@ -43,6 +43,8 @@ export async function baixarEtiquetasCorreios(
   for (let i = 0; i < orderIds.length; i += 30) {
     const lote = orderIds.slice(i, i + 30);
     let recibos: Record<string, string> | undefined;
+    // Etiquetas já entregues em rodadas anteriores: o servidor não pede de novo aos Correios.
+    const pdfs: Record<string, string> = {};
     let data: any = null;
     let error: any = null;
     // Os Correios geram uma etiqueta por vez: continua enquanto houver avanço.
@@ -56,10 +58,12 @@ export async function baixarEtiquetasCorreios(
         formato,
         tenant_id: tenantId,
         ...(recibos ? { recibos } : {}),
+        ...(Object.keys(pdfs).length ? { pdfs } : {}),
       }));
       if (error || !data?.pending || !data?.recibos) break;
       recibos = data.recibos;
-      const prontas = typeof data.prontas === 'number' ? data.prontas : 0;
+      if (data.pdfs && typeof data.pdfs === 'object') Object.assign(pdfs, data.pdfs);
+      const prontas = Math.max(typeof data.prontas === 'number' ? data.prontas : 0, Object.keys(pdfs).length);
       if (prontas > melhor) {
         melhor = prontas;
         semAvanco = 0;

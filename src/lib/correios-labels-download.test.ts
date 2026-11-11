@@ -42,3 +42,17 @@ describe('baixarEtiquetasCorreios', () => {
     expect(chamadas).toBe(MAX_RODADAS);
   });
 });
+
+describe('baixarEtiquetasCorreios — etiquetas já prontas', () => {
+  it('reenvia ao servidor as etiquetas já recebidas, para não pedir de novo aos Correios', async () => {
+    const enviados: any[] = [];
+    const invoke = async (body: Record<string, unknown>) => {
+      enviados.push(body);
+      if (enviados.length === 1) return { data: { pending: true, recibos: { b: '2' }, prontas: 1, total: 2, pdfs: { a: 'PDF-A' } }, error: null };
+      return { data: { success: true, labelPdfBase64: PDF, total: 2 }, error: null };
+    };
+    await baixarEtiquetasCorreios(invoke, 't', [1, 2]);
+    expect(enviados[0].pdfs).toBeUndefined();
+    expect(enviados[1].pdfs).toEqual({ a: 'PDF-A' });
+  });
+});
