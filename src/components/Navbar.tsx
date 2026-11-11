@@ -29,7 +29,7 @@ const Navbar = () => {
 
   const navItems = [
     { path: '/pedidos-manual', label: 'Manual' },
-    ...(enableLive ? [{ path: '/live', label: 'Live' }] : []),
+    ...(enableLive ? [{ path: '/live', label: 'Live Instagram' }, { path: '/live-tiktok', label: 'Live TikTok' }] : []),
     { path: '/checkout', label: 'Checkout' },
     { path: '/produtos', label: 'Produtos' },
     { path: '/clientes', label: 'Clientes' },
