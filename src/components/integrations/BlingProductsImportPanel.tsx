@@ -125,9 +125,11 @@ export default function BlingProductsImportPanel({ tenantId, depositName, stores
     cancelRef.current = false;
     const map = new Map<number, PreviewRow>();
     let finished = false;
+    let stockUpdated = 0;
     try {
       for (let pg = 1; pg <= MAX_PAGES && !cancelRef.current; pg++) {
         const data = await call({ tenant_id: tenantId, action: 'preview', page: pg, search: '', store_id: storeId ? Number(storeId) : null, only_stock: onlyStock });
+        stockUpdated += Number(data.stock_updated) || 0;
         // o mesmo produto pai pode voltar em páginas diferentes (as variações caem em páginas distintas): junta em vez de repetir
         for (const r of data.rows as PreviewRow[]) {
           const before = map.get(r.bling_id);
@@ -146,7 +148,7 @@ export default function BlingProductsImportPanel({ tenantId, depositName, stores
         setRows(list);
         setSavedAt(at);
         writeCache(tenantId, { key: listKey, at, rows: list });
-        toast.success(`${list.length} produtos carregados do Bling e salvos neste navegador.`);
+        toast.success(`${list.length} produtos carregados do Bling e salvos neste navegador.${stockUpdated ? ` Estoque atualizado no Cartzy em ${stockUpdated} produto(s).` : ''}`);
       }
       setPage(0);
       setSelected(new Set());

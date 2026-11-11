@@ -235,7 +235,27 @@ serve(async (req) => {
           cartzy_id: linkedRow?.id ?? sameRow?.id ?? null,
         };
       });
-      return json({ ok: true, page, has_more: hasMore, ignored, deposit_id: depositId, only_stock: onlyStock, rows: out });
+      // Atualiza o estoque no Cartzy dos produtos listados: o saldo do depósito escolhido no Bling vira o estoque do produto.
+      // Chave: produto já vinculado ao Bling (bling_product_id) ou com o mesmo código ERP (sku_erp = código do Bling).
+      // Só age quando o Bling devolveu o saldo daquele produto (se a consulta de saldos falhar, nada é alterado) e nunca em produto com variações.
+      let stockUpdated = 0;
+      const stockChanged: Array<{ bling_id: number; cartzy_id: number; de: number; para: number }> = [];
+      const alvos = out.filter((r) => r.formato !== "V" && balances.has(r.bling_id) && (r.status === "vinculado" || r.status === "existe") && r.cartzy_id);
+      if (alvos.length) {
+        const { data: atuais } = await supabase.from("products").select("id, stock, sku_erp, bling_product_id").eq("tenant_id", tenantId).in("id", alvos.map((r) => r.cartzy_id));
+        const atual = new Map<number, any>((atuais || []).map((p: any) => [Number(p.id), p]));
+        for (const r of alvos) {
+          const p = atual.get(Number(r.cartzy_id));
+          if (!p) continue;
+          const mesmaChave = Number(p.bling_product_id) === r.bling_id || String(p.sku_erp || "").trim().toLowerCase() === r.codigo.toLowerCase();
+          if (!mesmaChave) continue;
+          const novo = Math.max(0, Math.floor(Number(r.saldo) || 0));
+          if (Number(p.stock) === novo) continue;
+          const { error: upErr } = await supabase.from("products").update({ stock: novo }).eq("id", p.id).eq("tenant_id", tenantId);
+          if (!upErr) { stockUpdated++; stockChanged.push({ bling_id: r.bling_id, cartzy_id: Number(p.id), de: Number(p.stock) || 0, para: novo }); }
+        }
+      }
+      return json({ ok: true, page, has_more: hasMore, ignored, deposit_id: depositId, only_stock: onlyStock, rows: out, stock_updated: stockUpdated, stock_changed: stockChanged.slice(0, 50) });
     }
 
     // ======================= IMPORTAÇÃO =======================
