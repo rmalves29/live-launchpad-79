@@ -72,6 +72,8 @@ interface Tenant {
   subscription_ends_at: string | null;
   plan_type: string | null;
   monthly_fee?: number | null;
+  enable_live?: boolean | null;
+  enable_sendflow?: boolean | null;
   admin_email: string | null;
   created_at: string;
 }
@@ -204,7 +206,7 @@ export default function EmpresasIndex() {
 
       const { data, error: fetchError } = await supabase
         .from('tenants')
-        .select('id, name, slug, email, logo_url, is_active, is_blocked, trial_ends_at, subscription_ends_at, plan_type, monthly_fee, admin_email, created_at, signup_status, signup_created_at')
+        .select('id, name, slug, email, logo_url, is_active, is_blocked, trial_ends_at, subscription_ends_at, plan_type, monthly_fee, enable_live, enable_sendflow, admin_email, created_at, signup_status, signup_created_at')
         .order('name');
 
       if (fetchError) throw fetchError;
@@ -801,28 +803,38 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
 
   const totalStats = getTenantStats(tenants);
 
-  // Faturamento mensal estimado: soma do valor mensal das empresas ativas, sem bloqueio e com prazo em dia
+  // Valor mensal de cada assinatura: o cadastrado na empresa ou, sem ele, o preço do produto
+  // (Combo Live + Grupos = R$ 499; só Live ou só Grupos de WhatsApp = R$ 299).
+  const valorMensal = (t: Tenant) => {
+    const cadastrado = Number(t.monthly_fee);
+    if (cadastrado > 0) return cadastrado;
+    const live = !!t.enable_live;
+    const grupos = !!t.enable_sendflow;
+    if (live && grupos) return 499;
+    if (live || grupos) return 299;
+    return 0;
+  };
+  const produtoDe = (t: Tenant) => (t.enable_live && t.enable_sendflow ? 'combo' : t.enable_live ? 'live' : t.enable_sendflow ? 'grupos' : 'nenhum');
+  // Assinaturas ativas: empresa ativa, sem bloqueio, fora do teste e com prazo em dia (sem prazo = conta interna, fica de fora)
   const pagantes = tenants.filter(t => {
+    if (!t.is_active || t.is_blocked) return false;
+    if (!t.plan_type || t.plan_type === 'trial_teste' || t.plan_type === 'trial') return false;
     const days = getDaysRemaining(t.subscription_ends_at || t.trial_ends_at);
-    return t.is_active && !t.is_blocked && (days === null || days > 0) && t.plan_type !== 'trial_teste' && t.plan_type !== 'trial';
+    return days !== null && days > 0;
   });
-  const faturamentoMensal = pagantes.reduce((s, t) => s + (Number(t.monthly_fee) || 0), 0);
-  const pagantesSemValor = pagantes.filter(t => !(Number(t.monthly_fee) > 0)).length;
+  const PLANOS_MENSAIS = new Set(['basic']); // Pro (semestral) e Enterprise (anual) já foram pagos adiantado
+  const mensais = pagantes.filter(t => PLANOS_MENSAIS.has(t.plan_type || ''));
+  // Total mensal de assinaturas: todas as ativas (mensais + semestrais/anuais pelo valor do mês)
+  const faturamentoMensal = pagantes.reduce((s, t) => s + valorMensal(t), 0);
+  // Previsto no mês: só as mensais; semestrais e anuais já foram recebidos e não entram
+  const faturamentoPrevistoMes = mensais.reduce((s, t) => s + valorMensal(t), 0);
+  const contaProduto = (lista: Tenant[]) => {
+    const c = { combo: 0, live: 0, grupos: 0 };
+    lista.forEach(t => { const p = produtoDe(t); if (p !== 'nenhum') c[p] += 1; });
+    return `${c.combo} combo · ${c.live} live · ${c.grupos} grupos`;
+  };
   const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-  // Faturamento previsto no mês: empresas cujo prazo vence neste mês renovam e pagam o ciclo do plano
-  // (Basic = 1 mês, Pro = 6 meses, Enterprise = 12 meses) pelo valor mensal cadastrado.
-  const MESES_DO_CICLO: Record<string, number> = { basic: 1, pro: 6, enterprise: 12 };
   const hoje = new Date();
-  const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-  const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1);
-  const renovamNoMes = tenants.filter(t => {
-    if (!t.is_active || t.is_blocked || !t.subscription_ends_at) return false;
-    const fim = new Date(t.subscription_ends_at);
-    return fim >= inicioMes && fim < fimMes && !!MESES_DO_CICLO[t.plan_type || ''];
-  });
-  const faturamentoPrevistoMes = renovamNoMes.reduce((s, t) => s + (Number(t.monthly_fee) || 0) * MESES_DO_CICLO[t.plan_type || ''], 0);
-  const renovamSemValor = renovamNoMes.filter(t => !(Number(t.monthly_fee) > 0)).length;
   const nomeMes = hoje.toLocaleDateString('pt-BR', { month: 'long' });
   const cartzyStats = getTenantStats(cartzyTenants);
   const fluxoStats = getTenantStats(fluxoTenants);
@@ -1117,7 +1129,7 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
                       onChange={(e) => setFormMonthlyFee(e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Quanto a empresa paga por mês. Entra no faturamento mensal estimado.
+                      Quanto a empresa paga por mês. Em branco, vale o preço do produto: Combo R$ 499, só Live ou só Grupos R$ 299.
                     </p>
                   </div>
                 </div>
@@ -1239,8 +1251,7 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
                 <p className="text-sm text-muted-foreground">Previsto em {nomeMes}</p>
                 <p className="text-2xl font-bold tabular-nums">{showForecast ? brl(faturamentoPrevistoMes) : 'R$ •••••'}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {renovamNoMes.length} renovação(ões) no mês
-                  {renovamSemValor > 0 && <span className="text-amber-600"> · {renovamSemValor} sem valor</span>}
+                  {mensais.length} mensais · {contaProduto(mensais)}
                 </p>
               </div>
               <button
@@ -1262,8 +1273,7 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
                 <p className="text-sm text-muted-foreground">Assinaturas (mensal)</p>
                 <p className="text-2xl font-bold tabular-nums">{showRevenue ? brl(faturamentoMensal) : 'R$ •••••'}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {pagantes.length - pagantesSemValor} pagantes
-                  {pagantesSemValor > 0 && <span className="text-amber-600"> · {pagantesSemValor} sem valor</span>}
+                  {pagantes.length} ativas · {pagantes.length - mensais.length} semestrais/anuais
                 </p>
               </div>
               <button
