@@ -6187,6 +6187,7 @@ export type Database = {
           live_shop_close_at: string | null
           live_shop_enabled: boolean
           logo_url: string | null
+          monthly_fee: number | null
           max_orders: number | null
           max_products: number | null
           max_whatsapp_groups: number | null
@@ -6258,6 +6259,7 @@ export type Database = {
           live_shop_close_at?: string | null
           live_shop_enabled?: boolean
           logo_url?: string | null
+          monthly_fee?: number | null
           max_orders?: number | null
           max_products?: number | null
           max_whatsapp_groups?: number | null
@@ -6329,6 +6331,7 @@ export type Database = {
           live_shop_close_at?: string | null
           live_shop_enabled?: boolean
           logo_url?: string | null
+          monthly_fee?: number | null
           max_orders?: number | null
           max_products?: number | null
           max_whatsapp_groups?: number | null

@@ -71,6 +71,7 @@ interface Tenant {
   trial_ends_at: string | null;
   subscription_ends_at: string | null;
   plan_type: string | null;
+  monthly_fee?: number | null;
   admin_email: string | null;
   created_at: string;
 }
@@ -120,6 +121,15 @@ export default function EmpresasIndex() {
   const [formContactPhone, setFormContactPhone] = useState('');
   const [formTrialDays, setFormTrialDays] = useState('7');
   const [formPlan, setFormPlan] = useState('trial_teste');
+  const [formMonthlyFee, setFormMonthlyFee] = useState('');
+  // Faturamento mensal: começa oculto e lembra a escolha neste navegador
+  const [showRevenue, setShowRevenue] = useState<boolean>(() => {
+    try { return localStorage.getItem('empresas_mostrar_faturamento') === '1'; } catch { return false; }
+  });
+  const toggleRevenue = () => setShowRevenue((v) => {
+    try { localStorage.setItem('empresas_mostrar_faturamento', v ? '0' : '1'); } catch { /* sem armazenamento */ }
+    return !v;
+  });
   const [formIsActive, setFormIsActive] = useState(true);
   const [formIsBlocked, setFormIsBlocked] = useState(false);
   const [formBlockedReason, setFormBlockedReason] = useState('');
@@ -195,7 +205,7 @@ export default function EmpresasIndex() {
 
       const { data, error: fetchError } = await supabase
         .from('tenants')
-        .select('id, name, slug, email, logo_url, is_active, is_blocked, trial_ends_at, subscription_ends_at, plan_type, admin_email, created_at, signup_status, signup_created_at')
+        .select('id, name, slug, email, logo_url, is_active, is_blocked, trial_ends_at, subscription_ends_at, plan_type, monthly_fee, admin_email, created_at, signup_status, signup_created_at')
         .order('name');
 
       if (fetchError) throw fetchError;
@@ -263,6 +273,7 @@ export default function EmpresasIndex() {
       setFormContactName('');
       setFormContactPhone('');
       setFormPlan(tenant.plan_type || 'trial_teste');
+      setFormMonthlyFee(tenant.monthly_fee != null ? String(tenant.monthly_fee).replace('.', ',') : '');
       setFormIsActive(tenant.is_active);
       setFormIsBlocked(tenant.is_blocked || false);
       setFormBlockedReason('');
@@ -303,6 +314,7 @@ export default function EmpresasIndex() {
       setFormInstagram('');
       setFormTrialDays('7');
       setFormPlan('trial_teste');
+      setFormMonthlyFee('');
       setFormIsActive(true);
       setFormIsBlocked(false);
       setFormBlockedReason('');
@@ -339,6 +351,7 @@ export default function EmpresasIndex() {
         email: formEmail || null,
         logo_url: formLogoUrl || null,
         plan_type: formPlan,
+        monthly_fee: formMonthlyFee.trim() ? (Number(formMonthlyFee.replace(/\./g, '').replace(',', '.')) || null) : null,
         is_active: formIsActive,
         is_blocked: formIsBlocked,
         // Para super_admin, não definir data de expiração
@@ -788,6 +801,15 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
   });
 
   const totalStats = getTenantStats(tenants);
+
+  // Faturamento mensal estimado: soma do valor mensal das empresas ativas, sem bloqueio e com prazo em dia
+  const pagantes = tenants.filter(t => {
+    const days = getDaysRemaining(t.subscription_ends_at || t.trial_ends_at);
+    return t.is_active && !t.is_blocked && (days === null || days > 0) && t.plan_type !== 'trial_teste' && t.plan_type !== 'trial';
+  });
+  const faturamentoMensal = pagantes.reduce((s, t) => s + (Number(t.monthly_fee) || 0), 0);
+  const pagantesSemValor = pagantes.filter(t => !(Number(t.monthly_fee) > 0)).length;
+  const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const cartzyStats = getTenantStats(cartzyTenants);
   const fluxoStats = getTenantStats(fluxoTenants);
 
@@ -1070,6 +1092,20 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
                       <option value="enterprise">Enterprise (368 dias)</option>
                     </select>
                   </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="monthly_fee">Valor mensal (R$)</Label>
+                    <Input
+                      id="monthly_fee"
+                      inputMode="decimal"
+                      placeholder="Ex.: 299,00"
+                      value={formMonthlyFee}
+                      onChange={(e) => setFormMonthlyFee(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Quanto a empresa paga por mês. Entra no faturamento mensal estimado.
+                    </p>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -1181,7 +1217,30 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
       </div>
 
       {/* Estatísticas */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Faturamento mensal</p>
+                <p className="text-2xl font-bold tabular-nums">{showRevenue ? brl(faturamentoMensal) : 'R$ •••••'}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {pagantes.length - pagantesSemValor} pagantes
+                  {pagantesSemValor > 0 && <span className="text-amber-600"> · {pagantesSemValor} sem valor</span>}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={toggleRevenue}
+                className="rounded-md p-1 text-muted-foreground hover:text-foreground"
+                aria-label={showRevenue ? 'Ocultar faturamento' : 'Mostrar faturamento'}
+                title={showRevenue ? 'Ocultar faturamento' : 'Mostrar faturamento'}
+              >
+                {showRevenue ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              </button>
+            </div>
+          </CardContent>
+        </Card>
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
