@@ -18,7 +18,8 @@ import {
   Loader2, 
   CheckCircle2, 
   AlertTriangle,
-  RefreshCw
+  RefreshCw,
+  ImageUp
 } from 'lucide-react';
 
 interface BlingProductsSyncPanelProps {
@@ -111,6 +112,48 @@ export default function BlingProductsSyncPanel({ tenantId }: BlingProductsSyncPa
       console.log('[resync-original-stock]', data);
     },
     onError: (e: any) => toast.error(e.message || 'Erro ao reenviar estoque'),
+  });
+
+  // Enviar fotos do Cartzy para produtos já vinculados ao Bling (em lotes)
+  const [fotosProgresso, setFotosProgresso] = useState<{ feitos: number; total: number } | null>(null);
+  const photosMutation = useMutation({
+    mutationFn: async () => {
+      const session = await supabase.auth.getSession();
+      let offset: number | null = 0;
+      let enviadas = 0, jaTinham = 0, falhas = 0, total = 0;
+      const erros: string[] = [];
+      setFotosProgresso({ feitos: 0, total: 0 });
+      while (offset !== null) {
+        const response = await fetch(
+          `https://hxtbsieodbtzgcvvkeqx.supabase.co/functions/v1/bling-sync-products`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.data.session?.access_token}`,
+            },
+            body: JSON.stringify({ action: 'update_photos', tenant_id: tenantId, offset, limit: 40 }),
+          }
+        );
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Erro ao enviar fotos');
+        enviadas += data.synced || 0;
+        jaTinham += data.already || 0;
+        falhas += data.errors || 0;
+        total = data.total || 0;
+        (data.details || []).filter((d: any) => !d.success).forEach((d: any) => erros.push(`${d.product_name}: ${d.error}`));
+        setFotosProgresso({ feitos: data.processed || 0, total });
+        offset = data.next_offset ?? null;
+      }
+      if (erros.length) console.warn('[bling-fotos] falhas', erros);
+      return { enviadas, jaTinham, falhas, total };
+    },
+    onSuccess: (r) => {
+      const msg = `Fotos no Bling: ${r.enviadas} enviada(s), ${r.jaTinham} já tinham, ${r.falhas} falha(s) de ${r.total}.`;
+      r.falhas > 0 ? toast.warning(msg + ' Veja o console para os detalhes.') : toast.success(msg);
+    },
+    onError: (e: any) => toast.error(e.message || 'Erro ao enviar fotos'),
+    onSettled: () => setTimeout(() => setFotosProgresso(null), 3000),
   });
 
   // Sync all products mutation
@@ -311,6 +354,37 @@ export default function BlingProductsSyncPanel({ tenantId }: BlingProductsSyncPa
           Apenas produtos ativos sem ID do Bling serão exportados.
           Produtos já sincronizados serão ignorados.
         </p>
+
+        {/* Fotos dos produtos já vinculados */}
+        <div className="border-t pt-4 space-y-2">
+          <div className="text-sm font-medium">Enviar fotos para o Bling</div>
+          <p className="text-xs text-muted-foreground">
+            Coloca a foto do Cartzy nos produtos que já estão no Bling. Só adiciona a foto: nome, preço,
+            estoque e dados fiscais do Bling não mudam. Produtos que já têm essa foto são pulados.
+          </p>
+          {fotosProgresso && (
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Enviando fotos...</span>
+                <span>{fotosProgresso.feitos}/{fotosProgresso.total || '…'}</span>
+              </div>
+              <Progress value={fotosProgresso.total ? Math.round((fotosProgresso.feitos / fotosProgresso.total) * 100) : 0} className="h-2" />
+            </div>
+          )}
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => photosMutation.mutate()}
+            disabled={photosMutation.isPending || syncedCount === 0}
+          >
+            {photosMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <ImageUp className="h-4 w-4 mr-2" />
+            )}
+            Enviar fotos de {syncedCount} produto(s) para o Bling
+          </Button>
+        </div>
 
         {/* Reenviar estoque original */}
         <div className="border-t pt-4 space-y-2">

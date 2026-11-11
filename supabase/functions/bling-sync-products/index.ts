@@ -81,6 +81,54 @@ async function updateExistingBlingProduct(
 }
 
 /**
+ * Coloca a foto do Cartzy num produto que JÁ existe no Bling, sem mexer no resto do cadastro de lá.
+ * 1) tenta PATCH só com a mídia; 2) se o Bling não aceitar, lê o produto (GET) e devolve inteiro (PUT) com a foto.
+ */
+async function setBlingProductPhoto(
+  blingProductId: number,
+  link: string,
+  accessToken: string,
+): Promise<{ ok: boolean; kind: 'patch' | 'put' | 'ja_tinha'; error?: string }> {
+  const headers = {
+    'Content-Type': 'application/json',
+    'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}`,
+    'Accept': 'application/json',
+  };
+  const midia = { imagens: { imagensURL: [{ link }] } };
+
+  // GET primeiro: evita duplicar a foto e serve de base para o PUT
+  const getRes = await fetch(`${BLING_API_URL}/produtos/${blingProductId}`, { headers });
+  const getText = await getRes.text();
+  if (!getRes.ok) return { ok: false, kind: 'put', error: `GET ${getRes.status}: ${getText.slice(0, 300)}` };
+  let atual: any;
+  try { atual = JSON.parse(getText)?.data; } catch { atual = null; }
+  if (!atual) return { ok: false, kind: 'put', error: 'Produto não encontrado no Bling' };
+
+  const externas: any[] = atual?.midia?.imagens?.externas || atual?.midia?.imagens?.imagensURL || [];
+  if (externas.some((i: any) => (i?.link || '').trim() === link)) return { ok: true, kind: 'ja_tinha' };
+
+  await delay(350);
+  const patchRes = await fetch(`${BLING_API_URL}/produtos/${blingProductId}`, {
+    method: 'PATCH', headers, body: JSON.stringify({ midia }),
+  });
+  if (patchRes.ok) return { ok: true, kind: 'patch' };
+  const patchText = await patchRes.text();
+  console.log(`[bling-sync-products] PATCH ${blingProductId} -> ${patchRes.status}: ${patchText.slice(0, 300)}`);
+
+  // Fallback: PUT com o cadastro do próprio Bling + a foto
+  const corpo: any = { ...atual };
+  delete corpo.id;
+  corpo.midia = { ...(atual.midia || {}), imagens: { imagensURL: [...externas.map((i: any) => ({ link: i.link })).filter((i: any) => i.link), { link }] } };
+  await delay(350);
+  const putRes = await fetch(`${BLING_API_URL}/produtos/${blingProductId}`, {
+    method: 'PUT', headers, body: JSON.stringify(corpo),
+  });
+  if (putRes.ok) return { ok: true, kind: 'put' };
+  const putText = await putRes.text();
+  return { ok: false, kind: 'put', error: `PUT ${putRes.status}: ${putText.slice(0, 300)}` };
+}
+
+/**
  * Find existing Bling product by code
  */
 async function findExistingBlingProductByCodigo(accessToken: string, codigo: string): Promise<number | null> {
@@ -355,6 +403,12 @@ async function sendProductToBling(
     blingProduct.gtin = product.barcode;
   }
 
+  // Foto do produto: vai como imagem externa (link público do Cartzy). O Bling baixa a partir do link.
+  const foto = typeof product.image_url === 'string' ? product.image_url.trim() : '';
+  if (/^https:\/\//i.test(foto)) {
+    blingProduct.midia = { imagens: { imagensURL: [{ link: foto }] } };
+  }
+
   if (product.weight_kg) {
     blingProduct.pesoBruto = Number(product.weight_kg);
     blingProduct.pesoLiquido = Number(product.weight_kg);
@@ -524,7 +578,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { action, tenant_id, product_id } = await req.json();
+    const { action, tenant_id, product_id, offset: offsetIn, limit: limitIn } = await req.json();
 
     console.log(`[bling-sync-products] Action: ${action}, Tenant: ${tenant_id}, Product: ${product_id}`);
 
@@ -784,6 +838,67 @@ serve(async (req) => {
           errors,
           total: products.length,
           details: results,
+        };
+        break;
+      }
+
+      case 'update_photos': {
+        // Fotos do Cartzy para produtos JÁ vinculados ao Bling, em lotes (limite de tempo da função).
+        const limit = Math.min(Math.max(Number(limitIn) || 40, 1), 60);
+        const offset = Math.max(Number(offsetIn) || 0, 0);
+
+        const { count: total } = await supabase
+          .from('products')
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenant_id)
+          .eq('is_active', true)
+          .not('bling_product_id', 'is', null)
+          .like('image_url', 'https://%');
+
+        const { data: lote, error: loteError } = await supabase
+          .from('products')
+          .select('id, name, image_url, bling_product_id')
+          .eq('tenant_id', tenant_id)
+          .eq('is_active', true)
+          .not('bling_product_id', 'is', null)
+          .like('image_url', 'https://%')
+          .order('created_at', { ascending: true })
+          .order('id', { ascending: true })
+          .range(offset, offset + limit - 1);
+
+        if (loteError) {
+          return new Response(
+            JSON.stringify({ error: 'Failed to fetch products' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const details: any[] = [];
+        let ok = 0, falhas = 0, jaTinha = 0;
+        for (const p of lote || []) {
+          await delay(350);
+          try {
+            const r = await setBlingProductPhoto(Number(p.bling_product_id), String(p.image_url).trim(), accessToken);
+            if (r.ok) { r.kind === 'ja_tinha' ? jaTinha++ : ok++; }
+            else falhas++;
+            details.push({ product_id: p.id, product_name: p.name, success: r.ok, kind: r.kind, error: r.error, bling_product_id: p.bling_product_id });
+          } catch (e: any) {
+            falhas++;
+            details.push({ product_id: p.id, product_name: p.name, success: false, error: e?.message || String(e) });
+          }
+        }
+
+        const proximo = offset + (lote?.length || 0);
+        result = {
+          success: true,
+          message: `Fotos: ${ok} enviadas, ${jaTinha} já tinham, ${falhas} falhas`,
+          synced: ok,
+          already: jaTinha,
+          errors: falhas,
+          total: total || 0,
+          processed: proximo,
+          next_offset: proximo < (total || 0) && (lote?.length || 0) > 0 ? proximo : null,
+          details,
         };
         break;
       }
