@@ -1385,8 +1385,15 @@ Deno.serve(async (req) => {
         // saem em 1–2 s. Por isso a conversa com os Correios para gerar/baixar o rótulo é feita
         // pela função do banco correios_rotulo, uma etiqueta por vez.
         const pdfs: Record<string, string> = {};
+        // Etiquetas que o navegador já recebeu em rodadas anteriores: não pede de novo aos Correios.
+        const pdfsAnt = body.pdfs && typeof body.pdfs === "object" ? body.pdfs as Record<string, unknown> : {};
+        for (const pr of prIds) {
+          const d = pdfsAnt[pr];
+          if (typeof d === "string" && d.length > 100 && d.length < 3_000_000) pdfs[pr] = d;
+        }
+        const jaTinha = new Set(Object.keys(pdfs));
         const erros: Array<{ pr: string; erro: string }> = [];
-        type Rot = { status: "ok" | "pendente" | "falha" | "erro"; recibo?: string; dados?: string; mensagem?: string };
+        type Rot = { status: "ok" | "pendente" | "falha" | "erro"; recibo?: string; dados?: string; mensagem?: string; rpcErro?: boolean };
         const rotulo = async (pr: string, recibo?: string): Promise<Rot> => {
           const { data, error } = await supabase.rpc("correios_rotulo", {
             _tenant_id: tenant_id,
@@ -1394,15 +1401,21 @@ Deno.serve(async (req) => {
             _layout: formato,
             _recibo: recibo ?? null,
           });
-          if (error) return { status: "pendente", recibo, mensagem: error.message };
-          return data as Rot;
+          if (error) {
+            log(`[${pr}] erro ao chamar correios_rotulo: ${error.message}`);
+            return { status: "pendente", recibo, mensagem: error.message, rpcErro: true };
+          }
+          const r = data as Rot;
+          if (r?.status !== "ok") log(`[${pr}] correios_rotulo: ${r?.status} ${r?.mensagem || ""}`);
+          return r;
         };
+        const tempoAcabando = () => Date.now() > deadline - 10_000;
 
         // 1) Recibos já pedidos em rodadas anteriores: confere cada um.
         for (const pr of prIds) {
           const rec = recibos[pr];
-          if (!rec) continue;
-          if (Date.now() > deadline - 10_000) break;
+          if (!rec || pdfs[pr]) continue;
+          if (tempoAcabando()) break;
           const r = await rotulo(pr, rec);
           if (r.status === "ok" && r.dados) pdfs[pr] = r.dados;
           else if (r.status === "falha") delete recibos[pr];
@@ -1410,33 +1423,34 @@ Deno.serve(async (req) => {
         }
 
         // 2) Etiquetas que faltam: uma de cada vez.
+        // Uma chamada que falhou no caminho (ex.: Correios lentos) não encerra a rodada: tenta de novo e segue para a próxima.
         let falhasSeguidas = 0;
         for (const pr of prIds) {
           if (pdfs[pr] || erros.some((e) => e.pr === pr)) continue;
-          if (Date.now() > deadline - 10_000) break;
+          if (tempoAcabando() || falhasSeguidas >= 4) break;
           let r = await rotulo(pr, recibos[pr]);
-          // ainda gerando: continua no MESMO recibo enquanto houver tempo
-          while (r.status === "pendente" && r.recibo && Date.now() < deadline - 10_000) {
-            recibos[pr] = r.recibo;
+          let tentativas = 1;
+          while (r.status === "pendente" && !tempoAcabando() && tentativas < 8) {
+            if (r.recibo) recibos[pr] = r.recibo;
             await new Promise((ok) => setTimeout(ok, 1_500));
-            r = await rotulo(pr, r.recibo);
+            r = await rotulo(pr, recibos[pr]);
+            tentativas++;
           }
           if (r.status === "ok" && r.dados) { pdfs[pr] = r.dados; falhasSeguidas = 0; continue; }
-          if (r.status === "falha") {
-            log(`[${pr}] ${r.mensagem}`);
-            delete recibos[pr];
-            if (++falhasSeguidas >= 3) break;
-            continue;
-          }
           if (r.status === "erro") { erros.push({ pr, erro: r.mensagem || "erro" }); delete recibos[pr]; continue; }
-          if (r.recibo) recibos[pr] = r.recibo;
-          break; // acabou o tempo desta chamada
+          if (r.status === "falha") delete recibos[pr];
+          else if (r.recibo) recibos[pr] = r.recibo;
+          falhasSeguidas++;
         }
 
         const prontas = Object.keys(pdfs).length;
         log(`get_labels_batch | ${prIds.length} etiquetas | prontas: ${prontas} | pendentes: ${prIds.length - prontas - erros.length} | erros: ${erros.length}`);
         if (erros.length) return respostaJson({ success: false, error: `Os Correios recusaram ${erros.length} etiqueta(s): ${erros[0].erro}` });
-        if (prontas < prIds.length) return respostaJson({ success: false, pending: true, recibos, prontas, total: prIds.length });
+        if (prontas < prIds.length) {
+          const novos: Record<string, string> = {};
+          for (const [pr, d] of Object.entries(pdfs)) if (!jaTinha.has(pr)) novos[pr] = d;
+          return respostaJson({ success: false, pending: true, recibos, prontas, total: prIds.length, pdfs: novos });
+        }
 
         const { PDFDocument } = await import("npm:pdf-lib@1.17.1");
         const saida = await PDFDocument.create();
