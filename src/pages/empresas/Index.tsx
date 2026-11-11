@@ -123,13 +123,12 @@ export default function EmpresasIndex() {
   const [formPlan, setFormPlan] = useState('trial_teste');
   const [formMonthlyFee, setFormMonthlyFee] = useState('');
   // Faturamento mensal: começa oculto e lembra a escolha neste navegador
-  const [showRevenue, setShowRevenue] = useState<boolean>(() => {
-    try { return localStorage.getItem('empresas_mostrar_faturamento') === '1'; } catch { return false; }
-  });
-  const toggleRevenue = () => setShowRevenue((v) => {
-    try { localStorage.setItem('empresas_mostrar_faturamento', v ? '0' : '1'); } catch { /* sem armazenamento */ }
-    return !v;
-  });
+  const lerVisivel = (chave: string) => { try { return localStorage.getItem(chave) === '1'; } catch { return false; } };
+  const salvarVisivel = (chave: string, v: boolean) => { try { localStorage.setItem(chave, v ? '1' : '0'); } catch { /* sem armazenamento */ } };
+  const [showRevenue, setShowRevenue] = useState<boolean>(() => lerVisivel('empresas_mostrar_faturamento'));
+  const toggleRevenue = () => setShowRevenue((v) => { salvarVisivel('empresas_mostrar_faturamento', !v); return !v; });
+  const [showForecast, setShowForecast] = useState<boolean>(() => lerVisivel('empresas_mostrar_previsao'));
+  const toggleForecast = () => setShowForecast((v) => { salvarVisivel('empresas_mostrar_previsao', !v); return !v; });
   const [formIsActive, setFormIsActive] = useState(true);
   const [formIsBlocked, setFormIsBlocked] = useState(false);
   const [formBlockedReason, setFormBlockedReason] = useState('');
@@ -810,6 +809,21 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
   const faturamentoMensal = pagantes.reduce((s, t) => s + (Number(t.monthly_fee) || 0), 0);
   const pagantesSemValor = pagantes.filter(t => !(Number(t.monthly_fee) > 0)).length;
   const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  // Faturamento previsto no mês: empresas cujo prazo vence neste mês renovam e pagam o ciclo do plano
+  // (Basic = 1 mês, Pro = 6 meses, Enterprise = 12 meses) pelo valor mensal cadastrado.
+  const MESES_DO_CICLO: Record<string, number> = { basic: 1, pro: 6, enterprise: 12 };
+  const hoje = new Date();
+  const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  const fimMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1);
+  const renovamNoMes = tenants.filter(t => {
+    if (!t.is_active || t.is_blocked || !t.subscription_ends_at) return false;
+    const fim = new Date(t.subscription_ends_at);
+    return fim >= inicioMes && fim < fimMes && !!MESES_DO_CICLO[t.plan_type || ''];
+  });
+  const faturamentoPrevistoMes = renovamNoMes.reduce((s, t) => s + (Number(t.monthly_fee) || 0) * MESES_DO_CICLO[t.plan_type || ''], 0);
+  const renovamSemValor = renovamNoMes.filter(t => !(Number(t.monthly_fee) > 0)).length;
+  const nomeMes = hoje.toLocaleDateString('pt-BR', { month: 'long' });
   const cartzyStats = getTenantStats(cartzyTenants);
   const fluxoStats = getTenantStats(fluxoTenants);
 
@@ -1217,12 +1231,35 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
       </div>
 
       {/* Estatísticas */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Faturamento mensal</p>
+                <p className="text-sm text-muted-foreground">Previsto em {nomeMes}</p>
+                <p className="text-2xl font-bold tabular-nums">{showForecast ? brl(faturamentoPrevistoMes) : 'R$ •••••'}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {renovamNoMes.length} renovação(ões) no mês
+                  {renovamSemValor > 0 && <span className="text-amber-600"> · {renovamSemValor} sem valor</span>}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={toggleForecast}
+                className="rounded-md p-1 text-muted-foreground hover:text-foreground"
+                aria-label={showForecast ? 'Ocultar previsão do mês' : 'Mostrar previsão do mês'}
+                title={showForecast ? 'Ocultar previsão do mês' : 'Mostrar previsão do mês'}
+              >
+                {showForecast ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Assinaturas (mensal)</p>
                 <p className="text-2xl font-bold tabular-nums">{showRevenue ? brl(faturamentoMensal) : 'R$ •••••'}</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   {pagantes.length - pagantesSemValor} pagantes
