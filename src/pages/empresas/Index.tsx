@@ -352,7 +352,11 @@ export default function EmpresasIndex() {
         email: formEmail || null,
         logo_url: formLogoUrl || null,
         plan_type: formPlan,
-        monthly_fee: formMonthlyFee.trim() ? (Number(formMonthlyFee.replace(/\./g, '').replace(',', '.')) || null) : null,
+        monthly_fee: (() => {
+          if (!formMonthlyFee.trim()) return null;
+          const v = Number(formMonthlyFee.replace(/\./g, '').replace(',', '.'));
+          return Number.isFinite(v) && v >= 0 ? v : null;
+        })(),
         is_active: formIsActive,
         is_blocked: formIsBlocked,
         // Para super_admin, não definir data de expiração
@@ -806,8 +810,8 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
   // Valor mensal de cada assinatura: o cadastrado na empresa ou, sem ele, o preço do produto
   // (Combo Live + Grupos = R$ 499; só Live ou só Grupos de WhatsApp = R$ 299).
   const valorMensal = (t: Tenant) => {
-    const cadastrado = Number(t.monthly_fee);
-    if (cadastrado > 0) return cadastrado;
+    // valor cadastrado vale sempre, inclusive 0 (conta da casa / cortesia)
+    if (t.monthly_fee !== null && t.monthly_fee !== undefined && !Number.isNaN(Number(t.monthly_fee))) return Number(t.monthly_fee);
     const live = !!t.enable_live;
     const grupos = !!t.enable_sendflow;
     if (live && grupos) return 499;
@@ -1129,7 +1133,7 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
                       onChange={(e) => setFormMonthlyFee(e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Quanto a empresa paga por mês. Em branco, vale o preço do produto: Combo R$ 499, só Live ou só Grupos R$ 299.
+                      Quanto a empresa paga por mês. Em branco, vale o preço do produto: Combo R$ 499, só Live ou só Grupos R$ 299. Use 0 para conta sem cobrança.
                     </p>
                   </div>
                 </div>
