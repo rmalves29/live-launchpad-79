@@ -52,6 +52,7 @@ interface Order {
   total_amount: number;
   is_paid: boolean;
   is_cancelled?: boolean;
+  payment_method?: string | null;
   payment_link: string | null;
   cart_id: number | null;
   created_at?: string | null;
@@ -62,6 +63,10 @@ interface Order {
   melhor_envio_tracking_code?: string | null;
   order_status?: 'em_separacao' | 'envio_pendente' | 'enviado' | 'liberado_retirada' | null;
 }
+
+// "Pagar na retirada": pedido confirmado pelo cliente, com o pagamento a ser feito na loja
+const isPickupAwaitingPayment = (o: { is_paid?: boolean; is_cancelled?: boolean; payment_method?: string | null }) =>
+  !o.is_paid && !o.is_cancelled && o.payment_method === 'pay_on_pickup';
 
 async function getEdgeFunctionErrorMessage(err: any): Promise<string> {
   // Supabase FunctionsError geralmente vem com `context` contendo status + body.
@@ -1183,6 +1188,10 @@ const PublicCheckout = () => {
         toast({ title: 'Pedido confirmado!', description: 'Você escolheu pagar na retirada. Pague na loja quando retirar o pedido.' });
         setPaymentMethod(acceptPix ? 'pix' : 'card');
         await searchOrders();
+        // o pedido sai dos "em aberto" e aparece no histórico como Pago (a concluir na loja)
+        setHistoryPhone(phone);
+        setHistorySearched(true);
+        await loadPaidOrdersHistory(normalizeForStorage(phone));
       } else if (data?.free_order) {
         toast({ title: 'Pedido confirmado', description: 'Pedido gratuito processado com sucesso!' });
       } else {
@@ -1261,7 +1270,7 @@ const PublicCheckout = () => {
 
       // Filtrar apenas pedidos não pagos E não cancelados para seleção
       const ordersWithItems = (allOrders || [])
-        .filter((o: any) => !o.is_paid && !o.is_cancelled)
+        .filter((o: any) => !o.is_paid && !o.is_cancelled && !isPickupAwaitingPayment(o))
         .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
       setOrders(ordersWithItems);
@@ -1396,7 +1405,7 @@ const PublicCheckout = () => {
 
       // Filtrar apenas pedidos pagos OU cancelados para o histórico
       const ordersWithItems = (allOrders || [])
-        .filter((o: any) => o.is_paid || o.is_cancelled)
+        .filter((o: any) => o.is_paid || o.is_cancelled || isPickupAwaitingPayment(o))
         .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
       setPaidOrders(ordersWithItems);
@@ -2140,10 +2149,17 @@ const PublicCheckout = () => {
                               ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-950/20'
                               : 'border-slate-200 dark:border-slate-700 hover:border-slate-300'
                           }`}
-                          onClick={() => setPaymentMethod('pay_on_pickup')}
+                          onClick={() => setPaymentMethod((m) => (m === 'pay_on_pickup' ? (acceptPix ? 'pix' : 'card') : 'pay_on_pickup'))}
                         >
                           <div className="flex items-center gap-3">
-                            <input type="radio" checked={paymentMethod === 'pay_on_pickup'} onChange={() => setPaymentMethod('pay_on_pickup')} className="w-4 h-4" />
+                            <input
+                              type="checkbox"
+                              checked={paymentMethod === 'pay_on_pickup'}
+                              onChange={() => setPaymentMethod((m) => (m === 'pay_on_pickup' ? (acceptPix ? 'pix' : 'card') : 'pay_on_pickup'))}
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-4 h-4"
+                              aria-label="Pagar na retirada"
+                            />
                             <div>
                               <span className="font-medium">Pagar na Retirada</span>
                               <p className="text-xs text-muted-foreground">Você paga na loja na hora de retirar o pedido.</p>
@@ -2381,6 +2397,9 @@ const PublicCheckout = () => {
                               if (order.is_paid && order.order_status === 'liberado_retirada') {
                                 return <Badge className="bg-gradient-to-r from-indigo-500 to-violet-500 text-white border-0">🏬 Liberado p/ Retirada</Badge>;
                               }
+                              if (isPickupAwaitingPayment(order)) {
+                                return <Badge className="bg-[#fef9c3] text-[#dc2626] ring-2 ring-[#eab308] hover:bg-[#fef9c3] border-0">✓ Pago</Badge>;
+                              }
                               if (order.is_paid) {
                                 return <Badge className="bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0">✓ Pago</Badge>;
                               }
@@ -2393,6 +2412,11 @@ const PublicCheckout = () => {
                           <p className="text-sm text-muted-foreground">
                             {order.items.length} {order.items.length === 1 ? 'produto' : 'produtos'}
                           </p>
+                          {isPickupAwaitingPayment(order) && (
+                            <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                              Pagar na retirada: o pagamento deverá ser concluído na loja.
+                            </p>
+                          )}
                           {order.melhor_envio_tracking_code && (
                             <div className="flex items-center gap-2 flex-wrap pt-1">
                               <Badge variant="outline" className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 font-mono text-xs">

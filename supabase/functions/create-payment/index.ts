@@ -495,15 +495,15 @@ serve(async (req) => {
 
     if (isPickupPay) {
       // A chave é do dono da loja (Configurações > Fretes) e só vale para frete Retirada.
-      const { data: tn } = await sb.from("tenants").select("pay_on_pickup_enabled").eq("id", payload.tenant_id).maybeSingle();
+      const { data: tn } = await sb.from("tenants").select("pay_on_pickup_enabled, pay_on_pickup_available").eq("id", payload.tenant_id).maybeSingle();
       const entrega = payload.shippingData;
       const pareceRetirada = /retir/.test(String(entrega?.service_name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
       const ehRetirada = !entrega || String(entrega.company_name || "").trim() === "Retirada" || pareceRetirada;
-      if (!tn?.pay_on_pickup_enabled || !ehRetirada) {
+      if (!tn?.pay_on_pickup_available || !tn?.pay_on_pickup_enabled || !ehRetirada) {
         // desfaz a marca nos pedidos (a gravação acima já aconteceu)
         await sb.from("orders").update({ payment_method: null }).in("id", orderIds).eq("payment_method", "pay_on_pickup");
         return new Response(
-          JSON.stringify({ success: false, error: !tn?.pay_on_pickup_enabled ? "Esta loja não aceita pagamento na retirada." : "Pagamento na retirada só vale para o frete Retirada." }),
+          JSON.stringify({ success: false, error: !(tn?.pay_on_pickup_available && tn?.pay_on_pickup_enabled) ? "Esta loja não aceita pagamento na retirada." : "Pagamento na retirada só vale para o frete Retirada." }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }

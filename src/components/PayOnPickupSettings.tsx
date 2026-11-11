@@ -16,6 +16,7 @@ export function PayOnPickupSettings() {
   const { toast } = useToast();
   const { tenantId } = useTenantContext();
   const [enabled, setEnabled] = useState(false);
+  const [available, setAvailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -23,8 +24,9 @@ export function PayOnPickupSettings() {
     if (!tenantId) return;
     let alive = true;
     (async () => {
-      const { data } = await (supabase as any).from('tenants').select('pay_on_pickup_enabled').eq('id', tenantId).maybeSingle();
+      const { data } = await (supabase as any).from('tenants').select('pay_on_pickup_enabled, pay_on_pickup_available').eq('id', tenantId).maybeSingle();
       if (!alive) return;
+      setAvailable(!!data?.pay_on_pickup_available);
       setEnabled(!!data?.pay_on_pickup_enabled);
       setLoading(false);
     })();
@@ -53,6 +55,9 @@ export function PayOnPickupSettings() {
         : 'A opção não aparece mais no checkout.',
     });
   }
+
+  // Recurso liberado por empresa (hoje só a Estilo Romano): para as demais lojas o card nem aparece
+  if (loading || !available) return null;
 
   return (
     <Card>

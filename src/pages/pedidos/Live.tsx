@@ -48,6 +48,8 @@ interface Order {
   event_date: string;
   total_amount: number;
   is_paid: boolean;
+  is_cancelled?: boolean;
+  payment_method?: string | null;
   created_at: string;
   cart_id: number | null;
 }
@@ -1247,9 +1249,15 @@ const Live = () => {
                                 <TableCell>{formatBrasiliaDate(order.created_at)}</TableCell>
                                 <TableCell>{formatCurrency(order.total_amount)}</TableCell>
                                 <TableCell>
-                                  <Badge variant={order.is_paid ? "default" : "secondary"}>
-                                    {order.is_paid ? 'Pago' : 'Pendente'}
-                                  </Badge>
+                                  {!order.is_paid && !order.is_cancelled && order.payment_method === 'pay_on_pickup' ? (
+                                    <Badge title="Pagar na retirada: o pagamento ainda não foi recebido" className="bg-[#fef9c3] text-[#dc2626] ring-2 ring-[#eab308] hover:bg-[#fef9c3] border-0">
+                                      Pago
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant={order.is_paid ? "default" : "secondary"}>
+                                      {order.is_paid ? 'Pago' : 'Pendente'}
+                                    </Badge>
+                                  )}
                                 </TableCell>
                                 <TableCell>
                                   <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>

@@ -151,6 +151,9 @@ export default function LiveShop() {
   const [shipLoading, setShipLoading] = useState(false);
   const [shipNotice, setShipNotice] = useState('');
   const [pay, setPay] = useState<'pix' | 'card'>('pix');
+  // "Pagar na retirada": caixinha marcada pela cliente (só existe com frete Retirada) e tela final desse caso
+  const [pickupPay, setPickupPay] = useState(false);
+  const [donePickup, setDonePickup] = useState(false);
 
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [tick, setTick] = useState(() => Date.now());
@@ -440,6 +443,12 @@ export default function LiveShop() {
     return mins.length ? Math.min(...mins) : null;
   }, [meta]);
   const selectedShip = shipOptions.find((o) => o.id === shipId) || null;
+  const shipIsPickup = !!selectedShip && (selectedShip.company === 'Retirada' || /retir/.test(String(selectedShip.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')));
+  const pickupAvailable = !!meta?.payment.pay_on_pickup && shipIsPickup;
+  const pickupOn = pickupAvailable && pickupPay;
+  useEffect(() => {
+    if (pickupPay && !pickupAvailable) setPickupPay(false);
+  }, [pickupPay, pickupAvailable]);
   const shipPrice = selectedShip ? selectedShip.price : 0;
   const cardInfoText = useMemo(() => {
     const ci = meta?.payment.card_installments;
@@ -776,9 +785,10 @@ export default function LiveShop() {
   }, [screen, meta?.tenant.id, cepForShipping, JSON.stringify(cart.map((l) => [l.product_id, l.qty]))]);
 
   // ------------------------------------------------ pedido e pagamento
-  async function placeOrder(method: 'pix' | 'card' = pay) {
+  async function placeOrder(method: 'pix' | 'card' | 'pay_on_pickup' = pay) {
     if (!meta || !customer) return;
-    setPay(method);
+    if (method !== 'pay_on_pickup') setPay(method);
+    setDonePickup(false);
     // o desconto Pix depende da forma escolhida agora (o estado `pay` só atualiza no próximo render)
     const pixOff = method === 'pix' ? Math.round((Math.max(0, subtotal - couponOff) * (meta.payment.pix_discount_percent || 0)) / 100 * 100) / 100 : 0;
     if (!selectedShip) { toast('Escolha uma opção de frete'); return; }
@@ -837,6 +847,15 @@ export default function LiveShop() {
       if (payErr) { await fail('Não foi possível iniciar o pagamento. Tente novamente.'); return; }
       if (data?.success === false && data?.error) { await fail(String(data.error)); return; }
 
+      if (data?.pay_on_pickup) {
+        // Pedido confirmado sem link de pagamento: o pagamento é concluído na loja
+        leavingRef.current = true;
+        if (!direct) { setCart([]); writeLS(`live_cart_${slug}`, []); }
+        writeLS(`live_order_${slug}`, null);
+        setDonePickup(true);
+        setScreen('done');
+        return;
+      }
       const url = data?.init_point || data?.sandbox_init_point;
       if (url) {
         leavingRef.current = true; // o carrinho é limpo de propósito: não é "carrinho vazio"
@@ -1202,18 +1221,34 @@ export default function LiveShop() {
         </div>
         <div className="foot"><div className="in">
           {(original - subtotal + couponOff) > 0 && <div className="save">Você está economizando {brl(original - subtotal + couponOff)} neste pedido</div>}
+          {pickupAvailable && (
+            <label
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', marginBottom: 8, borderRadius: 12, cursor: 'pointer', background: '#fef9c3', border: `2px solid ${pickupOn ? '#eab308' : '#fde68a'}` }}
+            >
+              <input type="checkbox" checked={pickupPay} onChange={(e) => setPickupPay(e.target.checked)} style={{ width: 18, height: 18 }} aria-label="Pagar na retirada" />
+              <span style={{ display: 'flex', flexDirection: 'column' }}>
+                <b style={{ fontSize: 15 }}>Pagar na Retirada</b>
+                <small style={{ color: 'var(--muted)' }}>Você paga na loja na hora de retirar o pedido.</small>
+              </span>
+            </label>
+          )}
+          {pickupOn && (
+            <button className="cta block" onClick={() => placeOrder('pay_on_pickup')} disabled={busy || !selectedShip || lines.length === 0} type="button">
+              {busy ? 'Confirmando o pedido…' : 'Confirmar pedido (pagar na retirada)'}
+            </button>
+          )}
           {/* Um toque na forma de pagamento já cria o pedido e abre a página de pagamento (sem botão "Fazer pedido") */}
-          {meta?.payment.pix && (
+          {!pickupOn && meta?.payment.pix && (
             <button className="cta block" onClick={() => placeOrder('pix')} disabled={busy || !selectedShip || lines.length === 0} type="button">
               {busy ? 'Abrindo o pagamento…' : `Pagar com Pix · ${brl(baseTotal - pixDiscountOnBase)}${pixPctMeta > 0 ? ` (${pixPctMeta}% off)` : ''}`}
             </button>
           )}
-          {meta?.payment.card && (
+          {!pickupOn && meta?.payment.card && (
             <button className={meta?.payment.pix ? 'cta block alt' : 'cta block'} style={meta?.payment.pix ? { marginTop: 8, background: 'transparent', color: 'var(--accent)', border: '1.5px solid var(--accent)' } : undefined} onClick={() => placeOrder('card')} disabled={busy || !selectedShip || lines.length === 0} type="button">
               {busy ? 'Abrindo o pagamento…' : `Pagar com cartão · ${brl(baseTotal)}`}
             </button>
           )}
-          {meta?.payment.card && <div className="note" style={{ textAlign: 'center', marginTop: 6 }}>{cardInfoText}</div>}
+          {!pickupOn && meta?.payment.card && <div className="note" style={{ textAlign: 'center', marginTop: 6 }}>{cardInfoText}</div>}
         </div></div>
       </>
     );
@@ -1223,7 +1258,13 @@ export default function LiveShop() {
     <div className="center" style={{ padding: '0 16px' }}>
       <div className="ok-badge">✓</div>
       <h2 style={{ fontSize: 24 }}>Pedido confirmado!</h2>
-      <p style={{ color: 'var(--muted)', margin: '8px 0 22px' }}>Enviaremos os detalhes no seu WhatsApp. Pode voltar para a live.</p>
+      {donePickup && (
+        <div style={{ margin: '10px 0 0' }}>
+          <span style={{ display: 'inline-block', padding: '4px 12px', borderRadius: 999, background: '#fef9c3', color: '#dc2626', border: '2px solid #eab308', fontWeight: 700 }}>✓ Pago</span>
+          <p style={{ color: '#b45309', fontWeight: 600, margin: '8px 0 0' }}>Pagar na retirada: o pagamento deverá ser concluído na loja.</p>
+        </div>
+      )}
+      <p style={{ color: 'var(--muted)', margin: '8px 0 22px' }}>{donePickup ? 'Retire seu pedido na loja e pague no balcão.' : 'Enviaremos os detalhes no seu WhatsApp. Pode voltar para a live.'}</p>
       <button className="cta block" onClick={() => { setDirect(null); setScreen('shop'); }} type="button">Voltar para a live</button>
     </div>
   );

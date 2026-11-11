@@ -69,7 +69,7 @@ async function getTenant(slugRaw: unknown) {
   if (!slug) return null;
   const { data } = await sb
     .from('tenants')
-    .select('id, name, slug, logo_url, primary_color, is_active, live_reserve_mode, live_cart_minutes, live_shop_enabled, live_shop_close_at, live_open_order, enable_loja_live, enable_afiliados')
+    .select('id, name, slug, logo_url, primary_color, is_active, live_reserve_mode, live_cart_minutes, live_shop_enabled, live_shop_close_at, live_open_order, enable_loja_live, enable_afiliados, pay_on_pickup_enabled, pay_on_pickup_available')
     .eq('slug', slug)
     .eq('is_active', true)
     .maybeSingle();
@@ -251,6 +251,8 @@ async function loadCatalogExtras(tenant: any, aff?: any) {
     const pg: any = !inf?.is_active && pagarme.data?.is_active && active === pagarme.data ? pagarme.data : null;
     extras.payment = {
       pix, card,
+      // "Pagar na retirada": só vale onde o recurso foi liberado (hoje: Estilo Romano) e o dono ligou a chave
+      pay_on_pickup: tenant.pay_on_pickup_available === true && tenant.pay_on_pickup_enabled === true,
       pix_discount_percent: num(active?.pix_discount_percent),
       requires_email: !!inf?.is_active,
       card_installments: pg ? {
@@ -560,8 +562,10 @@ async function reserve(body: any, tenant: any, aff: any) {
 }
 
 async function cancelPending(tenantId: string, orderId: number, phone: string) {
-  const { data: o } = await sb.from('orders').select('id, customer_phone, is_paid, is_cancelled, source').eq('tenant_id', tenantId).eq('id', orderId).maybeSingle();
+  const { data: o } = await sb.from('orders').select('id, customer_phone, is_paid, is_cancelled, source, payment_method').eq('tenant_id', tenantId).eq('id', orderId).maybeSingle();
   if (!o || o.is_paid || o.is_cancelled || o.source !== 'live_shop') return false;
+  // "Pagar na retirada" já confirmado: quem cancela é a loja, não a vitrine
+  if ((o as any).payment_method === 'pay_on_pickup') return false;
   if (!phoneVariants(phone).includes(digits(o.customer_phone))) return false;
   await sb.rpc('restore_order_stock', { p_order_id: orderId });
   await sb.from('orders').update({ is_cancelled: true, cancellation_reason: 'Pedido da Loja da Live substituído ou cancelado pelo cliente' }).eq('id', orderId).eq('is_paid', false);
@@ -582,6 +586,7 @@ async function findOpenLiveOrder(tenantId: string, phone: string) {
   const { data } = await sb.from('orders')
     .select('id, cart_id, customer_phone, payment_link, observation, coupon_code, affiliate_id, affiliate_commission_percent')
     .eq('tenant_id', tenantId).eq('source', 'live_shop').eq('is_paid', false).eq('is_cancelled', false)
+    .or('payment_method.is.null,payment_method.neq.pay_on_pickup')
     .in('customer_phone', phoneVariants(phone))
     .order('id', { ascending: false }).limit(1);
   return ((data && data[0]) as any) || null;
