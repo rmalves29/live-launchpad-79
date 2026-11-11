@@ -106,6 +106,31 @@ serve(async (req) => {
     const guard = await authorizeTenantCaller(req, supabase, tenantId);
     if (!guard.ok) return guardResponse(guard, corsHeaders);
 
+    // ======================= STATUS NO CARTZY =======================
+    // A lista da prévia fica guardada no navegador: aqui a tela confere de novo, só no Cartzy, o que já existe (produto apagado volta a ser "novo").
+    if (action === "statuses") {
+      const items: Array<{ bling_id: number; codigo: string }> = (Array.isArray(body.items) ? body.items : [])
+        .slice(0, 400)
+        .map((i: any) => ({ bling_id: Number(i?.bling_id), codigo: String(i?.codigo ?? "").trim() }))
+        .filter((i: any) => Number.isFinite(i.bling_id) && i.bling_id > 0);
+      if (!items.length) return json({ ok: true, statuses: [] });
+      const ids = items.map((i) => i.bling_id);
+      const quoted = items.map((i) => `"${i.codigo.replace(/"/g, "")}"`).join(",");
+      const byId = new Map<number, any>(), byCode = new Map<string, any>();
+      const { data: linked } = await supabase.from("products").select("id, code, sku_erp, bling_product_id").eq("tenant_id", tenantId).in("bling_product_id", ids);
+      for (const p of linked || []) byId.set(Number(p.bling_product_id), p);
+      const { data: sameCode } = await supabase.from("products").select("id, code, sku_erp, bling_product_id").eq("tenant_id", tenantId).or(`code.in.(${quoted}),sku_erp.in.(${quoted})`);
+      for (const p of sameCode || []) { if (p.code) byCode.set(String(p.code).toLowerCase(), p); if (p.sku_erp) byCode.set(String(p.sku_erp).toLowerCase(), p); }
+      return json({
+        ok: true,
+        statuses: items.map((i) => {
+          const l = byId.get(i.bling_id);
+          const s = byCode.get(i.codigo.toLowerCase());
+          return { bling_id: i.bling_id, status: l ? "vinculado" : s ? "existe" : "novo", cartzy_id: l?.id ?? s?.id ?? null };
+        }),
+      });
+    }
+
     const { data: integ } = await supabase.from("integration_bling").select("*").eq("tenant_id", tenantId).maybeSingle();
     if (!integ?.access_token || !integ.is_active) return json({ error: "Bling não autorizado ou inativo para esta empresa." }, 400);
     const depositId = Number(integ.bling_deposit_id) || 0;

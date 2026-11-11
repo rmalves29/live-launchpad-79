@@ -91,10 +91,30 @@ export default function BlingProductsImportPanel({ tenantId, depositName, stores
 
   const listKey = `${storeId}|${onlyStock}`;
 
+  // A lista guardada pode estar velha: produto apagado no Cartzy continuava como "Já no Cartzy" e não dava para importar.
+  // Ao abrir, confere de novo só os status no Cartzy (não chama o Bling) e corrige a lista.
+  const statusRun = useRef(0);
+  async function refreshStatuses(list: PreviewRow[], key: string, at: number) {
+    const run = ++statusRun.current;
+    try {
+      const fresh = new Map<number, { status: PreviewRow['status']; cartzy_id: number | null }>();
+      for (let i = 0; i < list.length; i += 400) {
+        const data = await call({ tenant_id: tenantId, action: 'statuses', items: list.slice(i, i + 400).map((r) => ({ bling_id: r.bling_id, codigo: r.codigo })) });
+        for (const s of data.statuses as Array<{ bling_id: number; status: PreviewRow['status']; cartzy_id: number | null }>) fresh.set(s.bling_id, s);
+        if (statusRun.current !== run) return;
+      }
+      const merged = list.map((r) => { const s = fresh.get(r.bling_id); return s ? { ...r, status: s.status, cartzy_id: s.cartzy_id } : r; });
+      if (merged.some((r, i) => r.status !== list[i].status)) {
+        setRows(merged);
+        writeCache(tenantId, { key, at, rows: merged });
+      }
+    } catch { /* sem conexão: segue com a lista guardada */ }
+  }
+
   // lista salva de uma visita anterior (mesma loja e mesmo filtro de estoque)
   useEffect(() => {
     const c = readCache(tenantId);
-    if (c && c.key === listKey && c.rows.length) { setRows(c.rows); setSavedAt(c.at); } else { setRows([]); setSavedAt(null); }
+    if (c && c.key === listKey && c.rows.length) { setRows(c.rows); setSavedAt(c.at); void refreshStatuses(c.rows, c.key, c.at); } else { setRows([]); setSavedAt(null); }
     setPage(0); setSelected(new Set()); setResults({});
   }, [tenantId, listKey]);
 
