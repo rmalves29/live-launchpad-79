@@ -56,3 +56,18 @@ describe('baixarEtiquetasCorreios — etiquetas já prontas', () => {
     expect(enviados[1].pdfs).toEqual({ a: 'PDF-A' });
   });
 });
+
+describe('baixarEtiquetasCorreios — pedidos já postados', () => {
+  it('baixa as outras e avisa quais pedidos já foram postados', async () => {
+    let avisados: number[] = [];
+    const invoke = async () => ({ data: { success: true, labelPdfBase64: PDF, total: 1, pedidos_postados: [16903] }, error: null });
+    const n = await baixarEtiquetasCorreios(invoke, 't', [17011, 16903], undefined, 'zebra', (p) => (avisados = p));
+    expect(n).toBe(1);
+    expect(avisados).toEqual([16903]);
+  });
+
+  it('dá erro claro quando todos os pedidos já foram postados', async () => {
+    const invoke = async () => ({ data: { success: true, labelPdfBase64: null, total: 0, pedidos_postados: [16903, 16901] }, error: null });
+    await expect(baixarEtiquetasCorreios(invoke, 't', [16903, 16901])).rejects.toThrow('#16903, #16901');
+  });
+});

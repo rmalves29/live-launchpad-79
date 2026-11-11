@@ -1457,7 +1457,8 @@ Deno.serve(async (req) => {
           return respostaJson({ success: false, error: `Os Correios recusaram ${erros.length} etiqueta(s) (pedido ${quais}): ${erros[0].erro}` });
         }
         if (postados.size === prIds.length) {
-          return respostaJson({ success: false, error: `${postados.size === 1 ? "Este pedido já foi postado" : "Todos estes pedidos já foram postados"} nos Correios, e os Correios não imprimem mais a etiqueta depois da postagem: ${pedidosPostados.map((n) => `#${n}`).join(", ")}.` });
+          // nada para imprimir: o navegador avisa quais pedidos já foram postados
+          return respostaJson({ success: true, labelPdfBase64: null, total: 0, pedidos_postados: pedidosPostados });
         }
         if (prontas + postados.size < prIds.length) {
           const novos: Record<string, string> = {};
