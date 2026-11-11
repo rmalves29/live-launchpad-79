@@ -4782,6 +4782,7 @@ export type Database = {
           is_live: boolean | null
           live_added_at: string | null
           live_position: number | null
+          live_removed_at: string | null
           name: string
           observation: string | null
           parent_product_id: number | null
@@ -4808,6 +4809,7 @@ export type Database = {
           is_live?: boolean | null
           live_added_at?: string | null
           live_position?: number | null
+          live_removed_at?: string | null
           name: string
           observation?: string | null
           parent_product_id?: number | null
@@ -4834,6 +4836,7 @@ export type Database = {
           is_live?: boolean | null
           live_added_at?: string | null
           live_position?: number | null
+          live_removed_at?: string | null
           name?: string
           observation?: string | null
           parent_product_id?: number | null
@@ -6187,10 +6190,10 @@ export type Database = {
           live_shop_close_at: string | null
           live_shop_enabled: boolean
           logo_url: string | null
-          monthly_fee: number | null
           max_orders: number | null
           max_products: number | null
           max_whatsapp_groups: number | null
+          monthly_fee: number | null
           name: string
           onboarding_meeting_at: string | null
           order_merge_days: number | null
@@ -6259,10 +6262,10 @@ export type Database = {
           live_shop_close_at?: string | null
           live_shop_enabled?: boolean
           logo_url?: string | null
-          monthly_fee?: number | null
           max_orders?: number | null
           max_products?: number | null
           max_whatsapp_groups?: number | null
+          monthly_fee?: number | null
           name: string
           onboarding_meeting_at?: string | null
           order_merge_days?: number | null
@@ -6331,10 +6334,10 @@ export type Database = {
           live_shop_close_at?: string | null
           live_shop_enabled?: boolean
           logo_url?: string | null
-          monthly_fee?: number | null
           max_orders?: number | null
           max_products?: number | null
           max_whatsapp_groups?: number | null
+          monthly_fee?: number | null
           name?: string
           onboarding_meeting_at?: string | null
           order_merge_days?: number | null
