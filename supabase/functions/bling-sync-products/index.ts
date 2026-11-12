@@ -105,7 +105,9 @@ async function setBlingProductPhoto(
   if (!atual) return { ok: false, kind: 'put', error: 'Produto não encontrado no Bling' };
 
   const externas: any[] = atual?.midia?.imagens?.externas || atual?.midia?.imagens?.imagensURL || [];
-  if (externas.some((i: any) => (i?.link || '').trim() === link)) return { ok: true, kind: 'ja_tinha' };
+  // Depois que o Bling baixa a foto do link, ela passa a aparecer em "internas": se já tem qualquer foto, não mexe.
+  const internas: any[] = atual?.midia?.imagens?.internas || [];
+  if (internas.length > 0 || externas.length > 0) return { ok: true, kind: 'ja_tinha' };
 
   await delay(350);
   const patchRes = await fetch(`${BLING_API_URL}/produtos/${blingProductId}`, {
