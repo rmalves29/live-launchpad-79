@@ -14,6 +14,7 @@ import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { Plus, Edit, Users, Mail, Trash2, UserCheck, Eye, EyeOff } from "lucide-react";
 import { formatBrasiliaDate } from '@/lib/date-utils';
+import { MENU_ITEMS, MENU_GROUPS, isMenuEnabled, type MenuFlags } from '@/lib/menu-items';
 import { INTEGRATION_KEYS, DEFAULT_OFF_INTEGRATIONS, isIntegrationEnabled } from '@/lib/integration-keys';
 
 interface Tenant {
@@ -28,6 +29,7 @@ interface Tenant {
   enable_live?: boolean;
   enable_loja_live?: boolean;
   enable_sendflow?: boolean;
+  menu_flags?: MenuFlags | null;
 }
 
 interface TenantCredential {
@@ -66,6 +68,7 @@ export default function TenantsManager() {
     enable_sendflow: true,
     max_whatsapp_groups: null as number | null,
     enabled_integrations: {} as Record<string, boolean>,
+    menu_flags: {} as MenuFlags,
   });
 
   const defaultEnabledIntegrations = () =>
@@ -189,7 +192,8 @@ export default function TenantsManager() {
           enable_loja_live: formData.enable_loja_live,
           enable_sendflow: formData.enable_sendflow,
           max_whatsapp_groups: formData.max_whatsapp_groups,
-          enabled_integrations: formData.enabled_integrations as any
+          enabled_integrations: formData.enabled_integrations as any,
+          menu_flags: formData.menu_flags as any,
         })
         .select()
         .single();
@@ -244,6 +248,7 @@ export default function TenantsManager() {
         enable_sendflow: true,
         max_whatsapp_groups: null,
         enabled_integrations: defaultEnabledIntegrations(),
+        menu_flags: {},
       });
       setShowCreateDialog(false);
       
@@ -277,7 +282,8 @@ export default function TenantsManager() {
           enable_loja_live: formData.enable_loja_live,
           enable_sendflow: formData.enable_sendflow,
           enabled_integrations: formData.enabled_integrations as any,
-        })
+          menu_flags: formData.menu_flags as any,
+        } as any)
         .eq("id", editingTenant.id);
 
       if (tenantError) throw tenantError;
@@ -338,6 +344,7 @@ export default function TenantsManager() {
         enable_sendflow: true,
         max_whatsapp_groups: null,
         enabled_integrations: defaultEnabledIntegrations(),
+        menu_flags: {},
       });
       loadData();
 
@@ -432,6 +439,7 @@ export default function TenantsManager() {
       enable_sendflow: true,
       max_whatsapp_groups: null,
       enabled_integrations: defaultEnabledIntegrations(),
+      menu_flags: {},
     });
     setEditingTenant(null);
   };
@@ -658,6 +666,7 @@ export default function TenantsManager() {
                               ...defaultEnabledIntegrations(),
                               ...(tenant.enabled_integrations || {}),
                             },
+                            menu_flags: { ...(tenant.menu_flags || {}) },
                           });
                         }}
                       >
@@ -709,29 +718,7 @@ export default function TenantsManager() {
                           />
                         </div>
 
-                        <div className="space-y-2">
-                          <h3 className="font-semibold">Funcionalidades da empresa</h3>
-                          <p className="text-xs text-muted-foreground">
-                            Desligado, o item some do menu da empresa, a página deixa de abrir e (na Loja da Live) o link público sai do ar. Vale depois que a pessoa recarregar o sistema.
-                          </p>
-                          {([
-                            ['enable_live', 'Live', 'Menu Live > Live (/live)'],
-                            ['enable_loja_live', 'Loja da Live', 'Menu Live > Loja da Live (/loja-da-live) e o link público da vitrine'],
-                            ['enable_sendflow', 'SendFlow', 'Menu Grupo VIP > SendFlow (/sendflow)'],
-                          ] as const).map(([key, label, hint]) => (
-                            <div key={key} className="flex items-center justify-between rounded-lg border p-3">
-                              <div className="space-y-0.5">
-                                <Label htmlFor={`edit_${key}`}>{label}</Label>
-                                <p className="text-xs text-muted-foreground">{hint}</p>
-                              </div>
-                              <Switch
-                                id={`edit_${key}`}
-                                checked={formData[key]}
-                                onCheckedChange={(v) => setFormData({ ...formData, [key]: v })}
-                              />
-                            </div>
-                          ))}
-                        </div>
+                        <MenusToggleSection formData={formData} setFormData={setFormData} />
 
                         <IntegrationsToggleSection
                           value={formData.enabled_integrations}
@@ -851,6 +838,39 @@ function IntegrationsToggleSection({
               </label>
             ))}
           </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Liga/desliga cada item do menu da empresa. Os três primeiros da Live/Grupo VIP usam as colunas antigas
+// (enable_live, enable_loja_live, enable_sendflow); o resto vai em tenants.menu_flags.
+function MenusToggleSection({ formData, setFormData }: { formData: any; setFormData: (v: any) => void }) {
+  const ligado = (key: string) => isMenuEnabled(formData, key as any);
+  const mudar = (key: string, v: boolean) => {
+    const def = MENU_ITEMS.find((m) => m.key === key);
+    if (def?.column) setFormData({ ...formData, [def.column]: v });
+    else setFormData({ ...formData, menu_flags: { ...(formData.menu_flags || {}), [key]: v } });
+  };
+  return (
+    <div className="space-y-3">
+      <div>
+        <h3 className="font-semibold">Menus da empresa</h3>
+        <p className="text-xs text-muted-foreground">
+          Desligado, o item some do menu da empresa e a página deixa de abrir (na Loja da Live o link público também sai do ar).
+          Vale depois que a pessoa recarregar o sistema.
+        </p>
+      </div>
+      {MENU_GROUPS.map((grupo) => (
+        <div key={grupo} className="space-y-1.5">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{grupo}</div>
+          {MENU_ITEMS.filter((m) => m.group === grupo).map((m) => (
+            <div key={m.key} className="flex items-center justify-between rounded-lg border px-3 py-2">
+              <Label htmlFor={`menu_${m.key}`} className="font-normal">{m.label}</Label>
+              <Switch id={`menu_${m.key}`} checked={ligado(m.key)} onCheckedChange={(v) => mudar(m.key, v)} />
+            </div>
+          ))}
         </div>
       ))}
     </div>

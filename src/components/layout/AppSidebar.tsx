@@ -35,6 +35,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useTenant } from '@/hooks/useTenant';
 import { supabase } from '@/integrations/supabase/client';
 import cartzyLogo from '@/assets/cartzy-logo.png';
+import { isMenuEnabled, type MenuKey } from '@/lib/menu-items';
 
 type NavItem = { path: string; label: string; icon?: any; external?: string };
 type NavEntry =
@@ -58,10 +59,16 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const enableLive = tenant?.enable_live ?? true;
-  const enableLoja = tenant?.enable_loja_live ?? true;
-  const showLiveMenu = enableLive || enableLoja;
-  const enableSendflow = tenant?.enable_sendflow ?? true;
+  // Cada item do menu pode ser ligado/desligado por empresa (Configurações > Empresas > Editar).
+  const on = (k: MenuKey) => isMenuEnabled(tenant as any, k);
+  const liveItems: NavItem[] = [
+    ...(on('loja_live') ? [{ path: '/loja-da-live', label: 'Loja da Live', icon: Store }] : []),
+    ...(on('live_instagram') ? [{ path: '/live', label: 'Lançar pedidos Instagram', icon: Radio }] : []),
+    ...(on('live_tiktok') ? [{ path: '/live-tiktok', label: 'Lançar pedidos TikTok', icon: Music2 }] : []),
+  ];
+  const showLiveMenu = liveItems.length > 0;
+  const pedidoManual: NavItem[] = on('pedido_manual') ? [{ path: '/pedidos-manual', label: 'Pedido Manual', icon: PlusCircle }] : [];
+  const it = (k: MenuKey, item: NavItem): NavEntry[] => (on(k) ? [{ type: 'item', item }] : []);
   const isSuperAdmin = profile?.role === 'super_admin';
   const isRafael = user?.email === 'rafael@maniadmulher.com';
 
@@ -70,86 +77,76 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
     return location.pathname === path || location.pathname.startsWith(path + '/');
   };
 
-  const groups: NavGroup[] = [
+  const allGroups: NavGroup[] = [
     {
       label: 'Principal',
       entries: [
-        { type: 'item', item: { path: '/pedidos', label: 'Pedidos', icon: ShoppingBag } },
-        // Com Live e Loja da Live desligadas o menu "Live" some; o Pedido Manual continua acessível aqui.
-        ...(!showLiveMenu ? [{ type: 'item' as const, item: { path: '/pedidos-manual', label: 'Pedido Manual', icon: PlusCircle } }] : []),
-        ...(tenant?.slug
-          ? [{ type: 'item' as const, item: { path: `/t/${tenant.slug}/checkout`, label: 'Checkout', icon: ShoppingCart } }]
-          : []),
-        { type: 'item', item: { path: '/sorteio', label: 'Sorteio', icon: Trophy } },
+        ...it('pedidos', { path: '/pedidos', label: 'Pedidos', icon: ShoppingBag }),
+        // Sem nenhum item de Live o menu "Live" some; o Pedido Manual continua acessível aqui.
+        ...(!showLiveMenu ? pedidoManual.map((item) => ({ type: 'item' as const, item })) : []),
+        ...(tenant?.slug ? it('checkout', { path: `/t/${tenant.slug}/checkout`, label: 'Checkout', icon: ShoppingCart }) : []),
+        ...it('sorteio', { path: '/sorteio', label: 'Sorteio', icon: Trophy }),
       ],
     },
-    // Menu "Live": cada item tem a sua flag por empresa (tenants.enable_loja_live e tenants.enable_live)
-    ...(showLiveMenu
-      ? [{
-          label: 'Live',
-          entries: [
-            ...(enableLoja ? [{ type: 'item' as const, item: { path: '/loja-da-live', label: 'Loja da Live', icon: Store } }] : []),
-            ...(enableLive ? [
-              { type: 'item' as const, item: { path: '/live', label: 'Lançar pedidos Instagram', icon: Radio } },
-              { type: 'item' as const, item: { path: '/live-tiktok', label: 'Lançar pedidos TikTok', icon: Music2 } },
-            ] : []),
-            { type: 'item' as const, item: { path: '/pedidos-manual', label: 'Pedido Manual', icon: PlusCircle } },
-          ],
-        }]
-      : []),
-    // Menu "Grupo VIP": SendFlow só com tenants.enable_sendflow; o Fluxo de Envio fica sempre disponível
+    {
+      label: 'Live',
+      entries: showLiveMenu
+        ? [...liveItems, ...pedidoManual].map((item) => ({ type: 'item' as const, item }))
+        : [],
+    },
     {
       label: 'Grupo VIP',
       entries: [
-        ...(enableSendflow
-          ? [{ type: 'item' as const, item: { path: '/sendflow', label: 'SendFlow', icon: Send } }]
-          : []),
-        { type: 'item', item: { path: '/fluxo-envio/painel', label: 'Fluxo de Envio', icon: GitBranch } },
+        ...it('sendflow', { path: '/sendflow', label: 'SendFlow', icon: Send }),
+        ...it('fluxo_envio', { path: '/fluxo-envio/painel', label: 'Fluxo de Envio', icon: GitBranch }),
       ],
     },
     {
       label: 'Gestão',
       entries: [
-        { type: 'item', item: { path: '/produtos', label: 'Produtos', icon: Package } },
-        { type: 'item', item: { path: '/clientes', label: 'Clientes', icon: Users } },
-        { type: 'item', item: { path: '/fila-espera', label: 'Fila de Espera', icon: ListOrdered } },
-        { type: 'item', item: { path: '/relatorios', label: 'Relatórios', icon: BarChart3 } },
+        ...it('produtos', { path: '/produtos', label: 'Produtos', icon: Package }),
+        ...it('clientes', { path: '/clientes', label: 'Clientes', icon: Users }),
+        ...it('fila_espera', { path: '/fila-espera', label: 'Fila de Espera', icon: ListOrdered }),
+        ...it('relatorios', { path: '/relatorios', label: 'Relatórios', icon: BarChart3 }),
       ],
     },
     {
       label: 'Comunicação',
       entries: [
-        { type: 'item', item: { path: '/comunicacao/push', label: 'Push', icon: Bell } },
+        ...it('push', { path: '/comunicacao/push', label: 'Push', icon: Bell }),
         // Todos assistem na Central de Tutoriais; o super admin gerencia os vídeos pelo botão "Gerenciar vídeos" dela
-        { type: 'item' as const, item: { path: '/ajuda', label: 'Tutoriais', icon: PlayCircle } },
-
-        {
-          type: 'collapsible',
-          key: 'whatsapp',
-          label: 'WhatsApp',
-          icon: MessageSquare,
-          items: [
-            { path: '/whatsapp/zapi', label: 'Conexão WhatsApp' },
-            ...(tenant?.slug === 'orderzap' ? [{ path: '/whatsapp/oficial', label: 'API Oficial (Meta)' }] : []),
-            { path: '/whatsapp/templates', label: 'Templates' },
-            { path: '/whatsapp/cobranca', label: 'Cobrança em Massa' },
-            { path: '/whatsapp/envios-ativos', label: 'Envios Ativos' },
-          ],
-        },
+        ...it('tutoriais', { path: '/ajuda', label: 'Tutoriais', icon: PlayCircle }),
+        ...(on('whatsapp')
+          ? [{
+              type: 'collapsible' as const,
+              key: 'whatsapp',
+              label: 'WhatsApp',
+              icon: MessageSquare,
+              items: [
+                { path: '/whatsapp/zapi', label: 'Conexão WhatsApp' },
+                ...(tenant?.slug === 'orderzap' ? [{ path: '/whatsapp/oficial', label: 'API Oficial (Meta)' }] : []),
+                { path: '/whatsapp/templates', label: 'Templates' },
+                { path: '/whatsapp/cobranca', label: 'Cobrança em Massa' },
+                { path: '/whatsapp/envios-ativos', label: 'Envios Ativos' },
+              ],
+            }]
+          : []),
       ],
     },
     {
       label: 'Sistema',
       entries: [
-        { type: 'item', item: { path: '/integracoes', label: 'Integrações', icon: Plug } },
-        { type: 'item', item: { path: '/etiquetas', label: 'Etiquetas', icon: Tag } },
-        { type: 'item', item: { path: '/config', label: 'Configurações', icon: Settings } },
+        ...it('integracoes', { path: '/integracoes', label: 'Integrações', icon: Plug }),
+        ...it('etiquetas', { path: '/etiquetas', label: 'Etiquetas', icon: Tag }),
+        // O super admin sempre vê Configurações: é lá que ele liga/desliga os menus das empresas.
+        ...(isSuperAdmin || on('configuracoes') ? [{ type: 'item' as const, item: { path: '/config', label: 'Configurações', icon: Settings } }] : []),
         ...(isSuperAdmin
           ? [{ type: 'item' as const, item: { path: '/empresas', label: 'Empresas', icon: Building2 } }]
           : []),
       ],
     },
   ];
+  const groups = allGroups.filter((g) => g.entries.length > 0);
 
   // Open state for collapsible groups - default open if any child active
   const initialOpen: Record<string, boolean> = {};

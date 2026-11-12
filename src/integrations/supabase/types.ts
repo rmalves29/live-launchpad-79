@@ -6113,6 +6113,7 @@ export type Database = {
           enable_afiliados: boolean
           enable_live: boolean
           enable_loja_live: boolean
+          menu_flags: Json | null
           enable_sendflow: boolean
           enabled_integrations: Json | null
           id: string
@@ -6185,6 +6186,7 @@ export type Database = {
           enable_afiliados?: boolean
           enable_live?: boolean
           enable_loja_live?: boolean
+          menu_flags?: Json | null
           enable_sendflow?: boolean
           enabled_integrations?: Json | null
           id?: string
@@ -6257,6 +6259,7 @@ export type Database = {
           enable_afiliados?: boolean
           enable_live?: boolean
           enable_loja_live?: boolean
+          menu_flags?: Json | null
           enable_sendflow?: boolean
           enabled_integrations?: Json | null
           id?: string
@@ -7135,6 +7138,7 @@ export type Database = {
           enable_live: boolean
           enable_loja_live: boolean
           enable_sendflow: boolean
+          menu_flags: Json
           id: string
           is_active: boolean
           max_whatsapp_groups: number
@@ -7315,6 +7319,7 @@ export type Database = {
           enable_live: boolean
           enable_loja_live: boolean
           enable_sendflow: boolean
+          menu_flags: Json
           id: string
           is_active: boolean
           max_whatsapp_groups: number

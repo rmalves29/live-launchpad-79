@@ -204,25 +204,25 @@ const AppContent = () => {
         {/* Rotas protegidas */}
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/pedidos-manual" element={
-          <RequireTenantAuth><PedidosManual /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="pedido_manual"><PedidosManual /></FeatureGate></RequireTenantAuth>
         } />
         <Route path="/live" element={
           <RequireTenantAuth><FeatureGate feature="live"><Live /></FeatureGate></RequireTenantAuth>
         } />
         <Route path="/live-tiktok" element={
-          <RequireTenantAuth><FeatureGate feature="live"><Live key="tiktok" platform="tiktok" /></FeatureGate></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="live_tiktok"><Live key="tiktok" platform="tiktok" /></FeatureGate></RequireTenantAuth>
         } />
         <Route path="/pedidos" element={
-          <RequireTenantAuth><Pedidos /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="pedidos"><Pedidos /></FeatureGate></RequireTenantAuth>
         } />
         <Route path="/sorteio" element={
-          <RequireTenantAuth><Sorteio /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="sorteio"><Sorteio /></FeatureGate></RequireTenantAuth>
         } />
         
         {/* Configurações - tenant_admin e super_admin podem acessar */}
         <Route path="/config" element={
           <RequireTenantAuth>
-            <Config />
+            <FeatureGate feature="configuracoes"><Config /></FeatureGate>
           </RequireTenantAuth>
         } />
         
@@ -237,16 +237,16 @@ const AppContent = () => {
         } />
         
         <Route path="/produtos" element={
-          <RequireTenantAuth><Produtos /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="produtos"><Produtos /></FeatureGate></RequireTenantAuth>
         } />
         <Route path="/clientes" element={
-          <RequireTenantAuth><Clientes /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="clientes"><Clientes /></FeatureGate></RequireTenantAuth>
         } />
         <Route path="/relatorios" element={
-          <RequireTenantAuth><Relatorios /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="relatorios"><Relatorios /></FeatureGate></RequireTenantAuth>
         } />
         <Route path="/fila-espera" element={
-          <RequireTenantAuth><FilaEspera /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="fila_espera"><FilaEspera /></FeatureGate></RequireTenantAuth>
         } />
         <Route path="/loja-da-live" element={
           <RequireTenantAuth><FeatureGate feature="loja"><LojaDaLive /></FeatureGate></RequireTenantAuth>
@@ -257,7 +257,7 @@ const AppContent = () => {
         
         {/* Rota para etiquetas */}
         <Route path="/etiquetas" element={
-          <RequireTenantAuth><Etiquetas /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="etiquetas"><Etiquetas /></FeatureGate></RequireTenantAuth>
         } />
         
         {/* Fluxo de Envio - app público para usuários da landing (sem sidebar) */}
@@ -267,38 +267,38 @@ const AppContent = () => {
         <Route path="/fluxo-envio/pagamento" element={<FluxoEnvioPagamento />} />
         {/* Fluxo de Envio - dentro do sistema completo (com sidebar) */}
         <Route path="/fluxo-envio/painel" element={
-          <RequireTenantAuth><FluxoEnvio /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="fluxo_envio"><FluxoEnvio /></FeatureGate></RequireTenantAuth>
         } />
         <Route path="/comunicacao/push" element={
-          <RequireTenantAuth><PushPage /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="push"><PushPage /></FeatureGate></RequireTenantAuth>
         } />
 
 
         
         {/* Rota para templates de WhatsApp */}
         <Route path="/whatsapp/templates" element={
-          <RequireTenantAuth><WhatsappTemplates /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="whatsapp"><WhatsappTemplates /></FeatureGate></RequireTenantAuth>
         } />
         
         {/* Rota para cobrança em massa */}
         <Route path="/whatsapp/cobranca" element={
-          <RequireTenantAuth><Cobranca /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="whatsapp"><Cobranca /></FeatureGate></RequireTenantAuth>
         } />
 
         {/* Painel de envios ativos */}
         <Route path="/envios-ativos" element={
-          <RequireTenantAuth><EnviosAtivos /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="whatsapp"><EnviosAtivos /></FeatureGate></RequireTenantAuth>
         } />
         <Route path="/whatsapp/envios-ativos" element={
-          <RequireTenantAuth><EnviosAtivos /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="whatsapp"><EnviosAtivos /></FeatureGate></RequireTenantAuth>
         } />
         
         {/* Rota para conexão WhatsApp Z-API */}
         <Route path="/whatsapp/conexao" element={
-          <RequireTenantAuth><ConexaoZAPI /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="whatsapp"><ConexaoZAPI /></FeatureGate></RequireTenantAuth>
         } />
         <Route path="/whatsapp/zapi" element={
-          <RequireTenantAuth><ConexaoZAPI /></RequireTenantAuth>
+          <RequireTenantAuth><FeatureGate feature="whatsapp"><ConexaoZAPI /></FeatureGate></RequireTenantAuth>
         } />
         <Route path="/whatsapp/oficial" element={
           <RequireAuth><SuperAdminOnly><WhatsAppOfficialPage /></SuperAdminOnly></RequireAuth>
@@ -307,7 +307,7 @@ const AppContent = () => {
         {/* Rota para integrações (Mercado Pago, Melhor Envio) */}
         <Route path="/integracoes" element={
           <RequireTenantAuth>
-            <TenantIntegrationsPage />
+            <FeatureGate feature="integracoes"><TenantIntegrationsPage /></FeatureGate>
           </RequireTenantAuth>
         } />
         
@@ -411,7 +411,7 @@ const AppContent = () => {
         } />
         <Route path="/ajuda" element={
           <RequireAuth>
-            <Ajuda />
+            <FeatureGate feature="tutoriais"><Ajuda /></FeatureGate>
           </RequireAuth>
         } />
         <Route path="/design-preview" element={
