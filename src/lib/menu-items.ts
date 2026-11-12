@@ -10,6 +10,7 @@ export type MenuKey =
   | 'loja_live'
   | 'live_instagram'
   | 'live_tiktok'
+  | 'tiktok_automacao'
   | 'pedido_manual'
   | 'sendflow'
   | 'fluxo_envio'
@@ -41,6 +42,7 @@ export const MENU_ITEMS: MenuItemDef[] = [
   { key: 'loja_live', label: 'Loja da Live (e link público da vitrine)', group: 'Live', path: '/loja-da-live', column: 'enable_loja_live' },
   { key: 'live_instagram', label: 'Lançar pedidos Instagram', group: 'Live', path: '/live', column: 'enable_live' },
   { key: 'live_tiktok', label: 'Lançar pedidos TikTok', group: 'Live', path: '/live-tiktok' },
+  { key: 'tiktok_automacao', label: 'Automação de live TikTok', group: 'Live', path: '/tiktok-automacao' },
   { key: 'pedido_manual', label: 'Pedido Manual', group: 'Live', path: '/pedidos-manual' },
   { key: 'sendflow', label: 'SendFlow', group: 'Grupo VIP', path: '/sendflow', column: 'enable_sendflow' },
   { key: 'fluxo_envio', label: 'Fluxo de Envio', group: 'Grupo VIP', path: '/fluxo-envio/painel' },
@@ -59,7 +61,7 @@ export const MENU_ITEMS: MenuItemDef[] = [
 export const MENU_GROUPS = ['Principal', 'Live', 'Grupo VIP', 'Gestão', 'Comunicação', 'Sistema'];
 
 // Desligados por padrão (empresa nova ou que nunca teve o item configurado).
-export const DEFAULT_OFF_MENUS: MenuKey[] = ['live_tiktok'];
+export const DEFAULT_OFF_MENUS: MenuKey[] = ['live_tiktok', 'tiktok_automacao'];
 
 export type MenuFlags = Partial<Record<MenuKey, boolean>>;
 

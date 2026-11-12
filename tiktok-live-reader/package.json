@@ -1,0 +1,13 @@
+{
+  "name": "tiktok-live-reader",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lê os comentários da live do TikTok e envia para o Cartzy (automação de pedidos).",
+  "type": "module",
+  "main": "index.js",
+  "engines": { "node": ">=20" },
+  "scripts": { "start": "node index.js" },
+  "dependencies": {
+    "tiktok-live-connector": "^2.5.0"
+  }
+}

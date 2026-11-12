@@ -1,0 +1,33 @@
+CARTZY · LEITOR DA LIVE DO TIKTOK
+=================================
+
+O que é: um programinha que fica aberto no computador durante a live. Ele lê os
+comentários e manda para o Cartzy. Quando a cliente comenta um código (ex.: C200),
+o Cartzy lança o pedido e manda o WhatsApp pelo número da loja.
+
+ANTES DA PRIMEIRA LIVE (uma vez só)
+1. Instale o Node.js: https://nodejs.org/pt-br  -> baixe a versão LTS e clique em
+   "Próximo" até o fim.
+2. No Cartzy, abra: Live > Automação TikTok > Configuração.
+   - Copie o "Link de cadastro" e coloque na BIO do TikTok.
+   - Copie a "Chave do programa leitor" (vai ser pedida na primeira vez).
+
+EM CADA LIVE
+1. Comece a live no TikTok.
+2. Dê dois cliques em  iniciar.bat
+3. Digite o @ da conta que está ao vivo e aperte Enter.
+4. Deixe a janela aberta a live inteira. Cada pedido aparece na tela:
+     verde    = pedido lançado e WhatsApp enviado
+     amarelo  = cliente sem cadastro: peça para ela se cadastrar no link da bio
+     vermelho = esgotado ou erro
+5. No fim, aperte Ctrl+C (ou encerre no painel do Cartzy).
+   A lista de repescagem aparece no painel: Live > Automação TikTok.
+
+DICAS
+- O computador precisa ficar ligado e com internet durante toda a live.
+  Se a internet cair, o programa reconecta sozinho, mas o que for comentado
+  enquanto ele estiver fora não é lido.
+- Abra o programa só depois de começar a live (ou ele espera e tenta de novo a cada 15s).
+- Na live, repita: "primeira compra? cadastre seu WhatsApp no link da bio".
+- Trocou a chave no Cartzy? Apague o arquivo config.json desta pasta e abra de novo.
+- Cada dia gera um arquivo log-AAAA-MM-DD.txt com tudo o que aconteceu.

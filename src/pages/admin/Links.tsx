@@ -93,6 +93,7 @@ const groups: Group[] = [
       { path: "/t/:slug", label: "Storefront do Tenant", description: "Vitrine pública do tenant." },
       { path: "/t/:slug/checkout", label: "Checkout Público", description: "Checkout público do tenant." },
       { path: "/t/:slug/cadastro-instagram", label: "Cadastro Instagram", description: "Captura de dados via DM do Instagram." },
+      { path: "/t/:slug/cadastro-tiktok", label: "Cadastro TikTok", description: "Link da bio: liga o @ do TikTok ao WhatsApp da cliente." },
       { path: "/t/:slug/push", label: "Opt-in Push", description: "Página pública de opt-in de notificações." },
       { path: "/fluxo/:tenantSlug/:campaignSlug", label: "Redirecionador de Campanha", description: "Fast-path para redirecionar cliques em campanhas de grupo." },
       { path: "/pagamento/retorno", label: "Retorno de Pagamento", description: "Página universal de retorno dos gateways." },

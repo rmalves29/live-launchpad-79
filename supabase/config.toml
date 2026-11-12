@@ -28,3 +28,9 @@ verify_jwt = false
 
 [functions.olist-refresh-tokens]
 verify_jwt = false
+
+[functions.tiktok-live-comment]
+verify_jwt = false
+
+[functions.tiktok-register]
+verify_jwt = false

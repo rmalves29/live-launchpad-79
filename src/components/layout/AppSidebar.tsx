@@ -65,6 +65,7 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
     ...(on('loja_live') ? [{ path: '/loja-da-live', label: 'Loja da Live', icon: Store }] : []),
     ...(on('live_instagram') ? [{ path: '/live', label: 'Lançar pedidos Instagram', icon: Radio }] : []),
     ...(on('live_tiktok') ? [{ path: '/live-tiktok', label: 'Lançar pedidos TikTok', icon: Music2 }] : []),
+    ...(on('tiktok_automacao') ? [{ path: '/tiktok-automacao', label: 'Automação TikTok', icon: Music2 }] : []),
   ];
   const showLiveMenu = liveItems.length > 0;
   const pedidoManual: NavItem[] = on('pedido_manual') ? [{ path: '/pedidos-manual', label: 'Pedido Manual', icon: PlusCircle }] : [];

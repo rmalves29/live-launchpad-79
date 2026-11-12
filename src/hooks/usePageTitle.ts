@@ -6,6 +6,7 @@ const pageTitles: Record<string, string> = {
   '/pedidos-manual': 'Manual',
   '/live': 'Live',
   '/live-tiktok': 'Live TikTok',
+  '/tiktok-automacao': 'Automação TikTok',
   '/checkout': 'Checkout',
   '/pedidos/checkout': 'Checkout',
   '/produtos': 'Produtos',

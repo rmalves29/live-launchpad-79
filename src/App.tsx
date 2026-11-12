@@ -61,6 +61,8 @@ const TenantIntegrationsPage = lazy(() => import("./components/TenantIntegration
 const TenantStorefront = lazy(() => import("./pages/TenantStorefront"));
 const PushOptInPublic = lazy(() => import("./pages/push/PushOptIn"));
 const CadastroInstagram = lazy(() => import("./pages/tenant/CadastroInstagram"));
+const CadastroTikTok = lazy(() => import("./pages/tenant/CadastroTikTok"));
+const TikTokAutomacao = lazy(() => import("./pages/pedidos/TikTokAutomacao"));
 const LiveShop = lazy(() => import("./pages/live/LiveShop"));
 const AffiliatePortal = lazy(() => import("./pages/affiliate/AffiliatePortal"));
 const LojaDaLive = lazy(() => import("./pages/loja-live/Index"));
@@ -211,6 +213,9 @@ const AppContent = () => {
         } />
         <Route path="/live-tiktok" element={
           <RequireTenantAuth><FeatureGate feature="live_tiktok"><Live key="tiktok" platform="tiktok" /></FeatureGate></RequireTenantAuth>
+        } />
+        <Route path="/tiktok-automacao" element={
+          <RequireTenantAuth><FeatureGate feature="tiktok_automacao"><TikTokAutomacao /></FeatureGate></RequireTenantAuth>
         } />
         <Route path="/pedidos" element={
           <RequireTenantAuth><FeatureGate feature="pedidos"><Pedidos /></FeatureGate></RequireTenantAuth>
@@ -427,6 +432,7 @@ const AppContent = () => {
         
         {/* Cadastro público Instagram */}
         <Route path="/t/:slug/cadastro-instagram" element={<CadastroInstagram />} />
+        <Route path="/t/:slug/cadastro-tiktok" element={<CadastroTikTok />} />
         <Route path="/t/:slug/live" element={<LiveShop />} />
         <Route path="/t/:slug/live/a/:ref" element={<LiveShop />} />
         <Route path="/t/:slug/afiliada/:token" element={<AffiliatePortal />} />
