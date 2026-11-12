@@ -20,6 +20,19 @@ interface RefreshResult {
   action?: string; // 'refreshed' | 'skipped' | 'deactivated'
 }
 
+/** O Bling respondeu que o refresh token é inválido? Olha o código do erro (400/401 com "invalid_grant"), não palavras soltas. */
+export function isInvalidGrant(status: number, body: string): boolean {
+  if (status !== 400 && status !== 401) return false;
+  try {
+    const j = JSON.parse(body);
+    const e = j?.error;
+    const code = typeof e === "string" ? e : e?.type || e?.code || "";
+    return String(code).toLowerCase() === "invalid_grant";
+  } catch {
+    return false;
+  }
+}
+
 function isExpiringSoon(expiresAt: string | null, hoursThreshold: number): boolean {
   if (!expiresAt) return true; // No expiry info = assume needs refresh
   const expiry = new Date(expiresAt).getTime();
@@ -117,7 +130,30 @@ async function refreshBlingTokens(supabase: any, tenantMap: Map<string, string>)
         const errorText = await tokenResponse.text();
         console.error(`[refresh-tokens] Bling error for ${tenantName}:`, errorText);
 
-        if (errorText.includes("invalid_grant") || errorText.includes("expired")) {
+        // Só desativa quando o Bling diz EXPLICITAMENTE que o refresh token não vale mais (invalid_grant).
+        // Texto solto como "expired" em erro de gateway/limite não é motivo para derrubar a integração.
+        const deadToken = isInvalidGrant(tokenResponse.status, errorText);
+        if (deadToken) {
+          // Outra rotina pode ter renovado o token no meio tempo (o refresh token do Bling troca a cada uso).
+          // Se o refresh token salvo já não é o que usamos, a integração está viva: não desativar.
+          const { data: current } = await supabase
+            .from("integration_bling")
+            .select("refresh_token")
+            .eq("id", integration.id)
+            .maybeSingle();
+          if (current?.refresh_token && current.refresh_token !== integration.refresh_token) {
+            console.log(`[refresh-tokens] Bling: ${tenantName} já foi renovado por outra rotina, mantendo ativo`);
+            results.push({
+              tenant_id: integration.tenant_id,
+              tenant_name: tenantName,
+              provider: "bling",
+              success: true,
+              action: "skipped",
+            });
+            continue;
+          }
+        }
+        if (deadToken) {
           // Deactivate - requires manual reauth
           await supabase
             .from("integration_bling")
