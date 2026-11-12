@@ -44,6 +44,41 @@ interface ItemAddedRequest {
   cart_id?: number;
   source_instance_id?: string;
   source_connected_phone?: string;
+  // Envio acumulado da pausa anti-bloqueio (vem do item_added_flush_tick no banco)
+  flush?: boolean;
+  consolidated_items?: Array<{ product_name: string; product_code: string; quantity: number; unit_price: number }>;
+}
+
+// Pausa anti-bloqueio: depois de uma mensagem de "item adicionado", a cliente fica 30 min sem receber outra;
+// o que ela pedir nesse tempo sai junto numa mensagem só quando a pausa acaba (ver migração 20261112180000).
+const ITEM_ADDED_COOLDOWN_MINUTES = 30;
+
+/** Chave da cliente para a pausa: DDD + 8 últimos dígitos (não muda com 55 nem com o 9º dígito). */
+function phoneKey(value?: string | null): string {
+  let d = String(value || "").replace(/\D/g, "");
+  if (d.startsWith("55") && d.length >= 12) d = d.slice(2);
+  return d.length >= 10 ? d.slice(0, 2) + d.slice(-8) : d;
+}
+
+/** Junta os produtos acumulados na pausa num item só para o template (produto, código, quantidade e valor somados). */
+function consolidateItems(items: Array<{ product_name: string; product_code: string; quantity: number; unit_price: number }>) {
+  const merged = new Map<string, { product_name: string; product_code: string; quantity: number; unit_price: number }>();
+  for (const it of items || []) {
+    const key = (it.product_code || "") + "|" + (it.product_name || "");
+    const cur = merged.get(key);
+    if (cur) cur.quantity += Number(it.quantity) || 0;
+    else merged.set(key, { product_name: it.product_name || "Produto", product_code: it.product_code || "", quantity: Number(it.quantity) || 0, unit_price: Number(it.unit_price) || 0 });
+  }
+  const list = [...merged.values()];
+  const totalQty = list.reduce((a, it) => a + it.quantity, 0);
+  const totalValue = list.reduce((a, it) => a + it.quantity * it.unit_price, 0);
+  return {
+    list,
+    names: list.map((it) => it.product_name + (it.product_code ? " (" + it.product_code + ")" : "")).join("\n"),
+    codes: list.map((it) => it.product_code).filter(Boolean).join(", "),
+    totalQty,
+    totalValue,
+  };
 }
 
 function validateInternalRequest(req: Request): boolean {
@@ -297,23 +332,24 @@ async function resolveWhatsAppPhone(baseUrl: string, clientToken: string, phone:
   return candidates[0];
 }
 
-function formatMessage(template: string, data: ItemAddedRequest, extras?: { itensPedido?: string; totalPedido?: string; numeroPedido?: string }): string {
-  const unitPrice = data.unit_price.toFixed(2);
-  const total = (data.quantity * data.unit_price).toFixed(2);
-  const originalPrice = data.original_price ? data.original_price.toFixed(2) : "";
-  const promoPrice = data.original_price && data.original_price > data.unit_price ? data.unit_price.toFixed(2) : "";
+function formatMessage(template: string, data: ItemAddedRequest, extras?: { itensPedido?: string; totalPedido?: string; numeroPedido?: string; consolidated?: ReturnType<typeof consolidateItems> | null }): string {
+  const cons = extras?.consolidated && extras.consolidated.list.length > 1 ? extras.consolidated : null;
+  const unitPrice = cons ? cons.totalValue.toFixed(2) : data.unit_price.toFixed(2);
+  const total = cons ? cons.totalValue.toFixed(2) : (data.quantity * data.unit_price).toFixed(2);
+  const originalPrice = !cons && data.original_price ? data.original_price.toFixed(2) : "";
+  const promoPrice = !cons && data.original_price && data.original_price > data.unit_price ? data.unit_price.toFixed(2) : "";
   const itensPedido = extras?.itensPedido || "";
   const totalPedido = extras?.totalPedido || "";
   const numeroPedido = extras?.numeroPedido || "";
   const v = (name: string) => new RegExp("\\{\\{\\s*" + name + "\\s*\\}\\}|\\{\\s*" + name + "\\s*\\}", "g");
   let result = template
-    .replace(v("produto"), data.product_name + " (" + data.product_code + ")")
-    .replace(v("quantidade"), String(data.quantity))
+    .replace(v("produto"), cons ? cons.names : data.product_name + (data.product_code ? " (" + data.product_code + ")" : ""))
+    .replace(v("quantidade"), String(cons ? cons.totalQty : data.quantity))
     .replace(v("valor"), unitPrice)
     .replace(v("preco"), unitPrice)
     .replace(v("total"), total)
     .replace(v("subtotal"), total)
-    .replace(v("codigo"), data.product_code)
+    .replace(v("codigo"), cons ? cons.codes : data.product_code)
     .replace(v("valor_original"), originalPrice)
     .replace(v("valor_promo"), promoPrice)
     .replace(v("itens_pedido"), itensPedido)
@@ -400,6 +436,42 @@ serve(async (req) => {
         }
       }
 
+      // ===== PAUSA ANTI-BLOQUEIO (30 min por cliente) =====
+      const isFlush = body.flush === true && Array.isArray(body.consolidated_items) && body.consolidated_items.length > 0;
+      const pKey = phoneKey(customer_phone);
+      let consolidated: ReturnType<typeof consolidateItems> | null = null;
+      if (isFlush) {
+        // Pedido pago ou cancelado durante a pausa: não manda "item adicionado" atrasado.
+        if (order_id) {
+          const { data: ord } = await supabase.from("orders").select("is_paid, is_cancelled").eq("id", order_id).eq("tenant_id", tenant_id).maybeSingle();
+          if (ord?.is_paid || ord?.is_cancelled) {
+            await supabase.from("whatsapp_messages").insert({ tenant_id, phone: formattedPhone, message: "[PAUSA] Mensagem acumulada descartada: pedido já " + (ord.is_paid ? "pago" : "cancelado"), type: "system_log", sent_at: new Date().toISOString(), order_id, delivery_status: "SKIPPED" });
+            return;
+          }
+        }
+        consolidated = consolidateItems(body.consolidated_items!);
+      } else if (pKey) {
+        try {
+          const { data: decision } = await supabase.rpc("item_added_claim", {
+            p_tenant_id: tenant_id,
+            p_phone_key: pKey,
+            p_cooldown_minutes: ITEM_ADDED_COOLDOWN_MINUTES,
+            p_item: { product_name, product_code, quantity: Number(quantity) || 1, unit_price: Number(unit_price) || 0 },
+            p_body: { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, order_id: order_id || null, cart_id: cart_id || null },
+          });
+          if (decision === "deferred") {
+            console.log("[zapi-send-item-added] PAUSA: acumulado para", formattedPhone, "|", product_code);
+            await supabase.from("whatsapp_messages").insert({ tenant_id, phone: formattedPhone, message: "[PAUSA 30min] Item acumulado para a próxima mensagem: " + product_name + (product_code ? " (" + product_code + ")" : ""), type: "system_log", product_name: product_name.substring(0, 100), sent_at: new Date().toISOString(), order_id: order_id || null, delivery_status: "DEFERRED" });
+            return;
+          }
+        } catch (e: any) {
+          console.warn("[zapi-send-item-added] item_added_claim falhou (enviando sem pausa):", e?.message);
+        }
+      }
+      const releasePause = async () => {
+        if (!isFlush && pKey) { try { await supabase.rpc("item_added_release", { p_tenant_id: tenant_id, p_phone_key: pKey }); } catch (_) { /* ignora */ } }
+      };
+
       const orderCtx = await loadOrderContext(supabase, tenant_id, order_id, cart_id, { product_name, product_code, quantity, unit_price });
 
       // CONSENT V2: template único; se protegido, bloqueia em waiting_reply/blocked
@@ -412,6 +484,7 @@ serve(async (req) => {
         if (!consent.allow) {
           await logSkipped(supabase, tenant_id, formattedPhone, "item_added", consent.reason, product_name + " (" + product_code + ")");
           console.log("[zapi-send-item-added] SKIPPED por consentimento (" + consent.reason + "):", formattedPhone);
+          await releasePause();
           return;
         }
         markWaitingAfterSend = consent.state !== "active";
@@ -420,12 +493,13 @@ serve(async (req) => {
       const templateResult = await getTemplate(supabase, tenant_id, order_id);
       if (templateResult.disabled) {
         console.log("[zapi-send-item-added] SKIPPED: template ITEM_ADDED está desativado para o tenant", tenant_id);
+        await releasePause();
         return;
       }
 
       const checkoutUrl = await getCheckoutUrl(supabase, tenant_id, formattedPhone);
       const template = templateResult.content || (credentials as any).templateItemAdded || getDefaultTemplateItemAdded();
-      const baseMessage = formatMessage(template, body, orderCtx).replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrl).replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrl);
+      const baseMessage = formatMessage(template, body, { ...orderCtx, consolidated }).replace(/\{\{\s*link_checkout\s*\}\}|\{\s*link_checkout\s*\}/g, checkoutUrl).replace(/\{\{\s*checkout_url\s*\}\}|\{\s*checkout_url\s*\}/g, checkoutUrl);
       const message = prependGreeting(addMessageVariation(baseMessage, false));
       let useButton = false;
       let resolvedButtonUrl: string | null = null;
@@ -440,10 +514,10 @@ serve(async (req) => {
         templateType: "cart_item_added",
         customerPhone: customer_phone,
         vars: {
-          produto: product_name + (product_code ? " (" + product_code + ")" : ""),
-          codigo: product_code || "",
-          quantidade: String(quantity ?? ""),
-          preco: "R$ " + (Number(unit_price) || 0).toFixed(2).replace(".", ","),
+          produto: consolidated && consolidated.list.length > 1 ? consolidated.names : product_name + (product_code ? " (" + product_code + ")" : ""),
+          codigo: consolidated && consolidated.list.length > 1 ? consolidated.codes : product_code || "",
+          quantidade: String(consolidated && consolidated.list.length > 1 ? consolidated.totalQty : quantity ?? ""),
+          preco: "R$ " + (consolidated && consolidated.list.length > 1 ? consolidated.totalValue : Number(unit_price) || 0).toFixed(2).replace(".", ","),
           numero_pedido: orderCtx?.numeroPedido || String(order_id || ""),
           itens_pedido: orderCtx?.itensPedido || "",
           total_pedido: orderCtx?.totalPedido || "",
@@ -541,6 +615,7 @@ serve(async (req) => {
       if (order_id && sendOk) {
         await supabase.from("orders").update({ item_added_message_sent: true }).eq("id", order_id);
       }
+      if (!sendOk) await releasePause();
     };
 
     const edgeRuntime = (globalThis as any).EdgeRuntime;
