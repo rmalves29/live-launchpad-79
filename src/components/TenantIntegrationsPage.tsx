@@ -24,6 +24,7 @@ import CorreiosIntegration from '@/components/integrations/CorreiosIntegration';
 import MeusCorreiosIntegration from '@/components/integrations/MeusCorreiosIntegration';
 import FrenetIntegration from '@/components/integrations/FrenetIntegration';
 import BlingIntegration from '@/components/integrations/BlingIntegration';
+import OlistIntegration from '@/components/integrations/OlistIntegration';
 import OmieIntegration from '@/components/integrations/OmieIntegration';
 import InstagramIntegration from '@/components/integrations/InstagramIntegration';
 
@@ -275,6 +276,13 @@ export default function TenantIntegrationsPage() {
             {blingIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
           )}
+          {en('olist') && (
+          <TabsTrigger value="olist" className="flex items-center gap-2">
+            <Building2 className="h-4 w-4" />
+            <span className="hidden sm:inline">Olist ERP</span>
+            <span className="sm:hidden">Olist</span>
+          </TabsTrigger>
+          )}
           {en('omie') && (
           <TabsTrigger value="omie" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
@@ -402,6 +410,11 @@ export default function TenantIntegrationsPage() {
         {en('bling') && (
         <TabsContent value="bling" className="mt-6">
           <BlingIntegration tenantId={tenantId} />
+        </TabsContent>
+        )}
+        {en('olist') && (
+        <TabsContent value="olist" className="mt-6">
+          <OlistIntegration tenantId={tenantId} />
         </TabsContent>
         )}
         {en('omie') && (

@@ -19,3 +19,12 @@ verify_jwt = false
 
 [functions.prospect-agent]
 verify_jwt = false
+
+[functions.olist-oauth]
+verify_jwt = false
+
+[functions.olist-oauth-callback]
+verify_jwt = false
+
+[functions.olist-refresh-tokens]
+verify_jwt = false

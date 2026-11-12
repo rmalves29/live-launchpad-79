@@ -14,7 +14,7 @@ import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { Plus, Edit, Users, Mail, Trash2, UserCheck, Eye, EyeOff } from "lucide-react";
 import { formatBrasiliaDate } from '@/lib/date-utils';
-import { INTEGRATION_KEYS } from '@/lib/integration-keys';
+import { INTEGRATION_KEYS, DEFAULT_OFF_INTEGRATIONS, isIntegrationEnabled } from '@/lib/integration-keys';
 
 interface Tenant {
   id: string;
@@ -70,7 +70,7 @@ export default function TenantsManager() {
 
   const defaultEnabledIntegrations = () =>
     INTEGRATION_KEYS.reduce((acc, i) => {
-      acc[i.key] = true;
+      acc[i.key] = !DEFAULT_OFF_INTEGRATIONS.includes(i.key);
       return acc;
     }, {} as Record<string, boolean>);
 
@@ -807,7 +807,7 @@ const INTEGRATION_GROUPS: { title: string; keys: string[] }[] = [
   { title: 'WhatsApp', keys: ['zapi', 'uazapi', 'whatsapp_oficial'] },
   { title: 'Meios de Pagamento', keys: ['mercadopago', 'pagarme', 'sipag', 'appmax', 'infinitepay'] },
   { title: 'Fretes', keys: ['melhorenvio', 'mandae', 'mandabem', 'superfrete', 'correios', 'meuscorreios'] },
-  { title: 'ERP', keys: ['bling', 'omie'] },
+  { title: 'ERP', keys: ['bling', 'olist', 'omie'] },
   { title: 'Outros', keys: ['instagram', 'bagy'] },
 ];
 
@@ -820,7 +820,7 @@ function IntegrationsToggleSection({
 }) {
   const labelOf = (k: string) =>
     INTEGRATION_KEYS.find((i) => i.key === k)?.label || k;
-  const isOn = (k: string) => value[k] !== false;
+  const isOn = (k: string) => isIntegrationEnabled(value, k);
   const toggle = (k: string, checked: boolean) =>
     onChange({ ...value, [k]: checked });
 

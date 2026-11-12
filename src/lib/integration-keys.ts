@@ -6,6 +6,7 @@ export const INTEGRATION_KEYS = [
   { key: 'instagram', label: 'Instagram' },
   { key: 'bagy', label: 'Bagy' },
   { key: 'bling', label: 'Bling ERP' },
+  { key: 'olist', label: 'Olist ERP' },
   { key: 'omie', label: 'Omie ERP' },
   { key: 'mercadopago', label: 'Mercado Pago' },
   { key: 'pagarme', label: 'Pagar.me' },
@@ -26,10 +27,14 @@ export const INTEGRATION_KEYS = [
 
 export type IntegrationKey = typeof INTEGRATION_KEYS[number]['key'];
 
+// Integrações em construção: ficam ocultas até o super admin ligar para a empresa (valor explícito = true).
+export const DEFAULT_OFF_INTEGRATIONS: string[] = ['olist'];
+
 export function isIntegrationEnabled(
   map: Record<string, boolean> | null | undefined,
   key: IntegrationKey | string
 ): boolean {
+  if (DEFAULT_OFF_INTEGRATIONS.includes(key)) return map?.[key] === true;
   if (!map) return true; // default: tudo visível
   return map[key] !== false;
 }
