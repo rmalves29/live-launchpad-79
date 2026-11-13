@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { parsePurchaseLimitError, purchaseLimitCustomerMessage } from "../_shared/purchase-limit.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getGroupAdmins as evoGetGroupAdmins } from "../_shared/evolution-api.ts";
  import { antiBlockDelay, logAntiBlockDelay, antiBlockDelayLive, addMessageVariation, getTypingDelay, simulateTyping } from "../_shared/anti-block-delay.ts";
@@ -1735,6 +1736,38 @@ serve(async (req) => {
         continue;
       }
 
+      // Promoções > Limite por cliente: confere ANTES de criar carrinho/pedido (o banco também barra no cart_items).
+      try {
+        const { data: limitCheck } = await supabase.rpc('purchase_limit_check', {
+          p_tenant_id: tenantId, p_phone: normalizedPhone, p_product_id: product.id, p_new_qty: requestedQty,
+        });
+        if (limitCheck && limitCheck.allowed === false) {
+          const limitHit = {
+            max: Number(limitCheck.max) || 0,
+            scope: limitCheck.scope === 'combined' ? 'combined' as const : 'per_product' as const,
+            remaining: Number(limitCheck.remaining) || 0,
+            code: product.code || '',
+            name: product.name || '',
+          };
+          console.log(`[zapi-webhook] 🚧 LIMITE POR CLIENTE (pré-checagem) em ${product.code} para ${normalizedPhone}:`, limitCheck);
+          try {
+            await supabase.functions.invoke('zapi-send-message', {
+              body: { tenant_id: tenantId, phone: normalizedPhone, message: purchaseLimitCustomerMessage(limitHit) },
+            });
+            await supabase.from('whatsapp_messages').insert({
+              tenant_id: tenantId, phone: normalizedPhone, type: 'outgoing', product_name: product.name,
+              message: `[LIMITE POR CLIENTE] ${purchaseLimitCustomerMessage(limitHit)}`, sent_at: new Date().toISOString(),
+            });
+          } catch (limitMsgErr) {
+            console.error('[zapi-webhook] erro ao avisar limite por cliente:', limitMsgErr);
+          }
+          results.push({ code: codeUpper, success: false, error: 'purchase_limit', product_name: product.name, max: limitHit.max, remaining: limitHit.remaining });
+          continue;
+        }
+      } catch (limitErr) {
+        console.error('[zapi-webhook] purchase_limit_check falhou (segue; o banco ainda barra):', limitErr);
+      }
+
       // Determine event type based on product sale_type
       // BAZAR or AMBOS products → BAZAR event type (automatic orders are always BAZAR)
       // LIVE products → LIVE event type
@@ -1887,6 +1920,24 @@ serve(async (req) => {
           .single();
 
         if (updateError) {
+          // Promoções > Limite por cliente: o banco recusou o item; avisa a cliente e segue para o próximo código.
+          const limitHit = parsePurchaseLimitError(updateError);
+          if (limitHit) {
+            console.log(`[zapi-webhook] 🚧 LIMITE POR CLIENTE em ${product.code} para ${normalizedPhone}:`, limitHit);
+            try {
+              await supabase.functions.invoke('zapi-send-message', {
+                body: { tenant_id: tenantId, phone: normalizedPhone, message: purchaseLimitCustomerMessage(limitHit) },
+              });
+              await supabase.from('whatsapp_messages').insert({
+                tenant_id: tenantId, phone: normalizedPhone, type: 'outgoing', product_name: product.name,
+                message: `[LIMITE POR CLIENTE] ${purchaseLimitCustomerMessage(limitHit)}`, sent_at: new Date().toISOString(),
+              });
+            } catch (limitMsgErr) {
+              console.error('[zapi-webhook] erro ao avisar limite por cliente:', limitMsgErr);
+            }
+            results.push({ code, success: false, error: 'purchase_limit', product_name: product.name, max: limitHit.max, remaining: limitHit.remaining });
+            continue;
+          }
           console.log(`[zapi-webhook] Error updating cart item:`, updateError);
           results.push({ code, success: false, error: 'cart_item_update_error' });
           continue;
@@ -1996,6 +2047,24 @@ serve(async (req) => {
           .single();
 
         if (cartItemError) {
+          // Promoções > Limite por cliente: o banco recusou o item; avisa a cliente e segue para o próximo código.
+          const limitHit = parsePurchaseLimitError(cartItemError);
+          if (limitHit) {
+            console.log(`[zapi-webhook] 🚧 LIMITE POR CLIENTE em ${product.code} para ${normalizedPhone}:`, limitHit);
+            try {
+              await supabase.functions.invoke('zapi-send-message', {
+                body: { tenant_id: tenantId, phone: normalizedPhone, message: purchaseLimitCustomerMessage(limitHit) },
+              });
+              await supabase.from('whatsapp_messages').insert({
+                tenant_id: tenantId, phone: normalizedPhone, type: 'outgoing', product_name: product.name,
+                message: `[LIMITE POR CLIENTE] ${purchaseLimitCustomerMessage(limitHit)}`, sent_at: new Date().toISOString(),
+              });
+            } catch (limitMsgErr) {
+              console.error('[zapi-webhook] erro ao avisar limite por cliente:', limitMsgErr);
+            }
+            results.push({ code, success: false, error: 'purchase_limit', product_name: product.name, max: limitHit.max, remaining: limitHit.remaining });
+            continue;
+          }
           // Check if it's a duplicate key error (race condition)
           if (cartItemError.code === '23505' || cartItemError.message?.includes('duplicate') || cartItemError.message?.includes('unique')) {
             console.log(`[zapi-webhook] 🔄 Race condition detected for ${product.code} - checking existing item`);

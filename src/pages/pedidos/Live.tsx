@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
+import { parsePurchaseLimitError, purchaseLimitCustomerMessage } from '@/lib/purchase-limit';
 import { getBrasiliaDateISO, formatBrasiliaDate } from '@/lib/date-utils';
 import { useToast } from '@/hooks/use-toast';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -77,6 +78,26 @@ const Live = ({ platform = 'instagram' }: { platform?: HandlePlatform }) => {
   const { toast } = useToast();
   const { profile } = useAuth();
   const { tenant } = useTenant();
+
+  // Promoções > Limite por cliente: o banco recusa o item com LIMITE_POR_CLIENTE. Mostra o aviso e
+  // manda a mensagem para a cliente pelo WhatsApp da loja. Devolve true se o erro era de limite.
+  const avisarLimiteCliente = async (err: unknown, phone: string): Promise<boolean> => {
+    const hit = parsePurchaseLimitError(err);
+    if (!hit) return false;
+    toast({
+      title: 'Limite por cliente atingido',
+      description: `${hit.code || 'Produto'}: máximo de ${hit.max} ${hit.scope === 'combined' ? 'no total entre os produtos da promoção' : 'por cliente'}${hit.remaining > 0 ? ` — ela ainda pode pedir ${hit.remaining}` : ''}. A cliente foi avisada no WhatsApp.`,
+      variant: 'destructive',
+    });
+    try {
+      await supabase.functions.invoke('zapi-send-message', {
+        body: { tenant_id: tenant?.id || profile?.tenant_id, phone, message: purchaseLimitCustomerMessage(hit) },
+      });
+    } catch (e) {
+      console.error('[limite-por-cliente] falha ao avisar a cliente:', e);
+    }
+    return true;
+  };
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -638,7 +659,10 @@ const Live = ({ platform = 'instagram' }: { platform?: HandlePlatform }) => {
           })
           .eq('id', existingCartItem.id);
 
-        if (updateCartError) throw updateCartError;
+        if (updateCartError) {
+          if (await avisarLimiteCliente(updateCartError, normalizedPhone)) return;
+          throw updateCartError;
+        }
       } else {
         // Add new cart item with product snapshot for when product is deleted
         const { error: cartItemError } = await supabaseTenant
@@ -653,7 +677,17 @@ const Live = ({ platform = 'instagram' }: { platform?: HandlePlatform }) => {
             product_image_url: product.image_url
           });
 
-        if (cartItemError) throw cartItemError;
+        if (cartItemError) {
+          if (await avisarLimiteCliente(cartItemError, normalizedPhone)) {
+            // Pedido novo criado só para este item: não deixa pedido vazio para trás.
+            if (isNew) {
+              if (!initialCartId && cartId) await supabaseTenant.from('carts').delete().eq('id', cartId);
+              await supabaseTenant.from('orders').delete().eq('id', orderId);
+            }
+            return;
+          }
+          throw cartItemError;
+        }
       }
 
       // ATOMIC stock decrement: fresh read + conditional update to prevent overselling

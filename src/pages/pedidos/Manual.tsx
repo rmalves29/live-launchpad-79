@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabaseTenant } from '@/lib/supabase-tenant';
 import { supabase } from '@/integrations/supabase/client';
+import { parsePurchaseLimitError, purchaseLimitCustomerMessage } from '@/lib/purchase-limit';
 import { getBrasiliaDateISO, formatBrasiliaDate } from '@/lib/date-utils';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -34,6 +35,26 @@ const PedidosManual = () => {
   const { toast } = useToast();
   const { profile } = useAuth();
   const { tenant } = useTenant();
+
+  // Promoções > Limite por cliente: o banco recusa o item com LIMITE_POR_CLIENTE. Mostra o aviso e
+  // manda a mensagem para a cliente pelo WhatsApp da loja. Devolve true se o erro era de limite.
+  const avisarLimiteCliente = async (err: unknown, phone: string): Promise<boolean> => {
+    const hit = parsePurchaseLimitError(err);
+    if (!hit) return false;
+    toast({
+      title: 'Limite por cliente atingido',
+      description: `${hit.code || 'Produto'}: máximo de ${hit.max} ${hit.scope === 'combined' ? 'no total entre os produtos da promoção' : 'por cliente'}${hit.remaining > 0 ? ` — ela ainda pode pedir ${hit.remaining}` : ''}. A cliente foi avisada no WhatsApp.`,
+      variant: 'destructive',
+    });
+    try {
+      await supabase.functions.invoke('zapi-send-message', {
+        body: { tenant_id: tenant?.id || profile?.tenant_id, phone, message: purchaseLimitCustomerMessage(hit) },
+      });
+    } catch (e) {
+      console.error('[limite-por-cliente] falha ao avisar a cliente:', e);
+    }
+    return true;
+  };
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -452,6 +473,7 @@ const PedidosManual = () => {
         }
       }
 
+      if (await avisarLimiteCliente(error, normalizedPhone)) return;
       toast({
         title: 'Erro',
         description: error?.message || 'Erro ao lançar venda',

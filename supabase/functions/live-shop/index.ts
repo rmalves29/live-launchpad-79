@@ -2,6 +2,7 @@
 // Todas as ações usam a service role e validam o tenant pelo slug. Nada de segredo sai daqui.
 // Ações: catalog | customer_lookup | customer_save | coupon_check | reserve | create_order | cancel_order
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { parsePurchaseLimitError, purchaseLimitCustomerMessage } from '../_shared/purchase-limit.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,6 +16,25 @@ function json(data: unknown) {
   return new Response(JSON.stringify(data), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 }
 const fail = (error: string, code = 'ERROR', extra: Record<string, unknown> = {}) => json({ ok: false, error, code, ...extra });
+
+// Promoções > Limite por cliente: devolve o aviso no formato de "estoque insuficiente" com max_qty = quanto
+// ela ainda pode levar, para o carrinho da Loja da Live se ajustar sozinho.
+async function checkPurchaseLimits(tenantId: string, phone: string, items: Array<{ product_id: number; qty: number }>, products: Map<number, any>) {
+  for (const it of items) {
+    const { data: r } = await sb.rpc('purchase_limit_check', { p_tenant_id: tenantId, p_phone: phone, p_product_id: it.product_id, p_new_qty: it.qty });
+    if (r && r.allowed === false) {
+      const p = products.get(it.product_id);
+      const hit = { max: Number(r.max) || 0, scope: r.scope === 'combined' ? 'combined' as const : 'per_product' as const, remaining: Number(r.remaining) || 0, code: p?.code || '', name: p?.name || '' };
+      return fail(purchaseLimitCustomerMessage(hit).replace(/\*/g, ''), 'INSUFFICIENT_STOCK', { product_id: it.product_id, stock: hit.remaining, max_qty: hit.remaining, reason: 'purchase_limit' });
+    }
+  }
+  return null;
+}
+function purchaseLimitFail(err: unknown, productId?: number) {
+  const hit = parsePurchaseLimitError(err);
+  if (!hit) return null;
+  return fail(purchaseLimitCustomerMessage(hit).replace(/\*/g, ''), 'INSUFFICIENT_STOCK', { product_id: productId, stock: hit.remaining, max_qty: hit.remaining, reason: 'purchase_limit' });
+}
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const num = (v: unknown, d = 0) => { const n = typeof v === 'string' ? Number(v) : typeof v === 'number' ? v : NaN; return Number.isFinite(n) ? n : d; };
 
@@ -688,13 +708,24 @@ async function syncOpenOrder(body: any, tenant: any, finalize: boolean, aff: any
   }
 
   // 2) entra ou aumenta (reserva atomica; o primeiro que chega leva)
-  let problem: { product_id: number; max_qty: number; stock: number } | null = null;
+  let problem: { product_id: number; max_qty: number; stock: number; limit?: any } | null = null;
   const finalQty = new Map<number, number>();
   for (const [pid, w] of want) {
     const p = products.get(pid);
     const held = Math.min(num(cur.get(pid)?.qty), w);
     let qty = held;
     if (w > held) {
+      // Limite por cliente: não deixa passar do máximo da promoção
+      const { data: lim } = await sb.rpc('purchase_limit_check', { p_tenant_id: tenant.id, p_phone: order.customer_phone || phone, p_product_id: pid, p_new_qty: w - held });
+      if (lim && lim.allowed === false) {
+        finalQty.set(pid, held);
+        if (!problem) problem = { product_id: pid, max_qty: held + (Number(lim.remaining) || 0), stock: held + (Number(lim.remaining) || 0), limit: lim };
+        if (held <= 0) continue;
+        const unitHeld = effectivePrice(p);
+        if (!cur.has(pid)) continue;
+        await sb.from('cart_items').update({ qty: held, unit_price: unitHeld }).eq('id', cur.get(pid).id);
+        continue;
+      }
       const need = w - held;
       const { data: left, error } = await sb.rpc('reserve_product_stock', { p_product_id: pid, p_qty: need });
       if (error || left === null || left === undefined) {
@@ -784,6 +815,12 @@ async function syncOpenOrder(body: any, tenant: any, finalize: boolean, aff: any
 
   const itemsState = lines.map((l) => ({ product_id: l.pid, qty: l.qty }));
   if (problem) {
+    const lp = products.get(problem.product_id);
+    if (problem.limit) {
+      const hit = { max: Number(problem.limit.max) || 0, scope: problem.limit.scope === 'combined' ? 'combined' as const : 'per_product' as const, remaining: Number(problem.limit.remaining) || 0, code: lp?.code || '', name: lp?.name || '' };
+      return fail(purchaseLimitCustomerMessage(hit).replace(/\*/g, ''), 'INSUFFICIENT_STOCK',
+        { product_id: problem.product_id, stock: problem.stock, max_qty: problem.max_qty, items_state: itemsState, reason: 'purchase_limit' });
+    }
     return fail(`Estoque insuficiente de ${products.get(problem.product_id)?.name || 'um produto'}.`, 'INSUFFICIENT_STOCK',
       { product_id: problem.product_id, stock: problem.stock, max_qty: problem.max_qty, items_state: itemsState });
   }
@@ -845,6 +882,9 @@ async function createOrder(body: any, tenant: any, ip: string, aff: any) {
       return fail(`${p?.name || 'Um produto'} não está mais disponível.`, 'NOT_AVAILABLE', { product_id: it.product_id });
     }
   }
+
+  const limitFail = await checkPurchaseLimits(tenant.id, phone, items, products);
+  if (limitFail) return limitFail;
 
   // ---- estoque: o primeiro que chega leva (reservas atômicas, com desfazer em caso de falha) ----
   const reservedNow: Array<{ product_id: number; qty: number }> = [];
@@ -942,7 +982,7 @@ async function createOrder(body: any, tenant: any, ip: string, aff: any) {
     tenant_id: tenant.id, cart_id: cart.id, product_id: l.p.id, product_code: l.p.code, product_name: l.p.name,
     product_image_url: l.p.image_url, unit_price: l.unit, qty: l.it.qty,
   })));
-  if (itemsErr) { await rollbackAll(cart.id, order.id); console.error('[live-shop] items:', itemsErr.message); return fail('Não foi possível criar o pedido. Tente novamente.', 'ORDER_ERROR'); }
+  if (itemsErr) { await rollbackAll(cart.id, order.id); console.error('[live-shop] items:', itemsErr.message); return purchaseLimitFail(itemsErr) || fail('Não foi possível criar o pedido. Tente novamente.', 'ORDER_ERROR'); }
 
   // a reserva do carrinho virou pedido
   if (sessionRows.length) await sb.from('live_cart_reservations').delete().eq('tenant_id', tenant.id).eq('session_id', sessionId);

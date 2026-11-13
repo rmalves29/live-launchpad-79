@@ -4,6 +4,7 @@
 // - Valida estoque atomicamente
 // - Faz upsert em cart_items (trigger envia WhatsApp)
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { parsePurchaseLimitError, purchaseLimitCustomerMessage } from '../_shared/purchase-limit.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -209,6 +210,8 @@ Deno.serve(async (req) => {
         product_image_url: product.image_url,
       }).eq('id', existingItem.id);
       if (upErr) {
+        const limitHit = parsePurchaseLimitError(upErr);
+        if (limitHit) return jsonResp({ error: purchaseLimitCustomerMessage(limitHit).replace(/\*/g, ''), code: 'PURCHASE_LIMIT', remaining: limitHit.remaining }, 200);
         console.error('[add-to-cart] update item:', upErr);
         return jsonResp({ error: 'Erro ao atualizar item' }, 500);
       }
@@ -218,6 +221,8 @@ Deno.serve(async (req) => {
         product_name: product.name, product_code: product.code, product_image_url: product.image_url,
       });
       if (insErr) {
+        const limitHit = parsePurchaseLimitError(insErr);
+        if (limitHit) return jsonResp({ error: purchaseLimitCustomerMessage(limitHit).replace(/\*/g, ''), code: 'PURCHASE_LIMIT', remaining: limitHit.remaining }, 200);
         console.error('[add-to-cart] insert item:', insErr);
         return jsonResp({ error: 'Erro ao inserir item' }, 500);
       }

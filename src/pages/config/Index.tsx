@@ -9,6 +9,7 @@ import { ExternalLink, Settings, Truck, CreditCard, MessageSquare, Percent, Gift
 import { CouponsManager } from '@/components/CouponsManager';
 import { GiftsManager } from '@/components/GiftsManager';
 import PromocoesManager from '@/components/PromocoesManager';
+import PurchaseLimitsManager from '@/components/PurchaseLimitsManager';
 import CategoriasManager from '@/components/CategoriasManager';
 import { CompanySettings } from '@/components/CompanySettings';
 import { MelhorEnvioStatus } from '@/components/MelhorEnvioStatus';
@@ -418,6 +419,7 @@ const Config = () => {
 
               <TabsContent value="promocoes" className="space-y-6 mt-6">
                 <PromocoesManager />
+                <PurchaseLimitsManager />
               </TabsContent>
 
               <TabsContent value="printer" className="space-y-6 mt-6">
