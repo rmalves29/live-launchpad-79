@@ -8,6 +8,8 @@
 //   apply_stock    grava no Cartzy o saldo da Olist (chave: vínculo olist_product_id ou sku_erp = SKU da Olist).
 //   catalog_load   devolve o catálogo já guardado (sem falar com a Olist).
 //   catalog_save   guarda uma leva de produtos buscados; catalog_finish apaga o que sumiu da Olist.
+//   images_pending lista os produtos vinculados à Olist que ainda estão sem foto no Cartzy.
+//   sync_images    busca na Olist (anexos do produto) a foto de até 25 produtos e grava no Cartzy.
 //   import         cria no Cartzy os produtos escolhidos (ou só vincula quando o código já existe).
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -26,6 +28,16 @@ const MAX_ITEMS = 300;
 
 const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const norm = (v: unknown) => String(v ?? "").trim();
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// primeira foto do produto na Olist (GET /produtos/{id} traz os anexos); só aceita endereço http(s)
+async function olistImage(supabase: any, tenantId: string, olistId: number): Promise<string | null> {
+  const r = await olistRequest(supabase, tenantId, "GET", `/produtos/${olistId}`);
+  if (!r.ok) return null;
+  const anexos: any[] = r.data?.anexos || [];
+  const a = anexos.map((x) => norm(x?.url)).find((u) => /^https?:\/\//i.test(u));
+  return a || null;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -202,12 +214,42 @@ Deno.serve(async (req) => {
             sale_type: saleType, olist_product_id: i.olist_id, sku_erp: i.sku || null,
           });
           if (error || !novo) results.push({ olist_id: i.olist_id, status: "erro", error: error?.message || "Falha ao criar o produto" });
-          else results.push({ olist_id: i.olist_id, status: "criado", cartzy_id: novo.id });
+          else {
+            const img = await olistImage(supabase, tenantId, i.olist_id).catch(() => null);
+            if (img) await supabase.from("products").update({ image_url: img }).eq("id", novo.id);
+            results.push({ olist_id: i.olist_id, status: "criado", cartzy_id: novo.id, image: !!img });
+          }
         } catch (e) {
           results.push({ olist_id: i.olist_id, status: "erro", error: (e as Error).message });
         }
       }
       return json({ success: true, results });
+    }
+
+    // ---------------- fotos ----------------
+    if (action === "images_pending") {
+      const ids: number[] = [];
+      for (let from = 0; from < 20000; from += 1000) {
+        const { data } = await supabase.from("products").select("olist_product_id")
+          .eq("tenant_id", tenantId).not("olist_product_id", "is", null).or("image_url.is.null,image_url.eq.").range(from, from + 999);
+        ids.push(...(data || []).map((p: any) => Number(p.olist_product_id)));
+        if (!data || data.length < 1000) break;
+      }
+      return json({ success: true, ids });
+    }
+
+    if (action === "sync_images") {
+      const ids = (Array.isArray(body.ids) ? body.ids : []).slice(0, 25).map(num).filter((n: number) => n > 0);
+      let updated = 0, semFoto = 0;
+      for (const id of ids) {
+        const img = await olistImage(supabase, tenantId, id).catch(() => null);
+        if (!img) { semFoto++; await sleep(150); continue; }
+        const { error } = await supabase.from("products").update({ image_url: img })
+          .eq("tenant_id", tenantId).eq("olist_product_id", id).or("image_url.is.null,image_url.eq.");
+        if (!error) updated++;
+        await sleep(150);
+      }
+      return json({ success: true, updated, sem_foto: semFoto });
     }
 
     // ---------------- catálogo guardado ----------------

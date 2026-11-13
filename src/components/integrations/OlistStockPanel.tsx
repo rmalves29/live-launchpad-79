@@ -116,6 +116,24 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
     } catch (e: any) { toast.error(e?.message || 'Erro ao atualizar o estoque'); } finally { setLoading(false); setProgress(''); }
   }
 
+  // Busca na Olist a foto dos produtos já vinculados que estão sem foto no Cartzy.
+  async function syncImages() {
+    setLoading(true); cancelRef.current = false;
+    try {
+      setProgress('Procurando produtos sem foto…');
+      const { ids } = (await call({ action: 'images_pending' })) as { ids: number[] };
+      if (!ids.length) { toast.message('Todos os produtos vinculados já têm foto.'); return; }
+      let updated = 0, semFoto = 0;
+      for (const part of chunk(ids, 25)) {
+        if (cancelRef.current) break;
+        setProgress(`Buscando fotos… ${updated + semFoto} de ${ids.length}`);
+        const r = await call({ action: 'sync_images', ids: part });
+        updated += r.updated || 0; semFoto += r.sem_foto || 0;
+      }
+      toast.success(`Fotos gravadas em ${updated} produto(s)${semFoto ? `; ${semFoto} não têm foto na Olist` : ''}.`);
+    } catch (e: any) { toast.error(e?.message || 'Erro ao buscar as fotos'); } finally { setLoading(false); setProgress(''); }
+  }
+
   // Busca os PRODUTOS da Olist (página por página) e o saldo do depósito escolhido, e confere o que já existe no Cartzy. Não grava nada.
   async function load() {
     setLoading(true); cancelRef.current = false; setRows([]); setSelected(new Set());
@@ -252,6 +270,7 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
             </Button>
             <label className="flex items-center gap-2 text-sm"><Checkbox checked={withZero} onCheckedChange={(v) => setWithZero(v === true)} disabled={loading} />Trazer também produtos sem estoque</label>
             {rows.length > 0 && !loading && <Button variant="outline" onClick={applyStock}>Atualizar estoque no Cartzy</Button>}
+            {!loading && <Button variant="outline" onClick={syncImages}>Buscar fotos dos produtos</Button>}
             {loading && <Button variant="outline" onClick={() => { cancelRef.current = true; }}>Parar</Button>}
             {loading && <span className="text-sm text-muted-foreground">{progress}</span>}
             {!loading && syncedAt && rows.length > 0 && <span className="text-sm text-muted-foreground">Catálogo guardado em {new Date(syncedAt).toLocaleString('pt-BR')}</span>}
