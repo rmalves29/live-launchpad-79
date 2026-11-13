@@ -184,6 +184,19 @@ serve(async (req) => {
         // SKU exato fora do trecho percorrido
         const bySku = await blingGet(token, `${base}&pagina=1&codigos[]=${encodeURIComponent(search)}`);
         if (bySku.ok) add(bySku.data?.data || []);
+        // Começo do nome direto no Bling (ex.: "Scrub Feminino Áurea"): acha mesmo quando o produto está além das
+        // 60 páginas percorridas (lojas com milhares de variações). Com e sem o filtro de estoque, até 3 páginas cada.
+        const plain = `/produtos?limite=${PAGE_SIZE}&criterio=2${storeId ? `&idLoja=${storeId}` : ""}`;
+        for (const b of onlyStock ? [base, plain] : [base]) {
+          for (let pg = 1; pg <= 3; pg++) {
+            const byName = await blingGet(token, `${b}&pagina=${pg}&nome=${encodeURIComponent(search)}`);
+            if (!byName.ok) break;
+            const items: any[] = byName.data?.data || [];
+            // sem filtro de estoque só entra o que tiver saldo (o kit é conferido abaixo pelo saldo virtual)
+            add(b === plain ? items.filter((p: any) => p.formato === "E" || p.formato === "V") : items);
+            if (items.length < PAGE_SIZE) break;
+          }
+        }
       }
       // KITS (produto com composição, formato "E"): não têm estoque próprio no Bling (o saldo vem das peças),
       // então o filtro "só com estoque" do Bling deixa todos de fora. Buscamos os kits à parte e, no modo
