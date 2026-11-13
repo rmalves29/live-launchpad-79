@@ -5,7 +5,7 @@
  *    pelo código ERP (SKU da Olist = sku_erp do Cartzy). A Olist só é lida aqui, nada é escrito nela.
  *  - Importar: cria no Cartzy os produtos novos escolhidos (ou só vincula quando o código já existe).
  */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,6 +21,7 @@ type Deposit = { id: number; nome: string; padrao: boolean; desconsidera_saldo: 
 type Row = { olist_id: number; sku: string; nome: string; preco: number; tipo: string; variacao: string; saldo: number; status: 'novo' | 'existe' | 'vinculado'; cartzy_id: number | null };
 
 const MAX_LOOPS = 300;
+const PAGE_SIZE = 50;
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const chunk = <T,>(a: T[], n: number) => { const o: T[][] = []; for (let i = 0; i < a.length; i += n) o.push(a.slice(i, i + n)); return o; };
 
@@ -30,11 +31,13 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState('');
   const [search, setSearch] = useState('');
-  const [onlyStock, setOnlyStock] = useState(false);
+  const [withZero, setWithZero] = useState(false); // trazer também os produtos sem estoque na Olist
+  const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [importing, setImporting] = useState(false);
   const [savingDeposit, setSavingDeposit] = useState(false);
   const [depositPick, setDepositPick] = useState('');
+  const [syncedAt, setSyncedAt] = useState<string | null>(null);
   const cancelRef = useRef(false);
 
   async function call(body: Record<string, unknown>): Promise<any> {
@@ -50,6 +53,29 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
     enabled: !!tenantId,
     retry: false,
   });
+
+  // ao abrir, mostra o catálogo que já foi buscado antes (sem falar com a Olist)
+  useEffect(() => {
+    if (!tenantId) return;
+    let off = false;
+    (async () => {
+      try {
+        const r = await call({ action: 'catalog_load' });
+        if (off || !r.rows?.length) return;
+        const list: Row[] = (r.rows as any[]).filter((p) => p.variacao !== 'P').map((p) => ({ ...p, status: 'novo' as const, cartzy_id: null }));
+        const st = new Map<number, { status: Row['status']; cartzy_id: number | null }>();
+        for (const part of chunk(list, 400)) {
+          const s = await call({ action: 'statuses', items: part.map((p) => ({ olist_id: p.olist_id, sku: p.sku })) });
+          for (const x of s.statuses) st.set(x.olist_id, x);
+        }
+        if (off) return;
+        setRows(list.map((p) => ({ ...p, ...(st.get(p.olist_id) || {}) }) as Row));
+        setSyncedAt(r.synced_at || null);
+      } catch { /* sem catálogo guardado ainda */ }
+    })();
+    return () => { off = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId]);
 
   async function saveDeposit() {
     const id = Number(depositPick || dep?.selected?.id);
@@ -77,7 +103,9 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
         if (!r.has_more) break;
         off += 100;
       }
-      setRows((prev) => prev.map((p) => ({ ...p, saldo: stock.get(p.olist_id) ?? 0 })));
+      const comSaldo = rows.map((p) => ({ ...p, saldo: stock.get(p.olist_id) ?? 0 }));
+      setRows(comSaldo);
+      for (const part of chunk(comSaldo, 400)) await call({ action: 'catalog_save', started_at: syncedAt || new Date().toISOString(), items: part });
       let updated = 0, linked = 0;
       for (const part of chunk(alvos, 300)) {
         setProgress('Atualizando o estoque do Cartzy…');
@@ -91,6 +119,8 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
   // Busca os PRODUTOS da Olist (página por página) e o saldo do depósito escolhido, e confere o que já existe no Cartzy. Não grava nada.
   async function load() {
     setLoading(true); cancelRef.current = false; setRows([]); setSelected(new Set());
+    const startedAt = new Date().toISOString();
+    let completed = false;
     try {
       setProgress('Lendo os produtos da Olist…');
       const list: Row[] = [];
@@ -101,7 +131,7 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
           list.push({ ...p, saldo: 0, status: 'novo', cartzy_id: null });
         }
         setProgress(`Lendo os produtos da Olist… ${list.length}`);
-        if (!r.has_more) break;
+        if (!r.has_more) { completed = true; break; }
         off += 100;
       }
       setProgress('Conferindo o que já existe no Cartzy…');
@@ -110,8 +140,23 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
         const r = await call({ action: 'statuses', items: part.map((p) => ({ olist_id: p.olist_id, sku: p.sku })) });
         for (const s of r.statuses) st.set(s.olist_id, s);
       }
-      const merged = list.map((p) => ({ ...p, ...(st.get(p.olist_id) || {}) }) as Row);
-      setRows(merged);
+      let merged = list.map((p) => ({ ...p, ...(st.get(p.olist_id) || {}) }) as Row);
+      // saldo do depósito (só leitura): necessário para saber quais produtos têm estoque
+      const stock = new Map<number, number>();
+      for (let off = 0, i = 0; i < MAX_LOOPS && !cancelRef.current; i++) {
+        setProgress(`Lendo o saldo do depósito… ${stock.size}`);
+        const r = await call({ action: 'stock_page', offset: off });
+        for (const x of r.rows as Array<{ olist_id: number; saldo: number }>) stock.set(x.olist_id, x.saldo);
+        if (!r.has_more) break;
+        off += 100;
+      }
+      merged = merged.map((p) => ({ ...p, saldo: stock.get(p.olist_id) ?? 0 }));
+      // sem a opção ligada, produto novo sem estoque na Olist não vem (os que já estão no Cartzy ficam, para o estoque poder zerar)
+      if (!withZero) merged = merged.filter((p) => p.saldo > 0 || p.status !== 'novo');
+      setRows(merged); setPage(0);
+      setProgress('Guardando o catálogo…');
+      for (const part of chunk(merged, 400)) await call({ action: 'catalog_save', started_at: startedAt, items: part });
+      if (completed) { await call({ action: 'catalog_finish', started_at: startedAt }); setSyncedAt(new Date().toISOString()); }
 
       toast.success(`${merged.length} produtos lidos da Olist (${merged.filter((p) => p.status === 'novo').length} novos). Escolha os que quer importar.`);
     } catch (e: any) {
@@ -122,13 +167,14 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
   const filtered = useMemo(() => {
     const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
     return rows.filter((r) => {
-      if (onlyStock && r.saldo <= 0 && r.status === 'novo') return false;
       if (!words.length) return true;
       const t = `${r.nome} ${r.sku}`.toLowerCase();
       return words.every((w) => t.includes(w));
     });
-  }, [rows, search, onlyStock]);
-  const shown = filtered.slice(0, 200);
+  }, [rows, search]);
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const cur = Math.min(page, pages - 1);
+  const shown = filtered.slice(cur * PAGE_SIZE, (cur + 1) * PAGE_SIZE);
   const importable = shown.filter((r) => r.status !== 'vinculado');
 
   function toggle(id: number) { setSelected((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
@@ -204,18 +250,19 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
             <Button onClick={load} disabled={loading || !dep?.selected}>
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}Buscar produtos
             </Button>
+            <label className="flex items-center gap-2 text-sm"><Checkbox checked={withZero} onCheckedChange={(v) => setWithZero(v === true)} disabled={loading} />Trazer também produtos sem estoque</label>
             {rows.length > 0 && !loading && <Button variant="outline" onClick={applyStock}>Atualizar estoque no Cartzy</Button>}
             {loading && <Button variant="outline" onClick={() => { cancelRef.current = true; }}>Parar</Button>}
             {loading && <span className="text-sm text-muted-foreground">{progress}</span>}
+            {!loading && syncedAt && rows.length > 0 && <span className="text-sm text-muted-foreground">Catálogo guardado em {new Date(syncedAt).toLocaleString('pt-BR')}</span>}
             {!dep?.selected && !loading && <span className="text-sm text-muted-foreground">Escolha e salve o depósito primeiro.</span>}
           </div>
 
           {rows.length > 0 && (
             <>
               <div className="flex flex-wrap items-center gap-3">
-                <Input className="max-w-sm" placeholder="Filtrar por nome ou código…" value={search} onChange={(e) => setSearch(e.target.value)} />
-                <label className="flex items-center gap-2 text-sm"><Checkbox checked={onlyStock} onCheckedChange={(v) => setOnlyStock(v === true)} />Esconder novos sem estoque</label>
-                <span className="text-sm text-muted-foreground">{filtered.length} produto(s){filtered.length > shown.length ? ` · mostrando ${shown.length}` : ''}</span>
+                <Input className="max-w-sm" placeholder="Filtrar por nome ou código…" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} />
+                                <span className="text-sm text-muted-foreground">{filtered.length} produto(s) · página {cur + 1} de {pages}</span>
                 <Button size="sm" onClick={importSelected} disabled={importing || selected.size === 0}>
                   {importing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Importar selecionados ({selected.size})
                 </Button>
@@ -251,6 +298,13 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
                   </tbody>
                 </table>
               </div>
+              {pages > 1 && (
+                <div className="flex items-center justify-center gap-3">
+                  <Button size="sm" variant="outline" disabled={cur === 0} onClick={() => setPage(cur - 1)}>Anterior</Button>
+                  <span className="text-sm text-muted-foreground">Página {cur + 1} de {pages}</span>
+                  <Button size="sm" variant="outline" disabled={cur >= pages - 1} onClick={() => setPage(cur + 1)}>Próxima</Button>
+                </div>
+              )}
             </>
           )}
         </CardContent>

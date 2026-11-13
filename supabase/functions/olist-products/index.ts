@@ -6,6 +6,8 @@
 //   products_page  uma página de produtos da Olist (100) com preço e tipo.
 //   statuses       diz o que é novo, o que já existe (mesmo código ERP) e o que já está vinculado no Cartzy.
 //   apply_stock    grava no Cartzy o saldo da Olist (chave: vínculo olist_product_id ou sku_erp = SKU da Olist).
+//   catalog_load   devolve o catálogo já guardado (sem falar com a Olist).
+//   catalog_save   guarda uma leva de produtos buscados; catalog_finish apaga o que sumiu da Olist.
 //   import         cria no Cartzy os produtos escolhidos (ou só vincula quando o código já existe).
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -206,6 +208,42 @@ Deno.serve(async (req) => {
         }
       }
       return json({ success: true, results });
+    }
+
+    // ---------------- catálogo guardado ----------------
+    if (action === "catalog_load") {
+      const rows: any[] = [];
+      for (let from = 0; from < 20000; from += 1000) {
+        const { data, error } = await supabase.from("olist_catalog")
+          .select("olist_id, sku, nome, preco, tipo, variacao, saldo")
+          .eq("tenant_id", tenantId).order("nome").range(from, from + 999);
+        if (error) return json({ success: false, error: "Não foi possível ler o catálogo guardado" });
+        rows.push(...(data || []).map((r: any) => ({ ...r, olist_id: Number(r.olist_id), preco: Number(r.preco) })));
+        if (!data || data.length < 1000) break;
+      }
+      const { data: meta } = await supabase.from("integration_olist").select("last_catalog_sync_at").eq("tenant_id", tenantId).maybeSingle();
+      return json({ success: true, rows, synced_at: meta?.last_catalog_sync_at || null });
+    }
+
+    if (action === "catalog_save") {
+      const at = new Date(norm(body.started_at) || Date.now()).toISOString();
+      const items = (Array.isArray(body.items) ? body.items : []).slice(0, 500)
+        .map((i: any) => ({
+          tenant_id: tenantId, olist_id: num(i?.olist_id), sku: norm(i?.sku), nome: norm(i?.nome), preco: num(i?.preco),
+          tipo: norm(i?.tipo), variacao: norm(i?.variacao), saldo: Math.max(0, Math.floor(num(i?.saldo))), synced_at: at,
+        })).filter((i: any) => i.olist_id > 0);
+      if (items.length) {
+        const { error } = await supabase.from("olist_catalog").upsert(items, { onConflict: "tenant_id,olist_id" });
+        if (error) return json({ success: false, error: "Não foi possível guardar o catálogo" });
+      }
+      return json({ success: true, saved: items.length });
+    }
+
+    if (action === "catalog_finish") {
+      const at = new Date(norm(body.started_at) || Date.now()).toISOString();
+      await supabase.from("olist_catalog").delete().eq("tenant_id", tenantId).lt("synced_at", at);
+      await supabase.from("integration_olist").update({ last_catalog_sync_at: new Date().toISOString() }).eq("tenant_id", tenantId);
+      return json({ success: true });
     }
 
     return json({ success: false, error: "Ação inválida" }, 400);
