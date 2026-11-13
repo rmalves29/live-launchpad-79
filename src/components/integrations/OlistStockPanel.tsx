@@ -30,7 +30,7 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState('');
   const [search, setSearch] = useState('');
-  const [onlyStock, setOnlyStock] = useState(true);
+  const [onlyStock, setOnlyStock] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [importing, setImporting] = useState(false);
   const [savingDeposit, setSavingDeposit] = useState(false);
@@ -63,7 +63,23 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
     } catch (e: any) { toast.error(e?.message || 'Erro ao salvar o depósito'); } finally { setSavingDeposit(false); }
   }
 
-  // Traz TUDO da Olist (estoque + produtos, página por página), confere o que já existe no Cartzy e atualiza o estoque pelo código ERP.
+  // Atualiza o estoque do Cartzy (só dos produtos que já existem, pelo código ERP) com o saldo já lido.
+  async function applyStock() {
+    const alvos = rows.filter((p) => p.status !== 'novo');
+    if (!alvos.length) { toast.message('Nenhum produto existente para atualizar.'); return; }
+    setLoading(true);
+    try {
+      let updated = 0, linked = 0;
+      for (const part of chunk(alvos, 300)) {
+        setProgress('Atualizando o estoque do Cartzy…');
+        const r = await call({ action: 'apply_stock', items: part.map((p) => ({ olist_id: p.olist_id, sku: p.sku, saldo: p.saldo })) });
+        updated += r.updated || 0; linked += r.linked || 0;
+      }
+      toast.success(`Estoque atualizado no Cartzy em ${updated} produto(s)${linked ? ` e ${linked} vinculado(s) pelo código ERP` : ''}.`);
+    } catch (e: any) { toast.error(e?.message || 'Erro ao atualizar o estoque'); } finally { setLoading(false); setProgress(''); }
+  }
+
+  // Busca os PRODUTOS da Olist (página por página) e o saldo do depósito escolhido, e confere o que já existe no Cartzy. Não grava nada.
   async function load() {
     setLoading(true); cancelRef.current = false; setRows([]); setSelected(new Set());
     try {
@@ -97,14 +113,7 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
       const merged = list.map((p) => ({ ...p, ...(st.get(p.olist_id) || {}) }) as Row);
       setRows(merged);
 
-      setProgress('Atualizando o estoque do Cartzy…');
-      let updated = 0, linked = 0;
-      const alvos = merged.filter((p) => p.status !== 'novo');
-      for (const part of chunk(alvos, 300)) {
-        const r = await call({ action: 'apply_stock', items: part.map((p) => ({ olist_id: p.olist_id, sku: p.sku, saldo: p.saldo })) });
-        updated += r.updated || 0; linked += r.linked || 0;
-      }
-      toast.success(`${merged.length} produtos lidos da Olist. Estoque atualizado no Cartzy em ${updated} produto(s)${linked ? ` e ${linked} vinculado(s) pelo código ERP` : ''}.`);
+      toast.success(`${merged.length} produtos lidos da Olist (${merged.filter((p) => p.status === 'novo').length} novos). Escolha os que quer importar.`);
     } catch (e: any) {
       toast.error(e?.message || 'Erro ao buscar na Olist');
     } finally { setLoading(false); setProgress(''); }
@@ -186,15 +195,16 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base"><Download className="h-4 w-4" /> Produtos da Olist</CardTitle>
           <CardDescription>
-            <b>Buscar</b> traz os produtos e o saldo da Olist e <b>atualiza o estoque do Cartzy</b> dos produtos que já existem (pelo código ERP: SKU da Olist = SKU ERP do Cartzy).
-            Os novos podem ser importados abaixo. Nada é escrito na Olist.
+            <b>Buscar produtos</b> lista os produtos da Olist (com o saldo do depósito escolhido) para você importar os novos no Cartzy.
+            <b>Atualizar estoque no Cartzy</b> grava o saldo nos produtos que já existem (pelo código ERP). Nada é escrito na Olist.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <Button onClick={load} disabled={loading || !dep?.selected}>
-              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}Buscar na Olist
+              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}Buscar produtos
             </Button>
+            {rows.length > 0 && !loading && <Button variant="outline" onClick={applyStock}>Atualizar estoque no Cartzy</Button>}
             {loading && <Button variant="outline" onClick={() => { cancelRef.current = true; }}>Parar</Button>}
             {loading && <span className="text-sm text-muted-foreground">{progress}</span>}
             {!dep?.selected && !loading && <span className="text-sm text-muted-foreground">Escolha e salve o depósito primeiro.</span>}
