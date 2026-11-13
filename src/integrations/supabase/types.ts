@@ -2988,6 +2988,90 @@ export type Database = {
           },
         ]
       }
+      integration_olist: {
+        Row: {
+          access_token: string | null
+          authorized_at: string | null
+          client_id: string | null
+          client_secret: string | null
+          created_at: string
+          first_failure_at: string | null
+          id: string
+          is_active: boolean
+          last_error: string | null
+          last_refresh_at: string | null
+          next_refresh_at: string | null
+          oauth_state: string | null
+          oauth_state_expires_at: string | null
+          refresh_failures: number
+          refresh_token: string | null
+          refreshing_at: string | null
+          status: string
+          tenant_id: string
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token?: string | null
+          authorized_at?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string
+          first_failure_at?: string | null
+          id?: string
+          is_active?: boolean
+          last_error?: string | null
+          last_refresh_at?: string | null
+          next_refresh_at?: string | null
+          oauth_state?: string | null
+          oauth_state_expires_at?: string | null
+          refresh_failures?: number
+          refresh_token?: string | null
+          refreshing_at?: string | null
+          status?: string
+          tenant_id: string
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string | null
+          authorized_at?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          created_at?: string
+          first_failure_at?: string | null
+          id?: string
+          is_active?: boolean
+          last_error?: string | null
+          last_refresh_at?: string | null
+          next_refresh_at?: string | null
+          oauth_state?: string | null
+          oauth_state_expires_at?: string | null
+          refresh_failures?: number
+          refresh_token?: string | null
+          refreshing_at?: string | null
+          status?: string
+          tenant_id?: string
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_olist_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "integration_olist_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_omie: {
         Row: {
           app_key: string | null
@@ -6113,7 +6197,6 @@ export type Database = {
           enable_afiliados: boolean
           enable_live: boolean
           enable_loja_live: boolean
-          menu_flags: Json | null
           enable_sendflow: boolean
           enabled_integrations: Json | null
           id: string
@@ -6128,6 +6211,7 @@ export type Database = {
           max_orders: number | null
           max_products: number | null
           max_whatsapp_groups: number | null
+          menu_flags: Json
           monthly_fee: number | null
           name: string
           onboarding_meeting_at: string | null
@@ -6186,7 +6270,6 @@ export type Database = {
           enable_afiliados?: boolean
           enable_live?: boolean
           enable_loja_live?: boolean
-          menu_flags?: Json | null
           enable_sendflow?: boolean
           enabled_integrations?: Json | null
           id?: string
@@ -6201,6 +6284,7 @@ export type Database = {
           max_orders?: number | null
           max_products?: number | null
           max_whatsapp_groups?: number | null
+          menu_flags?: Json
           monthly_fee?: number | null
           name: string
           onboarding_meeting_at?: string | null
@@ -6259,7 +6343,6 @@ export type Database = {
           enable_afiliados?: boolean
           enable_live?: boolean
           enable_loja_live?: boolean
-          menu_flags?: Json | null
           enable_sendflow?: boolean
           enabled_integrations?: Json | null
           id?: string
@@ -6274,6 +6357,7 @@ export type Database = {
           max_orders?: number | null
           max_products?: number | null
           max_whatsapp_groups?: number | null
+          menu_flags?: Json
           monthly_fee?: number | null
           name?: string
           onboarding_meeting_at?: string | null
@@ -7138,10 +7222,10 @@ export type Database = {
           enable_live: boolean
           enable_loja_live: boolean
           enable_sendflow: boolean
-          menu_flags: Json
           id: string
           is_active: boolean
           max_whatsapp_groups: number
+          menu_flags: Json
           name: string
           slug: string
           subscription_ends_at: string
@@ -7319,10 +7403,10 @@ export type Database = {
           enable_live: boolean
           enable_loja_live: boolean
           enable_sendflow: boolean
-          menu_flags: Json
           id: string
           is_active: boolean
           max_whatsapp_groups: number
+          menu_flags: Json
           name: string
           slug: string
         }[]
