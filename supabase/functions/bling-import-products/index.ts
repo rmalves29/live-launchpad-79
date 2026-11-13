@@ -115,7 +115,7 @@ serve(async (req) => {
         .filter((i: any) => Number.isFinite(i.bling_id) && i.bling_id > 0);
       if (!items.length) return json({ ok: true, statuses: [] });
       const ids = items.map((i) => i.bling_id);
-      const quoted = items.map((i) => `"${i.codigo.replace(/"/g, "")}"`).join(",");
+      const quoted = items.filter((i) => i.codigo).map((i) => `"${i.codigo.replace(/"/g, "")}"`).join(",") || '"__sem_codigo__"';
       const byId = new Map<number, any>(), byCode = new Map<string, any>();
       const { data: linked } = await supabase.from("products").select("id, code, sku_erp, bling_product_id").eq("tenant_id", tenantId).in("bling_product_id", ids);
       for (const p of linked || []) byId.set(Number(p.bling_product_id), p);
@@ -231,7 +231,8 @@ serve(async (req) => {
         }
       }
 
-      const named = (p: any) => String(p.nome || "").trim() && String(p.codigo || "").trim();
+      // Produto sem código (SKU) no Bling também entra: o Cartzy gera o código C### e liga pelo ID do Bling.
+      const named = (p: any) => String(p.nome || "").trim();
       let rows: any[] = raw.filter((p) => !p.idProdutoPai && named(p)).map((p) => ({ ...p, children_count: null as number | null }));
 
       // Com filtro de saldo (ou busca pelo SKU de uma variação), o Bling devolve as variações (filhos) e não o pai: montamos a linha do pai a partir dos filhos.
@@ -251,13 +252,15 @@ serve(async (req) => {
 
       // o que já existe no Cartzy
       const ids = rows.map((p) => Number(p.id));
-      const codes = rows.map((p) => String(p.codigo).trim());
+      const codes = rows.map((p) => String(p.codigo ?? "").trim()).filter(Boolean);
       const byId = new Map<number, any>(), byCode = new Map<string, any>();
       if (rows.length) {
         const quoted = codes.map((c) => `"${c.replace(/"/g, "")}"`).join(",");
         const { data: linked } = await supabase.from("products").select("id, code, sku_erp, bling_product_id").eq("tenant_id", tenantId).in("bling_product_id", ids);
         for (const p of linked || []) byId.set(Number(p.bling_product_id), p);
-        const { data: sameCode } = await supabase.from("products").select("id, code, sku_erp, bling_product_id").eq("tenant_id", tenantId).or(`code.in.(${quoted}),sku_erp.in.(${quoted})`);
+        const { data: sameCode } = codes.length
+          ? await supabase.from("products").select("id, code, sku_erp, bling_product_id").eq("tenant_id", tenantId).or(`code.in.(${quoted}),sku_erp.in.(${quoted})`)
+          : { data: [] as any[] };
         for (const p of sameCode || []) { if (p.code) byCode.set(String(p.code).toLowerCase(), p); if (p.sku_erp) byCode.set(String(p.sku_erp).toLowerCase(), p); }
       }
 
@@ -267,10 +270,10 @@ serve(async (req) => {
       const out = rows.map((p) => {
         const id = Number(p.id);
         const linkedRow = byId.get(id);
-        const sameRow = byCode.get(String(p.codigo).trim().toLowerCase());
+        const sameRow = String(p.codigo ?? "").trim() ? byCode.get(String(p.codigo).trim().toLowerCase()) : undefined;
         return {
           bling_id: id,
-          codigo: String(p.codigo).trim(),
+          codigo: String(p.codigo ?? "").trim(),
           nome: String(p.nome).trim(),
           preco: Number(p.preco) || 0,
           formato: p.formato || "S",
@@ -293,7 +296,7 @@ serve(async (req) => {
         for (const r of alvos) {
           const p = atual.get(Number(r.cartzy_id));
           if (!p) continue;
-          const mesmaChave = Number(p.bling_product_id) === r.bling_id || String(p.sku_erp || "").trim().toLowerCase() === r.codigo.toLowerCase();
+          const mesmaChave = Number(p.bling_product_id) === r.bling_id || (!!r.codigo && String(p.sku_erp || "").trim().toLowerCase() === r.codigo.toLowerCase());
           if (!mesmaChave) continue;
           const novo = Math.max(0, Math.floor(Number(r.saldo) || 0));
           if (Number(p.stock) === novo) continue;
@@ -330,7 +333,7 @@ serve(async (req) => {
           const d = det.data?.data || {};
           const codigo = String(d.codigo || "").trim();
           const nome = String(d.nome || "").trim();
-          if (!codigo || !nome) { results.push({ bling_id: id, status: "erro", error: "Produto sem nome ou código no Bling." }); continue; }
+          if (!nome) { results.push({ bling_id: id, status: "erro", error: "Produto sem nome no Bling." }); continue; }
 
           const isParent = d.formato === "V" && Array.isArray(d.variacoes) && d.variacoes.length > 0;
           const nodes: any[] = isParent ? d.variacoes : [d];
@@ -339,7 +342,7 @@ serve(async (req) => {
           const active = d.situacao !== "I";
 
           // vínculo com produto que já existe no Cartzy
-          const link = await findLinkable(codigo);
+          const link = codigo ? await findLinkable(codigo) : null;
           if (link) {
             await supabase.from("products").update({ bling_product_id: id, sku_erp: codigo, updated_at: new Date().toISOString() }).eq("id", link.id);
             results.push({ bling_id: id, status: "vinculado", cartzy_id: link.id, note: isParent ? "Variações não importadas: o produto já existia no Cartzy." : undefined });
@@ -359,7 +362,7 @@ serve(async (req) => {
             image_url: image,
             sale_type: saleType,
             bling_product_id: id,
-            sku_erp: codigo,
+            sku_erp: codigo || null,
           });
           if (pErr || !parentRow) { results.push({ bling_id: id, status: "erro", error: pErr?.message || "Falha ao criar o produto" }); continue; }
 
@@ -367,12 +370,12 @@ serve(async (req) => {
           if (isParent) {
             for (const n of nodes) {
               const nid = Number(n.id);
-              const ncode = String(n.codigo || "").trim() || `${codigo}-${nid}`;
+              const ncode = String(n.codigo || "").trim(); // pode vir vazio: a variação fica ligada pelo ID do Bling
               const v = parseVariation(n.variacao?.nome || "");
               const childImg = (n.midia ? await resolveBlingImage(supabase, tenantId, nid, n) : null) || image;
               const { error: cErr } = await insertWithFreshCode(supabase, nextCode, {
                 tenant_id: tenantId,
-                name: `${nome} - ${v.label || ncode}`.slice(0, 200),
+                name: `${nome} - ${v.label || ncode || nid}`.slice(0, 200),
                 price: Number(n.preco) || parentPrice,
                 stock: stockOf(nid),
                 is_active: n.situacao !== "I" && active,
@@ -382,10 +385,10 @@ serve(async (req) => {
                 size: v.size,
                 parent_product_id: parentRow.id,
                 bling_product_id: nid,
-                sku_erp: ncode,
+                sku_erp: ncode || null,
               });
               if (!cErr) children++;
-              else console.error("[bling-import-products] variação não criada:", ncode, cErr?.message);
+              else console.error("[bling-import-products] variação não criada:", ncode || nid, cErr?.message);
             }
           }
           results.push({ bling_id: id, status: "criado", cartzy_id: parentRow.id, children });

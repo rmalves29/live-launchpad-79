@@ -341,7 +341,7 @@ export default function BlingProductsImportPanel({ tenantId, depositName, stores
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{r.nome}</p>
                       <p className="truncate text-xs text-muted-foreground">
-                        <span className="font-mono">{r.codigo}</span>
+                        <span className="font-mono">{r.codigo || "sem código no Bling"}</span>
                         {r.formato === 'V' && <span className="ml-2 text-primary">com variações{r.children_count ? ` (${r.children_count} com estoque)` : ''}</span>}
                         {res?.children ? <span className="ml-2">· {res.children} variação(ões) criada(s)</span> : null}
                         {res?.note ? <span className="ml-2 text-amber-700">· {res.note}</span> : null}
