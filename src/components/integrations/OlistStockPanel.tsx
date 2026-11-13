@@ -67,12 +67,21 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
   async function applyStock() {
     const alvos = rows.filter((p) => p.status !== 'novo');
     if (!alvos.length) { toast.message('Nenhum produto existente para atualizar.'); return; }
-    setLoading(true);
+    setLoading(true); cancelRef.current = false;
     try {
+      const stock = new Map<number, number>();
+      for (let off = 0, i = 0; i < MAX_LOOPS && !cancelRef.current; i++) {
+        setProgress(`Lendo o estoque da Olist… ${stock.size}`);
+        const r = await call({ action: 'stock_page', offset: off });
+        for (const s of r.rows as Array<{ olist_id: number; saldo: number }>) stock.set(s.olist_id, s.saldo);
+        if (!r.has_more) break;
+        off += 100;
+      }
+      setRows((prev) => prev.map((p) => ({ ...p, saldo: stock.get(p.olist_id) ?? 0 })));
       let updated = 0, linked = 0;
       for (const part of chunk(alvos, 300)) {
         setProgress('Atualizando o estoque do Cartzy…');
-        const r = await call({ action: 'apply_stock', items: part.map((p) => ({ olist_id: p.olist_id, sku: p.sku, saldo: p.saldo })) });
+        const r = await call({ action: 'apply_stock', items: part.map((p) => ({ olist_id: p.olist_id, sku: p.sku, saldo: stock.get(p.olist_id) ?? 0 })) });
         updated += r.updated || 0; linked += r.linked || 0;
       }
       toast.success(`Estoque atualizado no Cartzy em ${updated} produto(s)${linked ? ` e ${linked} vinculado(s) pelo código ERP` : ''}.`);
@@ -83,22 +92,13 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
   async function load() {
     setLoading(true); cancelRef.current = false; setRows([]); setSelected(new Set());
     try {
-      setProgress('Lendo o estoque da Olist…');
-      const stock = new Map<number, number>();
-      for (let off = 0, i = 0; i < MAX_LOOPS && !cancelRef.current; i++) {
-        const r = await call({ action: 'stock_page', offset: off });
-        for (const s of r.rows as Array<{ olist_id: number; saldo: number }>) stock.set(s.olist_id, s.saldo);
-        setProgress(`Lendo o estoque da Olist… ${stock.size}`);
-        if (!r.has_more) break;
-        off += 100;
-      }
       setProgress('Lendo os produtos da Olist…');
       const list: Row[] = [];
       for (let off = 0, i = 0; i < MAX_LOOPS && !cancelRef.current; i++) {
         const r = await call({ action: 'products_page', offset: off });
         for (const p of r.rows as any[]) {
           if (p.variacao === 'P') continue; // pai de variações não tem estoque próprio: entram as variações
-          list.push({ ...p, saldo: stock.get(p.olist_id) ?? 0, status: 'novo', cartzy_id: null });
+          list.push({ ...p, saldo: 0, status: 'novo', cartzy_id: null });
         }
         setProgress(`Lendo os produtos da Olist… ${list.length}`);
         if (!r.has_more) break;
@@ -195,7 +195,7 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base"><Download className="h-4 w-4" /> Produtos da Olist</CardTitle>
           <CardDescription>
-            <b>Buscar produtos</b> lista os produtos da Olist (com o saldo do depósito escolhido) para você importar os novos no Cartzy.
+            <b>Buscar produtos</b> lista os produtos da Olist para você importar os novos no Cartzy.
             <b>Atualizar estoque no Cartzy</b> grava o saldo nos produtos que já existem (pelo código ERP). Nada é escrito na Olist.
           </CardDescription>
         </CardHeader>
@@ -231,7 +231,7 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
                           aria-label="Selecionar todos"
                         />
                       </th>
-                      <th className="p-2">Produto (código da Olist)</th><th className="p-2 text-right">Preço</th><th className="p-2 text-right">Estoque</th><th className="p-2">Situação</th>
+                      <th className="p-2">Produto (código da Olist)</th><th className="p-2 text-right">Preço</th><th className="p-2 text-right">Estoque (após atualizar)</th><th className="p-2">Situação</th>
                     </tr>
                   </thead>
                   <tbody>
