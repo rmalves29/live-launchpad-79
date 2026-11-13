@@ -449,6 +449,13 @@ async function getValidAccessToken(supabase: any, integration: any): Promise<str
  * When `force=true`, uses a longer timeout and skips any short-circuit logic
  * (this is used as the automatic retry path when the first attempt fails).
  */
+/** Devolve o e-mail limpo se tiver formato válido; senão devolve vazio (nunca manda lixo para o Bling). */
+export function validEmailOrEmpty(value: unknown): string {
+  const email = String(value ?? '').trim();
+  if (!email || email.length > 120) return '';
+  return /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;.]{2,}$/.test(email) ? email : '';
+}
+
 async function updateBlingContactAddress(
   contactId: number,
   accessToken: string,
@@ -612,7 +619,9 @@ async function getOrCreateBlingContactId(
   const customerNeighborhood = order.customer_neighborhood || customer?.neighborhood || '';
   const customerCity = order.customer_city || customer?.city || '';
   const customerState = normalizeUF(order.customer_state || customer?.state || '');
-  const customerEmail = customer?.email || '';
+  // E-mail inválido no cadastro (ex.: "ju07moreira.com", "U" ou um CPF digitado no campo) faz o Bling recusar o contato
+  // inteiro e o pedido nunca sobe. Só mandamos o e-mail quando ele é válido; sem e-mail o contato é criado normalmente.
+  const customerEmail = validEmailOrEmpty(customer?.email);
 
   // Helper to build address data for updates
   const buildAddressData = () => ({
