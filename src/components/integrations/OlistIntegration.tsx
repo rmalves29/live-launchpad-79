@@ -16,7 +16,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import { Loader2, RefreshCw, ExternalLink, AlertTriangle, CheckCircle2, Unplug } from 'lucide-react';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+// Mesmo endereço fixo do cliente Supabase do app (VITE_SUPABASE_URL não existe na compilação publicada e virava "undefined").
+const SUPABASE_URL = 'https://hxtbsieodbtzgcvvkeqx.supabase.co';
 
 type OlistStatus = {
   status: 'sem_credenciais' | 'aguardando_autorizacao' | 'ativa' | 'erro' | 'reautorizar';
