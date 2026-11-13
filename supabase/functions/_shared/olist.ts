@@ -146,3 +146,62 @@ export async function getOlistAccessToken(supabase: any, tenantId: string): Prom
   const { data: again } = await supabase.from("integration_olist").select("access_token, is_active").eq("tenant_id", tenantId).maybeSingle();
   return again?.is_active ? again.access_token : null;
 }
+
+const sleepMs = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
+
+/**
+ * Chamada à API da Olist em nome de uma empresa. Usa o token da empresa (renova se faltar pouco), refaz UMA vez se a Olist
+ * responder 401 (token trocado) e espera/repete se ela limitar o ritmo (429). Nunca lança erro: devolve { ok, status, data }.
+ * Em 403 a Olist devolve corpo vazio: quem chama deve explicar que é falta de permissão do usuário no ERP.
+ */
+export async function olistRequest(
+  supabase: any,
+  tenantId: string,
+  method: "GET" | "POST" | "PUT" | "DELETE",
+  path: string,
+  body?: unknown,
+  tries = 3,
+): Promise<{ ok: boolean; status: number; data: any }> {
+  let token = await getOlistAccessToken(supabase, tenantId);
+  if (!token) return { ok: false, status: 401, data: { error: "Olist não conectada ou token indisponível" } };
+  let refreshed = false;
+  for (let attempt = 1; attempt <= tries; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(`${OLIST_API_URL}${path}`, {
+        method,
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json", ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+    } catch (e) {
+      if (attempt < tries) { await sleepMs(1500 * attempt); continue; }
+      return { ok: false, status: 0, data: { error: (e as Error).message || "Falha de rede" } };
+    }
+    if (res.status === 401 && !refreshed) {
+      refreshed = true;
+      await refreshOlistToken(supabase, tenantId);
+      const novo = await getOlistAccessToken(supabase, tenantId);
+      if (!novo) return { ok: false, status: 401, data: { error: "Token da Olist recusado" } };
+      token = novo;
+      continue;
+    }
+    if (res.status === 429 && attempt < tries) {
+      await sleepMs(2500 * attempt); // a Olist limita por minuto: espera e tenta de novo
+      continue;
+    }
+    const texto = await res.text();
+    let data: any = null;
+    try { data = texto ? JSON.parse(texto) : null; } catch { data = { raw: texto.slice(0, 200) }; }
+    return { ok: res.ok, status: res.status, data };
+  }
+  return { ok: false, status: 429, data: { error: "A Olist limitou o ritmo de requisições. Tente de novo em 1 minuto." } };
+}
+
+/** Texto que explica ao usuário por que a Olist recusou. 403 vem sem corpo. */
+export function olistErrorMessage(status: number, data: any, o: string): string {
+  if (status === 403) return `A Olist negou acesso a ${o} (403). O usuário que autorizou precisa ter permissão nesse módulo do ERP (e o plano da conta precisa incluí-lo). Autorize de novo depois de ajustar.`;
+  if (status === 401) return "A Olist recusou o acesso. Autorize de novo em Integrações > Olist ERP.";
+  if (status === 429) return "A Olist limitou o ritmo de requisições. Aguarde 1 minuto e tente de novo.";
+  const d = data?.error?.description || data?.error?.message || data?.mensagem || data?.message || data?.error;
+  return `Erro ${status} ao consultar ${o} na Olist${d ? `: ${String(d).slice(0, 200)}` : ""}.`;
+}

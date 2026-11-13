@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
+import OlistStockPanel from '@/components/integrations/OlistStockPanel';
 import { Loader2, RefreshCw, ExternalLink, AlertTriangle, CheckCircle2, Unplug } from 'lucide-react';
 
 // Mesmo endereço fixo do cliente Supabase do app (VITE_SUPABASE_URL não existe na compilação publicada e virava "undefined").
@@ -173,6 +174,8 @@ export default function OlistIntegration({ tenantId }: { tenantId: string }) {
           </div>
         </CardContent>
       </Card>
+
+      {st?.authorized && st.is_active && <OlistStockPanel tenantId={tenantId} />}
 
       {st?.authorized && (
         <Card>

@@ -34,3 +34,6 @@ verify_jwt = false
 
 [functions.tiktok-register]
 verify_jwt = false
+
+[functions.olist-products]
+verify_jwt = false
