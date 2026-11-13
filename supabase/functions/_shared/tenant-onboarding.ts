@@ -143,7 +143,8 @@ export async function upsertTenantAdmin(
   }
 
   const profileRow: Record<string, unknown> = { id: userId, email: p.email, tenant_id: p.tenant_id, role: p.role, updated_at: new Date().toISOString() };
-  if (p.access_scope !== undefined) profileRow.access_scope = p.access_scope;
+  // profiles.access_scope é NOT NULL (padrão "full"): sem escopo restrito = acesso completo
+  if (p.access_scope !== undefined) profileRow.access_scope = p.access_scope ?? "full";
   const { error: profileError } = await sb.from("profiles").upsert(profileRow, { onConflict: "id" });
   if (profileError) return { ok: false, status: 400, error: `Erro ao atualizar profile: ${profileError.message}` };
 
