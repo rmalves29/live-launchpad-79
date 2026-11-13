@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
   import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useAuth } from '@/hooks/useAuth';
 import { useTenant } from '@/hooks/useTenant';
+import { useObs } from '@/contexts/ObsContext';
 import { normalizeForStorage, formatPhoneForDisplay } from '@/lib/phone-utils';
 import { formatCurrency } from '@/lib/utils';
 import { cleanHandle, escapeLike, type HandlePlatform } from '@/lib/social-handle';
@@ -78,6 +79,7 @@ const Live = ({ platform = 'instagram' }: { platform?: HandlePlatform }) => {
   const { toast } = useToast();
   const { profile } = useAuth();
   const { tenant } = useTenant();
+  const obs = useObs();
 
   // Promoções > Limite por cliente: o banco recusa o item com LIMITE_POR_CLIENTE. Mostra o aviso e
   // manda a mensagem para a cliente pelo WhatsApp da loja. Devolve true se o erro era de limite.
@@ -752,6 +754,9 @@ const Live = ({ platform = 'instagram' }: { platform?: HandlePlatform }) => {
           ? `Produto adicionado ao pedido existente: ${product.code} x${qty} para @${normalizeInstagram(instagram)}` 
           : `Novo pedido criado: ${product.code} x${qty} para @${normalizeInstagram(instagram)}. Subtotal: R$ ${subtotal.toFixed(2)}`,
       });
+
+      // Pop-up na live (OBS Studio), se estiver conectado e ligado em Integrações > OBS Studio
+      obs.announce({ cliente: normalizeInstagram(instagram), produto: product.name, codigo: product.code, qtd: qty, valor: effectivePrice * qty });
 
       // Clear inputs for this product
       setInstagrams(prev => ({ ...prev, [product.id]: '' }));

@@ -25,6 +25,8 @@ import MeusCorreiosIntegration from '@/components/integrations/MeusCorreiosInteg
 import FrenetIntegration from '@/components/integrations/FrenetIntegration';
 import BlingIntegration from '@/components/integrations/BlingIntegration';
 import OlistIntegration from '@/components/integrations/OlistIntegration';
+import ObsIntegration from '@/components/integrations/ObsIntegration';
+import { MonitorPlay } from 'lucide-react';
 import OmieIntegration from '@/components/integrations/OmieIntegration';
 import InstagramIntegration from '@/components/integrations/InstagramIntegration';
 
@@ -294,6 +296,10 @@ export default function TenantIntegrationsPage() {
             <span className="sm:hidden">Olist</span>
           </TabsTrigger>
           )}
+          <TabsTrigger value="obs" className="flex items-center gap-2">
+            <MonitorPlay className="h-4 w-4" />
+            <span>OBS Studio</span>
+          </TabsTrigger>
           {en('omie') && (
           <TabsTrigger value="omie" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
@@ -428,6 +434,9 @@ export default function TenantIntegrationsPage() {
           <OlistIntegration tenantId={tenantId} />
         </TabsContent>
         )}
+        <TabsContent value="obs" className="mt-6">
+          <ObsIntegration />
+        </TabsContent>
         {en('omie') && (
         <TabsContent value="omie" className="mt-6">
           <OmieIntegration tenantId={tenantId} />

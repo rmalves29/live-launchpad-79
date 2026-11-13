@@ -15,6 +15,7 @@ import RequireAuth from "./components/RequireAuth";
 import RequireTenantAuth from "./components/RequireTenantAuth";
 import { FeatureGate } from "./components/FeatureGate";
 import { TenantProvider } from "@/contexts/TenantContext";
+import { ObsProvider } from "@/contexts/ObsContext";
 import { TenantLoader } from "@/components/TenantLoader";
 import { useTenantContext } from "@/contexts/TenantContext";
 const WhatsAppSupportButton = lazy(() =>
@@ -463,6 +464,7 @@ const App = () => (
     <AuthProvider>
       <TenantProvider>
         <TenantLoader>
+          <ObsProvider>
           <TooltipProvider>
             <Toaster />
             <Sonner />
@@ -471,6 +473,7 @@ const App = () => (
               <SupportButtonGate />
             </BrowserRouter>
           </TooltipProvider>
+          </ObsProvider>
         </TenantLoader>
       </TenantProvider>
     </AuthProvider>
