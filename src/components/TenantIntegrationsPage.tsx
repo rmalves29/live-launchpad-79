@@ -186,6 +186,17 @@ export default function TenantIntegrationsPage() {
     enabled: !!tenantId,
   });
 
+  // A função get_tenant_by_id não devolve enabled_integrations, então o mapa de integrações do contexto vem vazio.
+  // A Olist (em construção) só aparece quando o super admin liga para a empresa, por isso lemos esse flag direto da empresa.
+  const { data: olistEnabled } = useQuery({
+    queryKey: ['olist-enabled', tenantId],
+    queryFn: async () => {
+      const { data } = await supabase.from('tenants').select('enabled_integrations').eq('id', tenantId).maybeSingle();
+      return (data as any)?.enabled_integrations?.olist === true;
+    },
+    enabled: !!tenantId,
+  });
+
   const { data: omieIntegration } = useQuery({
     queryKey: ['omie-status', tenantId],
     queryFn: async () => {
@@ -240,7 +251,7 @@ export default function TenantIntegrationsPage() {
   const ALLOWED_ADVANCED_SLUGS = ['orderzap', 'app', 'franciscajoias'];
   const showAdvancedIntegrations = ALLOWED_ADVANCED_SLUGS.includes(tenant.slug || '');
   const enabledMap = (tenant as any)?.enabled_integrations as Record<string, boolean> | null | undefined;
-  const en = (k: string) => isIntegrationEnabled(enabledMap, k);
+  const en = (k: string) => (k === 'olist' ? olistEnabled === true : isIntegrationEnabled(enabledMap, k));
 
   return (
     <div className="bg-white -mx-4 sm:-mx-6 lg:-mx-8 -my-4 sm:-my-6 lg:-my-8 min-h-screen">
