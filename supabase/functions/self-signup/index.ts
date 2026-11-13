@@ -335,7 +335,7 @@ Deno.serve(async (req) => {
           const created = await findAuthUser(email).catch(() => null);
           if (created) await sb.auth.admin.deleteUser(created.id).catch(() => null);
         }
-        return json({ success: false, error: admin.status === 409 ? "Esse e-mail já tem cadastro. Faça login." : "Não foi possível criar seu acesso agora" });
+        return json({ success: false, error: admin.status === 409 ? "Esse e-mail já tem cadastro. Faça login." : "Não foi possível criar seu acesso agora", _diag: admin.error });
       }
 
       if (affiliateId) {
