@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { isOrderZapInstance, isValidSuffix, moduleAccess, onboardingPassword, parseApprovalReply, randomSuffix, samePhone } from "./tenant-onboarding.ts";
+import { isOrderZapInstance, isValidSuffix, moduleAccess, onboardingPassword, upsertTenantAdmin, parseApprovalReply, randomSuffix, samePhone } from "./tenant-onboarding.ts";
 
 const ORDERZAP = "d5671cfb-9c42-4c44-8f94-0a19a39473d8";
 
@@ -39,4 +39,28 @@ Deno.test("acessos por live/bazar", () => {
   assertEquals(moduleAccess(false, true), { flags: { enable_live: false, enable_loja_live: false, enable_sendflow: true }, access_scope: "fluxo_envio" });
   assertEquals(moduleAccess(true, true).flags.enable_sendflow, true);
   assertEquals(moduleAccess(true, true).access_scope, null);
+});
+
+function fakeSb(saved: Record<string, unknown>[]) {
+  const chain: any = { select: () => chain, eq: () => chain, maybeSingle: async () => ({ data: null }), update: () => chain, then: (r: any) => r({ error: null }) };
+  return {
+    auth: { admin: {
+      listUsers: async () => ({ data: { users: [] }, error: null }),
+      createUser: async () => ({ data: { user: { id: "u1" } }, error: null }),
+    } },
+    from: (t: string) => ({ ...chain, upsert: async (row: Record<string, unknown>) => { if (t === "profiles") saved.push(row); return { error: null }; } }),
+  };
+}
+
+Deno.test("login de plano completo (sem escopo restrito) grava acesso 'full', nunca vazio", async () => {
+  const saved: Record<string, unknown>[] = [];
+  const r = await upsertTenantAdmin(fakeSb(saved), { tenant_id: "t1", email: "a@b.com", password: "x".repeat(9), role: "tenant_admin", access_scope: null });
+  assert(r.ok);
+  assertEquals(saved[0].access_scope, "full");
+});
+
+Deno.test("login de Fluxo de Envio mantém acesso 'fluxo_envio'", async () => {
+  const saved: Record<string, unknown>[] = [];
+  await upsertTenantAdmin(fakeSb(saved), { tenant_id: "t1", email: "a@b.com", password: "x".repeat(9), role: "tenant_admin", access_scope: "fluxo_envio" });
+  assertEquals(saved[0].access_scope, "fluxo_envio");
 });
