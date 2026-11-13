@@ -14,6 +14,7 @@ export async function loadProductCodes(supabase: any, tenantId: string): Promise
       .select("code")
       .eq("tenant_id", tenantId)
       .ilike("code", "C%")
+      .order("id", { ascending: true }) // sem ordem fixa a paginação pula/repete linhas e um código já usado parece livre
       .range(from, from + 999);
     if (error) throw error;
     for (const r of data || []) {
@@ -37,4 +38,27 @@ export async function makeProductCodeAllocator(supabase: any, tenantId: string):
     taken.add(c);
     return c;
   };
+}
+
+/** O banco recusou por código repetido (unique products_tenant_id_code_key). */
+export function isDuplicateCodeError(err: any): boolean {
+  const m = String(err?.message || "");
+  return err?.code === "23505" || m.includes("products_tenant_id_code_key") || m.includes("duplicate key");
+}
+
+/**
+ * Insere um produto com o próximo código livre. Se o banco disser que o código já existe
+ * (outra importação rodando ao mesmo tempo, ou código que a leitura não pegou), tenta o seguinte.
+ */
+export async function insertWithFreshCode(
+  supabase: any, nextCode: () => string, row: Record<string, unknown>, select = "id", tries = 25,
+): Promise<{ data: any; error: any }> {
+  let last: any = null;
+  for (let i = 0; i < tries; i++) {
+    const res = await supabase.from("products").insert({ ...row, code: nextCode() }).select(select).single();
+    if (!res.error) return res;
+    last = res.error;
+    if (!isDuplicateCodeError(res.error)) break;
+  }
+  return { data: null, error: last };
 }

@@ -9,7 +9,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { authorizeTenantCaller, guardResponse } from "../_shared/auth-guard.ts";
-import { makeProductCodeAllocator } from "../_shared/next-product-code.ts";
+import { makeProductCodeAllocator, insertWithFreshCode } from "../_shared/next-product-code.ts";
 import { resolveBlingImage } from "../_shared/bling-image.ts";
 
 const corsHeaders = {
@@ -185,6 +185,39 @@ serve(async (req) => {
         const bySku = await blingGet(token, `${base}&pagina=1&codigos[]=${encodeURIComponent(search)}`);
         if (bySku.ok) add(bySku.data?.data || []);
       }
+      // KITS (produto com composição, formato "E"): não têm estoque próprio no Bling (o saldo vem das peças),
+      // então o filtro "só com estoque" do Bling deixa todos de fora. Buscamos os kits à parte e, no modo
+      // "só com estoque", mantemos os que dá para montar (saldo virtual > 0 no depósito).
+      if (onlyStock) {
+        try {
+          let kitBase = `/produtos?limite=${PAGE_SIZE}&criterio=2&tipo=E`;
+          if (storeId) kitBase += `&idLoja=${storeId}`;
+          const kitPages = search ? Math.min(MAX_SCAN_PAGES, 10) : 1;
+          const kits: any[] = [];
+          for (let pg = search ? 1 : page; pg <= (search ? kitPages : page); pg++) {
+            const kl = await blingGet(token, `${kitBase}&pagina=${pg}`);
+            if (!kl.ok) break;
+            const items: any[] = (kl.data?.data || []).filter((p: any) => p.formato === "E");
+            kits.push(...items);
+            if (!search && (kl.data?.data || []).length >= PAGE_SIZE) hasMore = true;
+            if ((kl.data?.data || []).length < PAGE_SIZE) break;
+          }
+          let candidates = kits;
+          if (search) {
+            const norm = (v: unknown) => String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+            const words = norm(search).split(/\s+/).filter(Boolean);
+            candidates = kits.filter((p) => { const t = `${norm(p.nome)} ${norm(p.codigo)}`; return words.every((w) => t.includes(w)); });
+          }
+          if (candidates.length) {
+            const kb = await depositBalances(token, depositId, candidates.map((p) => Number(p.id)));
+            const seenIds = new Set(raw.map((p) => Number(p.id)));
+            for (const k of candidates) if ((kb.get(Number(k.id)) ?? 0) > 0 && !seenIds.has(Number(k.id))) raw.push(k);
+          }
+        } catch (e) {
+          console.warn("[bling-import-products] busca de kits falhou:", (e as any)?.message || e);
+        }
+      }
+
       const named = (p: any) => String(p.nome || "").trim() && String(p.codigo || "").trim();
       let rows: any[] = raw.filter((p) => !p.idProdutoPai && named(p)).map((p) => ({ ...p, children_count: null as number | null }));
 
@@ -304,9 +337,8 @@ serve(async (req) => {
           const parentPrice = isParent ? (prices.length ? Math.min(...prices) : 0) : Number(d.preco) || 0;
           const stockOf = (nid: number) => Math.max(0, Math.floor(balances.get(nid) ?? 0));
 
-          const { data: parentRow, error: pErr } = await supabase.from("products").insert({
+          const { data: parentRow, error: pErr } = await insertWithFreshCode(supabase, nextCode, {
             tenant_id: tenantId,
-            code: nextCode(),
             name: nome.slice(0, 200),
             price: parentPrice,
             stock: isParent ? 0 : stockOf(id), // pai de variações fica sem estoque: ele fica oculto para venda
@@ -315,7 +347,7 @@ serve(async (req) => {
             sale_type: saleType,
             bling_product_id: id,
             sku_erp: codigo,
-          }).select("id").single();
+          });
           if (pErr || !parentRow) { results.push({ bling_id: id, status: "erro", error: pErr?.message || "Falha ao criar o produto" }); continue; }
 
           let children = 0;
@@ -325,9 +357,8 @@ serve(async (req) => {
               const ncode = String(n.codigo || "").trim() || `${codigo}-${nid}`;
               const v = parseVariation(n.variacao?.nome || "");
               const childImg = (n.midia ? await resolveBlingImage(supabase, tenantId, nid, n) : null) || image;
-              const { error: cErr } = await supabase.from("products").insert({
+              const { error: cErr } = await insertWithFreshCode(supabase, nextCode, {
                 tenant_id: tenantId,
-                code: nextCode(),
                 name: `${nome} - ${v.label || ncode}`.slice(0, 200),
                 price: Number(n.preco) || parentPrice,
                 stock: stockOf(nid),
@@ -341,6 +372,7 @@ serve(async (req) => {
                 sku_erp: ncode,
               });
               if (!cErr) children++;
+              else console.error("[bling-import-products] variação não criada:", ncode, cErr?.message);
             }
           }
           results.push({ bling_id: id, status: "criado", cartzy_id: parentRow.id, children });
