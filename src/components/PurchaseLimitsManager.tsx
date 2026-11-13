@@ -54,33 +54,65 @@ export default function PurchaseLimitsManager() {
   const [selected, setSelected] = useState<number[]>([]);
   const [busca, setBusca] = useState('');
 
+  // Limites e produtos carregam separados: se um falhar, o outro continua funcionando.
   const load = async () => {
     setLoading(true);
     try {
-      const [{ data: lim, error: e1 }, { data: prods, error: e2 }] = await Promise.all([
-        (supabaseTenant as any).from('purchase_limits').select('*').order('starts_at', { ascending: false }),
-        (supabaseTenant as any).from('products').select('id, code, name, is_active').order('code').limit(5000),
-      ]);
-      if (e1) throw e1;
-      if (e2) throw e2;
-      setItems((lim || []) as Limite[]);
-      setProdutos((prods || []) as Produto[]);
+      const { data: lim, error } = await (supabaseTenant as any).from('purchase_limits').select('*').order('starts_at', { ascending: false });
+      if (error) throw error;
+      const rows = (lim || []) as Limite[];
+      setItems(rows);
+      const ids = [...new Set(rows.flatMap((l) => l.product_ids || []))];
+      if (ids.length) await loadProdutosPorId(ids);
     } catch (e: any) {
-      toast({ title: 'Erro', description: e?.message || 'Falha ao carregar', variant: 'destructive' });
+      toast({ title: 'Erro ao carregar limites', description: e?.message || 'Falha ao carregar', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
   };
   useEffect(() => { load(); }, []);
 
+  // Guarda nome/código dos produtos já vistos (para mostrar os escolhidos e a tabela)
+  const guardar = (rows: Produto[]) => setProdutos((prev) => {
+    const m = new Map(prev.map((p) => [p.id, p]));
+    rows.forEach((p) => m.set(p.id, p));
+    return [...m.values()];
+  });
+  const loadProdutosPorId = async (ids: number[]) => {
+    const { data } = await (supabaseTenant as any).from('products').select('id, code, name, is_active').in('id', ids);
+    guardar((data || []) as Produto[]);
+  };
+
+  // Busca no banco enquanto digita (código ou nome), com pequena espera para não consultar a cada tecla
+  const [resultados, setResultados] = useState<Produto[]>([]);
+  const [buscando, setBuscando] = useState(false);
+  useEffect(() => {
+    const q = busca.trim();
+    if (q.length < 2) { setResultados([]); return; }
+    const termo = q.replace(/[%,()]/g, ' ').trim();
+    const t = setTimeout(async () => {
+      setBuscando(true);
+      try {
+        const { data, error } = await (supabaseTenant as any)
+          .from('products')
+          .select('id, code, name, is_active')
+          .or(`code.ilike.%${termo}%,name.ilike.%${termo}%`)
+          .order('code')
+          .limit(40);
+        if (error) throw error;
+        const rows = (data || []) as Produto[];
+        guardar(rows);
+        setResultados(rows.filter((p) => !selected.includes(p.id)));
+      } catch (e: any) {
+        toast({ title: 'Erro na busca', description: e?.message || 'Falha ao buscar produtos', variant: 'destructive' });
+      } finally {
+        setBuscando(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [busca, selected]);
+
   const byId = useMemo(() => new Map(produtos.map((p) => [p.id, p])), [produtos]);
-  const resultados = useMemo(() => {
-    const q = busca.trim().toLowerCase();
-    if (!q) return [];
-    return produtos
-      .filter((p) => !selected.includes(p.id) && ((p.code || '').toLowerCase().includes(q) || p.name.toLowerCase().includes(q)))
-      .slice(0, 30);
-  }, [busca, produtos, selected]);
 
   const resetForm = () => {
     setEditingId(null); setName(''); setStartsAt(''); setEndsAt('');
@@ -226,7 +258,12 @@ export default function PurchaseLimitsManager() {
 
             <div className="space-y-2">
               <Label>Produtos</Label>
-              <Input placeholder="Buscar por código ou nome (ex.: C001)" value={busca} onChange={(e) => setBusca(e.target.value)} />
+              <Input placeholder="Digite o código ou o nome do produto (ex.: C001 ou colar)" value={busca} onChange={(e) => setBusca(e.target.value)} />
+              {busca.trim().length >= 2 && (buscando ? (
+                <p className="text-xs text-muted-foreground flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Buscando…</p>
+              ) : resultados.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Nenhum produto encontrado com “{busca.trim()}”.</p>
+              ) : null)}
               {resultados.length > 0 && (
                 <div className="border rounded-md max-h-48 overflow-y-auto divide-y">
                   {resultados.map((p) => (
@@ -254,7 +291,7 @@ export default function PurchaseLimitsManager() {
                   })}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground">Busque e clique para adicionar um ou mais produtos.</p>
+                <p className="text-xs text-muted-foreground">Digite pelo menos 2 letras e clique no produto para adicionar. Dá para adicionar vários.</p>
               )}
             </div>
 
