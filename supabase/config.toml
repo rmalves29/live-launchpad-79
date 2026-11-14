@@ -37,3 +37,6 @@ verify_jwt = false
 
 [functions.olist-products]
 verify_jwt = false
+
+[functions.olist-orders]
+verify_jwt = false
