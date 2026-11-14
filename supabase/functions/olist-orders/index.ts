@@ -189,7 +189,8 @@ async function sendOrder(supabase: any, tenantId: string, orderId: number, cfg: 
     const desconto = num(order.coupon_discount);
     const payload: any = {
       idContato: contact.id,
-      data: new Date(order.paid_at || order.created_at || Date.now()).toISOString().slice(0, 10),
+      // data no horário de Brasília (em UTC um pedido pago às 22h já caía no dia seguinte)
+      data: new Date(order.paid_at || order.created_at || Date.now()).toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }),
       situacao: [0, 3, 4, 1, 7].includes(num(cfg.order_situacao)) ? num(cfg.order_situacao) : 3,
       itens,
       valorFrete: frete.valor,
