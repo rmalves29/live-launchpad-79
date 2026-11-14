@@ -40,3 +40,9 @@ verify_jwt = false
 
 [functions.olist-orders]
 verify_jwt = false
+
+[functions.fretebarato-shipping]
+verify_jwt = false
+
+[functions.fretebarato-settings]
+verify_jwt = false

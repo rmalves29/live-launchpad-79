@@ -1,3 +1,4 @@
+import FreteBaratoIntegration from '@/components/integrations/FreteBaratoIntegration';
 /**
  * Página de Integrações por Tenant
  * Permite configurar Mercado Pago, Pagar.me, App Max, Melhor Envio, Mandae, Correios, MeusCorreios, Bling ERP e Instagram Live
@@ -404,6 +405,7 @@ export default function TenantIntegrationsPage() {
             {meusCorreiosIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
           )}
+          {en('fretebarato') && <TabsTrigger value="fretebarato" className="flex items-center gap-2"><Truck className="h-4 w-4" /><span>Frete Barato</span></TabsTrigger>}
           {en('frenet') && (
           <TabsTrigger value="frenet" className="flex items-center gap-2">
             <Truck className="h-4 w-4" />
@@ -507,6 +509,7 @@ export default function TenantIntegrationsPage() {
           <FrenetIntegration tenantId={tenantId} />
         </TabsContent>
         )}
+        {en('fretebarato') && <TabsContent value="fretebarato" className="mt-6"><FreteBaratoIntegration tenantId={tenantId} /></TabsContent>}
         </Tabs>
       </div>
     </div>

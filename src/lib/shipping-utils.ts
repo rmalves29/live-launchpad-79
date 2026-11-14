@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 
-export type ShippingProvider = 'melhor_envio' | 'mandae' | 'mandabem' | 'correios' | 'meuscorreios' | 'superfrete' | 'frenet' | null;
+export type ShippingProvider = 'melhor_envio' | 'mandae' | 'mandabem' | 'correios' | 'meuscorreios' | 'superfrete' | 'frenet' | 'fretebarato' | null;
 
 export interface ActiveShippingIntegration {
   provider: ShippingProvider;
@@ -10,6 +10,7 @@ export interface ActiveShippingIntegration {
 
 const PROVIDER_PRIORITY: Array<{ provider: Exclude<ShippingProvider, null>; functionName: string; testFunctionName: string | null }> = [
   { provider: 'superfrete', functionName: 'superfrete-shipping', testFunctionName: null },
+  { provider: 'fretebarato', functionName: 'fretebarato-shipping', testFunctionName: null },
   { provider: 'frenet', functionName: 'frenet-shipping', testFunctionName: null },
   { provider: 'mandae', functionName: 'mandae-shipping', testFunctionName: null },
   { provider: 'mandabem', functionName: 'mandabem-shipping', testFunctionName: null },
@@ -24,6 +25,7 @@ export function shippingProviderLabel(provider: ShippingProvider): string {
     case 'mandae': return 'Mandae';
     case 'mandabem': return 'Manda Bem';
     case 'superfrete': return 'SuperFrete';
+    case 'fretebarato': return 'Frete Barato';
     case 'frenet': return 'Frenet';
     case 'correios':
     case 'meuscorreios': return 'Correios';

@@ -531,7 +531,7 @@ const Checkout = () => {
     return `${handlingDays} dias para postagem + ${originalTime}`;
   };
 
-  const filterShippingOptions = (options: any[], activeProvider: 'melhor_envio' | 'mandae' | 'correios' | 'meuscorreios' | 'superfrete' | null) => {
+  const filterShippingOptions = (options: any[], activeProvider: 'melhor_envio' | 'mandae' | 'correios' | 'meuscorreios' | 'superfrete' | 'fretebarato' | null) => {
     const normalizeText = (value: unknown) =>
       String(value || '')
         .toLowerCase()
@@ -539,6 +539,8 @@ const Checkout = () => {
         .replace(/[\u0300-\u036f]/g, '');
 
     return options.filter(option => {
+      // Frete Barato returns the carriers enabled for the merchant account.
+      if (activeProvider === 'fretebarato') return true;
       const companyName = normalizeText(option.company);
       const serviceName = normalizeText(option.name);
       
@@ -735,7 +737,7 @@ const Checkout = () => {
           // SEMPRE exibe o nome da integração do tenant, não da transportadora
           const displayCompany = shippingProviderLabel(integ.provider);
           const validOptions = data.shipping_options
-            .filter((option: any) => option && !option.error && option.price)
+            .filter((option: any) => option && !option.error && (integ.provider === 'fretebarato' ? Number.isFinite(option.price) && option.price >= 0 : option.price))
             .map((option: any) => {
               const rawId = String(option.service_id || option.id || Math.random());
               return {
