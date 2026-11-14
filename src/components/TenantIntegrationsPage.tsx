@@ -435,7 +435,7 @@ export default function TenantIntegrationsPage() {
         </TabsContent>
         )}
         <TabsContent value="obs" className="mt-6">
-          <ObsIntegration />
+          <ObsIntegration tenantId={tenantId} />
         </TabsContent>
         {en('omie') && (
         <TabsContent value="omie" className="mt-6">
