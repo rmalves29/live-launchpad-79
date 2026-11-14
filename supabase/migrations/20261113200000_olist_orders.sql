@@ -29,31 +29,6 @@ create index if not exists orders_olist_tracking_idx
 
 alter table public.customers add column if not exists olist_contact_id bigint;
 
--- Agendamento: a cada 2 minutos manda para a Olist os pedidos pagos das empresas com envio automático
--- e, a cada rodada, confere o rastreio. Mesmo padrão dos outros agendamentos (app.supabase_url / app.service_role_key).
-create or replace function public.olist_orders_tick()
-returns void language plpgsql security definer set search_path = public as $$
-declare
-  supabase_url text := current_setting('app.supabase_url', true);
-  service_key text := current_setting('app.service_role_key', true);
-begin
-  if supabase_url is null or service_key is null then return; end if;
-  perform net.http_post(
-    url := supabase_url || '/functions/v1/olist-orders',
-    headers := jsonb_build_object('Content-Type', 'application/json', 'Authorization', 'Bearer ' || service_key),
-    body := jsonb_build_object('action', 'auto_sweep')
-  );
-exception when others then
-  null;
-end $$;
-
-do $$
-begin
-  perform cron.unschedule('olist-orders-sweep');
-exception when others then null;
-end $$;
-do $$
-begin
-  perform cron.schedule('olist-orders-sweep', '*/2 * * * *', 'select public.olist_orders_tick()');
-exception when others then null;
-end $$;
+-- Agendamento (criado direto no banco, fora desta migração, porque a chave do serviço vai dentro do comando):
+-- job 'olist-orders-sweep', a cada 2 minutos, chama a função olist-orders com {"action":"auto_sweep"}
+-- (mesmo formato do job 'correios-auto-remessa').
