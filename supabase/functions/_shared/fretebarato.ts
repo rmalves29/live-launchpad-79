@@ -1,9 +1,24 @@
 export const FRETEBARATO_PROVIDER = 'fretebarato';
 
-export function quoteEndpoint(platform: string, customerId: string): string {
-  if (!/^[a-zA-Z0-9_-]{1,80}$/.test(platform) || !/^\d{1,30}$/.test(customerId)) {
+export function normalizeQuoteConfiguration(platform: string, customerId: string) {
+  platform = platform.trim(); customerId = customerId.trim();
+  if (/^https:\/\//i.test(platform)) {
+    const url = new URL(platform);
+    const match = url.pathname.match(/^\/([a-zA-Z0-9_-]{1,80})\/price\/v1\/json\/([a-zA-Z0-9_-]{1,80})\/?$/);
+    if (url.protocol !== 'https:' || url.hostname !== 'admin.fretebarato.com' || url.port || url.username || url.password || url.search || url.hash || !match) {
+      throw new Error('Informe um link de cotação válido do domínio admin.fretebarato.com.');
+    }
+    if (customerId && customerId !== match[2]) throw new Error('Confira o Customer ID: ele está diferente do identificador no link de cotação.');
+    platform = match[1]; customerId = match[2];
+  }
+  if (!/^[a-zA-Z0-9_-]{1,80}$/.test(platform) || !/^[a-zA-Z0-9_-]{1,80}$/.test(customerId)) {
     throw new Error('Informe a plataforma e o Customer ID fornecidos pelo Frete Barato.');
   }
+  return { platform, customerId };
+}
+
+export function quoteEndpoint(platform: string, customerId: string): string {
+  ({ platform, customerId } = normalizeQuoteConfiguration(platform, customerId));
   return `https://admin.fretebarato.com/${platform}/price/v1/json/${customerId}`;
 }
 

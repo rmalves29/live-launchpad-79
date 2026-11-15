@@ -6,7 +6,7 @@ Disponibiliza preço e prazo nos checkouts interno e público, usando o cadastro
 
 1. Sincronize o código no Lovable e publique o frontend.
 2. Publique também as Edge Functions `fretebarato-settings` e `fretebarato-shipping`, com a configuração de `supabase/config.toml`. A atualização somente do frontend não publica necessariamente essas funções.
-3. Em Integrações > Frete Barato, informe Customer ID, identificação da plataforma e CustomerToken fornecidos pela equipe do Frete Barato. Não coloque tokens no código, no GitHub ou em variáveis públicas do frontend.
+3. Em Integrações > Frete Barato, informe o Customer ID completo (pode conter letras e até 80 caracteres), identificação da plataforma e CustomerToken fornecidos pela equipe do Frete Barato. Também é possível colar o link completo de cotação no campo da plataforma e deixar Customer ID vazio: o servidor extrai e salva os dois valores. Se ambos estiverem preenchidos, os IDs precisam coincidir. Não coloque tokens no código, no GitHub ou em variáveis públicas do frontend.
 4. Salve e ative. O limite existente de duas integrações de frete ativas por loja continua sendo aplicado pelo banco.
 5. Use o teste por CEP e confira uma cotação nos dois checkouts. O teste da tela usa um pacote de 300 g, 20 × 16 × 2 cm e R$ 50. A origem e os serviços habilitados seguem a conta no Frete Barato.
 

@@ -1,5 +1,5 @@
 import { authorizeTenantCaller, guardResponse } from './auth-guard.ts';
-import { quoteEndpoint } from './fretebarato.ts';
+import { normalizeQuoteConfiguration, quoteEndpoint } from './fretebarato.ts';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -27,8 +27,7 @@ export async function handleFreteBaratoSettings(req: Request, db: any, authorize
       return json({ success: true });
     }
     if (body.action !== 'save') return json({ success: false, error: 'Ação inválida.' }, 400);
-    const platform = String(body.platform ?? '').trim(), customerId = String(body.customerId ?? '').trim();
-    quoteEndpoint(platform, customerId);
+    const { platform, customerId } = normalizeQuoteConfiguration(String(body.platform ?? ''), String(body.customerId ?? ''));
     const token = String(body.token ?? '').trim();
     if ((token && (token.length > 4000 || /\s/.test(token))) || (!token && !current?.access_token)) return json({ success: false, error: 'Informe um token válido do Frete Barato.' }, 400);
     const values = { tenant_id: tenantId, provider: 'fretebarato', access_token: token || current!.access_token,
