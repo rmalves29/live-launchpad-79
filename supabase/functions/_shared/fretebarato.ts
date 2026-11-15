@@ -45,7 +45,40 @@ export function buildQuotePayload(cep: unknown, products: unknown) {
   return { zipcode, amount: Math.round(amount * 100) / 100, skus };
 }
 
+// Nuvemshop's carrier callback uses grams and an items/destination envelope, not the generic API contract.
+export function buildNuvemshopQuotePayload(payload: ReturnType<typeof buildQuotePayload>) {
+  return {
+    cart_id: 'cartzy-quote', currency: 'BRL', language: 'pt', total_price: payload.amount,
+    destination: { country: 'BR', postal_code: payload.zipcode },
+    items: payload.skus.map((p, i) => ({ id: i + 1, product_id: i + 1, name: p.sku, sku: p.sku,
+      quantity: p.quantity, free_shipping: false, grams: Math.round(p.weight * 1000), price: p.price, cost: p.price,
+      dimensions: { width: p.width, height: p.height, depth: p.length } })),
+  };
+}
+
+function normalizeNuvemshopRates(rates: any[]) {
+  const seen = new Set<string>();
+  return rates.flatMap((r: any) => {
+    if (!r || r.type !== 'ship' || r.currency !== 'BRL' || !r.code || !r.name ||
+      !['number', 'string'].includes(typeof r.price) || String(r.price).trim() === '') return [];
+    const price = Number(r.price), code = String(r.code);
+    if (!Number.isFinite(price) || price < 0 || seen.has(code)) return [];
+    const date = String(r.max_delivery_date ?? '').match(/^(\d{4})-(\d{2})-(\d{2})(?:T|$)/);
+    if (!date) return [];
+    const isoDay = `${date[1]}-${date[2]}-${date[3]}`;
+    const timestamp = Date.parse(`${isoDay}T00:00:00Z`);
+    if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString().slice(0, 10) !== isoDay) return [];
+    seen.add(code);
+    const name = String(r.name);
+    return [{ id: `fretebarato_${code}`, service_id: code, quote_id: code, name, service_name: name,
+      company: { name, picture: '' }, price, custom_price: price,
+      delivery_time: `Entrega prevista até ${date[3]}/${date[2]}/${date[1]}`, delivery_date: isoDay,
+      provider: FRETEBARATO_PROVIDER }];
+  });
+}
+
 export function normalizeQuotes(data: unknown) {
+  if (data && Array.isArray((data as any).rates)) return normalizeNuvemshopRates((data as any).rates);
   if (!data || !Array.isArray((data as any).quotes)) throw new Error('Resposta de cotação inválida do Frete Barato.');
   const seen = new Set<string>();
   return (data as any).quotes.flatMap((q: any) => {

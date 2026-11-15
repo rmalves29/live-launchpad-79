@@ -512,6 +512,7 @@ const Checkout = () => {
   };
 
   const formatDeliveryTime = (originalTime: string, companyName: string, optionId?: string) => {
+    if (companyName === 'Frete Barato' && originalTime.startsWith('Entrega prevista')) return originalTime;
     if (companyName === 'Retirada') {
       return originalTime;
     }
