@@ -18,6 +18,10 @@ A função pública de cotação valida a loja ativa, a integração ativa, o CE
 
 A função de configurações exige autenticação e autorização para a loja através do guard compartilhado. O checkout recebe somente opções normalizadas, sem token. Preços são em reais, dimensões em centímetros inteiros e peso em quilogramas com três casas decimais. Frete gratuito é preservado. O checkout público mantém seu contrato atual de pacote consolidado.
 
+Contas com plataforma `nuvemshop` utilizam o contrato de carrier callback: `items`, `destination`, peso unitário em gramas e resposta `rates`. A integração converte esse contrato automaticamente, preservando o código completo de cada serviço (PAC e Sedex podem terminar com o mesmo número). As datas absolutas de entrega retornadas pelo fornecedor são exibidas sem transformá-las em uma quantidade incorreta de dias. A origem continua resolvida pela conta Frete Barato; a consulta real de homologação funcionou sem sobrescrever a origem com endereço da loja.
+
+A resposta genérica `quotes` continua suportada para as demais plataformas. Esta etapa é somente cotação: códigos opacos de serviços Nuvemshop não devem ser tratados como identificadores numéricos de etiqueta.
+
 ## Verificação
 
 Com Node 24, execute `node --test tests/fretebarato.test.mjs`. Os testes cobrem conversões, validação, isolamento entre lojas, erros do fornecedor, proteção do token e limite de integrações. Execute também `npm run build`.
@@ -28,3 +32,4 @@ Os testes usam respostas simuladas. A homologação real depende das credenciais
 
 - [Cotação](https://docs.fretebarato.com/pt/recursos/cotacoes)
 - [Autenticação e identificação da plataforma](https://docs.fretebarato.com/pt/primeiros-passos/autenticacao)
+- [Contrato de cotação Nuvemshop](https://tiendanube.github.io/api-documentation/resources/shipping-carrier)

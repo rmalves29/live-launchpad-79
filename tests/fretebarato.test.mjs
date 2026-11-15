@@ -1,7 +1,7 @@
 // Run with Node 24+: node --test tests/fretebarato.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { quoteEndpoint, normalizeQuoteConfiguration, buildQuotePayload, normalizeQuotes } from '../supabase/functions/_shared/fretebarato.ts';
+import { quoteEndpoint, normalizeQuoteConfiguration, buildQuotePayload, buildNuvemshopQuotePayload, normalizeQuotes } from '../supabase/functions/_shared/fretebarato.ts';
 import { handleFreteBaratoQuote } from '../supabase/functions/_shared/fretebarato-quote-handler.ts';
 import { handleFreteBaratoSettings } from '../supabase/functions/_shared/fretebarato-settings-handler.ts';
 
@@ -21,6 +21,43 @@ function database(options = {}) {
 }
 const request = (body) => new Request('https://local.test/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const quoteRequest = () => request({ tenant_id: tenant, to_postal_code: '01310-100', products: [product] });
+
+test('Nuvemshop request converts unit kg to grams and preserves reais, CEP, quantity and dimensions', () => {
+  const payload = buildNuvemshopQuotePayload(buildQuotePayload('01310-100', [product]));
+  assert.equal(payload.destination.postal_code, '01310100'); assert.equal(payload.total_price, 73.8);
+  assert.equal(payload.currency, 'BRL'); assert.equal(payload.items[0].grams, 36);
+  assert.equal(payload.items[0].quantity, 2); assert.equal(payload.items[0].price, 36.9);
+  assert.deepEqual(payload.items[0].dimensions, { width: 8, height: 2, depth: 13 });
+});
+const rates = [
+  { name: 'Total Express', code: 'fb-totalexpress-27', price: 16.64, currency: 'BRL', type: 'ship', max_delivery_date: '2026-11-25T00:00:00-03:00' },
+  { name: 'Pac', code: 'fb-pac-46', price: 49.75, currency: 'BRL', type: 'ship', max_delivery_date: '2026-12-02T00:00:00-03:00' },
+  { name: 'Sedex', code: 'fb-sedex-46', price: 75.49, currency: 'BRL', type: 'ship', max_delivery_date: '2026-11-26T00:00:00-03:00' },
+];
+test('Nuvemshop rates retain distinct opaque service codes and exact delivery dates', () => {
+  const result = normalizeQuotes({ rates });
+  assert.equal(result.length, 3); assert.equal(result[0].price, 16.64);
+  assert.equal(result[0].delivery_time, 'Entrega prevista até 25/11/2026');
+  assert.equal(new Set(result.map(r => r.service_id)).size, 3);
+});
+test('Nuvemshop rejects invalid, duplicate, pickup and non-BRL rates without dropping free shipping', () => {
+  const base = rates[0];
+  const result = normalizeQuotes({ rates: [base, base, { ...base, code: 'free', price: 0 }, { ...base, code: 'negative', price: -1 },
+    { ...base, code: 'null', price: null }, { ...base, code: 'bool', price: true }, { ...base, code: 'pickup', type: 'pickup' },
+    { ...base, code: 'foreign', currency: 'USD' }, { ...base, code: 'date', max_delivery_date: '2026-02-31T00:00:00Z' }] });
+  assert.equal(result.length, 2); assert.equal(result[1].price, 0);
+  assert.deepEqual(normalizeQuotes({ rates: [] }), []);
+});
+test('Nuvemshop handler sends the account-specific contract and returns checkout-compatible options', async () => {
+  const db = database({ integration: { ...integration, scope: 'nuvemshop', client_id: opaqueId } });
+  const response = await handleFreteBaratoQuote(quoteRequest(), db, async (url, init) => {
+    assert.equal(url, quoteEndpoint('nuvemshop', opaqueId));
+    const payload = JSON.parse(init.body); assert.equal(payload.items[0].grams, 36);
+    assert.equal(payload.destination.postal_code, '01310100'); assert.equal(payload.skus, undefined);
+    return Response.json({ rates });
+  });
+  const result = await response.json(); assert.equal(result.success, true); assert.equal(result.shipping_options.length, 3);
+});
 
 test('account identifiers preserve all 32 characters and platform can be extracted from an official quote link', () => {
   const url = `https://admin.fretebarato.com/nuvemshop/price/v1/json/${opaqueId}`;

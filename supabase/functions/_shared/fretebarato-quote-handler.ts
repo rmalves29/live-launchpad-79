@@ -1,5 +1,5 @@
 import { enforceRateLimit } from './rate-limit.ts';
-import { buildQuotePayload, normalizeQuotes, quoteEndpoint } from './fretebarato.ts';
+import { buildQuotePayload, buildNuvemshopQuotePayload, normalizeQuoteConfiguration, normalizeQuotes, quoteEndpoint } from './fretebarato.ts';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
@@ -19,14 +19,17 @@ export async function handleFreteBaratoQuote(req: Request, db: any, fetcher: typ
     const { data: integration, error } = await db.from('shipping_integrations')
       .select('access_token, client_id, scope').eq('tenant_id', body.tenant_id).eq('provider', 'fretebarato').eq('is_active', true).maybeSingle();
     if (error || !integration?.access_token) return json({ success: false, error: 'Frete Barato não está configurado ou ativo nesta loja.' });
-    const endpoint = quoteEndpoint(integration.scope ?? '', integration.client_id ?? '');
+    const config = normalizeQuoteConfiguration(integration.scope ?? '', integration.client_id ?? '');
+    const endpoint = quoteEndpoint(config.platform, config.customerId);
+    const providerPayload = config.platform.toLowerCase() === 'nuvemshop' ? buildNuvemshopQuotePayload(payload) : payload;
     const response = await fetcher(endpoint, {
       method: 'POST', signal: AbortSignal.timeout(10000), redirect: 'error',
       headers: { Authorization: `Bearer ${integration.access_token}`, 'Content-Type': 'application/json', 'User-Agent': 'Cartzy (suporte@orderzaps.com)' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(providerPayload),
     });
     if (!response.ok) {
       const message = response.status === 401 || response.status === 403 ? 'Verifique a autorização da conta no Frete Barato.'
+        : response.status === 400 ? 'O Frete Barato não aceitou os dados da cotação. Confira peso, dimensões e CEP.'
         : response.status === 404 ? 'O Frete Barato não retornou cobertura para esta cotação.' : 'O Frete Barato está indisponível. Tente novamente.';
       return json({ success: false, error: message });
     }

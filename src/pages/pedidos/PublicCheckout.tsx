@@ -547,6 +547,7 @@ const PublicCheckout = () => {
   }, [hasPaidOrderWithinPeriod, mergeableOrders, orderMergeDays]);
 
   const formatDeliveryTime = (originalTime: string, companyName: string, optionId?: string) => {
+    if (companyName === 'Frete Barato' && originalTime.startsWith('Entrega prevista')) return originalTime;
     if (companyName === 'Retirada') return originalTime;
     // Custom shipping options with custom descriptions should not be reformatted
     if (optionId?.startsWith('custom_')) return originalTime;
