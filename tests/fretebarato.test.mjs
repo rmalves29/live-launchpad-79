@@ -1,13 +1,14 @@
 // Run with Node 24+: node --test tests/fretebarato.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { quoteEndpoint, buildQuotePayload, normalizeQuotes } from '../supabase/functions/_shared/fretebarato.ts';
+import { quoteEndpoint, normalizeQuoteConfiguration, buildQuotePayload, normalizeQuotes } from '../supabase/functions/_shared/fretebarato.ts';
 import { handleFreteBaratoQuote } from '../supabase/functions/_shared/fretebarato-quote-handler.ts';
 import { handleFreteBaratoSettings } from '../supabase/functions/_shared/fretebarato-settings-handler.ts';
 
 const tenant = '12345678-1234-1234-1234-123456789abc';
 const product = { id: 'sku1', quantity: 2, insurance_value: 36.9, weight: 0.0351, length: 12.2, width: 8, height: 2 };
 const integration = { id: 'integration', access_token: 'secret-not-for-browser', client_id: '123', scope: 'cartzy', is_active: true };
+const opaqueId = '0123456789abcdef0123456789abcdef';
 function database(options = {}) {
   const filters = [], writes = [];
   return { filters, writes, rpc: async () => ({ data: true, error: null }), from(table) {
@@ -20,6 +21,15 @@ function database(options = {}) {
 }
 const request = (body) => new Request('https://local.test/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const quoteRequest = () => request({ tenant_id: tenant, to_postal_code: '01310-100', products: [product] });
+
+test('account identifiers preserve all 32 characters and platform can be extracted from an official quote link', () => {
+  const url = `https://admin.fretebarato.com/nuvemshop/price/v1/json/${opaqueId}`;
+  assert.equal(quoteEndpoint('nuvemshop', opaqueId), url);
+  assert.deepEqual(normalizeQuoteConfiguration(url, ''), { platform: 'nuvemshop', customerId: opaqueId });
+  assert.equal(quoteEndpoint(url, opaqueId), url);
+  assert.throws(() => quoteEndpoint(url, opaqueId.slice(0, 30)));
+  for (const invalid of [`https://evil.test/nuvemshop/price/v1/json/${opaqueId}`, `${url}?token=secret`, `https://admin.fretebarato.com:444/nuvemshop/price/v1/json/${opaqueId}`, `https://user:password@admin.fretebarato.com/nuvemshop/price/v1/json/${opaqueId}`]) assert.throws(() => quoteEndpoint(invalid, ''));
+});
 
 test('preserves CEP zero, reais, quantities and rounds dimensions/weight upwards', () => {
   assert.deepEqual(buildQuotePayload('01310-100', [product]), { zipcode: '01310100', amount: 73.8, skus: [{ sku: 'sku1', price: 36.9, quantity: 2, length: 13, width: 8, height: 2, weight: 0.036 }] });
@@ -74,6 +84,12 @@ test('upstream auth errors, malformed responses and timeouts do not leak credent
   }
 });
 const allowed = async () => ({ ok: true, mode: 'user' });
+test('settings stores canonical platform and complete account ID from a quote link without exposing the token', async () => {
+  const db = database({ integration: null });
+  const response = await handleFreteBaratoSettings(request({ action: 'save', tenant_id: tenant, platform: `https://admin.fretebarato.com/nuvemshop/price/v1/json/${opaqueId}`, customerId: '', token: 'test-secret' }), db, allowed);
+  assert.equal((await response.json()).success, true);
+  assert.equal(db.writes[0].client_id, opaqueId); assert.equal(db.writes[0].scope, 'nuvemshop');
+});
 test('settings rejects unauthorized callers before reading or writing tenant credentials', async () => {
   const db = database();
   const response = await handleFreteBaratoSettings(request({ action: 'get', tenant_id: tenant }), db, async () => ({ ok: false, status: 403, error: 'Nao autorizado' }));
