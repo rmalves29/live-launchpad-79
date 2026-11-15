@@ -300,15 +300,32 @@ Deno.serve(async (req) => {
     // ---------- varredura automática (só service role) ----------
     if (action === "auto_sweep") {
       const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
-      if (!token || token !== Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")) return json({ success: false, error: "Nao autorizado" }, 403);
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      let authorized = Boolean(serviceKey && token && token === serviceKey);
+      if (!authorized) {
+        const cronSecret = req.headers.get("x-olist-cron-secret") || "";
+        if (/^[a-f0-9]{64}$/.test(cronSecret)) {
+          const { data, error } = await supabase.rpc("olist_cron_authorized", { p_secret: cronSecret });
+          authorized = !error && data === true;
+        }
+      }
+      if (!authorized) return json({ success: false, error: "Nao autorizado" }, 403);
+      // Checks the deployed identity without sending orders, invoices or tracking updates.
+      if (body.dry_run === true) return json({ success: true, dry_run: true, authorized: true });
       const started = Date.now();
-      const { data: tenants } = await supabase.from("integration_olist")
-        .select("tenant_id").eq("is_active", true).eq("send_orders", true).or("auto_send.eq.true,sync_tracking.eq.true,issue_invoice.eq.true").limit(50);
+      const { data: tenants, error: tenantsError } = await supabase.from("integration_olist")
+        .select("tenant_id").eq("is_active", true).eq("send_orders", true).or("auto_send.eq.true,sync_tracking.eq.true,issue_invoice.eq.true")
+        .order("orders_last_sweep_at", { ascending: true, nullsFirst: true }).order("tenant_id", { ascending: true }).limit(50);
+      if (tenantsError) throw new Error("Falha ao consultar lojas Olist");
       const out: any[] = [];
       for (const t of tenants || []) {
         if (Date.now() - started > 100_000) break;
         const cfg = await loadSettings(supabase, t.tenant_id);
         if (!cfg?.is_active || !cfg.send_orders) continue;
+        // Rotate attempted stores so the 50-store/time budget never becomes a permanent allowlist.
+        const { error: checkpointError } = await supabase.from("integration_olist")
+          .update({ orders_last_sweep_at: new Date().toISOString() }).eq("tenant_id", t.tenant_id);
+        if (checkpointError) throw new Error("Falha ao registrar a rodada Olist");
         const r: any = { tenant_id: t.tenant_id, sent: 0, failed: 0, invoices: 0, tracking: 0 };
         if (cfg.auto_send) {
           for (const id of await pendingOrderIds(supabase, t.tenant_id, cfg, 10)) {
@@ -413,3 +430,4 @@ Deno.serve(async (req) => {
     return json({ success: false, error: "Erro interno" }, 500);
   }
 });
+
