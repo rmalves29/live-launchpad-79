@@ -67,6 +67,24 @@ async function blingGet(token: string, path: string): Promise<{ ok: boolean; sta
   return { ok: false, status: 429, data: {} };
 }
 
+// Preço promocional do produto no Bling: fica na aba de lojas do produto (GET /produtos/lojas, campo precoPromocional).
+// Vale o da loja escolhida na integração; sem loja escolhida, o menor promocional que seja menor que o preço normal.
+// Devolve null quando não há promoção (ou se a consulta falhar: a importação segue só com o preço normal).
+async function promoPrice(token: string, productId: number, regular: number, storeId: number): Promise<number | null> {
+  try {
+    const r = await blingGet(token, `/produtos/lojas?idProduto=${productId}${storeId ? `&idLoja=${storeId}` : ""}&limite=100`);
+    if (!r.ok) return null;
+    const rows: any[] = Array.isArray(r.data?.data) ? r.data.data : [];
+    const promos = rows
+      .map((x) => ({ promo: Number(x?.precoPromocional) || 0, base: Number(x?.preco) || regular }))
+      .filter((x) => x.promo > 0 && x.promo < (x.base || regular));
+    if (!promos.length) return null;
+    return Math.round(Math.min(...promos.map((x) => x.promo)) * 100) / 100;
+  } catch {
+    return null;
+  }
+}
+
 // Saldo disponível (virtual) de cada produto no depósito escolhido
 async function depositBalances(token: string, depositId: number, ids: number[]): Promise<Map<number, number>> {
   const out = new Map<number, number>();
@@ -352,11 +370,15 @@ serve(async (req) => {
           const prices = nodes.map((n) => Number(n.preco) || 0).filter((n) => n > 0);
           const parentPrice = isParent ? (prices.length ? Math.min(...prices) : 0) : Number(d.preco) || 0;
           const stockOf = (nid: number) => Math.max(0, Math.floor(balances.get(nid) ?? 0));
+          const storeForPromo = Number(integ.bling_store_id) || 0;
+          const promoOf = (n: any, regular: number) => (Number(n?.precoPromocional) > 0 && Number(n.precoPromocional) < regular ? Number(n.precoPromocional) : null);
+          const parentPromo = isParent ? null : (promoOf(d, parentPrice) ?? (await promoPrice(token, id, parentPrice, storeForPromo)));
 
           const { data: parentRow, error: pErr } = await insertWithFreshCode(supabase, nextCode, {
             tenant_id: tenantId,
             name: nome.slice(0, 200),
             price: parentPrice,
+            promotional_price: parentPromo,
             stock: isParent ? 0 : stockOf(id), // pai de variações fica sem estoque: ele fica oculto para venda
             is_active: active,
             image_url: image,
@@ -377,6 +399,7 @@ serve(async (req) => {
                 tenant_id: tenantId,
                 name: `${nome} - ${v.label || ncode || nid}`.slice(0, 200),
                 price: Number(n.preco) || parentPrice,
+                promotional_price: promoOf(n, Number(n.preco) || parentPrice) ?? (await promoPrice(token, nid, Number(n.preco) || parentPrice, storeForPromo)),
                 stock: stockOf(nid),
                 is_active: n.situacao !== "I" && active,
                 image_url: childImg,

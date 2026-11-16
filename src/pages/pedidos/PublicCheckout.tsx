@@ -683,10 +683,17 @@ const PublicCheckout = () => {
         .limit(1)
         .single();
 
-      const defWeight = appSettings?.default_weight_kg ?? 0.01;
-      const defWidth = appSettings?.default_width_cm ?? 13;
-      const defHeight = appSettings?.default_height_cm ?? 6;
-      const defLength = appSettings?.default_length_cm ?? 16;
+      // Pacote padrão da própria empresa (Integrações > Frete Barato > Pacote padrão); sem ele vale o padrão global
+      const { data: tenantPkg } = await supabase
+        .from('tenant_shipping_defaults' as any)
+        .select('weight_kg, width_cm, height_cm, length_cm')
+        .eq('tenant_id', tenant.id)
+        .maybeSingle();
+      const tp: any = tenantPkg;
+      const defWeight = Number(tp?.weight_kg) || appSettings?.default_weight_kg || 0.01;
+      const defWidth = Number(tp?.width_cm) || appSettings?.default_width_cm || 13;
+      const defHeight = Number(tp?.height_cm) || appSettings?.default_height_cm || 6;
+      const defLength = Number(tp?.length_cm) || appSettings?.default_length_cm || 16;
 
       // Consolidar todos os itens em um único pacote para cálculo de frete
       const allItems = ordersToCalc.flatMap(order => order.items);

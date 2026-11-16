@@ -278,8 +278,42 @@ async function getValidAccessToken(supabase: any, integration: any): Promise<str
 }
 
 type SendProductResult =
-  | { kind: 'created'; blingProductId: number; linkedToStore: boolean; raw: any }
-  | { kind: 'already_exists'; blingProductId: number; linkedToStore: boolean; raw: any };
+  | { kind: 'created'; blingProductId: number; linkedToStore: boolean; stock: StockResult; raw: any }
+  | { kind: 'already_exists'; blingProductId: number; linkedToStore: boolean; stock: StockResult; raw: any };
+
+/** Resultado do envio do saldo inicial ao Bling (nunca derruba a exportação do produto). */
+type StockResult = { sent: boolean; quantity?: number; reason?: string };
+
+/**
+ * Lança no Bling o estoque do Cartzy de um produto NOVO (balanço no depósito escolhido na integração).
+ * Só roda para produto criado agora: produto que já existia no Bling mantém o saldo que ele tem.
+ */
+async function sendInitialStock(product: any, blingProductId: number, depositId: number | null | undefined, accessToken: string): Promise<StockResult> {
+  const quantity = Math.max(0, Math.floor(Number(product.stock) || 0));
+  if (!depositId) return { sent: false, reason: 'Escolha o depósito do estoque na integração do Bling para enviar o saldo.' };
+  if (quantity <= 0) return { sent: false, reason: 'Produto sem estoque no Cartzy.' };
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    await delay(400);
+    const res = await fetch(`${BLING_API_URL}/estoques`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'enable-jwt': '1', Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+      body: JSON.stringify({
+        deposito: { id: Number(depositId) },
+        operacao: 'B', // B = balanço: define o saldo
+        produto: { id: blingProductId },
+        quantidade: quantity,
+        custo: Number(product.cost) || 0,
+        observacoes: 'Saldo inicial enviado pelo Cartzy',
+      }),
+    });
+    if (res.ok) return { sent: true, quantity };
+    const text = await res.text();
+    if (res.status === 429 && attempt < 3) { await delay(1200 * attempt); continue; }
+    console.error(`[bling-sync-products] Falha ao enviar estoque (${res.status}):`, text.slice(0, 300));
+    return { sent: false, reason: `O Bling recusou o estoque (${res.status}).` };
+  }
+  return { sent: false, reason: 'O Bling limitou o ritmo; envie o estoque de novo depois.' };
+}
 
 /**
  * Link product to store via POST /produtos/lojas
@@ -365,7 +399,8 @@ async function sendProductToBling(
   product: any, 
   accessToken: string, 
   blingStoreId?: number | null,
-  fiscalData?: FiscalData | null
+  fiscalData?: FiscalData | null,
+  depositId?: number | null
 ): Promise<SendProductResult> {
   // Map local product to Bling API v3 format
   // Required fields: nome, tipo, situacao, formato
@@ -545,7 +580,13 @@ async function sendProductToBling(
     );
   }
 
-  return { kind, blingProductId, linkedToStore, raw: { responseText } };
+  let stock: StockResult = { sent: false, reason: 'Produto já existia no Bling: o saldo de lá foi mantido.' };
+  if (kind === 'created') {
+    try { stock = await sendInitialStock(product, blingProductId, depositId, accessToken); }
+    catch (e) { stock = { sent: false, reason: `Erro ao enviar o estoque: ${(e as Error).message}` }; }
+  }
+
+  return { kind, blingProductId, linkedToStore, stock, raw: { responseText } };
 }
 
 /**
@@ -676,7 +717,7 @@ serve(async (req) => {
           break;
         }
 
-        const sendResult = await sendProductToBling(product, accessToken, integration.bling_store_id, fiscalData);
+        const sendResult = await sendProductToBling(product, accessToken, integration.bling_store_id, fiscalData, integration.bling_deposit_id);
 
         // Update product with Bling ID
         await supabase
@@ -692,6 +733,9 @@ serve(async (req) => {
           kind: sendResult.kind,
           bling_product_id: sendResult.blingProductId,
           linked_to_store: sendResult.linkedToStore,
+          stock_sent: sendResult.stock.sent,
+          stock_quantity: sendResult.stock.quantity ?? null,
+          stock_note: sendResult.stock.reason ?? null,
           product_name: product.name,
         };
         break;
@@ -731,7 +775,7 @@ serve(async (req) => {
         console.log(`[bling-sync-products] force_resync: cleared old bling_product_id ${oldBlingId} for product ${product_id}`);
 
         // Re-send to Bling
-        const sendResult = await sendProductToBling(product, accessToken, integration.bling_store_id, fiscalData);
+        const sendResult = await sendProductToBling(product, accessToken, integration.bling_store_id, fiscalData, integration.bling_deposit_id);
 
         // Update product with new Bling ID
         await supabase
@@ -792,7 +836,7 @@ serve(async (req) => {
           try {
             await delay(350); // Rate limiting: 3 req/sec
 
-            const sendResult = await sendProductToBling(product, accessToken, integration.bling_store_id, fiscalData);
+            const sendResult = await sendProductToBling(product, accessToken, integration.bling_store_id, fiscalData, integration.bling_deposit_id);
 
             // Update product with Bling ID
             await supabase

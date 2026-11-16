@@ -1,4 +1,5 @@
 import FreteBaratoIntegration from '@/components/integrations/FreteBaratoIntegration';
+import ShippingPackageDefaults from '@/components/integrations/ShippingPackageDefaults';
 /**
  * Página de Integrações por Tenant
  * Permite configurar Mercado Pago, Pagar.me, App Max, Melhor Envio, Mandae, Correios, MeusCorreios, Bling ERP e Instagram Live
@@ -509,7 +510,7 @@ export default function TenantIntegrationsPage() {
           <FrenetIntegration tenantId={tenantId} />
         </TabsContent>
         )}
-        {en('fretebarato') && <TabsContent value="fretebarato" className="mt-6"><FreteBaratoIntegration tenantId={tenantId} /></TabsContent>}
+        {en('fretebarato') && <TabsContent value="fretebarato" className="mt-6 space-y-4"><FreteBaratoIntegration tenantId={tenantId} /><ShippingPackageDefaults tenantId={tenantId} /></TabsContent>}
         </Tabs>
       </div>
     </div>

@@ -323,7 +323,13 @@ export async function calculateLiveShipping(params: {
     // Tudo que não depende de uma resposta anterior sai ao mesmo tempo: CEP, integrações ativas e medidas padrão.
     const cepP = lookupCep(cep);
     const activesP = getActiveShippingIntegrations(params.tenantId);
-    const appP = loadAppSettings();
+    const appP = Promise.all([
+      loadAppSettings(),
+      Promise.resolve(supabase.from('tenant_shipping_defaults' as any).select('weight_kg, width_cm, height_cm, length_cm').eq('tenant_id', params.tenantId).maybeSingle())
+        .then((r: any) => r.data).catch(() => null),
+    ]).then(([g, t]: any[]) => (t
+      ? { default_weight_kg: t.weight_kg, default_width_cm: t.width_cm, default_height_cm: t.height_cm, default_length_cm: t.length_cm }
+      : g));
 
     // Opções da própria loja só precisam do estado/cidade; mostram-se na hora, sem esperar as transportadoras.
     const customP = cepP.then(async ({ state, city }) => {
