@@ -7,7 +7,7 @@ import { handleFreteBaratoSettings } from '../supabase/functions/_shared/freteba
 
 const tenant = '12345678-1234-1234-1234-123456789abc';
 const product = { id: 'sku1', quantity: 2, insurance_value: 36.9, weight: 0.0351, length: 12.2, width: 8, height: 2 };
-const integration = { id: 'integration', access_token: 'secret-not-for-browser', client_id: '123', scope: 'cartzy', is_active: true };
+const integration = { id: 'integration', access_token: 'secret-not-for-browser', client_id: '123', scope: 'cartzy', from_cep: '29102165', is_active: true };
 const opaqueId = '0123456789abcdef0123456789abcdef';
 function database(options = {}) {
   const filters = [], writes = [];
@@ -23,7 +23,8 @@ const request = (body) => new Request('https://local.test/quote', { method: 'POS
 const quoteRequest = () => request({ tenant_id: tenant, to_postal_code: '01310-100', products: [product] });
 
 test('Nuvemshop request converts unit kg to grams and preserves reais, CEP, quantity and dimensions', () => {
-  const payload = buildNuvemshopQuotePayload(buildQuotePayload('01310-100', [product]));
+  const payload = buildNuvemshopQuotePayload(buildQuotePayload('01310-100', [product]), '29102-165');
+  assert.deepEqual(payload.origin, { country: 'BR', postal_code: '29102165' });
   assert.equal(payload.destination.postal_code, '01310100'); assert.equal(payload.total_price, 73.8);
   assert.equal(payload.currency, 'BRL'); assert.equal(payload.items[0].grams, 36);
   assert.equal(payload.items[0].quantity, 2); assert.equal(payload.items[0].price, 36.9);
@@ -121,11 +122,31 @@ test('upstream auth errors, malformed responses and timeouts do not leak credent
   }
 });
 const allowed = async () => ({ ok: true, mode: 'user' });
+
+test('Nuvemshop rejects missing origin before querying rates instead of using provider defaults', async () => {
+  let calls = 0;
+  const response = await handleFreteBaratoQuote(quoteRequest(), database({ integration: { ...integration, scope: 'nuvemshop', from_cep: null } }), async () => { calls++; return Response.json({ rates: [] }); });
+  assert.equal((await response.json()).success, false);
+  assert.equal(calls, 0);
+  for (const origin of ['', '12345', 'abc29102165', '291021650']) assert.throws(() => buildNuvemshopQuotePayload(buildQuotePayload('31575060', [product]), origin));
+});
+
+test('Nuvemshop ignores forged checkout origin and sends the saved tenant origin', async () => {
+  const req = request({ tenant_id: tenant, to_postal_code: '31575060', from_cep: '01310100', origin: { postal_code: '01310100' }, products: [product] });
+  const response = await handleFreteBaratoQuote(req, database({ integration: { ...integration, scope: 'nuvemshop' } }), async (_url, init) => {
+    const sent = JSON.parse(init.body);
+    assert.equal(sent.origin.postal_code, '29102165');
+    assert.equal(sent.destination.postal_code, '31575060');
+    return Response.json({ rates: [] });
+  });
+  assert.equal((await response.json()).success, true);
+});
 test('settings stores canonical platform and complete account ID from a quote link without exposing the token', async () => {
   const db = database({ integration: null });
-  const response = await handleFreteBaratoSettings(request({ action: 'save', tenant_id: tenant, platform: `https://admin.fretebarato.com/nuvemshop/price/v1/json/${opaqueId}`, customerId: '', token: 'test-secret' }), db, allowed);
+  const response = await handleFreteBaratoSettings(request({ action: 'save', tenant_id: tenant, platform: `https://admin.fretebarato.com/nuvemshop/price/v1/json/${opaqueId}`, customerId: '', fromCep: '29102-165', token: 'test-secret' }), db, allowed);
   assert.equal((await response.json()).success, true);
   assert.equal(db.writes[0].client_id, opaqueId); assert.equal(db.writes[0].scope, 'nuvemshop');
+  assert.equal(db.writes[0].from_cep, '29102165');
 });
 test('settings rejects unauthorized callers before reading or writing tenant credentials', async () => {
   const db = database();

@@ -17,11 +17,12 @@ export async function handleFreteBaratoQuote(req: Request, db: any, fetcher: typ
     const { data: tenant, error: tenantError } = await db.from('tenants').select('is_active').eq('id', body.tenant_id).maybeSingle();
     if (tenantError || !tenant?.is_active) return json({ success: false, error: 'Loja indisponível.' });
     const { data: integration, error } = await db.from('shipping_integrations')
-      .select('access_token, client_id, scope').eq('tenant_id', body.tenant_id).eq('provider', 'fretebarato').eq('is_active', true).maybeSingle();
+      .select('access_token, client_id, scope, from_cep').eq('tenant_id', body.tenant_id).eq('provider', 'fretebarato').eq('is_active', true).maybeSingle();
     if (error || !integration?.access_token) return json({ success: false, error: 'Frete Barato não está configurado ou ativo nesta loja.' });
     const config = normalizeQuoteConfiguration(integration.scope ?? '', integration.client_id ?? '');
     const endpoint = quoteEndpoint(config.platform, config.customerId);
-    const providerPayload = config.platform.toLowerCase() === 'nuvemshop' ? buildNuvemshopQuotePayload(payload) : payload;
+    // The origin belongs to this store's saved integration, never to the public request.
+    const providerPayload = config.platform.toLowerCase() === 'nuvemshop' ? buildNuvemshopQuotePayload(payload, integration.from_cep) : payload;
     const response = await fetcher(endpoint, {
       method: 'POST', signal: AbortSignal.timeout(10000), redirect: 'error',
       headers: { Authorization: `Bearer ${integration.access_token}`, 'Content-Type': 'application/json', 'User-Agent': 'Cartzy (suporte@orderzaps.com)' },

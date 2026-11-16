@@ -46,9 +46,16 @@ export function buildQuotePayload(cep: unknown, products: unknown) {
 }
 
 // Nuvemshop's carrier callback uses grams and an items/destination envelope, not the generic API contract.
-export function buildNuvemshopQuotePayload(payload: ReturnType<typeof buildQuotePayload>) {
+export function normalizeOriginPostalCode(value: unknown): string {
+  const raw = String(value ?? '').trim();
+  if (!/^\d{5}-?\d{3}$/.test(raw)) throw new Error('Informe o CEP de origem da loja com 8 dígitos.');
+  return raw.replace('-', '');
+}
+
+export function buildNuvemshopQuotePayload(payload: ReturnType<typeof buildQuotePayload>, originPostalCode: unknown) {
   return {
     cart_id: 'cartzy-quote', currency: 'BRL', language: 'pt', total_price: payload.amount,
+    origin: { country: 'BR', postal_code: normalizeOriginPostalCode(originPostalCode) },
     destination: { country: 'BR', postal_code: payload.zipcode },
     items: payload.skus.map((p, i) => ({ id: i + 1, product_id: i + 1, name: p.sku, sku: p.sku,
       quantity: p.quantity, free_shipping: false, grams: Math.round(p.weight * 1000), price: p.price, cost: p.price,

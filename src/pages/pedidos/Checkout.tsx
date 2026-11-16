@@ -19,6 +19,7 @@ import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { fetchCustomShippingOptions, CustomShippingOption } from '@/hooks/useCustomShippingOptions';
 import { useOrderMerge, MERGE_ORDER_SHIPPING_OPTION } from '@/hooks/useOrderMerge';
 import { getActiveShippingIntegrations, shippingProviderLabel, type ActiveShippingIntegration } from '@/lib/shipping-utils';
+import { buildFreteBaratoCheckoutPackage } from '@/lib/fretebarato-checkout';
 
 
 interface OrderItem {
@@ -696,6 +697,13 @@ const Checkout = () => {
       // Consulta uma integração. Se falhar, só ela some: a outra continua aparecendo.
       const quoteIntegration = async (integ: ActiveShippingIntegration): Promise<{ options: any[]; error?: Error }> => {
         try {
+          let freteBaratoProducts = products;
+          if (integ.provider === 'fretebarato') {
+            const { data: packageSettings, error: packageError } = await supabase.from('app_settings')
+              .select('default_weight_kg, default_width_cm, default_height_cm, default_length_cm').limit(1).single();
+            if (packageError) throw new Error('Não foi possível conferir a embalagem para calcular o frete.');
+            freteBaratoProducts = buildFreteBaratoCheckoutPackage(order.items, packageSettings);
+          }
           // Se for Melhor Envio, testar token primeiro
           if (integ.testFunctionName) {
             const tokenTestResponse = await supabaseTenant.raw.functions.invoke(integ.testFunctionName, {
@@ -716,7 +724,7 @@ const Checkout = () => {
             body: {
               to_postal_code: cep.replace(/[^0-9]/g, ''),
               tenant_id: tenantId,
-              products: products
+              products: integ.provider === 'fretebarato' ? freteBaratoProducts : products
             }
           });
 

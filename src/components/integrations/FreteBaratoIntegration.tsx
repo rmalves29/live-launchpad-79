@@ -15,6 +15,7 @@ export default function FreteBaratoIntegration({ tenantId }: { tenantId: string 
   const queryClient = useQueryClient();
   const [customerId, setCustomerId] = useState('');
   const [platform, setPlatform] = useState('');
+  const [fromCep, setFromCep] = useState('');
   const [token, setToken] = useState('');
   const [cep, setCep] = useState('');
   const [busy, setBusy] = useState(false);
@@ -26,7 +27,7 @@ export default function FreteBaratoIntegration({ tenantId }: { tenantId: string 
   };
   const { data: settings, isLoading, error } = useQuery({ queryKey: ['fretebarato-integration', tenantId], queryFn: () => invoke('get'), enabled: !!tenantId });
   useEffect(() => {
-    setCustomerId(settings?.customerId ?? ''); setPlatform(settings?.platform ?? ''); setToken(''); setQuotes([]);
+    setCustomerId(settings?.customerId ?? ''); setPlatform(settings?.platform ?? ''); setFromCep(settings?.fromCep ?? ''); setToken(''); setQuotes([]);
   }, [settings, tenantId]);
   const action = async (work: () => Promise<void>) => {
     setBusy(true);
@@ -38,7 +39,7 @@ export default function FreteBaratoIntegration({ tenantId }: { tenantId: string 
   return <Card>
     <CardHeader>
       <CardTitle className="flex items-center gap-2"><Truck className="h-5 w-5" />Frete Barato</CardTitle>
-      <CardDescription>Cotação de preço e prazo no checkout. A origem e as transportadoras disponíveis seguem o cadastro da sua conta no Frete Barato.</CardDescription>
+      <CardDescription>Cotação de preço e prazo no checkout. Informe o mesmo CEP de origem usado na sua loja para obter as tarifas corretas.</CardDescription>
     </CardHeader>
     <CardContent className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -49,10 +50,11 @@ export default function FreteBaratoIntegration({ tenantId }: { tenantId: string 
         })} />
       </div>
       <form className="space-y-4" onSubmit={e => { e.preventDefault(); action(async () => {
-        await invoke('save', { customerId, platform, token }); setToken('');
+        await invoke('save', { customerId, platform, fromCep, token }); setToken('');
         await queryClient.invalidateQueries({ queryKey: ['fretebarato-integration', tenantId] });
         toast({ title: 'Configuração salva', description: 'Ative a integração para disponibilizar as cotações no checkout.' });
       }); }}>
+        <div className="space-y-2"><Label htmlFor="fb-origin">CEP de origem dos envios</Label><Input id="fb-origin" value={fromCep} onChange={e => setFromCep(e.target.value)} inputMode="numeric" maxLength={9} placeholder="00000-000" /><p className="text-xs text-muted-foreground">CEP de onde os pedidos são despachados. Deve ser o mesmo cadastrado na Nuvemshop; não informe o CEP da cliente.</p></div>
         <div className="space-y-2"><Label htmlFor="fb-customer">Customer ID</Label><Input id="fb-customer" value={customerId} onChange={e => setCustomerId(e.target.value)} required={!/^https:\/\//i.test(platform.trim())} maxLength={80} autoCapitalize="none" spellCheck={false} /><p className="text-xs text-muted-foreground">Copie o identificador completo, incluindo letras. Se colar o link de cotação abaixo, deixe este campo vazio para usar o ID do link.</p></div>
         <div className="space-y-2"><Label htmlFor="fb-platform">Identificação da plataforma ou link de cotação</Label><Input id="fb-platform" value={platform} onChange={e => setPlatform(e.target.value)} required maxLength={256} autoCapitalize="none" spellCheck={false} /><p className="text-xs text-muted-foreground">Use o identificador ou cole o link completo de cotação informado pelo Frete Barato.</p></div>
         <div className="space-y-2"><Label htmlFor="fb-token">Token de acesso</Label><Input id="fb-token" type="password" autoComplete="new-password" value={token} onChange={e => setToken(e.target.value)} required={!settings?.hasToken} maxLength={4000} placeholder={settings?.hasToken ? 'Token salvo — deixe vazio para manter' : 'Token fornecido pelo Frete Barato'} /></div>

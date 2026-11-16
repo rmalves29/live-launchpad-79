@@ -17,6 +17,7 @@ import { formatBrasiliaDate, formatBrasiliaDateLong } from '@/lib/date-utils';
 import { formatCurrency, formatCPF } from '@/lib/utils';
 import { ZoomableImage } from '@/components/ui/zoomable-image';
 import { fetchCustomShippingOptions } from '@/hooks/useCustomShippingOptions';
+import { buildFreteBaratoCheckoutPackage } from '@/lib/fretebarato-checkout';
 import { useOrderMerge, MERGE_ORDER_SHIPPING_OPTION } from '@/hooks/useOrderMerge';
 import { getActiveShippingIntegrations, shippingProviderLabel, ShippingProvider, type ActiveShippingIntegration } from '@/lib/shipping-utils';
 import { PushOptInDialog } from '@/components/push/PushOptInDialog';
@@ -725,7 +726,7 @@ const PublicCheckout = () => {
             body: {
               to_postal_code: cep.replace(/[^0-9]/g, ''),
               tenant_id: tenant.id,
-              products: products
+              products: integ.provider === 'fretebarato' ? buildFreteBaratoCheckoutPackage(allItems, appSettings) : products
             }
           });
 
