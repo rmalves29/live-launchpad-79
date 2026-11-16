@@ -1836,6 +1836,7 @@ const Produtos = () => {
                         <TableHead>Nome</TableHead>
                         <TableHead>Variações</TableHead>
                         <TableHead>Preço</TableHead>
+                        <TableHead>Preço promocional</TableHead>
                         <TableHead>Estoque</TableHead>
                         <TableHead>Tipo de Evento</TableHead>
                         <TableHead>Categoria</TableHead>
@@ -1884,7 +1885,12 @@ const Produtos = () => {
                               {!product.color && !product.size && <div className="text-muted-foreground">-</div>}
                             </div>
                           </TableCell>
-                          <TableCell>{formatCurrency(product.price)}</TableCell>
+                          <TableCell className={product.promotional_price && product.promotional_price > 0 && product.promotional_price < product.price ? 'text-muted-foreground line-through' : ''}>{formatCurrency(product.price)}</TableCell>
+                          <TableCell>
+                            {product.promotional_price && product.promotional_price > 0 && product.promotional_price < product.price
+                              ? <span className="font-semibold text-emerald-700">{formatCurrency(product.promotional_price)}</span>
+                              : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
                           <TableCell>{product.stock}</TableCell>
                           <TableCell>
                             {product.sale_type === 'AMBOS' ? (

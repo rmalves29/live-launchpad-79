@@ -18,7 +18,7 @@ import { toast } from 'sonner';
 import { Loader2, Search, Download, RefreshCw, AlertTriangle, Warehouse } from 'lucide-react';
 
 type Deposit = { id: number; nome: string; padrao: boolean; desconsidera_saldo: boolean };
-type Row = { olist_id: number; sku: string; nome: string; preco: number; tipo: string; variacao: string; saldo: number; status: 'novo' | 'existe' | 'vinculado'; cartzy_id: number | null };
+type Row = { olist_id: number; sku: string; nome: string; preco: number; preco_promocional?: number; tipo: string; variacao: string; saldo: number; status: 'novo' | 'existe' | 'vinculado'; cartzy_id: number | null };
 
 const MAX_LOOPS = 300;
 const PAGE_SIZE = 50;
@@ -106,13 +106,13 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
       const comSaldo = rows.map((p) => ({ ...p, saldo: stock.get(p.olist_id) ?? 0 }));
       setRows(comSaldo);
       for (const part of chunk(comSaldo, 400)) await call({ action: 'catalog_save', started_at: syncedAt || new Date().toISOString(), items: part });
-      let updated = 0, linked = 0;
+      let updated = 0, linked = 0, promos = 0;
       for (const part of chunk(alvos, 300)) {
         setProgress('Atualizando o estoque do Cartzy…');
-        const r = await call({ action: 'apply_stock', items: part.map((p) => ({ olist_id: p.olist_id, sku: p.sku, saldo: stock.get(p.olist_id) ?? 0 })) });
-        updated += r.updated || 0; linked += r.linked || 0;
+        const r = await call({ action: 'apply_stock', items: part.map((p) => ({ olist_id: p.olist_id, sku: p.sku, saldo: stock.get(p.olist_id) ?? 0, preco_promocional: p.preco_promocional ?? 0 })) });
+        updated += r.updated || 0; linked += r.linked || 0; promos += r.promos || 0;
       }
-      toast.success(`Estoque atualizado no Cartzy em ${updated} produto(s)${linked ? ` e ${linked} vinculado(s) pelo código ERP` : ''}.`);
+      toast.success(`Estoque atualizado no Cartzy em ${updated} produto(s)${promos ? `; preço promocional ajustado em ${promos}` : ''}${linked ? ` e ${linked} vinculado(s) pelo código ERP` : ''}.`);
     } catch (e: any) { toast.error(e?.message || 'Erro ao atualizar o estoque'); } finally { setLoading(false); setProgress(''); }
   }
 
@@ -205,7 +205,7 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
       let created = 0, linked = 0, failed = 0;
       const done = new Set<number>();
       for (const part of chunk(items, 40)) {
-        const r = await call({ action: 'import', sale_type: 'AMBOS', items: part.map((p) => ({ olist_id: p.olist_id, sku: p.sku, nome: p.nome, preco: p.preco, saldo: p.saldo })) });
+        const r = await call({ action: 'import', sale_type: 'AMBOS', items: part.map((p) => ({ olist_id: p.olist_id, sku: p.sku, nome: p.nome, preco: p.preco, preco_promocional: p.preco_promocional ?? 0, saldo: p.saldo })) });
         for (const x of r.results as any[]) {
           if (x.status === 'criado') { created++; done.add(x.olist_id); }
           else if (x.status === 'vinculado' || x.status === 'ja_vinculado') { linked++; done.add(x.olist_id); }
@@ -297,7 +297,7 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
                           aria-label="Selecionar todos"
                         />
                       </th>
-                      <th className="p-2">Produto (código da Olist)</th><th className="p-2 text-right">Preço</th><th className="p-2 text-right">Estoque (após atualizar)</th><th className="p-2">Situação</th>
+                      <th className="p-2">Produto (código da Olist)</th><th className="p-2 text-right">Preço</th><th className="p-2 text-right">Preço promocional</th><th className="p-2 text-right">Estoque (após atualizar)</th><th className="p-2">Situação</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -305,7 +305,8 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
                       <tr key={r.olist_id} className="border-t">
                         <td className="p-2"><Checkbox disabled={r.status === 'vinculado'} checked={selected.has(r.olist_id)} onCheckedChange={() => toggle(r.olist_id)} aria-label={`Selecionar ${r.nome}`} /></td>
                         <td className="p-2"><div className="font-medium">{r.nome}</div><div className="text-xs text-muted-foreground">{r.sku || 'sem código'}</div></td>
-                        <td className="p-2 text-right">{brl(r.preco)}</td>
+                        <td className={`p-2 text-right ${r.preco_promocional ? 'text-muted-foreground line-through' : ''}`}>{brl(r.preco)}</td>
+                        <td className="p-2 text-right">{r.preco_promocional ? <span className="font-semibold text-emerald-700">{brl(r.preco_promocional)}</span> : <span className="text-muted-foreground">—</span>}</td>
                         <td className="p-2 text-right">{r.saldo}</td>
                         <td className="p-2">
                           {r.status === 'vinculado' ? <Badge variant="secondary">Já no Cartzy</Badge>

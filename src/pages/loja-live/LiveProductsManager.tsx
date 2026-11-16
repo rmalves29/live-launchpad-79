@@ -398,6 +398,7 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
             <span className="flex-1">Produto</span>
             <span className="hidden w-20 text-right sm:block">Estoque</span>
             <span className="hidden w-24 text-right sm:block">Preço</span>
+            <span className="hidden w-24 text-right sm:block">Promocional</span>
             <span className="w-24 text-right">Na live?</span>
             <span className="w-[72px]" aria-hidden="true" />
           </div>
@@ -456,7 +457,13 @@ export function LiveProductsManager({ onChanged }: { onChanged?: () => void }) {
                         </p>
                       </div>
                       <span className="hidden w-20 text-right text-sm tabular-nums sm:block">{r.stock ?? 0}</span>
-                      <span className="hidden w-24 text-right text-sm tabular-nums sm:block">{money(r.promotional_price ?? r.price)}</span>
+                      {(() => {
+                        const promo = r.promotional_price != null && r.promotional_price > 0 && r.promotional_price < (r.price ?? 0);
+                        return (<>
+                          <span className={`hidden w-24 text-right text-sm tabular-nums sm:block ${promo ? 'text-muted-foreground line-through' : ''}`}>{money(r.price)}</span>
+                          <span className="hidden w-24 text-right text-sm tabular-nums sm:block">{promo ? <span className="font-semibold text-emerald-700">{money(r.promotional_price)}</span> : <span className="text-muted-foreground">—</span>}</span>
+                        </>);
+                      })()}
                       <span className="w-24 text-right">
                         {st === true && <Badge className="bg-emerald-600 hover:bg-emerald-600">Na live</Badge>}
                         {st === 'indeterminate' && <Badge className="bg-amber-500 hover:bg-amber-500">Parcial</Badge>}

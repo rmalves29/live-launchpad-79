@@ -28,6 +28,8 @@ const MAX_ITEMS = 300;
 
 const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const norm = (v: unknown) => String(v ?? "").trim();
+// Preço promocional da Olist: só vale quando é maior que zero e menor que o preço normal.
+const promoOf = (promo: unknown, preco: unknown) => { const pr = num(promo); return pr > 0 && pr < num(preco) ? pr : 0; };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // primeira foto do produto na Olist (GET /produtos/{id} traz os anexos); só aceita endereço http(s)
@@ -111,6 +113,7 @@ Deno.serve(async (req) => {
         sku: norm(p.sku),
         nome: norm(p.descricao),
         preco: num(p.precos?.preco),
+        preco_promocional: promoOf(p.precos?.precoPromocional, p.precos?.preco),
         tipo: norm(p.tipo),               // K kit, S simples, V com variações, F fabricado, M matéria-prima
         variacao: norm(p.tipoVariacao),   // N normal, P pai (sem estoque próprio), V variação
       }));
@@ -146,16 +149,20 @@ Deno.serve(async (req) => {
     // ---------------- grava o saldo da Olist no Cartzy ----------------
     if (action === "apply_stock") {
       const items = (Array.isArray(body.items) ? body.items : []).slice(0, MAX_ITEMS)
-        .map((i: any) => ({ olist_id: num(i?.olist_id), sku: norm(i?.sku), saldo: Math.max(0, Math.floor(num(i?.saldo))) }))
+        .map((i: any) => ({
+          olist_id: num(i?.olist_id), sku: norm(i?.sku), saldo: Math.max(0, Math.floor(num(i?.saldo))),
+          // undefined = a tela não mandou o preço promocional: não mexe nele
+          promo: i?.preco_promocional === undefined ? undefined : num(i?.preco_promocional),
+        }))
         .filter((i: any) => i.olist_id > 0);
-      if (!items.length) return json({ success: true, updated: 0, linked: 0, changed: [] });
+      if (!items.length) return json({ success: true, updated: 0, linked: 0, changed: [], promos: 0 });
       const ids = items.map((i: any) => i.olist_id);
       const skus = [...new Set(items.map((i: any) => i.sku).filter(Boolean))];
       const byId = new Map<number, any>(), bySku = new Map<string, any[]>();
-      const { data: linked } = await supabase.from("products").select("id, stock, sku_erp, olist_product_id").eq("tenant_id", tenantId).in("olist_product_id", ids);
+      const { data: linked } = await supabase.from("products").select("id, stock, promotional_price, sku_erp, olist_product_id").eq("tenant_id", tenantId).in("olist_product_id", ids);
       for (const p of linked || []) byId.set(Number(p.olist_product_id), p);
       if (skus.length) {
-        const { data: same } = await supabase.from("products").select("id, stock, sku_erp, olist_product_id").eq("tenant_id", tenantId).in("sku_erp", skus);
+        const { data: same } = await supabase.from("products").select("id, stock, promotional_price, sku_erp, olist_product_id").eq("tenant_id", tenantId).in("sku_erp", skus);
         for (const p of same || []) { const k = String(p.sku_erp).toLowerCase(); bySku.set(k, [...(bySku.get(k) || []), p]); }
       }
       // produto pai de variações do Cartzy não recebe estoque (ele fica sem saldo próprio)
@@ -169,7 +176,7 @@ Deno.serve(async (req) => {
         const { data: filhos } = await supabase.from("products").select("parent_product_id").eq("tenant_id", tenantId).in("parent_product_id", [...candidatos]);
         for (const f of filhos || []) pais.add(Number(f.parent_product_id));
       }
-      let updated = 0, vinculados = 0;
+      let updated = 0, vinculados = 0, promos = 0;
       const changed: Array<{ cartzy_id: number; de: number; para: number }> = [];
       for (const i of items) {
         const porId = byId.get(i.olist_id);
@@ -178,19 +185,26 @@ Deno.serve(async (req) => {
         if (!p || pais.has(Number(p.id))) continue;
         const patch: Record<string, unknown> = {};
         if (Number(p.stock) !== i.saldo) patch.stock = i.saldo;
+        // Preço promocional segue a Olist: tem promoção lá, tem aqui; tirou lá, tira aqui.
+        if (i.promo !== undefined) {
+          const novo = i.promo > 0 ? i.promo : null;
+          const atual = Number(p.promotional_price) > 0 ? Number(p.promotional_price) : null;
+          if (novo !== atual) patch.promotional_price = novo;
+        }
         if (!porId && !p.olist_product_id) { patch.olist_product_id = i.olist_id; vinculados++; }
         if (!Object.keys(patch).length) continue;
         const { error } = await supabase.from("products").update(patch).eq("id", p.id).eq("tenant_id", tenantId);
         if (!error && "stock" in patch) { updated++; changed.push({ cartzy_id: Number(p.id), de: Number(p.stock) || 0, para: i.saldo }); }
+        if (!error && "promotional_price" in patch) promos++;
       }
       await supabase.from("integration_olist").update({ last_stock_sync_at: new Date().toISOString() }).eq("tenant_id", tenantId);
-      return json({ success: true, updated, linked: vinculados, changed: changed.slice(0, 50) });
+      return json({ success: true, updated, linked: vinculados, promos, changed: changed.slice(0, 50) });
     }
 
     // ---------------- importação ----------------
     if (action === "import") {
       const items = (Array.isArray(body.items) ? body.items : []).slice(0, 100)
-        .map((i: any) => ({ olist_id: num(i?.olist_id), sku: norm(i?.sku), nome: norm(i?.nome), preco: num(i?.preco), saldo: Math.max(0, Math.floor(num(i?.saldo))) }))
+        .map((i: any) => ({ olist_id: num(i?.olist_id), sku: norm(i?.sku), nome: norm(i?.nome), preco: num(i?.preco), promo: promoOf(i?.preco_promocional, i?.preco), saldo: Math.max(0, Math.floor(num(i?.saldo))) }))
         .filter((i: any) => i.olist_id > 0 && i.nome);
       if (!items.length) return json({ success: false, error: "Nenhum produto selecionado." });
       const saleType = ["BAZAR", "LIVE", "AMBOS"].includes(norm(body.sale_type)) ? norm(body.sale_type) : "AMBOS";
@@ -204,13 +218,13 @@ Deno.serve(async (req) => {
             const c = i.sku.replace(/"/g, "");
             const { data: igual } = await supabase.from("products").select("id").eq("tenant_id", tenantId).is("olist_product_id", null).or(`code.eq."${c}",sku_erp.eq."${c}"`).limit(1);
             if (igual?.[0]) {
-              await supabase.from("products").update({ olist_product_id: i.olist_id, sku_erp: i.sku }).eq("id", igual[0].id);
+              await supabase.from("products").update({ olist_product_id: i.olist_id, sku_erp: i.sku, promotional_price: i.promo > 0 ? i.promo : null }).eq("id", igual[0].id);
               results.push({ olist_id: i.olist_id, status: "vinculado", cartzy_id: igual[0].id });
               continue;
             }
           }
           const { data: novo, error } = await insertWithFreshCode(supabase, nextCode, {
-            tenant_id: tenantId, name: i.nome.slice(0, 200), price: i.preco, stock: i.saldo, is_active: true,
+            tenant_id: tenantId, name: i.nome.slice(0, 200), price: i.preco, promotional_price: i.promo > 0 ? i.promo : null, stock: i.saldo, is_active: true,
             sale_type: saleType, olist_product_id: i.olist_id, sku_erp: i.sku || null,
           });
           if (error || !novo) results.push({ olist_id: i.olist_id, status: "erro", error: error?.message || "Falha ao criar o produto" });
@@ -256,11 +270,16 @@ Deno.serve(async (req) => {
     if (action === "catalog_load") {
       const rows: any[] = [];
       for (let from = 0; from < 20000; from += 1000) {
-        const { data, error } = await supabase.from("olist_catalog")
-          .select("olist_id, sku, nome, preco, tipo, variacao, saldo")
+        let { data, error } = await supabase.from("olist_catalog")
+          .select("olist_id, sku, nome, preco, preco_promocional, tipo, variacao, saldo")
           .eq("tenant_id", tenantId).order("nome").range(from, from + 999);
+        if (error) { // banco ainda sem a coluna preco_promocional
+          ({ data, error } = await supabase.from("olist_catalog")
+            .select("olist_id, sku, nome, preco, tipo, variacao, saldo")
+            .eq("tenant_id", tenantId).order("nome").range(from, from + 999));
+        }
         if (error) return json({ success: false, error: "Não foi possível ler o catálogo guardado" });
-        rows.push(...(data || []).map((r: any) => ({ ...r, olist_id: Number(r.olist_id), preco: Number(r.preco) })));
+        rows.push(...(data || []).map((r: any) => ({ ...r, olist_id: Number(r.olist_id), preco: Number(r.preco), preco_promocional: Number(r.preco_promocional) || 0 })));
         if (!data || data.length < 1000) break;
       }
       const { data: meta } = await supabase.from("integration_olist").select("last_catalog_sync_at").eq("tenant_id", tenantId).maybeSingle();
@@ -272,10 +291,15 @@ Deno.serve(async (req) => {
       const items = (Array.isArray(body.items) ? body.items : []).slice(0, 500)
         .map((i: any) => ({
           tenant_id: tenantId, olist_id: num(i?.olist_id), sku: norm(i?.sku), nome: norm(i?.nome), preco: num(i?.preco),
+          preco_promocional: promoOf(i?.preco_promocional, i?.preco),
           tipo: norm(i?.tipo), variacao: norm(i?.variacao), saldo: Math.max(0, Math.floor(num(i?.saldo))), synced_at: at,
         })).filter((i: any) => i.olist_id > 0);
       if (items.length) {
-        const { error } = await supabase.from("olist_catalog").upsert(items, { onConflict: "tenant_id,olist_id" });
+        let { error } = await supabase.from("olist_catalog").upsert(items, { onConflict: "tenant_id,olist_id" });
+        if (error) { // banco ainda sem a coluna preco_promocional: guarda sem ela
+          ({ error } = await supabase.from("olist_catalog").upsert(
+            items.map(({ preco_promocional: _p, ...rest }: any) => rest), { onConflict: "tenant_id,olist_id" }));
+        }
         if (error) return json({ success: false, error: "Não foi possível guardar o catálogo" });
       }
       return json({ success: true, saved: items.length });
