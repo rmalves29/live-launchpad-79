@@ -18,10 +18,10 @@
 
 // deno-lint-ignore-file no-explicit-any
 
-/** Regra do Rafael (13/10/2026): fixo no servidor. Equivale a "Empresa (tenant_admin)" + "Basic (33 dias)" da tela Empresas. */
+/** Regra do Rafael (13/10/2026): fixo no servidor. Equivale a "Empresa (tenant_admin)" + "Basic (31 dias)" da tela Empresas. */
 export const ROLE_CLIENTE = "tenant_admin" as const;
 export const PLANO_CLIENTE = "basic" as const;
-export const DIAS_INICIAIS = 33;
+export const DIAS_INICIAIS = 31;
 
 export function slugBase(nome: string): string {
   const s = nome
@@ -90,7 +90,7 @@ export async function provisionarTenant(sb: any, p: Pendente): Promise<Resultado
     await sb.from("assinaturas_pendentes").update({ user_id: userId }).eq("id", p.id);
   }
 
-  // 2. tenant (mesmos campos da tela Empresas, plano Basic 33 dias)
+  // 2. tenant (mesmos campos da tela Empresas, plano Basic 31 dias)
   if (!tenantId) {
     const fim = new Date(Date.now() + DIAS_INICIAIS * 864e5);
     for (let tentativa = 0; tentativa < 3 && !tenantId; tentativa++) {

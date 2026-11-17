@@ -157,7 +157,7 @@ export function OnboardingRequestsDialog({ onTenantCreated }: { onTenantCreated?
               <label className="flex items-center gap-2"><Switch checked={form.sells_live} onCheckedChange={(v) => set('sells_live', v)} />Vende em live (Cartzy/Live)</label>
               <label className="flex items-center gap-2"><Switch checked={form.sells_bazar} onCheckedChange={(v) => set('sells_bazar', v)} />Vende bazar/catálogo (Fluxo de Envio)</label>
             </div>
-            <p className="text-sm text-muted-foreground">Plano basic · 33 dias · WhatsApp uazapi · acesso Empresa</p>
+            <p className="text-sm text-muted-foreground">Plano basic · 31 dias · WhatsApp uazapi · acesso Empresa</p>
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span>Senha que será usada:</span>
               <code className="px-2 py-1 rounded bg-muted font-mono">{previewPassword}</code>

@@ -106,10 +106,21 @@ function parseVariation(raw: string) {
     const i = part.indexOf(":");
     if (i > 0) attrs[part.slice(0, i).trim().toLowerCase()] = part.slice(i + 1).trim();
   }
-  const color = attrs["cor"] || attrs["color"] || null;
-  const size = attrs["tamanho"] || attrs["size"] || attrs["numero"] || attrs["número"] || null;
+  const COLOR_KEYS = ["cor", "cores", "color", "colour"];
+  const color = COLOR_KEYS.map((k) => attrs[k]).find(Boolean) || null;
+  // Tamanho: chaves conhecidas; qualquer outro atributo que não seja cor (ex.: "Aros:15", "Medida:2m") também vira o tamanho,
+  // senão a variação nasce sem tamanho e o cliente não consegue escolher.
+  const SIZE_KEYS = ["tamanho", "tam", "size", "numero", "número", "aro", "aros", "medida", "medidas"];
+  let size = SIZE_KEYS.map((k) => attrs[k]).find(Boolean) || null;
+  if (!size) {
+    const resto = Object.entries(attrs).filter(([k, v]) => v && !COLOR_KEYS.includes(k)).map(([, v]) => v);
+    if (resto.length) size = resto.join(" / ");
+  }
+  // Nome sem "chave:valor" (ex.: só "P" ou "15"): é o próprio tamanho
+  const bare = String(raw || "").trim();
+  if (!size && !color && bare && !bare.includes(":")) size = bare;
   const values = Object.values(attrs).filter(Boolean);
-  return { color, size, label: values.length ? values.join(" / ") : String(raw || "").trim() };
+  return { color, size, label: values.length ? values.join(" / ") : bare };
 }
 
 serve(async (req) => {

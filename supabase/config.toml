@@ -46,3 +46,6 @@ verify_jwt = false
 
 [functions.fretebarato-settings]
 verify_jwt = false
+
+[functions.pagarme-reconcile]
+verify_jwt = false

@@ -16,6 +16,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { authorizeTenantCaller, guardResponse } from "../_shared/auth-guard.ts";
 import { makeProductCodeAllocator, insertWithFreshCode } from "../_shared/next-product-code.ts";
 import { olistRequest, olistErrorMessage } from "../_shared/olist.ts";
+import { variationFromGrade } from "../_shared/variation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -210,10 +211,64 @@ Deno.serve(async (req) => {
       const saleType = ["BAZAR", "LIVE", "AMBOS"].includes(norm(body.sale_type)) ? norm(body.sale_type) : "AMBOS";
       const nextCode = await makeProductCodeAllocator(supabase, tenantId);
       const results: any[] = [];
+      const saldoPorId = new Map<number, number>(items.map((i: any) => [i.olist_id, i.saldo]));
+      const paisFeitos = new Set<number>();
+
+      // Produto com variações (pai "P" ou uma variação "V"): cria o pai e todas as variações com cor/tamanho, como no Bling.
+      const importarGrade = async (pai: any) => {
+        const paiId = num(pai?.id);
+        const { data: jaPai } = await supabase.from("products").select("id").eq("tenant_id", tenantId).eq("olist_product_id", paiId).maybeSingle();
+        let parentId: string | null = jaPai?.id || null;
+        const anexo = (pai?.anexos || []).map((x: any) => norm(x?.url)).find((u: string) => /^https?:\/\//i.test(u)) || null;
+        const precoPai = num(pai?.precos?.preco);
+        if (!parentId) {
+          const { data: novoPai, error } = await insertWithFreshCode(supabase, nextCode, {
+            tenant_id: tenantId, name: norm(pai?.descricao).slice(0, 200), price: precoPai, stock: 0, is_active: true,
+            sale_type: saleType, olist_product_id: paiId, sku_erp: norm(pai?.sku) || null, image_url: anexo,
+          });
+          if (error || !novoPai) return { ok: false, error: error?.message || "Falha ao criar o produto" };
+          parentId = novoPai.id;
+        }
+        let filhos = 0;
+        for (const v of Array.isArray(pai?.variacoes) ? pai.variacoes : []) {
+          const vid = num(v?.id);
+          if (!vid) continue;
+          const { data: jaFilho } = await supabase.from("products").select("id").eq("tenant_id", tenantId).eq("olist_product_id", vid).maybeSingle();
+          if (jaFilho) continue;
+          const g = variationFromGrade(v?.grade, norm(v?.descricao));
+          const { error } = await insertWithFreshCode(supabase, nextCode, {
+            tenant_id: tenantId, name: `${norm(pai?.descricao)} - ${g.label || norm(v?.sku) || vid}`.slice(0, 200),
+            price: num(v?.precos?.preco) || precoPai, stock: saldoPorId.get(vid) ?? 0, is_active: true, sale_type: saleType,
+            image_url: anexo, color: g.color, size: g.size, parent_product_id: parentId,
+            olist_product_id: vid, sku_erp: norm(v?.sku) || null,
+          });
+          if (!error) filhos++;
+        }
+        paisFeitos.add(paiId);
+        return { ok: true, parentId, filhos };
+      };
+
       for (const i of items) {
         try {
           const { data: ja } = await supabase.from("products").select("id").eq("tenant_id", tenantId).eq("olist_product_id", i.olist_id).maybeSingle();
           if (ja) { results.push({ olist_id: i.olist_id, status: "ja_vinculado", cartzy_id: ja.id }); continue; }
+
+          const det = await olistRequest(supabase, tenantId, "GET", `/produtos/${i.olist_id}`);
+          const tv = det.ok ? norm(det.data?.tipoVariacao).toUpperCase() : "";
+          if (tv === "P" || tv === "V") {
+            let pai = det.data;
+            if (tv === "V") {
+              const idPai = num(det.data?.produtoPai?.id);
+              if (idPai && paisFeitos.has(idPai)) { results.push({ olist_id: i.olist_id, status: "ja_vinculado" }); continue; }
+              const pr = idPai ? await olistRequest(supabase, tenantId, "GET", `/produtos/${idPai}`) : null;
+              pai = pr?.ok ? pr.data : null;
+            } else if (paisFeitos.has(i.olist_id)) { results.push({ olist_id: i.olist_id, status: "ja_vinculado" }); continue; }
+            if (pai && Array.isArray(pai.variacoes) && pai.variacoes.length) {
+              const r = await importarGrade(pai);
+              results.push(r.ok ? { olist_id: i.olist_id, status: "criado", cartzy_id: r.parentId, children: r.filhos } : { olist_id: i.olist_id, status: "erro", error: r.error });
+              continue;
+            }
+          }
           if (i.sku) {
             const c = i.sku.replace(/"/g, "");
             const { data: igual } = await supabase.from("products").select("id").eq("tenant_id", tenantId).is("olist_product_id", null).or(`code.eq."${c}",sku_erp.eq."${c}"`).limit(1);

@@ -1,7 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { createHmac } from "node:crypto";
 import { notifyCartzyAdmins } from "../_shared/admin-push-notify.ts";
-import { getModulePlan } from "../_shared/plan-modules.ts";
+import { getModulePlan, planKeyForSubscription } from "../_shared/plan-modules.ts";
+
+// Regra de 16/11/2026: cada mensalidade paga credita 31 dias (mesma regra do pagamento por link compartilhado).
+const DIAS_CREDITO_MENSAL = 31;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -159,7 +162,10 @@ Deno.serve(async (req) => {
       if (type === "charge.paid" && charge?.id) {
         const c = charge?.customer || {};
         const mp = c?.phones?.mobile_phone || c?.phones?.home_phone || null;
+        // Plano do link (Sistema Live / Grupos VIP / Pacote Completo): sem ele, só atribui comissão e NÃO credita dias.
+        const planKey = await planKeyForSubscription(supabase, Deno.env.get("PAGARME_ORDERZAP_API_KEY"), subscriptionId);
         const { data: att, error: attErr } = await supabase.rpc("platform_pagarme_payment", {
+          _plan_key: planKey,
           _payment_ref: String(charge.id),
           _amount: Number(charge?.paid_amount ?? charge?.amount ?? 0) / 100,
           _paid_at: charge?.paid_at || now0(),
@@ -215,7 +221,8 @@ Deno.serve(async (req) => {
         ? new Date(tenant.subscription_ends_at)
         : now;
       const extended = new Date(base);
-      extended.setMonth(extended.getMonth() + intervalMonths);
+      if (intervalMonths === 1) extended.setTime(extended.getTime() + DIAS_CREDITO_MENSAL * 864e5);
+      else extended.setMonth(extended.getMonth() + intervalMonths);
 
       await supabase
         .from("tenants")

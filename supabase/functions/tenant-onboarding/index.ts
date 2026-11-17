@@ -83,7 +83,7 @@ async function approve(id: string): Promise<{ ok: boolean; text: string; status:
   };
 
   const access = moduleAccess(row.sells_live, row.sells_bazar);
-  const end = new Date(Date.now() + Number(row.trial_days || 33) * 864e5).toISOString();
+  const end = new Date(Date.now() + Number(row.trial_days || 31) * 864e5).toISOString();
   let tenantId: string | null = null;
   for (let t = 0; t < 3 && !tenantId; t++) {
     const slug = t === 0 ? row.slug : await freeSlug(row.slug);

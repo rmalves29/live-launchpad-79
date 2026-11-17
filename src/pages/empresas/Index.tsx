@@ -89,7 +89,7 @@ interface TenantCredential {
 // Configuração de dias por plano
 const PLAN_DAYS: Record<string, number> = {
   trial_teste: 7,
-  basic: 33,
+  basic: 31,
   pro: 185,
   enterprise: 368,
 };
@@ -1117,7 +1117,7 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
                       className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                     >
                       <option value="trial_teste">Trial Teste (7 dias)</option>
-                      <option value="basic">Basic (33 dias)</option>
+                      <option value="basic">Basic (31 dias)</option>
                       <option value="pro">Pro (185 dias)</option>
                       <option value="enterprise">Enterprise (368 dias)</option>
                     </select>

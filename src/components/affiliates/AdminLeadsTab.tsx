@@ -123,7 +123,7 @@ export function AdminLeadsTab({ affiliates }: { affiliates: { id: string; nome: 
     const { data, error } = await supabase.rpc('platform_link_unmatched_payment' as any, { _unmatched_id: linkFor.id, _tenant_id: tPick });
     setBusy(false);
     if (error) return toast.error(error.message);
-    toast.success(`Vinculado: ${(data as any)?.pagamentos} pagamento(s), ${(data as any)?.comissoes} comissão(ões) gerada(s)`);
+    toast.success(`Vinculado: ${(data as any)?.pagamentos} pagamento(s), ${(data as any)?.comissoes} comissão(ões) gerada(s), ${(data as any)?.creditos ?? 0} crédito(s) de 31 dias`);
     setLinkFor(null); load();
   };
 
