@@ -109,7 +109,7 @@
 .ls-root .cupom-in{display:flex;gap:8px;margin-top:10px}
 .ls-root .cupom-in input{flex:1}
 .ls-root .mini{height:46px;border-radius:12px;background:var(--ink);color:var(--bg);font-weight:700;padding:0 16px}
-.ls-root input[type=text],.ls-root input[type=tel],.ls-root textarea{width:100%;min-height:46px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:0 12px;font:inherit}
+.ls-root input[type=text],.ls-root input[type=tel],.ls-root input[type=email],.ls-root textarea{width:100%;min-height:46px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:0 12px;font:inherit}
 .ls-root textarea{padding:10px 12px;min-height:70px}
 .ls-root label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:0 0 4px}
 .ls-root .field{margin-bottom:10px}
@@ -120,6 +120,9 @@
 .ls-root .msg.good{color:var(--ok)}
 .ls-root .foot{position:fixed;left:0;right:0;bottom:0;z-index:5;background:var(--card);border-top:1px solid var(--line);padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px))}
 .ls-root .foot .in{max-width:398px;margin:0 auto}
+/* checkout: botões de pagamento no fim da página, rolando junto com o conteúdo (não cobrem o frete nem o resumo) */
+.ls-root .full.nofix{padding-bottom:0}
+.ls-root .foot.flow{position:static;border-top:0;background:transparent;padding:6px 16px calc(28px + env(safe-area-inset-bottom,0px))}
 .ls-root .foot .save{background:var(--accent-soft);color:var(--accent);font-weight:600;font-size:13px;padding:7px 12px;border-radius:10px;margin-bottom:8px}
 .ls-root .foot .row{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .ls-root .foot .tot{font-family:var(--display);font-size:22px;font-weight:800;line-height:1}

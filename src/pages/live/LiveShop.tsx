@@ -1166,7 +1166,7 @@ export default function LiveShop() {
           <div className="c">Finalizar pedido</div>
           <span />
         </div>
-        <div className="full">
+        <div className="full nofix">
           {reserveLeft !== null && reserveLeft > 0 && meta?.settings.reserve_mode === 'cart' && !direct && (
             <div className="hold" style={{ margin: '8px 16px 0' }}>⏱ Peças reservadas por <b>{mmss(reserveLeft)}</b></div>
           )}
@@ -1228,7 +1228,8 @@ export default function LiveShop() {
             </div>
           </div>
         </div>
-        <div className="foot"><div className="in">
+        {/* No checkout a barra de pagamento fica no FINAL da página (não fixa), para não cobrir frete e resumo */}
+        <div className="foot flow"><div className="in">
           {(original - subtotal + couponOff) > 0 && <div className="save">Você está economizando {brl(original - subtotal + couponOff)} neste pedido</div>}
           {pickupAvailable && (
             <label
