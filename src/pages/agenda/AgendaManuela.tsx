@@ -1,7 +1,7 @@
 // Agenda pública da Manuela (Jarvis): a loja escolhe o dia e o horário da apresentação do Cartzy.
 // Hoje fica sempre bloqueado; reuniões de 30 min; o horário trava para mais ninguém pegar.
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarCheck, Clock, Loader2, MessageCircle, Video, Zap } from 'lucide-react';
+import { CalendarCheck, ChevronLeft, ChevronRight, Clock, Loader2, MessageCircle, Video, Zap } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,6 +30,7 @@ export default function AgendaManuela() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [page, setPage] = useState(0); // semana mostrada: 6 dias por vez (domingo fechado)
 
   const load = () => {
     setLoading(true);
@@ -45,6 +46,16 @@ export default function AgendaManuela() {
     return m;
   }, [slots]);
   useEffect(() => { if (!day && byDay.size) setDay([...byDay.keys()][0]); }, [byDay, day]);
+  const POR_PAGINA = 6;
+  const allDays = useMemo(() => [...byDay.keys()], [byDay]);
+  const pages = Math.max(1, Math.ceil(allDays.length / POR_PAGINA));
+  const visibleDays = allDays.slice(page * POR_PAGINA, page * POR_PAGINA + POR_PAGINA);
+  const goPage = (p: number) => {
+    const np = Math.min(Math.max(p, 0), pages - 1);
+    setPage(np);
+    const first = allDays[np * POR_PAGINA];
+    if (first) { setDay(first); setSlot(null); }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,8 +106,13 @@ export default function AgendaManuela() {
                 {loading ? <Loader2 className="mt-3 h-5 w-5 animate-spin text-primary" /> : byDay.size === 0 ? (
                   <p className="mt-2 text-sm text-muted-foreground">Sem horários livres agora. Tente mais tarde.</p>
                 ) : (
-                  <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-                    {[...byDay.keys()].map((k) => {
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <button type="button" aria-label="Dias anteriores" onClick={() => goPage(page - 1)} disabled={page === 0}
+                      className="grid h-9 w-8 shrink-0 place-items-center rounded-lg border transition hover:border-primary/60 disabled:opacity-30">
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                  <div className="flex flex-1 gap-1.5 overflow-x-auto pb-1">
+                    {visibleDays.map((k) => {
                       const first = byDay.get(k)![0];
                       const on = day === k;
                       return (
@@ -107,6 +123,11 @@ export default function AgendaManuela() {
                         </button>
                       );
                     })}
+                  </div>
+                    <button type="button" aria-label="Próximos dias" onClick={() => goPage(page + 1)} disabled={page >= pages - 1}
+                      className="grid h-9 w-8 shrink-0 place-items-center rounded-lg border transition hover:border-primary/60 disabled:opacity-30">
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
                   </div>
                 )}
               </div>
