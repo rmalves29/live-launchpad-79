@@ -3,6 +3,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { formatBrt } from "../_shared/affiliate-agenda.ts";
+import { JARVIS_TENANT_ID } from "../_shared/jarvis-agenda.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,12 +12,19 @@ const corsHeaders = {
 const ORDERZAP_TENANT_ID = "d5671cfb-9c42-4c44-8f94-0a19a39473d8";
 const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 
-async function send(phone: string | null, message: string) {
+async function sendVia(tenantId: string, phone: string | null, message: string) {
   const digits = String(phone || "").replace(/\D/g, "");
   if (digits.length < 10) return "telefone inválido";
-  const { data, error } = await sb.functions.invoke("zapi-send-message", { body: { tenant_id: ORDERZAP_TENANT_ID, phone: digits, message } });
+  const { data, error } = await sb.functions.invoke("zapi-send-message", { body: { tenant_id: tenantId, phone: digits, message } });
   if (error) return error.message;
-  return data?.error ? String(data.error) : null;
+  if (data?.error) return String(data.error);
+  if (data?.sent === false || data?.success === false) return "envio recusado";
+  return null;
+}
+// Afiliadas: número da OrderZap. Se ele estiver fora do ar, tenta pelo número do Jarvis.
+async function send(phone: string | null, message: string) {
+  const err = await sendVia(ORDERZAP_TENANT_ID, phone, message);
+  return err ? await sendVia(JARVIS_TENANT_ID, phone, message) : null;
 }
 
 Deno.serve(async (req) => {
@@ -43,15 +51,29 @@ Deno.serve(async (req) => {
       if (err) console.error("[reminders] alerta:", err); else alerts++;
     }
 
+    // 1b) leads da agenda da Manuela (Jarvis): aviso ao cliente 5 min antes, pelo número do Jarvis
+    const { data: soonJ } = await sb.from("platform_affiliate_leads")
+      .update({ client_alert_sent_at: iso(now) })
+      .eq("origem", "jarvis").eq("status", "reuniao_agendada").is("client_alert_sent_at", null)
+      .gt("meeting_at", iso(now)).lte("meeting_at", iso(now + 5 * 60e3))
+      .select("id, nome, whatsapp, meeting_at");
+    for (const l of soonJ || []) {
+      const err = await sendVia(JARVIS_TENANT_ID, l.whatsapp, `Oi, ${String(l.nome).split(" ")[0]}! Aqui é a Manuela, da Cartzy 😊 ` +
+        `Nossa reunião com o Rafael começa daqui a pouco, às ${formatBrt(l.meeting_at).split(" às ")[1]}. Em 5 minutos eu te mando o link por aqui.`);
+      if (err) console.error("[reminders] aviso Jarvis:", err); else alerts++;
+    }
+
     // 2) link do Meet ao lead no horário (até 30 min de atraso)
     const { data: due } = await sb.from("platform_affiliate_leads")
       .update({ link_sent_at: iso(now) })
       .or("status.eq.reuniao_agendada,meeting_type.eq.onboarding").is("link_sent_at", null)
       .lte("meeting_at", iso(now)).gt("meeting_at", iso(now - 30 * 60e3))
-      .select("id, nome, whatsapp, meeting_link");
+      .select("id, nome, whatsapp, meeting_link, origem");
     for (const l of due || []) {
       if (!l.meeting_link) continue;
-      const err = await send(l.whatsapp, `Olá, ${String(l.nome).split(" ")[0]}! Nossa reunião começa agora 🙂\nEntre por aqui: ${l.meeting_link}`);
+      const err = l.origem === "jarvis"
+        ? await sendVia(JARVIS_TENANT_ID, l.whatsapp, `${String(l.nome).split(" ")[0]}, chegou a hora! 🙂 Entre por este link: ${l.meeting_link}`)
+        : await send(l.whatsapp, `Olá, ${String(l.nome).split(" ")[0]}! Nossa reunião começa agora 🙂\nEntre por aqui: ${l.meeting_link}`);
       if (err) console.error("[reminders] link:", err); else links++;
     }
     return new Response(JSON.stringify({ success: true, alerts, links }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });

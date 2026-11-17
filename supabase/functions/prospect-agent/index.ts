@@ -1,10 +1,15 @@
-// Acesso do agente de prospecção local (adaptação do Harvey) ao WhatsApp da OrderZap.
+// Acesso do Jarvis (agente de prospecção local, antigo Harvey) ao WhatsApp próprio da Manuela, da Cartzy.
+// O número do Jarvis é uma instância própria na UazAPI, guardada na "empresa" técnica JARVIS_TENANT_ID.
+// Ações de conexão (painel do Jarvis): wa_status, wa_create, wa_qr, wa_disconnect.
+// Respostas de lojas abordadas antes pelo número da OrderZap continuam sendo lidas (as duas caixas).
 // Autenticação: cabeçalho x-agent-key = segredo PROSPECT_AGENT_KEY (definido pelo Rafael nos Secrets).
 // Ações: status, send, replies, opt_out.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  addChatLabel, ensureLabel, getInstanceStatus, getUazapiConfig, runTypingSegments, sendPresenceAvailable, sendText,
+  addChatLabel, connectInstance, createInstance, disconnectInstance, ensureLabel, getInstanceStatus, getUazapiConfig,
+  runTypingSegments, sendPresenceAvailable, sendText, setWebhook,
 } from "../_shared/uazapi-api.ts";
+import { JARVIS_TENANT_ID } from "../_shared/jarvis-agenda.ts";
 
 const ORDERZAP_TENANT_ID = "d5671cfb-9c42-4c44-8f94-0a19a39473d8";
 const LABEL_NAME = "lead";
@@ -54,8 +59,46 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const action = String(body?.action || "");
-    const { cfg, error: cfgErr } = await getUazapiConfig(admin, ORDERZAP_TENANT_ID);
-    if (!cfg) return json({ success: false, error: cfgErr || "Instância OrderZap indisponível" });
+
+    // ---------- conexão do WhatsApp do Jarvis (botão no painel) ----------
+    if (action.startsWith("wa_")) {
+      const { data: integ } = await admin.from("integration_whatsapp")
+        .select("id, uazapi_url, uazapi_token, uazapi_admin_token, connected_phone").eq("tenant_id", JARVIS_TENANT_ID).maybeSingle();
+      if (!integ?.uazapi_url) return json({ success: false, error: "Configuração do WhatsApp do Jarvis não encontrada no Cartzy" });
+      const jcfg = integ.uazapi_token ? { url: integ.uazapi_url, token: integ.uazapi_token } : null;
+      const webhookUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/uazapi-webhook`;
+      if (action === "wa_status") {
+        if (!jcfg) return json({ success: true, created: false, connected: false, status: "sem_instancia" });
+        const st = await getInstanceStatus(jcfg);
+        if (st.connected && st.user?.phone && st.user.phone !== integ.connected_phone) {
+          await admin.from("integration_whatsapp").update({ connected_phone: st.user.phone, last_status_check: new Date().toISOString() }).eq("id", integ.id);
+        }
+        return json({ success: true, created: true, connected: !!st.connected, status: st.status, phone: st.user?.phone || null, name: st.user?.name || null });
+      }
+      if (action === "wa_create") {
+        if (jcfg) return json({ success: true, created: true, already: true });
+        if (!integ.uazapi_admin_token) return json({ success: false, error: "Falta o token de administrador da UazAPI para criar a instância" });
+        const r = await createInstance({ url: integ.uazapi_url, adminToken: integ.uazapi_admin_token }, "jarvis-manuela", "Jarvis Manuela");
+        if (!r.success || !r.token) return json({ success: false, error: r.error || "A UazAPI não criou a instância" });
+        await admin.from("integration_whatsapp").update({ uazapi_token: r.token, provider: "uazapi", is_active: true, updated_at: new Date().toISOString() }).eq("id", integ.id);
+        const hk = await setWebhook({ url: integ.uazapi_url, token: r.token }, webhookUrl);
+        return json({ success: true, created: true, webhook: hk.success });
+      }
+      if (!jcfg) return json({ success: false, error: "Crie a conexão primeiro" });
+      if (action === "wa_qr") {
+        const r = await connectInstance(jcfg, body.phone ? normalizePhone(body.phone) : undefined);
+        if (r.error) return json({ success: false, error: r.error });
+        await setWebhook(jcfg, webhookUrl);
+        return json({ success: true, qrcode: r.qrcode || null, paircode: r.paircode || null, status: r.status || null });
+      }
+      if (action === "wa_disconnect") return json(await disconnectInstance(jcfg));
+      return json({ success: false, error: "ação de WhatsApp inválida" }, 400);
+    }
+
+    const { cfg, error: cfgErr } = await getUazapiConfig(admin, JARVIS_TENANT_ID);
+    if (!cfg && action !== "replies" && action !== "opt_out") {
+      return json({ success: false, error: cfgErr || "WhatsApp do Jarvis não conectado: crie a conexão no painel do Jarvis", retry: true });
+    }
 
     const sentToday = async () => {
       const { count } = await admin.from("prospect_leads").select("id", { count: "exact", head: true })
@@ -64,7 +107,7 @@ Deno.serve(async (req) => {
     };
 
     if (action === "status") {
-      const st = await getInstanceStatus(cfg);
+      const st = await getInstanceStatus(cfg!);
       return json({ success: true, whatsapp: st, sent_today: await sentToday(), daily_cap: DAILY_CAP, quiet_hours: `${QUIET_START}h-${QUIET_END}h` });
     }
 
@@ -89,11 +132,15 @@ Deno.serve(async (req) => {
         if ((await sentToday()) >= DAILY_CAP) return json({ success: false, error: `limite diário de ${DAILY_CAP} atingido`, retry: true });
       }
 
-      try { await runTypingSegments(cfg, phone, message.length); } catch { /* ignore */ }
-      const sent = await sendText(cfg, phone, message);
-      try { await sendPresenceAvailable(cfg, phone); } catch { /* ignore */ }
+      const c = cfg!;
+      try { await runTypingSegments(c, phone, message.length); } catch { /* ignore */ }
+      const sent = await sendText(c, phone, message);
+      try { await sendPresenceAvailable(c, phone); } catch { /* ignore */ }
+      if (!sent.success && /disconnect|desconect|not connected|503/i.test(String(sent.error || ""))) {
+        return json({ success: false, error: `WhatsApp do Jarvis desconectado: ${sent.error}`, retry: true });
+      }
       await admin.from("whatsapp_messages").insert({
-        tenant_id: ORDERZAP_TENANT_ID, phone, message: message.substring(0, 500), type: "outgoing",
+        tenant_id: JARVIS_TENANT_ID, phone, message: message.substring(0, 500), type: "outgoing",
         sent_at: new Date().toISOString(), zapi_message_id: sent.messageId ?? null, delivery_status: sent.success ? "SENT" : "FAILED",
       });
       if (!sent.success) return json({ success: false, error: `envio: ${sent.error}` });
@@ -113,8 +160,8 @@ Deno.serve(async (req) => {
           if (ins.error?.code === "23505") await admin.from("prospect_leads").insert({ ...lead, handle: null }); // @ já usado por outro número
         }
         try {
-          const lbl = await ensureLabel(cfg, LABEL_NAME);
-          if (lbl.labelId) await addChatLabel(cfg, phone, lbl.labelId);
+          const lbl = await ensureLabel(c, LABEL_NAME);
+          if (lbl.labelId) await addChatLabel(c, phone, lbl.labelId);
         } catch { /* etiqueta é opcional */ }
       }
       return json({ success: true, message_id: sent.messageId ?? null });
@@ -128,7 +175,7 @@ Deno.serve(async (req) => {
       const byKey = new Map((leads || []).map((l: any) => [phoneKey(l.whatsapp), l]));
       const { data: msgs, error } = await admin.from("whatsapp_messages")
         .select("id, phone, message, received_at, created_at, whatsapp_group_name")
-        .eq("tenant_id", ORDERZAP_TENANT_ID).eq("type", "incoming").gt("created_at", since.toISOString())
+        .in("tenant_id", [JARVIS_TENANT_ID, ORDERZAP_TENANT_ID]).eq("type", "incoming").gt("created_at", since.toISOString())
         .order("created_at", { ascending: true }).limit(500);
       if (error) return json({ success: false, error: error.message });
       // Só conversa privada com a loja, depois da primeira mensagem: mensagens de grupo

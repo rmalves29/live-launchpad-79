@@ -99,6 +99,7 @@ const SuporteIA = lazy(() => import("./pages/suporte-ia/Index"));
 const DesignPreview = lazy(() => import("./pages/design-preview/Index"));
 const ReferralRedirect = lazy(() => import("./pages/afiliados/ReferralRedirect"));
 const Indicacao = lazy(() => import("./pages/afiliados/Indicacao"));
+const AgendaManuela = lazy(() => import("./pages/agenda/AgendaManuela"));
 const AfiliadoCadastro = lazy(() => import("./pages/afiliados/Cadastro"));
 const AfiliadoPainel = lazy(() => import("./pages/afiliados/Painel"));
 const ContratacaoObrigado = lazy(() => import("./pages/contratacao/Obrigado"));
@@ -176,6 +177,7 @@ const AppContent = () => {
       {/* Programa de afiliados da plataforma */}
       <Route path="/i/:codigo" element={<ReferralRedirect />} />
       <Route path="/indicacao" element={<Indicacao />} />
+      <Route path="/agenda" element={<AgendaManuela />} />
       <Route path="/afiliados/cadastro" element={<AfiliadoCadastro />} />
       <Route path="/afiliado" element={<AfiliadoPainel />} />
       <Route path="/contratacao/obrigado" element={<ContratacaoObrigado />} />
