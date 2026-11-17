@@ -30,12 +30,21 @@ interface Coupon {
   apply_to_promotional?: boolean;
   auto_apply?: boolean;
   description?: string | null;
-  progressive_tiers?: Array<{
-    min_value: number;
-    max_value: number | null;
-    discount: number;
-  }>;
+  progressive_tiers?: Tier[];
 }
+
+// Faixa do desconto progressivo: por VALOR do pedido (min_value/max_value) ou, quando tem min_qty, por QUANTIDADE de produtos (min_qty/max_qty)
+type Tier = {
+  min_value: number;
+  max_value: number | null;
+  discount: number;
+  min_qty?: number | null;
+  max_qty?: number | null;
+};
+
+type ProgressiveBasis = 'value' | 'quantity';
+const DEFAULT_VALUE_TIER: Tier = { min_value: 0, max_value: 100, discount: 5 };
+const DEFAULT_QTY_TIER: Tier = { min_value: 0, max_value: null, min_qty: 2, max_qty: null, discount: 5 };
 
 type MinConditionType = 'none' | 'amount' | 'quantity';
 
@@ -63,7 +72,8 @@ export const CouponsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'liv
     apply_to_promotional: true,
     auto_apply: false,
     description: '',
-    progressive_tiers: [{ min_value: 0, max_value: 100, discount: 5 }]
+    progressive_basis: 'value' as ProgressiveBasis,
+    progressive_tiers: [DEFAULT_VALUE_TIER] as Tier[]
   });
 
   useEffect(() => {
@@ -145,6 +155,21 @@ export const CouponsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'liv
           description: "Adicione pelo menos uma faixa de desconto"
         });
         return;
+      }
+      if (newCoupon.progressive_basis === 'quantity') {
+        const t = newCoupon.progressive_tiers;
+        const bad = t.find((x) => !(Number(x.min_qty) >= 1) || (x.max_qty != null && Number(x.max_qty) < Number(x.min_qty)) || !(Number(x.discount) > 0 && Number(x.discount) <= 100));
+        const overlap = [...t].sort((a, b) => Number(a.min_qty) - Number(b.min_qty)).some((x, i, a) => i > 0 && (a[i - 1].max_qty == null || Number(a[i - 1].max_qty) >= Number(x.min_qty)));
+        if (bad || overlap) {
+          toast({
+            variant: "destructive",
+            title: "Faixas inválidas",
+            description: bad
+              ? "Confira as faixas: a quantidade inicial deve ser 1 ou mais, o fim não pode ser menor que o início e o desconto vai de 1% a 100%."
+              : "As faixas de quantidade não podem se sobrepor (uma faixa sem limite deve ser a última)."
+          });
+          return;
+        }
       }
     } else if (!newCoupon.discount_value) {
       toast({
@@ -270,7 +295,8 @@ export const CouponsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'liv
       apply_to_promotional: true,
       auto_apply: false,
       description: '',
-      progressive_tiers: [{ min_value: 0, max_value: 100, discount: 5 }]
+      progressive_basis: 'value' as ProgressiveBasis,
+    progressive_tiers: [DEFAULT_VALUE_TIER] as Tier[]
     });
     setIsAddingCoupon(false);
     setEditingCoupon(null);
@@ -308,13 +334,31 @@ export const CouponsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'liv
       apply_to_promotional: coupon.apply_to_promotional !== false,
       auto_apply: coupon.auto_apply === true,
       description: coupon.description || '',
-      progressive_tiers: coupon.progressive_tiers || [{ min_value: 0, max_value: 100, discount: 5 }]
+      progressive_basis: (coupon.progressive_tiers?.some((t) => t.min_qty != null) ? 'quantity' : 'value') as ProgressiveBasis,
+      progressive_tiers: coupon.progressive_tiers || [DEFAULT_VALUE_TIER]
     });
     setIsAddingCoupon(true);
   };
 
+  // troca a base das faixas (valor <-> quantidade): recomeça com uma faixa padrão da nova base
+  const changeBasis = (basis: ProgressiveBasis) => {
+    if (basis === newCoupon.progressive_basis) return;
+    setNewCoupon({ ...newCoupon, progressive_basis: basis, progressive_tiers: [basis === 'quantity' ? DEFAULT_QTY_TIER : DEFAULT_VALUE_TIER] });
+  };
+
   const addTier = () => {
     const lastTier = newCoupon.progressive_tiers[newCoupon.progressive_tiers.length - 1];
+    if (newCoupon.progressive_basis === 'quantity') {
+      // a nova faixa começa depois da última e a última passa a ter fim (se ainda não tinha)
+      const lastMin = Number(lastTier.min_qty) || 1;
+      const lastMax = lastTier.max_qty != null ? Number(lastTier.max_qty) : lastMin;
+      const tiers = newCoupon.progressive_tiers.map((t, i, a) => (i === a.length - 1 && t.max_qty == null ? { ...t, max_qty: lastMax } : t));
+      setNewCoupon({
+        ...newCoupon,
+        progressive_tiers: [...tiers, { min_value: 0, max_value: null, min_qty: lastMax + 1, max_qty: null, discount: Math.min(100, (Number(lastTier.discount) || 0) + 5) }]
+      });
+      return;
+    }
     const newMinValue = lastTier.max_value || 0;
     setNewCoupon({
       ...newCoupon,
@@ -332,7 +376,7 @@ export const CouponsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'liv
     }
   };
 
-  const updateTier = (index: number, field: 'min_value' | 'max_value' | 'discount', value: number | null) => {
+  const updateTier = (index: number, field: 'min_value' | 'max_value' | 'discount' | 'min_qty' | 'max_qty', value: number | null) => {
     const newTiers = [...newCoupon.progressive_tiers];
     newTiers[index] = { ...newTiers[index], [field]: value };
     setNewCoupon({ ...newCoupon, progressive_tiers: newTiers });
@@ -560,30 +604,74 @@ export const CouponsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'liv
                     Adicionar Faixa
                   </Button>
                 </div>
+                {channel === 'live' && (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Faixas por:</Label>
+                    <Select value={newCoupon.progressive_basis} onValueChange={(v) => changeBasis(v as ProgressiveBasis)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="value">Valor do pedido (R$)</SelectItem>
+                        <SelectItem value="quantity">Quantidade de produtos</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <p className="text-sm text-muted-foreground">
-                  Quanto mais o cliente compra, maior o desconto aplicado
+                  {newCoupon.progressive_basis === 'quantity'
+                    ? 'Quanto mais produtos o cliente leva, maior o desconto. Ex.: 2 produtos = 5%, 3 ou mais = 10%.'
+                    : 'Quanto mais o cliente compra, maior o desconto aplicado'}
                 </p>
                 {newCoupon.progressive_tiers.map((tier, index) => (
                   <div key={index} className="grid grid-cols-12 gap-2 items-end p-3 border rounded">
-                    <div className="col-span-3">
-                      <Label className="text-xs">Valor Mínimo (R$)</Label>
-                      <Input
-                        type="number"
-                        value={tier.min_value}
-                        onChange={(e) => updateTier(index, 'min_value', parseFloat(e.target.value) || 0)}
-                        step="0.01"
-                      />
-                    </div>
-                    <div className="col-span-3">
-                      <Label className="text-xs">Valor Máximo (R$)</Label>
-                      <Input
-                        type="number"
-                        value={tier.max_value || ''}
-                        onChange={(e) => updateTier(index, 'max_value', e.target.value ? parseFloat(e.target.value) : null)}
-                        placeholder="Sem limite"
-                        step="0.01"
-                      />
-                    </div>
+                    {newCoupon.progressive_basis === 'quantity' ? (
+                      <>
+                        <div className="col-span-3">
+                          <Label className="text-xs">A partir de (produtos)</Label>
+                          <Input
+                            type="number"
+                            value={tier.min_qty ?? ''}
+                            onChange={(e) => updateTier(index, 'min_qty', e.target.value ? Math.max(1, Math.floor(parseFloat(e.target.value))) : null)}
+                            min={1}
+                            step="1"
+                          />
+                        </div>
+                        <div className="col-span-3">
+                          <Label className="text-xs">Até (produtos)</Label>
+                          <Input
+                            type="number"
+                            value={tier.max_qty ?? ''}
+                            onChange={(e) => updateTier(index, 'max_qty', e.target.value ? Math.max(1, Math.floor(parseFloat(e.target.value))) : null)}
+                            placeholder="Sem limite"
+                            min={1}
+                            step="1"
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="col-span-3">
+                          <Label className="text-xs">Valor Mínimo (R$)</Label>
+                          <Input
+                            type="number"
+                            value={tier.min_value}
+                            onChange={(e) => updateTier(index, 'min_value', parseFloat(e.target.value) || 0)}
+                            step="0.01"
+                          />
+                        </div>
+                        <div className="col-span-3">
+                          <Label className="text-xs">Valor Máximo (R$)</Label>
+                          <Input
+                            type="number"
+                            value={tier.max_value || ''}
+                            onChange={(e) => updateTier(index, 'max_value', e.target.value ? parseFloat(e.target.value) : null)}
+                            placeholder="Sem limite"
+                            step="0.01"
+                          />
+                        </div>
+                      </>
+                    )}
                     <div className="col-span-3">
                       <Label className="text-xs">Desconto (%)</Label>
                       <Input
@@ -645,8 +733,16 @@ export const CouponsManager = ({ channel = 'bazar' }: { channel?: 'bazar' | 'liv
                         <div className="text-sm text-muted-foreground mt-1 space-y-1">
                           {coupon.progressive_tiers?.map((tier, idx) => (
                             <div key={idx}>
-                              • {formatCurrency(tier.min_value)} 
-                              {tier.max_value ? ` - ${formatCurrency(tier.max_value)}` : '+'}: 
+                              {tier.min_qty != null ? (
+                                <>
+                                  • {tier.max_qty == null ? `${tier.min_qty}+ produtos` : tier.max_qty === tier.min_qty ? `${tier.min_qty} produto${tier.min_qty === 1 ? '' : 's'}` : `${tier.min_qty} a ${tier.max_qty} produtos`}:
+                                </>
+                              ) : (
+                                <>
+                                  • {formatCurrency(tier.min_value)}
+                                  {tier.max_value ? ` - ${formatCurrency(tier.max_value)}` : '+'}:
+                                </>
+                              )}
                               <span className="font-semibold text-primary"> {tier.discount}% off</span>
                             </div>
                           ))}

@@ -179,8 +179,14 @@ function computeCoupon(coupon: any, lines: Line[]): { ok: boolean; discount: num
   else if (type === 'fixed') discount = Math.min(num(coupon.discount_value), base);
   else if (type === 'progressive') {
     const tiers: any[] = Array.isArray(coupon.progressive_tiers) ? coupon.progressive_tiers : [];
-    const tier = tiers.find((t) => base >= num(t.min_value) && (t.max_value == null || base <= num(t.max_value)));
-    if (!tier) return { ok: false, discount: 0, message: 'Seu pedido ainda não atingiu a faixa de desconto deste cupom.' };
+    // Faixa por QUANTIDADE de produtos (min_qty/max_qty) ou por VALOR do pedido (min_value/max_value, o formato antigo)
+    const tier = tiers.find((t) => t.min_qty != null
+      ? itemCount >= num(t.min_qty) && (t.max_qty == null || itemCount <= num(t.max_qty))
+      : base >= num(t.min_value) && (t.max_value == null || base <= num(t.max_value)));
+    if (!tier) {
+      const byQty = tiers.some((t) => t.min_qty != null);
+      return { ok: false, discount: 0, message: byQty ? 'Adicione mais produtos para atingir a faixa de desconto deste cupom.' : 'Seu pedido ainda não atingiu a faixa de desconto deste cupom.' };
+    }
     discount = (base * num(tier.discount)) / 100;
   } else return { ok: false, discount: 0, message: 'Cupom inválido.' };
 

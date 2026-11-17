@@ -35,7 +35,8 @@ export interface LiveCoupon {
   discount_value: number;
   min_purchase_amount: number;
   min_items_quantity: number;
-  progressive_tiers: Array<{ min_value: number; max_value: number | null; discount: number }> | null;
+  // Faixa por valor (min_value/max_value) ou, quando tem min_qty, por quantidade de produtos (min_qty/max_qty)
+  progressive_tiers: Array<{ min_value: number; max_value: number | null; discount: number; min_qty?: number | null; max_qty?: number | null }> | null;
   apply_to_promotional: boolean;
   auto_apply?: boolean;
   description?: string | null;
@@ -173,8 +174,14 @@ export function previewCoupon(coupon: LiveCoupon | undefined, lines: CartLine[])
   if (coupon.discount_type === 'percentage') discount = (base * coupon.discount_value) / 100;
   else if (coupon.discount_type === 'fixed') discount = Math.min(coupon.discount_value, base);
   else if (coupon.discount_type === 'progressive') {
-    const tier = (coupon.progressive_tiers || []).find((t) => base >= t.min_value && (t.max_value == null || base <= t.max_value));
-    if (!tier) return { ok: false, discount: 0, message: 'Seu pedido ainda não atingiu a faixa de desconto deste cupom.' };
+    const tiers = coupon.progressive_tiers || [];
+    const tier = tiers.find((t) => (t.min_qty != null
+      ? qty >= t.min_qty && (t.max_qty == null || qty <= t.max_qty)
+      : base >= t.min_value && (t.max_value == null || base <= t.max_value)));
+    if (!tier) {
+      const byQty = tiers.some((t) => t.min_qty != null);
+      return { ok: false, discount: 0, message: byQty ? 'Adicione mais produtos para atingir a faixa de desconto deste cupom.' : 'Seu pedido ainda não atingiu a faixa de desconto deste cupom.' };
+    }
     discount = (base * tier.discount) / 100;
   }
   discount = Math.round(Math.min(discount, base) * 100) / 100;
@@ -199,7 +206,13 @@ export function describeCoupon(c: LiveCoupon) {
   else title = 'Desconto progressivo';
   const rules: string[] = [];
   if (c.discount_type === 'progressive' && c.progressive_tiers?.length) {
-    rules.push(c.progressive_tiers.map((t) => `${t.discount}% a partir de ${brl(t.min_value)}`).join(' · '));
+    rules.push(c.progressive_tiers.map((t) => {
+      if (t.min_qty == null) return `${t.discount}% a partir de ${brl(t.min_value)}`;
+      const un = (n: number) => `${n} produto${n === 1 ? '' : 's'}`;
+      if (t.max_qty == null) return `${t.discount}% a partir de ${un(t.min_qty)}`;
+      if (t.max_qty === t.min_qty) return `${t.discount}% com ${un(t.min_qty)}`;
+      return `${t.discount}% de ${t.min_qty} a ${un(t.max_qty)}`;
+    }).join(' · '));
   } else {
     if (c.min_purchase_amount > 0) rules.push(`em compras acima de ${brl(c.min_purchase_amount)}`);
     if (c.min_items_quantity > 0) rules.push(`a partir de ${c.min_items_quantity} item(ns)`);
