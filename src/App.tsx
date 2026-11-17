@@ -28,7 +28,7 @@ const WhatsAppSupportButton = lazy(() =>
 const SupportButtonGate = () => {
   const { pathname } = useLocation();
   if (/^\/t\/[^/]+\/live(\/a\/[^/]+)?\/?$/.test(pathname) || /^\/t\/[^/]+\/afiliada\/[^/]+\/?$/.test(pathname)) return null;
-  if (pathname.startsWith('/contratacao/') || pathname === '/indicacao' || pathname === '/afiliado' || pathname === '/afiliados/cadastro' || pathname.startsWith('/i/')) return null;
+  if (pathname.startsWith('/contratacao/') || pathname === '/indicacao' || pathname === '/agenda' || pathname === '/afiliado' || pathname === '/afiliados/cadastro' || pathname.startsWith('/i/')) return null;
   return <Suspense fallback={null}><WhatsAppSupportButton /></Suspense>;
 };
 
@@ -119,7 +119,7 @@ const queryClient = new QueryClient({
 const AppContent = () => {
   const location = useLocation();
   const { tenant, isMainSite } = useTenantContext();
-  const showShell = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && location.pathname !== '/politica-de-privacidade' && location.pathname !== '/termos-de-uso' && location.pathname !== '/design-preview' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/') && location.pathname !== '/fluxo-envio' && !location.pathname.startsWith('/fluxo-envio/app') && location.pathname !== '/fluxo-envio/pagamento' && !location.pathname.startsWith('/i/') && location.pathname !== '/indicacao' && location.pathname !== '/afiliados/cadastro' && location.pathname !== '/afiliado' && !location.pathname.startsWith('/contratacao/');
+  const showShell = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && location.pathname !== '/politica-de-privacidade' && location.pathname !== '/termos-de-uso' && location.pathname !== '/design-preview' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/') && location.pathname !== '/fluxo-envio' && !location.pathname.startsWith('/fluxo-envio/app') && location.pathname !== '/fluxo-envio/pagamento' && !location.pathname.startsWith('/i/') && location.pathname !== '/indicacao' && location.pathname !== '/agenda' && location.pathname !== '/afiliados/cadastro' && location.pathname !== '/afiliado' && !location.pathname.startsWith('/contratacao/');
   
   // Atualiza o título da aba do navegador baseado na página atual
   usePageTitle();
