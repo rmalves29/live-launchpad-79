@@ -754,7 +754,13 @@ export default function LiveShop() {
       const apply = (options: ShippingOption[]) => {
         if (!alive) return;
         setShipOptions(options);
-        setShipId((prev) => (options.some((o) => o.id === prev) ? prev : options.slice().sort((a, b) => a.price - b.price)[0]?.id || ''));
+        // Pré-seleciona a transportadora mais barata; frete cadastrado pela loja (ex.: retirada grátis) só vale se a cliente escolher
+        // ou se não houver transportadora.
+        setShipId((prev) => {
+          if (options.some((o) => o.id === prev)) return prev;
+          const carriers = options.filter((o) => !String(o.id).startsWith('custom_'));
+          return (carriers.length ? carriers : options).slice().sort((a, b) => a.price - b.price)[0]?.id || '';
+        });
       };
       // As opções da própria loja (frete fixo, grátis, retirada) aparecem na hora; as das transportadoras entram quando chegam.
       const res = await calculateLiveShipping({ tenantId: meta.tenant.id, cep: cepForShipping, lines, cartTotal: cartSubtotal(lines), onPartial: apply, freeAbove: meta.affiliate?.free_ship_min ?? null });
@@ -1189,7 +1195,6 @@ export default function LiveShop() {
             {note && <div className="note" style={{ marginTop: 6 }}>Nota: {note}</div>}
             {lines.map((l) => lineRow(l, false))}
             {giftRow}
-            {couponBlock()}
           </div>
 
           <div className="sec">
@@ -1204,6 +1209,10 @@ export default function LiveShop() {
                 <span className={'r ' + (o.price === 0 ? 'free' : '')}>{o.price === 0 ? 'Grátis' : brl(o.price)}</span>
               </button>
             ))}
+          </div>
+
+          <div className="sec">
+            {couponBlock()}
           </div>
 
           <div className="sec">

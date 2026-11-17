@@ -296,7 +296,7 @@ export async function calculateLiveShipping(params: {
   cep: string;
   lines: CartLine[];
   cartTotal: number;
-  /** Chamado assim que as opções da própria loja (frete fixo, grátis, retirada) estão prontas, antes das transportadoras. */
+  /** Chamado com as opções já prontas quando não há transportadora ativa (as da loja só aparecem junto ou depois das transportadoras). */
   onPartial?: (options: ShippingOption[]) => void;
   /** Frete grátis da afiliada: a partir deste valor de carrinho todas as opções ficam sem custo. */
   freeAbove?: number | null;
@@ -331,7 +331,8 @@ export async function calculateLiveShipping(params: {
       ? { default_weight_kg: t.weight_kg, default_width_cm: t.width_cm, default_height_cm: t.height_cm, default_length_cm: t.length_cm }
       : g));
 
-    // Opções da própria loja só precisam do estado/cidade; mostram-se na hora, sem esperar as transportadoras.
+    // Opções da própria loja (frete fixo, grátis, retirada) vão por ÚLTIMO: só aparecem depois das transportadoras,
+    // para a cliente não escolher uma opção grátis antes de ver o frete real.
     const customP = cepP.then(async ({ state, city }) => {
       const custom = await fetchCustomShippingOptions(params.tenantId, state, city, params.cartTotal, 'live');
       const options: ShippingOption[] = custom.map((o) => ({
@@ -341,12 +342,15 @@ export async function calculateLiveShipping(params: {
         price: parsePrice(o.custom_price || o.price),
         delivery_time: o.delivery_time,
       }));
-      params.onPartial?.(free(options));
       return options;
     });
 
     const actives = await activesP;
-    if (actives.length === 0) return { options: free(await customP) };
+    if (actives.length === 0) {
+      const only = free(await customP);
+      params.onPartial?.(only);
+      return { options: only };
+    }
 
     const app = await appP;
     const weight = app?.default_weight_kg ?? 0.01;
@@ -401,7 +405,7 @@ export async function calculateLiveShipping(params: {
     if (carrierOptions.length === 0 && anyFailed) {
       return { options: free(options), notice: 'Não foi possível consultar a transportadora. Mostrando as opções da loja.' };
     }
-    return { options: free([...options, ...carrierOptions]) };
+    return { options: free([...carrierOptions, ...options]) };
   })();
 
   shipInflight.set(key, job);
