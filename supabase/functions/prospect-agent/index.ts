@@ -1,6 +1,6 @@
 // Acesso do Jarvis (agente de prospecção local, antigo Harvey) ao WhatsApp próprio da Manuela, da Cartzy.
 // O número do Jarvis é uma instância própria na UazAPI, guardada na "empresa" técnica JARVIS_TENANT_ID.
-// Ações de conexão (painel do Jarvis): wa_status, wa_create, wa_qr, wa_disconnect.
+// Ações de conexão (painel do Jarvis): wa_status, wa_create, wa_qr, wa_disconnect, wa_register.
 // Respostas de lojas abordadas antes pelo número da OrderZap continuam sendo lidas (as duas caixas).
 // Autenticação: cabeçalho x-agent-key = segredo PROSPECT_AGENT_KEY (definido pelo Rafael nos Secrets).
 // Ações: status, send, replies, opt_out.
@@ -74,6 +74,21 @@ Deno.serve(async (req) => {
           await admin.from("integration_whatsapp").update({ connected_phone: st.user.phone, last_status_check: new Date().toISOString() }).eq("id", integ.id);
         }
         return json({ success: true, created: true, connected: !!st.connected, status: st.status, phone: st.user?.phone || null, name: st.user?.name || null });
+      }
+      if (action === "wa_register") {
+        // O Jarvis conecta o número direto na UazAPI (no PC do Rafael) e avisa o Cartzy qual é a
+        // instância, para a confirmação e os lembretes da agenda saírem pelo mesmo número.
+        const token = String(body.token || "").trim();
+        if (!token) return json({ success: false, error: "token da instância ausente" }, 400);
+        const st = await getInstanceStatus({ url: integ.uazapi_url, token });
+        if (!st.status || st.status === "error") return json({ success: false, error: "a UazAPI não reconheceu essa instância" });
+        if (token !== integ.uazapi_token || (st.user?.phone && st.user.phone !== integ.connected_phone)) {
+          await admin.from("integration_whatsapp").update({
+            uazapi_token: token, provider: "uazapi", is_active: true,
+            connected_phone: st.user?.phone || integ.connected_phone, updated_at: new Date().toISOString(),
+          }).eq("id", integ.id);
+        }
+        return json({ success: true, connected: !!st.connected, phone: st.user?.phone || null });
       }
       if (action === "wa_create") {
         if (jcfg) return json({ success: true, created: true, already: true });

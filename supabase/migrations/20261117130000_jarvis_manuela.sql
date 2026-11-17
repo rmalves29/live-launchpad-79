@@ -8,7 +8,7 @@
 insert into public.tenants (id, name, slug, is_active, enable_live, enable_sendflow, enable_loja_live,
                             live_shop_enabled, waitlist_enabled, whatsapp_provider)
 values ('a7a1e5c0-7a2c-4b6e-9a11-0a1a2b3c4d5e', 'Jarvis · Manuela (Cartzy)', 'jarvis-manuela', true, false, false, false,
-        false, false, 'uazapi')
+        false, false, 'zapi') -- mesmo valor da OrderZap; o provedor real fica em integration_whatsapp.provider
 on conflict (id) do nothing;
 
 -- Mesma UazAPI das empresas (servidor e token de administrador copiados da OrderZap, sem sair do banco).
