@@ -635,7 +635,9 @@ export default function LiveShop() {
   // ------------------------------------------------ identificação
   function startCheckout(directLines: CartLine[] | null) {
     setDirect(directLines);
-    if (customer) { goCheckout(); return; }
+    // customerRef (e não o estado `customer`): esta função pode rodar logo depois do cadastro, a partir de uma ação guardada
+    // em um render antigo, onde `customer` ainda era vazio. Sem isso o celular era pedido de novo depois de salvar o cadastro.
+    if (customerRef.current) { goCheckout(); return; }
     pendingNext.current = 'checkout';
     setPhoneInput('');
     setModal({ type: 'phone' });
