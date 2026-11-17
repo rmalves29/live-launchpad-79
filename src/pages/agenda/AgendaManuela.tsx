@@ -101,7 +101,7 @@ export default function AgendaManuela() {
                       const on = day === k;
                       return (
                         <button key={k} type="button" onClick={() => { setDay(k); setSlot(null); }}
-                          className={`flex w-16 shrink-0 flex-col items-center rounded-xl border px-2 py-2 transition ${on ? 'border-primary bg-primary text-primary-foreground' : 'hover:border-primary/60'}`}>
+                          className={`flex w-14 shrink-0 flex-col items-center rounded-lg border px-1.5 py-1.5 transition ${on ? 'border-primary bg-primary text-primary-foreground' : 'hover:border-primary/60'}`}>
                           <span className="text-xs uppercase opacity-80">{weekday(first)}</span>
                           <span className="text-sm font-semibold">{dayNum(first)}</span>
                         </button>
@@ -113,9 +113,9 @@ export default function AgendaManuela() {
               {day && byDay.get(day) && (
                 <div>
                   <Label>Horário (Brasília)</Label>
-                  <div className="mt-2 grid grid-cols-4 gap-2">
+                  <div className="mt-2 grid grid-cols-4 gap-1.5 sm:grid-cols-6">
                     {byDay.get(day)!.map((s) => (
-                      <Button key={s} type="button" size="sm" variant={slot === s ? 'default' : 'outline'} onClick={() => setSlot(s)}>{timeLabel(s)}</Button>
+                      <Button key={s} type="button" size="sm" className="h-8 px-2 text-xs" variant={slot === s ? 'default' : 'outline'} onClick={() => setSlot(s)}>{timeLabel(s)}</Button>
                     ))}
                   </div>
                 </div>

@@ -5,7 +5,7 @@ import { overlapsBusy } from "./agenda-availability.ts";
 
 export const JARVIS_TENANT_ID = "a7a1e5c0-7a2c-4b6e-9a11-0a1a2b3c4d5e";
 export const JARVIS_MINUTES = 30;
-const DIAS_FRENTE = 21;
+const DIAS_FRENTE = 7; // sempre os próximos 7 dias (amanhã até daqui a 7 dias)
 const BRT_MS = 3 * 3600e3;
 
 // 0=dom ... 6=sáb → janelas [início, fim]
