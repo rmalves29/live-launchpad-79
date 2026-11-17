@@ -127,10 +127,11 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
   const syncText = (() => {
     const s = sync?.state;
     if (!s) return '';
-    const of = (n: number, t: number) => (t ? `${Math.min(n, t)} de ${t}` : `${n}`);
-    if (s.phase === 'stock') return `Lendo o estoque da Olist… ${of(s.offset, s.stock_total)} · ${s.kept} com saldo`;
-    if (s.phase === 'products') return `Lendo preços e tipos… ${of(s.offset, s.products_total)}`;
-    if (s.phase === 'details') return 'Fechando os últimos produtos…';
+    const of = (n: number, t: number) => (t ? `${Math.min(n, t).toLocaleString('pt-BR')} de ${t.toLocaleString('pt-BR')} (${Math.min(100, Math.round((n / t) * 100))}%)` : `${n}`);
+    // duas passadas pela Olist: o contador volta a 0 quando a etapa 1 termina e começa a etapa 2 (não é recomeço)
+    if (s.phase === 'stock') return `Etapa 1 de 2 · lendo o estoque: ${of(s.offset, s.stock_total)} · ${s.kept.toLocaleString('pt-BR')} com saldo até agora`;
+    if (s.phase === 'products') return `Etapa 2 de 2 · lendo preços e tipos: ${of(s.offset, s.products_total)}. Estoque já lido (${s.kept.toLocaleString('pt-BR')} com saldo)`;
+    if (s.phase === 'details') return 'Etapa 2 de 2 · fechando os últimos produtos…';
     return '';
   })();
 
