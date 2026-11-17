@@ -20,6 +20,7 @@ import { fetchCustomShippingOptions } from '@/hooks/useCustomShippingOptions';
 import { buildFreteBaratoCheckoutPackage } from '@/lib/fretebarato-checkout';
 import { useOrderMerge, MERGE_ORDER_SHIPPING_OPTION } from '@/hooks/useOrderMerge';
 import { getActiveShippingIntegrations, shippingProviderLabel, ShippingProvider, type ActiveShippingIntegration } from '@/lib/shipping-utils';
+import { addDeliveryDays, loadExtraDeliveryDays } from '@/lib/shipping-days';
 import { PushOptInDialog } from '@/components/push/PushOptInDialog';
 import { getExistingSubscription, isPushSupported } from '@/lib/push-client';
 
@@ -715,6 +716,7 @@ const PublicCheckout = () => {
       }];
 
       const multiProvider = activeIntegrations.length > 1;
+      const extraDaysP = loadExtraDeliveryDays(tenant.id);
 
       // Consulta uma integração. Se falhar, só ela some: a outra continua aparecendo.
       const quoteIntegration = async (integ: ActiveShippingIntegration): Promise<{ options: any[]; reason?: string }> => {
@@ -756,6 +758,7 @@ const PublicCheckout = () => {
 
           // SEMPRE exibe o nome da integração do tenant, não da transportadora
           const displayCompany = shippingProviderLabel(integ.provider);
+          const extraDays = await extraDaysP; // dias adicionais da empresa, somados ao prazo da transportadora
           const validOptions = data.shipping_options
             .filter((option: any) => option && !option.error && (integ.provider === 'fretebarato' ? Number.isFinite(option.price) && option.price >= 0 : option.price))
             .map((option: any) => {
@@ -768,7 +771,7 @@ const PublicCheckout = () => {
                 name: String(option.service_name || option.name || 'Transportadora'),
                 company: displayCompany,
                 price: parseFloat(option.price || 0).toFixed(2),
-                delivery_time: String(option.delivery_time || '5-10 dias'),
+                delivery_time: addDeliveryDays(String(option.delivery_time || '5-10 dias'), extraDays),
                 custom_price: parseFloat(option.custom_price || option.price || 0).toFixed(2)
               };
             });

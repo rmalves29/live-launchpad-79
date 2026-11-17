@@ -1,6 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { fetchCustomShippingOptions } from '@/hooks/useCustomShippingOptions';
 import { getActiveShippingIntegrations, shippingProviderLabel, type ActiveShippingIntegration, type ShippingProvider } from '@/lib/shipping-utils';
+import { addDeliveryDays, loadExtraDeliveryDays } from '@/lib/shipping-days';
 
 // ---------------------------------------------------------------- tipos
 export interface LiveVariant {
@@ -345,6 +346,7 @@ export async function calculateLiveShipping(params: {
       return options;
     });
 
+    const extraDaysP = loadExtraDeliveryDays(params.tenantId);
     const actives = await activesP;
     if (actives.length === 0) {
       const only = free(await customP);
@@ -376,6 +378,7 @@ export async function calculateLiveShipping(params: {
         if (res.error || data?.success === false || !Array.isArray(data?.shipping_options)) return { options: [], failed: true };
 
         const display = shippingProviderLabel(active.provider);
+        const extraDays = await extraDaysP; // dias adicionais da empresa, somados ao prazo da transportadora
         const carrier = data.shipping_options
           .filter((o: any) => o && !o.error && o.price)
           .map((o: any) => {
@@ -388,7 +391,7 @@ export async function calculateLiveShipping(params: {
               name: String(o.service_name || o.name || 'Transportadora'),
               company: display,
               price: parsePrice(o.custom_price || o.price),
-              delivery_time: String(o.delivery_time || '5-10 dias'),
+              delivery_time: addDeliveryDays(String(o.delivery_time || '5-10 dias'), extraDays),
             } as ShippingOption;
           });
         return { options: filterCarrierOptions(carrier, active.provider), failed: false };

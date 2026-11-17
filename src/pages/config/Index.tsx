@@ -21,6 +21,7 @@ import { TenantSimulator } from '@/components/TenantSimulator';
 import IntegrationsChecklist from '@/components/IntegrationsChecklist';
 import { ShippingOptionsManager } from '@/components/ShippingOptionsManager';
 import { PayOnPickupSettings } from '@/components/PayOnPickupSettings';
+import { ShippingExtraDays } from '@/components/ShippingExtraDays';
 import { PrinterSettings } from '@/components/PrinterSettings';
 import { useToast } from '@/hooks/use-toast';
 import { formatBrasiliaDate } from '@/lib/date-utils';
@@ -258,12 +259,10 @@ const Config = () => {
         <Tabs defaultValue={searchParams.get('tab') || (isMaster ? 'config' : 'company')} className="w-full">
           <div className="border-b border-slate-200 px-8 sticky top-0 bg-white z-10 overflow-x-auto">
             <TabsList className="h-auto p-0 bg-transparent rounded-none gap-0 justify-start">
-              {isMaster && (
-                <TabsTrigger value="config" className={tabTriggerClass}>
-                  <Settings className="h-3.5 w-3.5" />
-                  Configurações
-                </TabsTrigger>
-              )}
+              <TabsTrigger value="config" className={tabTriggerClass}>
+                <Settings className="h-3.5 w-3.5" />
+                Configurações
+              </TabsTrigger>
               <TabsTrigger value="company" className={tabTriggerClass}>
                 <Building2 className="h-3.5 w-3.5" />
                 Empresa
@@ -307,21 +306,22 @@ const Config = () => {
 
           <div className="px-8 py-6">
 
-              {isMaster && (
+              {/* Aba liberada para todas as lojas. Os blocos globais do sistema (Dias para postagem e os cartões de exemplo) ficam só para o super admin. */}
                 <TabsContent value="config" className="space-y-6 mt-6">
                   {/* Integrations Checklist */}
                   <IntegrationsChecklist />
-                  
+
                   {/* WhatsApp Settings */}
                   <WhatsAppSettings />
-                  
+
                   {/* Status do Melhor Envio */}
                   <MelhorEnvioStatus />
-                  
-                  {/* Availability Settings */}
-                  <AvailabilitySettings />
-                  
+
+                  {/* Availability Settings: valor global do sistema (app_settings), só o super admin grava */}
+                  {isMaster && <AvailabilitySettings />}
+
                   {/* Current Configuration */}
+                  {isMaster && (
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {configSections.map((section) => (
                       <Card key={section.title}>
@@ -348,6 +348,7 @@ const Config = () => {
                       </Card>
                     ))}
                   </div>
+                  )}
 
                   {/* Integration Status */}
                   <Card>
@@ -390,7 +391,6 @@ const Config = () => {
                     </CardContent>
                   </Card>
                 </TabsContent>
-              )}
 
               <TabsContent value="company" className="space-y-6 mt-6">
                 <CompanySettings />
@@ -398,6 +398,7 @@ const Config = () => {
 
               <TabsContent value="shipping" className="space-y-6 mt-6">
                 <ShippingOptionsManager />
+                <ShippingExtraDays />
                 <PayOnPickupSettings />
               </TabsContent>
 
