@@ -14,9 +14,11 @@ import { useToast } from '@/hooks/use-toast';
 import { useTenantContext } from '@/contexts/TenantContext';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/lib/utils';
+import { parseCepRanges, formatCepRanges } from '@/lib/cep-ranges';
+import { Textarea } from '@/components/ui/textarea';
 
 // Tipos de cobertura geográfica
-type CoverageType = 'national' | 'states' | 'city' | 'capital' | 'interior';
+type CoverageType = 'national' | 'states' | 'city' | 'capital' | 'interior' | 'cep';
 
 interface ShippingOption {
   id: string;
@@ -31,6 +33,7 @@ interface ShippingOption {
   coverage_states: string[] | null;
   coverage_city: string | null;
   coverage_state: string | null;
+  coverage_cep_ranges: string[] | null;
   free_shipping_min_order: number | null;
 }
 
@@ -78,6 +81,7 @@ const COVERAGE_LABELS: Record<CoverageType, string> = {
   city: 'Cidade específica',
   capital: 'Capital do estado',
   interior: 'Interior do estado',
+  cep: 'CEP ou faixa de CEP',
 };
 
 // Serviços de transportadora do Melhor Envio
@@ -124,6 +128,7 @@ export const ShippingOptionsManager = ({ channel = 'bazar' }: { channel?: 'bazar
     coverage_states: [] as string[],
     coverage_city: '',
     coverage_state: '',
+    coverage_cep_text: '',
     free_shipping_min_order: null as number | null
   });
 
@@ -176,6 +181,7 @@ export const ShippingOptionsManager = ({ channel = 'bazar' }: { channel?: 'bazar
           coverage_states: opt.coverage_states || null,
           coverage_city: opt.coverage_city || null,
           coverage_state: opt.coverage_state || null,
+          coverage_cep_ranges: opt.coverage_cep_ranges || null,
           free_shipping_min_order: opt.free_shipping_min_order != null ? Number(opt.free_shipping_min_order) : null
         })));
       } else {
@@ -223,6 +229,7 @@ export const ShippingOptionsManager = ({ channel = 'bazar' }: { channel?: 'bazar
         coverage_states: option.coverage_states || [],
         coverage_city: option.coverage_city || '',
         coverage_state: option.coverage_state || '',
+        coverage_cep_text: formatCepRanges(option.coverage_cep_ranges),
         free_shipping_min_order: option.free_shipping_min_order ?? null
       });
     } else {
@@ -239,6 +246,7 @@ export const ShippingOptionsManager = ({ channel = 'bazar' }: { channel?: 'bazar
         coverage_states: [],
         coverage_city: '',
         coverage_state: '',
+        coverage_cep_text: '',
         free_shipping_min_order: null
       });
     }
@@ -275,6 +283,21 @@ export const ShippingOptionsManager = ({ channel = 'bazar' }: { channel?: 'bazar
       return;
     }
 
+    // Frete por CEP: confere as faixas digitadas antes de gravar
+    let cepRanges: string[] | null = null;
+    if (formData.coverage_type === 'cep') {
+      const parsed = parseCepRanges(formData.coverage_cep_text);
+      if (parsed.invalid.length > 0) {
+        toast({ title: 'CEP inválido', description: `Não entendi: ${parsed.invalid.slice(0, 3).join(' | ')}. Use um CEP por linha ou faixa (ex.: 20000-000 a 23016-500).`, variant: 'destructive' });
+        return;
+      }
+      if (parsed.ranges.length === 0) {
+        toast({ title: 'Erro', description: 'Informe ao menos um CEP ou faixa de CEP', variant: 'destructive' });
+        return;
+      }
+      cepRanges = parsed.ranges;
+    }
+
     setSaving(true);
     try {
       if (editingOption) {
@@ -293,6 +316,7 @@ export const ShippingOptionsManager = ({ channel = 'bazar' }: { channel?: 'bazar
             coverage_states: formData.coverage_states.length > 0 ? formData.coverage_states : null,
             coverage_city: formData.coverage_city || null,
             coverage_state: formData.coverage_state || null,
+            coverage_cep_ranges: cepRanges,
             free_shipping_min_order: formData.price === 0 ? (formData.free_shipping_min_order || null) : null,
             updated_at: new Date().toISOString()
           })
@@ -303,7 +327,7 @@ export const ShippingOptionsManager = ({ channel = 'bazar' }: { channel?: 'bazar
         
         setOptions(prev => prev.map(opt => 
           opt.id === editingOption.id 
-            ? { ...opt, ...formData, coverage_states: formData.coverage_states.length > 0 ? formData.coverage_states : null }
+            ? { ...opt, ...formData, coverage_states: formData.coverage_states.length > 0 ? formData.coverage_states : null, coverage_cep_ranges: cepRanges }
             : opt
         ));
         toast({ title: 'Sucesso', description: 'Opção de frete atualizada' });
@@ -325,6 +349,7 @@ export const ShippingOptionsManager = ({ channel = 'bazar' }: { channel?: 'bazar
             coverage_states: formData.coverage_states.length > 0 ? formData.coverage_states : null,
             coverage_city: formData.coverage_city || null,
             coverage_state: formData.coverage_state || null,
+            coverage_cep_ranges: cepRanges,
             free_shipping_min_order: formData.price === 0 ? (formData.free_shipping_min_order || null) : null
           })
           .select()
@@ -345,6 +370,7 @@ export const ShippingOptionsManager = ({ channel = 'bazar' }: { channel?: 'bazar
           coverage_states: data.coverage_states || null,
           coverage_city: data.coverage_city || null,
           coverage_state: data.coverage_state || null,
+          coverage_cep_ranges: data.coverage_cep_ranges || null,
           free_shipping_min_order: data.free_shipping_min_order != null ? Number(data.free_shipping_min_order) : null
         };
         setOptions(prev => [...prev, newOption]);
@@ -649,7 +675,8 @@ export const ShippingOptionsManager = ({ channel = 'bazar' }: { channel?: 'bazar
                         coverage_type: value,
                         coverage_states: value === 'states' ? prev.coverage_states : [],
                         coverage_city: value === 'city' ? prev.coverage_city : '',
-                        coverage_state: ['city', 'capital', 'interior'].includes(value) ? prev.coverage_state : ''
+                        coverage_state: ['city', 'capital', 'interior'].includes(value) ? prev.coverage_state : '',
+                        coverage_cep_text: value === 'cep' ? prev.coverage_cep_text : ''
                       }))}
                     >
                       <SelectTrigger>
@@ -661,8 +688,27 @@ export const ShippingOptionsManager = ({ channel = 'bazar' }: { channel?: 'bazar
                         <SelectItem value="city">🏙️ Cidade específica</SelectItem>
                         <SelectItem value="capital">🏛️ Capital do estado</SelectItem>
                         <SelectItem value="interior">🌾 Interior do estado</SelectItem>
+                        <SelectItem value="cep">📮 CEP ou faixa de CEP</SelectItem>
                       </SelectContent>
                     </Select>
+
+                    {/* CEP ou faixa de CEP */}
+                    {formData.coverage_type === 'cep' && (
+                      <div className="space-y-1">
+                        <Label className="text-xs">CEPs atendidos (um por linha):</Label>
+                        <Textarea
+                          value={formData.coverage_cep_text}
+                          onChange={(e) => setFormData(prev => ({ ...prev, coverage_cep_text: e.target.value }))}
+                          placeholder={'20000-000 a 23016-500\n25010-010 a 25080-216\n60165-270'}
+                          rows={6}
+                          className="font-mono text-sm"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Faixa: "início a fim" (ex.: 20000-000 a 23016-500). CEP único: só o número. Com 5 dígitos (ex.: 60165) vale o prefixo inteiro.
+                          A opção só aparece para clientes cujo CEP esteja nessa lista.
+                        </p>
+                      </div>
+                    )}
 
                     {/* Seleção de estados */}
                     {formData.coverage_type === 'states' && (
@@ -805,6 +851,7 @@ export const ShippingOptionsManager = ({ channel = 'bazar' }: { channel?: 'bazar
                         {option.coverage_type === 'city' && `🏙️ ${option.coverage_city || 'Cidade'}-${option.coverage_state || ''}`}
                         {option.coverage_type === 'capital' && `🏛️ Capital ${option.coverage_state || ''}`}
                         {option.coverage_type === 'interior' && `🌾 Interior ${option.coverage_state || ''}`}
+                        {option.coverage_type === 'cep' && `📮 ${option.coverage_cep_ranges?.length || 0} faixa(s) de CEP`}
                       </span>
                     </TableCell>
                     <TableCell>

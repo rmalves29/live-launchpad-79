@@ -334,7 +334,7 @@ export async function calculateLiveShipping(params: {
     // Opções da própria loja (frete fixo, grátis, retirada) vão por ÚLTIMO: só aparecem depois das transportadoras,
     // para a cliente não escolher uma opção grátis antes de ver o frete real.
     const customP = cepP.then(async ({ state, city }) => {
-      const custom = await fetchCustomShippingOptions(params.tenantId, state, city, params.cartTotal, 'live');
+      const custom = await fetchCustomShippingOptions(params.tenantId, state, city, params.cartTotal, 'live', cep);
       const options: ShippingOption[] = custom.map((o) => ({
         id: o.id,
         name: o.name,

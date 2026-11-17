@@ -516,7 +516,9 @@ const PublicCheckout = () => {
         tenant.id,
         customerData.state || undefined,
         customerData.city || undefined,
-        combinedSubtotal
+        combinedSubtotal,
+        'bazar',
+        customerData.cep || undefined
       );
       if (cancelled || customs.length === 0) return;
       setShippingOptions(prev => {
@@ -530,7 +532,7 @@ const PublicCheckout = () => {
       });
     })();
     return () => { cancelled = true; };
-  }, [showCheckout, tenant?.id, customerData.state, customerData.city]);
+  }, [showCheckout, tenant?.id, customerData.state, customerData.city, customerData.cep]);
 
   // Adicionar opção de merge quando há pedido pago recente
   useEffect(() => {
@@ -658,7 +660,7 @@ const PublicCheckout = () => {
       }
 
       // 2. Buscar opções de frete customizadas FILTRADAS por cobertura geográfica e valor mínimo
-      const customOptions = await fetchCustomShippingOptions(tenant.id, customerState, customerCity, combinedSubtotal);
+      const customOptions = await fetchCustomShippingOptions(tenant.id, customerState, customerCity, combinedSubtotal, 'bazar', cep);
     
       // Usar opções customizadas do banco ou fallback padrão
       const fallbackShipping = customOptions;

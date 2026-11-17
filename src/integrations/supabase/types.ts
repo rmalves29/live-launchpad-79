@@ -1218,6 +1218,7 @@ export type Database = {
           carrier_service_id: number | null
           carrier_service_name: string | null
           channel: string
+          coverage_cep_ranges: string[] | null
           coverage_city: string | null
           coverage_state: string | null
           coverage_states: string[] | null
@@ -1237,6 +1238,7 @@ export type Database = {
           carrier_service_id?: number | null
           carrier_service_name?: string | null
           channel?: string
+          coverage_cep_ranges?: string[] | null
           coverage_city?: string | null
           coverage_state?: string | null
           coverage_states?: string[] | null
@@ -1256,6 +1258,7 @@ export type Database = {
           carrier_service_id?: number | null
           carrier_service_name?: string | null
           channel?: string
+          coverage_cep_ranges?: string[] | null
           coverage_city?: string | null
           coverage_state?: string | null
           coverage_states?: string[] | null

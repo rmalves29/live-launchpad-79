@@ -644,7 +644,7 @@ const Checkout = () => {
       }
 
       // 2. Buscar opções de frete customizadas FILTRADAS por cobertura geográfica
-      const customOptions = await fetchCustomShippingOptions(tenantId || '', customerState, customerCity);
+      const customOptions = await fetchCustomShippingOptions(tenantId || '', customerState, customerCity, undefined, 'bazar', cep);
     
       // Usar opções customizadas do banco ou fallback padrão
       const fallbackShipping = customOptions;

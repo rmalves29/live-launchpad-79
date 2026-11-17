@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { cepInRanges } from '@/lib/cep-ranges';
 
 export interface CustomShippingOption {
   id: string;
@@ -89,8 +90,10 @@ export function useCustomShippingOptions(tenantId: string | null) {
 /**
  * Filtra opções de frete customizadas com base na cobertura geográfica
  */
-function filterByGeographicCoverage(options: any[], customerState?: string, customerCity?: string): any[] {
-  if (!customerState) return options; // Sem estado, retorna todas (será refiltrado depois)
+function filterByGeographicCoverage(options: any[], customerState?: string, customerCity?: string, customerCep?: string): any[] {
+  // Frete por CEP/faixa de CEP: só vale quando o CEP da cliente está numa das faixas (sem CEP completo, nunca aparece)
+  const byCep = (opt: any) => cepInRanges(customerCep, opt.coverage_cep_ranges);
+  if (!customerState) return options.filter((opt: any) => (opt.coverage_type === 'cep' ? byCep(opt) : true)); // Sem estado, retorna as demais (será refiltrado depois)
 
   const CAPITAIS: Record<string, string[]> = {
     AC: ['Rio Branco'], AL: ['Maceió'], AM: ['Manaus'], AP: ['Macapá'],
@@ -108,6 +111,9 @@ function filterByGeographicCoverage(options: any[], customerState?: string, cust
     switch (coverageType) {
       case 'national':
         return true;
+
+      case 'cep':
+        return byCep(opt);
 
       case 'states':
         const allowedStates: string[] = opt.coverage_states || [];
@@ -152,7 +158,8 @@ export async function fetchCustomShippingOptions(
   customerState?: string,
   customerCity?: string,
   cartTotal?: number,
-  channel: 'bazar' | 'live' = 'bazar'
+  channel: 'bazar' | 'live' = 'bazar',
+  customerCep?: string
 ): Promise<CustomShippingOption[]> {
   if (!tenantId) return [];
 
@@ -173,7 +180,7 @@ export async function fetchCustomShippingOptions(
 
     if (data && data.length > 0) {
       // Filtrar por cobertura geográfica
-      let filtered = filterByGeographicCoverage(data, customerState, customerCity);
+      let filtered = filterByGeographicCoverage(data, customerState, customerCity, customerCep);
 
       // Filtrar frete grátis por valor mínimo de pedido
       if (cartTotal !== undefined) {
