@@ -20,7 +20,12 @@ import { Loader2, Search, Download, RefreshCw, AlertTriangle, Warehouse } from '
 type Deposit = { id: number; nome: string; padrao: boolean; desconsidera_saldo: boolean };
 type Row = { olist_id: number; sku: string; nome: string; preco: number; preco_promocional?: number; tipo: string; variacao: string; saldo: number; status: 'novo' | 'existe' | 'vinculado'; cartzy_id: number | null };
 
+type SyncState = { mode: 'full' | 'incremental'; phase: 'stock' | 'products' | 'details' | 'done'; offset: number; stock_total: number; products_total: number; kept: number; error: string | null };
+type SyncInfo = { running: boolean; state: SyncState | null; rows: number };
+
 const MAX_LOOPS = 300;
+// Acima disso a leitura pelo navegador não termina (a Olist limita a 60 leituras por minuto): usa a sincronização em segundo plano.
+const BIG_CATALOG = 3000;
 const PAGE_SIZE = 50;
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const chunk = <T,>(a: T[], n: number) => { const o: T[][] = []; for (let i = 0; i < a.length; i += n) o.push(a.slice(i, i + n)); return o; };
@@ -54,28 +59,80 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
     retry: false,
   });
 
-  // ao abrir, mostra o catálogo que já foi buscado antes (sem falar com a Olist)
+  // mostra o catálogo que já foi buscado antes (sem falar com a Olist)
+  async function loadCatalog(isOff: () => boolean = () => false) {
+    try {
+      const r = await call({ action: 'catalog_load' });
+      if (isOff() || !r.rows?.length) return;
+      const list: Row[] = (r.rows as any[]).filter((p) => p.variacao !== 'P' && p.tipo !== '').map((p) => ({ ...p, status: 'novo' as const, cartzy_id: null }));
+      const st = new Map<number, { status: Row['status']; cartzy_id: number | null }>();
+      for (const part of chunk(list, 400)) {
+        const s = await call({ action: 'statuses', items: part.map((p) => ({ olist_id: p.olist_id, sku: p.sku })) });
+        for (const x of s.statuses) st.set(x.olist_id, x);
+      }
+      if (isOff()) return;
+      setRows(list.map((p) => ({ ...p, ...(st.get(p.olist_id) || {}) }) as Row));
+      setSyncedAt(r.synced_at || null);
+    } catch { /* sem catálogo guardado ainda */ }
+  }
+
   useEffect(() => {
     if (!tenantId) return;
     let off = false;
-    (async () => {
-      try {
-        const r = await call({ action: 'catalog_load' });
-        if (off || !r.rows?.length) return;
-        const list: Row[] = (r.rows as any[]).filter((p) => p.variacao !== 'P').map((p) => ({ ...p, status: 'novo' as const, cartzy_id: null }));
-        const st = new Map<number, { status: Row['status']; cartzy_id: number | null }>();
-        for (const part of chunk(list, 400)) {
-          const s = await call({ action: 'statuses', items: part.map((p) => ({ olist_id: p.olist_id, sku: p.sku })) });
-          for (const x of s.statuses) st.set(x.olist_id, x);
-        }
-        if (off) return;
-        setRows(list.map((p) => ({ ...p, ...(st.get(p.olist_id) || {}) }) as Row));
-        setSyncedAt(r.synced_at || null);
-      } catch { /* sem catálogo guardado ainda */ }
-    })();
+    loadCatalog(() => off);
     return () => { off = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId]);
+
+  // Sincronização em segundo plano (catálogos grandes): o servidor lê a Olist aos poucos, a tela só acompanha.
+  const [sync, setSync] = useState<SyncInfo | null>(null);
+  const wasRunning = useRef(false);
+
+  async function refreshSync() {
+    try {
+      const r = await call({ action: 'sync_status' });
+      if (!r.available) return;
+      setSync({ running: !!r.running, state: r.state || null, rows: r.catalog_rows || 0 });
+      if (wasRunning.current && !r.running) {
+        if (r.state?.phase === 'done') { toast.success('Catálogo da Olist sincronizado.'); await loadCatalog(); }
+        else if (r.state?.error) toast.error(r.state.error);
+      }
+      wasRunning.current = !!r.running;
+    } catch { /* tela segue sem o acompanhamento */ }
+  }
+
+  useEffect(() => {
+    if (!tenantId) return;
+    refreshSync();
+    const t = setInterval(refreshSync, 6000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId]);
+
+  async function startSync(full: boolean) {
+    try {
+      const r = await call({ action: 'sync_start', full });
+      toast.message(r.already_running ? 'A sincronização já está rodando.' : full || r.state?.mode === 'full'
+        ? 'Sincronização completa iniciada. Pode fechar a tela: ela continua no servidor.'
+        : 'Atualização iniciada (só o que mudou desde a última vez).');
+      await refreshSync();
+    } catch (e: any) { toast.error(e?.message || 'Não foi possível iniciar a sincronização'); }
+  }
+
+  async function stopSync() {
+    try { await call({ action: 'sync_cancel' }); toast.message('Sincronização pausada.'); await refreshSync(); }
+    catch (e: any) { toast.error(e?.message || 'Erro ao pausar'); }
+  }
+
+  const syncText = (() => {
+    const s = sync?.state;
+    if (!s) return '';
+    const of = (n: number, t: number) => (t ? `${Math.min(n, t)} de ${t}` : `${n}`);
+    if (s.phase === 'stock') return `Lendo o estoque da Olist… ${of(s.offset, s.stock_total)} · ${s.kept} com saldo`;
+    if (s.phase === 'products') return `Lendo preços e tipos… ${of(s.offset, s.products_total)}`;
+    if (s.phase === 'details') return 'Fechando os últimos produtos…';
+    return '';
+  })();
 
   async function saveDeposit() {
     const id = Number(depositPick || dep?.selected?.id);
@@ -95,17 +152,25 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
     if (!alvos.length) { toast.message('Nenhum produto existente para atualizar.'); return; }
     setLoading(true); cancelRef.current = false;
     try {
+      // Catálogo grande: o saldo já foi guardado pela sincronização em segundo plano (ler tudo de novo aqui não termina).
+      const big = (sync?.state?.stock_total || 0) > BIG_CATALOG;
+      if (big && (sync?.running || sync?.state?.phase !== 'done')) { toast.message('Espere a sincronização terminar para atualizar o estoque.'); return; }
       const stock = new Map<number, number>();
-      for (let off = 0, i = 0; i < MAX_LOOPS && !cancelRef.current; i++) {
-        setProgress(`Lendo o estoque da Olist… ${stock.size}`);
-        const r = await call({ action: 'stock_page', offset: off });
-        for (const s of r.rows as Array<{ olist_id: number; saldo: number }>) stock.set(s.olist_id, s.saldo);
-        if (!r.has_more) break;
-        off += 100;
+      if (!big) {
+        for (let off = 0, i = 0; i < MAX_LOOPS && !cancelRef.current; i++) {
+          setProgress(`Lendo o estoque da Olist… ${stock.size}`);
+          const r = await call({ action: 'stock_page', offset: off });
+          for (const s of r.rows as Array<{ olist_id: number; saldo: number }>) stock.set(s.olist_id, s.saldo);
+          if (!r.has_more) break;
+          off += 100;
+        }
+        if (cancelRef.current) { toast.message('Interrompido. Nenhum estoque foi alterado.'); return; } // saldo parcial zeraria o estoque de quem não foi lido
+      } else {
+        for (const p of rows) stock.set(p.olist_id, p.saldo);
       }
       const comSaldo = rows.map((p) => ({ ...p, saldo: stock.get(p.olist_id) ?? 0 }));
       setRows(comSaldo);
-      for (const part of chunk(comSaldo, 400)) await call({ action: 'catalog_save', started_at: syncedAt || new Date().toISOString(), items: part });
+      if (!big) for (const part of chunk(comSaldo, 400)) await call({ action: 'catalog_save', started_at: syncedAt || new Date().toISOString(), items: part });
       let updated = 0, linked = 0, promos = 0;
       for (const part of chunk(alvos, 300)) {
         setProgress('Atualizando o estoque do Cartzy…');
@@ -144,6 +209,10 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
       const list: Row[] = [];
       for (let off = 0, i = 0; i < MAX_LOOPS && !cancelRef.current; i++) {
         const r = await call({ action: 'products_page', offset: off });
+        if (i === 0 && Number(r.total) > BIG_CATALOG) {
+          toast.error(`A conta tem ${Number(r.total).toLocaleString('pt-BR')} produtos: ler pelo navegador não termina (a Olist limita a 60 leituras por minuto). Use "Sincronizar em segundo plano".`);
+          return;
+        }
         for (const p of r.rows as any[]) {
           if (p.variacao === 'P') continue; // pai de variações não tem estoque próprio: entram as variações
           list.push({ ...p, saldo: 0, status: 'novo', cartzy_id: null });
@@ -152,6 +221,7 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
         if (!r.has_more) { completed = true; break; }
         off += 100;
       }
+      if (cancelRef.current) { toast.message('Busca interrompida. Nada foi guardado.'); return; }
       setProgress('Conferindo o que já existe no Cartzy…');
       const st = new Map<number, { status: Row['status']; cartzy_id: number | null }>();
       for (const part of chunk(list, 400)) {
@@ -168,6 +238,7 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
         if (!r.has_more) break;
         off += 100;
       }
+      if (cancelRef.current) { toast.message('Busca interrompida. Nada foi guardado.'); return; } // sem o saldo lido, guardar zeraria o estoque de todos
       merged = merged.map((p) => ({ ...p, saldo: stock.get(p.olist_id) ?? 0 }));
       // sem a opção ligada, produto novo sem estoque na Olist não vem (os que já estão no Cartzy ficam, para o estoque poder zerar)
       if (!withZero) merged = merged.filter((p) => p.saldo > 0 || p.status !== 'novo');
@@ -261,6 +332,8 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
           <CardDescription>
             <b>Buscar produtos</b> lista os produtos da Olist para você importar os novos no Cartzy.
             <b>Atualizar estoque no Cartzy</b> grava o saldo nos produtos que já existem (pelo código ERP). Nada é escrito na Olist.
+            Em contas com muitos produtos use <b>Sincronizar em segundo plano</b>: o servidor lê a Olist aos poucos (ela limita a 60 leituras por minuto),
+            guarda só quem tem saldo no depósito escolhido e depois atualiza só o que mudou.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -268,6 +341,25 @@ export default function OlistStockPanel({ tenantId }: { tenantId: string }) {
             <Button onClick={load} disabled={loading || !dep?.selected}>
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}Buscar produtos
             </Button>
+            {!sync?.running && (
+              <Button variant="secondary" onClick={() => startSync(false)} disabled={loading || !dep?.selected}>
+                Sincronizar em segundo plano
+              </Button>
+            )}
+            {!sync?.running && sync?.state?.phase === 'done' && (
+              <Button variant="ghost" size="sm" onClick={() => startSync(true)} disabled={loading}>Refazer do zero</Button>
+            )}
+            {sync?.running && (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm text-muted-foreground">{syncText}</span>
+                <Button variant="outline" size="sm" onClick={stopSync}>Pausar</Button>
+              </>
+            )}
+            {!sync?.running && sync?.state && sync.state.phase !== 'done' && !sync.state.error && (
+              <span className="text-sm text-muted-foreground">Sincronização pausada em {syncText || 'andamento'}. Clique em "Sincronizar em segundo plano" para recomeçar.</span>
+            )}
+            {!sync?.running && sync?.state?.error && <span className="text-sm text-destructive">{sync.state.error}</span>}
             <label className="flex items-center gap-2 text-sm"><Checkbox checked={withZero} onCheckedChange={(v) => setWithZero(v === true)} disabled={loading} />Trazer também produtos sem estoque</label>
             {rows.length > 0 && !loading && <Button variant="outline" onClick={applyStock}>Atualizar estoque no Cartzy</Button>}
             {!loading && <Button variant="outline" onClick={syncImages}>Buscar fotos dos produtos</Button>}

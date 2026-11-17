@@ -11,12 +11,15 @@
 //   images_pending lista os produtos vinculados à Olist que ainda estão sem foto no Cartzy.
 //   sync_images    busca na Olist (anexos do produto) a foto de até 25 produtos e grava no Cartzy.
 //   import         cria no Cartzy os produtos escolhidos (ou só vincula quando o código já existe).
+//   sync_start / sync_status / sync_cancel  sincronização do catálogo em segundo plano (catálogos grandes; limite da Olist: 60 leituras/min).
+//   auto_catalog_sync  (só service role / agendamento a cada minuto) avança as sincronizações em andamento.
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { authorizeTenantCaller, guardResponse } from "../_shared/auth-guard.ts";
 import { makeProductCodeAllocator, insertWithFreshCode } from "../_shared/next-product-code.ts";
 import { olistRequest, olistErrorMessage } from "../_shared/olist.ts";
 import { variationFromGrade } from "../_shared/variation.ts";
+import { runCatalogSync, newSyncState } from "../_shared/olist-catalog-sync.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,6 +51,44 @@ Deno.serve(async (req) => {
     const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const body = await req.json().catch(() => ({}));
     const action = norm(body.action);
+
+    // ---------- sincronização do catálogo em segundo plano (só service role / agendamento) ----------
+    if (action === "auto_catalog_sync") {
+      const token = (req.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      let authorized = Boolean(serviceKey && token && token === serviceKey);
+      if (!authorized) {
+        const cronSecret = req.headers.get("x-olist-cron-secret") || "";
+        if (/^[a-f0-9]{64}$/.test(cronSecret)) {
+          const { data, error } = await supabase.rpc("olist_cron_authorized", { p_secret: cronSecret });
+          authorized = !error && data === true;
+        }
+      }
+      if (!authorized) return json({ success: false, error: "Nao autorizado" }, 403);
+      if (body.dry_run === true) return json({ success: true, dry_run: true, authorized: true });
+      const started = Date.now();
+      const { data: running } = await supabase.from("integration_olist").select("tenant_id")
+        .eq("is_active", true).eq("catalog_sync_running", true)
+        .order("catalog_sync_last_at", { ascending: true, nullsFirst: true }).limit(20);
+      const out: any[] = [];
+      for (const t of running || []) {
+        if (Date.now() - started > 55_000) break; // cada empresa leva até ~45 s; o resto fica para a próxima rodada
+        const lockLimit = new Date(Date.now() - 3 * 60_000).toISOString();
+        const { data: claimed } = await supabase.from("integration_olist")
+          .update({ catalog_sync_lock_at: new Date().toISOString() }).eq("tenant_id", t.tenant_id)
+          .or(`catalog_sync_lock_at.is.null,catalog_sync_lock_at.lt.${lockLimit}`).select("tenant_id").maybeSingle();
+        if (!claimed) continue; // outra rodada já está nela
+        try {
+          const st = await runCatalogSync(supabase, t.tenant_id, started + 100_000);
+          if (st) out.push({ tenant_id: t.tenant_id, phase: st.phase, offset: st.offset, kept: st.kept, error: st.error });
+        } finally {
+          await supabase.from("integration_olist").update({ catalog_sync_lock_at: null }).eq("tenant_id", t.tenant_id);
+        }
+      }
+      console.log("[olist-products] auto_catalog_sync", JSON.stringify(out));
+      return json({ success: true, tenants: out });
+    }
+
     const tenantId = norm(body.tenant_id);
     if (!tenantId) return json({ success: false, error: "tenant_id é obrigatório" }, 400);
 
@@ -60,6 +101,32 @@ Deno.serve(async (req) => {
       .eq("tenant_id", tenantId)
       .maybeSingle();
     if (!integ?.is_active) return json({ success: false, error: "A Olist não está conectada para esta empresa. Autorize em Integrações > Olist ERP." });
+
+    // ---------------- sincronização em segundo plano (catálogos grandes) ----------------
+    if (action === "sync_start") {
+      if (!integ.deposit_id) return json({ success: false, error: "Escolha o depósito do estoque antes de sincronizar." });
+      const { data: cur, error: curErr } = await supabase.from("integration_olist")
+        .select("catalog_sync, catalog_sync_running, last_catalog_sync_at").eq("tenant_id", tenantId).maybeSingle();
+      if (curErr) return json({ success: false, error: "O banco ainda não recebeu a atualização da sincronização em segundo plano. Publique o sistema e tente de novo." });
+      if (cur?.catalog_sync_running) return json({ success: true, already_running: true, state: cur.catalog_sync });
+      const state = newSyncState(Number(integ.deposit_id), cur?.catalog_sync || null, cur?.last_catalog_sync_at || null, body.full === true);
+      await supabase.from("integration_olist")
+        .update({ catalog_sync: state, catalog_sync_running: true, catalog_sync_lock_at: null, catalog_sync_last_at: null }).eq("tenant_id", tenantId);
+      return json({ success: true, state });
+    }
+
+    if (action === "sync_status") {
+      const { data: cur, error: curErr } = await supabase.from("integration_olist")
+        .select("catalog_sync, catalog_sync_running, last_catalog_sync_at").eq("tenant_id", tenantId).maybeSingle();
+      if (curErr) return json({ success: true, available: false });
+      const { count } = await supabase.from("olist_catalog").select("olist_id", { count: "exact", head: true }).eq("tenant_id", tenantId);
+      return json({ success: true, available: true, running: !!cur?.catalog_sync_running, state: cur?.catalog_sync || null, synced_at: cur?.last_catalog_sync_at || null, catalog_rows: count ?? 0 });
+    }
+
+    if (action === "sync_cancel") {
+      await supabase.from("integration_olist").update({ catalog_sync_running: false }).eq("tenant_id", tenantId);
+      return json({ success: true });
+    }
 
     // ---------------- depósitos ----------------
     if (action === "deposits") {
