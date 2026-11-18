@@ -825,26 +825,50 @@ serve(async (req) => {
                   }
                 }
               } else {
-                // Loja na UazAPI (sem Z-API): envia a boas-vindas pela UazAPI
-                const { cfg: uazCfg, error: uazErr } = await getUazapiConfig(supabase, eventTenantId);
-                if (!uazCfg) {
-                  console.warn(`[zapi-webhook] Sem credenciais Z-API/UazAPI para o tenant ${eventTenantId}: ${uazErr}`);
-                } else {
+                // Tenant em UazAPI: mesmo ritmo do disparo em massa (digitando 1,5s + pausa 2s entre mensagens)
+                const { data: uaz } = await supabase
+                  .from('integration_whatsapp')
+                  .select('uazapi_url, uazapi_token, provider, is_active')
+                  .eq('tenant_id', eventTenantId)
+                  .eq('is_active', true)
+                  .maybeSingle();
+                if (uaz?.provider === 'uazapi' && uaz.uazapi_url && uaz.uazapi_token) {
+                  const uazUrl = String(uaz.uazapi_url).replace(/\/+$/, '');
+                  const uazHeaders = { 'Content-Type': 'application/json', 'token': uaz.uazapi_token };
+                  const phoneForSend = `55${normalizedPhone}`;
+                  let first = true;
                   for (const autoMsg of autoMsgs) {
                     try {
-                      const phoneForSend = `55${normalizedPhone}`;
-                      const text = (autoMsg.content_text || '')
+                      let text = (autoMsg.content_text || '')
                         .replace(/\{\{phone\}\}/g, normalizedPhone)
                         .replace(/\{\{group\}\}/g, feGroup.group_name || groupJid);
-                      let r: any = null;
-                      if (autoMsg.content_type === 'text' && text) r = await uazSendText(uazCfg, phoneForSend, text);
-                      else if (autoMsg.content_type === 'image' && autoMsg.media_url) r = await uazSendImage(uazCfg, phoneForSend, autoMsg.media_url, text);
-                      console.log(`[zapi-webhook] Auto-message (uazapi) ${feEventType} to ${phoneForSend}: ${JSON.stringify(r)?.slice(0, 300)}`);
-                      if (r?.success) await supabase.rpc('fe_auto_message_inc', { p_id: autoMsg.id });
-                    } catch (amErr: any) {
-                      console.error('[zapi-webhook] Auto-message (uazapi) error:', amErr.message);
+                      text = addMessageVariation(text, false, { invisibleVariation: true });
+                      const isImage = autoMsg.content_type === 'image' && autoMsg.media_url;
+                      if (!isImage && !(autoMsg.content_type === 'text' && text)) continue;
+                      if (!first) await new Promise((r) => setTimeout(r, 2000));
+                      first = false;
+                      try {
+                        await fetch(`${uazUrl}/send/presence`, {
+                          method: 'POST', headers: uazHeaders,
+                          body: JSON.stringify({ number: phoneForSend, presence: 'composing', delay: 1500 }),
+                        });
+                        await new Promise((r) => setTimeout(r, 1500));
+                      } catch (_) { /* ignore */ }
+                      const res = await fetch(`${uazUrl}/send/${isImage ? 'media' : 'text'}`, {
+                        method: 'POST', headers: uazHeaders,
+                        body: JSON.stringify(isImage
+                          ? { number: phoneForSend, type: 'image', file: autoMsg.media_url, text }
+                          : { number: phoneForSend, text }),
+                      });
+                      const body = await res.text();
+                      console.log(`[zapi-webhook] Auto-message (uazapi) ${feEventType} to ${phoneForSend}: status=${res.status} body=${body.substring(0, 200)}`);
+                      if (res.ok) await supabase.rpc('fe_auto_message_inc', { p_id: autoMsg.id });
+                    } catch (uazErr: any) {
+                      console.error('[zapi-webhook] Auto-message (uazapi) error:', uazErr.message);
                     }
                   }
+                } else {
+                  console.warn(`[zapi-webhook] No Z-API/UazAPI credentials found for tenant ${eventTenantId} to send auto-message`);
                 }
               }
             }
