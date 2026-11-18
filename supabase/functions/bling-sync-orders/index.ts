@@ -1793,7 +1793,51 @@ async function sendOrderToBling(
     throw new Error('Pedido criado no Bling, mas não foi possível obter o ID na resposta.');
   }
 
+  if (!skipStock) {
+    await finalizeAsAttended(accessToken, supabase, tenantId, numericId);
+  }
+
   return { kind: 'created', blingOrderId: numericId, raw: parsed };
+}
+
+/**
+ * Opção da loja (integration_bling.send_orders_attended):
+ * lança o estoque no depósito escolhido e muda o pedido para "Atendido" (9).
+ * Falha aqui nunca derruba o envio do pedido — só registra no log.
+ */
+async function finalizeAsAttended(accessToken: string, supabase: any, tenantId: string, blingOrderId: number) {
+  try {
+    const { data: cfg } = await supabase
+      .from('integration_bling')
+      .select('send_orders_attended, bling_deposit_id')
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    if (!cfg?.send_orders_attended) return;
+
+    const headers = { 'Content-Type': 'application/json', 'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}` };
+    const dep = Number(cfg.bling_deposit_id) || 0;
+    const stockUrl = `${BLING_API_URL}/pedidos/vendas/${blingOrderId}/lancar-estoque${dep ? `/${dep}` : ''}`;
+    const stock = await blingFetchWithRetry(stockUrl, { method: 'POST', headers }, { label: `lancar-estoque-${blingOrderId}`, maxAttempts: 3 });
+    console.log(`[bling-sync-orders] lancar-estoque ${blingOrderId}: ${stock.response.status} ${stock.text?.slice(0, 300)}`);
+
+    const sit = await blingFetchWithRetry(
+      `${BLING_API_URL}/pedidos/vendas/${blingOrderId}/situacoes/9`,
+      { method: 'PATCH', headers },
+      { label: `situacao-atendido-${blingOrderId}`, maxAttempts: 3 }
+    );
+    console.log(`[bling-sync-orders] situacao Atendido ${blingOrderId}: ${sit.response.status} ${sit.text?.slice(0, 300)}`);
+
+    await supabase.from('bling_sync_logs').insert({
+      tenant_id: tenantId,
+      action: 'mark_attended',
+      entity_type: 'order',
+      bling_id: String(blingOrderId),
+      status: stock.response.ok && sit.response.ok ? 'success' : 'error',
+      details: JSON.stringify({ stock_status: stock.response.status, stock_body: stock.text?.slice(0, 500), situacao_status: sit.response.status, situacao_body: sit.text?.slice(0, 500), deposito: dep || null }),
+    });
+  } catch (e: any) {
+    console.error(`[bling-sync-orders] Falha ao marcar pedido ${blingOrderId} como Atendido:`, e?.message || e);
+  }
 }
 
 async function fetchOrdersFromBling(accessToken: string, page = 1, limit = 100): Promise<any> {

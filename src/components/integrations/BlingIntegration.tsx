@@ -147,6 +147,7 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
   const [storeName, setStoreName] = useState<string | null>(null);
   const [depositId, setDepositId] = useState<number | null>(null);
   const [depositName, setDepositName] = useState<string | null>(null);
+  const [sendAttended, setSendAttended] = useState(false);
   const [showCreateDeposit, setShowCreateDeposit] = useState(false);
   const [newDepositName, setNewDepositName] = useState('');
   const [modules, setModules] = useState<Record<string, boolean>>({
@@ -195,6 +196,7 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
         setStoreName(data.bling_store_name);
         setDepositId((data as any).bling_deposit_id ?? null);
         setDepositName((data as any).bling_deposit_name ?? null);
+        setSendAttended(!!(data as any).send_orders_attended);
         setModules({
           sync_orders: data.sync_orders,
           sync_products: data.sync_products,
@@ -316,6 +318,7 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
         bling_store_name: storeName,
         bling_deposit_id: depositId,
         bling_deposit_name: depositName,
+        send_orders_attended: sendAttended,
         updated_at: getBrasiliaDateTimeISO(),
       };
 
@@ -846,6 +849,17 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
               <p className="text-xs text-muted-foreground">
                 Depósitos marcados "não conta saldo" (como os de Fulfillment) não podem ser escolhidos. O depósito padrão do Bling não é alterado.
               </p>
+            </div>
+
+            <div className="flex items-start justify-between gap-4 rounded-md border p-3">
+              <div className="space-y-1">
+                <Label htmlFor="bling_send_attended">Enviar pedidos como "Atendido"</Label>
+                <p className="text-xs text-muted-foreground">
+                  O pedido chega no Bling já atendido e o estoque é baixado na hora, no depósito escolhido acima.
+                  Desligado, o pedido chega "Em aberto" e a baixa depende da sua configuração no Bling.
+                </p>
+              </div>
+              <Switch id="bling_send_attended" checked={sendAttended} onCheckedChange={setSendAttended} />
             </div>
 
             {(storeName && storeId) || (depositName && depositId) ? (
