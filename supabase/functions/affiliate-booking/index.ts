@@ -146,18 +146,19 @@ Deno.serve(async (req) => {
       const nome = s(body.nome, 120), email = s(body.email, 160).toLowerCase(), whatsapp = s(body.whatsapp, 30), empresa = s(body.empresa, 120);
       const at = s(body.meeting_at, 40);
       if (!nome || whatsapp.replace(/\D/g, "").length < 10) return json({ success: false, error: "Informe seu nome e o WhatsApp com DDD" });
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ success: false, error: "Informe um e-mail válido" });
+      // E-mail é opcional (a Manuela marca pela conversa só com nome e telefone); se vier, precisa ser válido.
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ success: false, error: "Informe um e-mail válido" });
       if (!(await jarvisSlotFree(at, await bookedSlots()))) return json({ success: false, error: "Esse horário não está mais livre. Escolha outro." });
       const { data: reg, error: rErr } = await sb.rpc("platform_lead_register", {
         _affiliate_id: null, _nome: nome, _empresa: empresa, _whatsapp: whatsapp, _instagram: s(body.instagram, 120),
         _vende_live: true, _origem: "jarvis", _notas: "Agendou pela agenda da Manuela (Jarvis)",
       });
       if (rErr || !reg?.ok) return json({ success: false, error: reg?.error || "Não foi possível agendar agora" });
-      await sb.from("platform_affiliate_leads").update({ email }).eq("id", reg.lead_id);
+      if (email) await sb.from("platform_affiliate_leads").update({ email }).eq("id", reg.lead_id);
       const slotIso = new Date(at).toISOString();
       const r = await setMeeting(reg.lead_id, slotIso);
       if (r.error) return json({ success: false, error: r.error });
-      const g = await syncGoogle({ ...r.lead, email }, JARVIS_MINUTES);
+      const g = await syncGoogle({ ...r.lead, email: email || null }, JARVIS_MINUTES);
       const wErr = await sendWhatsApp(r.lead.whatsapp,
         `Oi, ${nome.split(" ")[0]}! Aqui é a Manuela, da Cartzy 😊 Sua apresentação com o Rafael está confirmada para ${formatBrt(slotIso)} (horário de Brasília), com 30 minutos.\n\n` +
         `5 minutos antes eu te aviso por aqui, e no horário te mando o link da reunião.`, JARVIS_TENANT_ID);
