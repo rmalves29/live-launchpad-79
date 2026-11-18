@@ -30,6 +30,7 @@ import {
   Download,
 } from 'lucide-react';
 import BagyProductsImportPanel from './BagyProductsImportPanel';
+import ErpStockHealthPanel from './ErpStockHealthPanel';
 
 interface BagyIntegrationProps {
   tenantId: string;
@@ -386,6 +387,7 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
         </CardContent>
       </Card>
 
+      {integration?.is_active && integration?.access_token && <ErpStockHealthPanel tenantId={tenantId} erp="bagy" />}
       {integration?.is_active && integration?.access_token && <BagyProductsImportPanel tenantId={tenantId} />}
     </div>
   );

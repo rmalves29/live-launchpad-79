@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
+import ErpStockHealthPanel from './ErpStockHealthPanel';
 import OlistStockPanel from '@/components/integrations/OlistStockPanel';
 import OlistOrdersPanel from '@/components/integrations/OlistOrdersPanel';
 import { Loader2, RefreshCw, ExternalLink, AlertTriangle, CheckCircle2, Unplug } from 'lucide-react';
@@ -176,6 +177,7 @@ export default function OlistIntegration({ tenantId }: { tenantId: string }) {
         </CardContent>
       </Card>
 
+      {st?.authorized && st.is_active && <ErpStockHealthPanel tenantId={tenantId} erp="olist" />}
       {st?.authorized && st.is_active && <OlistStockPanel tenantId={tenantId} />}
       {st?.authorized && st.is_active && <OlistOrdersPanel tenantId={tenantId} />}
 

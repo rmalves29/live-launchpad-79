@@ -49,3 +49,6 @@ verify_jwt = false
 
 [functions.pagarme-reconcile]
 verify_jwt = false
+
+[functions.erp-stock-reconcile]
+verify_jwt = false

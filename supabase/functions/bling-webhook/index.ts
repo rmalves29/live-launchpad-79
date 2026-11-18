@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { erpCanConfirmPostage } from "../_shared/postage-confirmation.ts";
-import { findIntegrationBySignature, syncProductEvent, syncStockEvent, validToken } from "../_shared/bling-product-sync.ts";
+import { findIntegrationBySignature, syncProductEvent, syncStockEvent, touchErpState, validToken } from "../_shared/bling-product-sync.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -152,6 +152,7 @@ serve(async (req) => {
             if (dup && (dup as any).code === '23505') return; // aviso repetido: já tratado
             if (Math.random() < 0.02) await supabase.from('bling_webhook_events').delete().lt('created_at', new Date(Date.now() - 7 * 86400000).toISOString());
           }
+          if (resource !== "virtual_stock") await touchErpState(supabase, integ.tenant_id, 'bling', { last_event_at: new Date().toISOString() });
           const token = await validToken(supabase, integ);
           if (!token) result = "token_expirado";
           else if (resource === "stock") result = await syncStockEvent(supabase, integ, token, body.data);

@@ -64,7 +64,7 @@ export async function validToken(supabase: any, integ: any): Promise<string | nu
   return integ.access_token;
 }
 
-async function blingGet(token: string, path: string): Promise<{ ok: boolean; status: number; data: any }> {
+export async function blingGet(token: string, path: string): Promise<{ ok: boolean; status: number; data: any }> {
   for (let attempt = 1; attempt <= 4; attempt++) {
     await sleep(380);
     const res = await fetch(`${BLING}${path}`, { headers: { 'enable-jwt': '1', Authorization: `Bearer ${token}`, Accept: "application/json" } });
@@ -75,7 +75,7 @@ async function blingGet(token: string, path: string): Promise<{ ok: boolean; sta
   return { ok: false, status: 429, data: {} };
 }
 
-async function depositBalances(token: string, depositId: number, ids: number[]): Promise<Map<number, number>> {
+export async function depositBalances(token: string, depositId: number, ids: number[]): Promise<Map<number, number>> {
   const out = new Map<number, number>();
   if (!ids.length) return out;
   const r = await blingGet(token, `/estoques/saldos?${ids.map((i) => `idsProdutos[]=${i}`).join("&")}`);
@@ -133,24 +133,86 @@ export async function sweepDeletedProducts(supabase: any, integ: any, token: str
   return { excluidos_no_bling: deleted.length, retired };
 }
 
+// ---------- depósito: o escolhido na integração ou, se a loja não escolheu, o padrão do Bling ----------
+const defaultDepositCache = new Map<string, { id: number; at: number }>();
+export async function effectiveDepositId(integ: any, token: string): Promise<{ id: number; source: "escolhido" | "padrao_bling" | "nenhum" }> {
+  const chosen = Number(integ.bling_deposit_id) || 0;
+  if (chosen) return { id: chosen, source: "escolhido" };
+  const hit = defaultDepositCache.get(integ.tenant_id);
+  if (hit && Date.now() - hit.at < 30 * 60 * 1000) return { id: hit.id, source: hit.id ? "padrao_bling" : "nenhum" };
+  const r = await blingGet(token, `/depositos?limite=100`);
+  const list: any[] = r.ok ? r.data?.data || [] : [];
+  const ativos = list.filter((d) => d?.situacao === undefined || Number(d.situacao) === 1);
+  const dep = ativos.find((d) => d?.padrao === true) || (ativos.length === 1 ? ativos[0] : null);
+  const id = Number(dep?.id) || 0;
+  if (r.ok) defaultDepositCache.set(integ.tenant_id, { id, at: Date.now() });
+  return { id, source: id ? "padrao_bling" : "nenhum" };
+}
+
+// ---------- ligação automática: produto do Cartzy sem bling_product_id, achado pelo código ----------
+// Procura no Cartzy um único produto (que não seja pai de variações) com sku_erp ou code igual ao código do Bling.
+// Se achar exatamente um, grava o bling_product_id. Código repetido em mais de um produto: não adivinha.
+export async function linkByCode(supabase: any, tenantId: string, blingId: number, codigo: string): Promise<any | null> {
+  const code = String(codigo || "").trim();
+  if (!code || !blingId) return null;
+  const { data: cands } = await supabase
+    .from("products")
+    .select("id, stock, bling_product_id")
+    .eq("tenant_id", tenantId)
+    .or(`sku_erp.eq.${JSON.stringify(code)},code.eq.${JSON.stringify(code)}`)
+    .limit(3);
+  const livres = (cands || []).filter((c: any) => !c.bling_product_id || Number(c.bling_product_id) === blingId);
+  if (livres.length !== 1 || (cands || []).length !== 1) return null;
+  const p = livres[0];
+  const { count } = await supabase.from("products").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("parent_product_id", p.id);
+  if (count) return null; // produto pai de variações não recebe estoque próprio
+  if (!p.bling_product_id) {
+    await supabase.from("products").update({ bling_product_id: blingId, updated_at: new Date().toISOString() }).eq("id", p.id).eq("tenant_id", tenantId).is("bling_product_id", null);
+  }
+  return { id: p.id, stock: p.stock };
+}
+
+// Saldo que o Cartzy deve mostrar = saldo do ERP menos o que já está reservado no Cartzy e o ERP ainda não sabe.
+export async function pendingQty(supabase: any, tenantId: string, erp: string, productIds: number[]): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
+  if (!productIds.length) return out;
+  const { data } = await supabase.rpc("erp_pending_qty", { p_tenant: tenantId, p_erp: erp, p_product_ids: productIds });
+  for (const r of data || []) out.set(Number(r.product_id), Number(r.qty) || 0);
+  return out;
+}
+
+export async function touchErpState(supabase: any, tenantId: string, erp: string, patch: Record<string, any>) {
+  await supabase.from("erp_stock_sync_state").upsert({ tenant_id: tenantId, erp, ...patch, updated_at: new Date().toISOString() }, { onConflict: "tenant_id,erp" });
+}
+
 // ---------- aviso de ESTOQUE ----------
 export async function syncStockEvent(supabase: any, integ: any, token: string, data: any): Promise<string> {
   const blingId = Number(data?.produto?.id ?? data?.idProduto ?? data?.id);
   if (!blingId) return "sem_id_do_produto";
-  const depositId = Number(integ.bling_deposit_id) || 0;
-  if (!depositId) return "sem_deposito_escolhido";
+  const dep = await effectiveDepositId(integ, token);
+  if (!dep.id) return "sem_deposito_escolhido";
   const evDep = Number(data?.deposito?.id) || 0;
-  if (evDep && evDep !== depositId) return "outro_deposito";
+  if (evDep && evDep !== dep.id) return "outro_deposito";
 
-  const { data: p } = await supabase.from("products").select("id, stock").eq("tenant_id", integ.tenant_id).eq("bling_product_id", blingId).maybeSingle();
-  if (!p) return "produto_nao_vinculado";
+  let { data: p } = await supabase.from("products").select("id, stock").eq("tenant_id", integ.tenant_id).eq("bling_product_id", blingId).maybeSingle();
+  let linked = false;
+  if (!p) {
+    // não ligado: lê o código no Bling e tenta ligar pelo SKU/código do Cartzy
+    const det = await blingGet(token, `/produtos/${blingId}`);
+    if (!det.ok) return `produto_nao_vinculado (erro_ao_ler_${det.status})`;
+    p = await linkByCode(supabase, integ.tenant_id, blingId, det.data?.data?.codigo);
+    if (!p) return "produto_nao_vinculado";
+    linked = true;
+  }
 
-  const bal = await depositBalances(token, depositId, [blingId]);
+  const bal = await depositBalances(token, dep.id, [blingId]);
   if (!bal.has(blingId)) return "saldo_nao_encontrado";
-  const novo = Math.max(0, Math.floor(bal.get(blingId) as number));
-  if (novo === Number(p.stock)) return "estoque_ja_igual";
+  const pend = (await pendingQty(supabase, integ.tenant_id, "bling", [Number(p.id)])).get(Number(p.id)) || 0;
+  const novo = Math.max(0, Math.floor(bal.get(blingId) as number) - pend);
+  if (novo === Number(p.stock)) return linked ? "ligado_estoque_ja_igual" : "estoque_ja_igual";
   const { error } = await supabase.from("products").update({ stock: novo, updated_at: new Date().toISOString() }).eq("id", p.id);
-  return error ? `erro:${error.message}` : `estoque ${p.stock} -> ${novo}`;
+  if (!error) await touchErpState(supabase, integ.tenant_id, "bling", { last_change_at: new Date().toISOString() });
+  return error ? `erro:${error.message}` : `${linked ? "ligado; " : ""}estoque ${p.stock} -> ${novo}${pend ? ` (reservado ${pend})` : ""}`;
 }
 
 // ---------- aviso de PRODUTO ----------

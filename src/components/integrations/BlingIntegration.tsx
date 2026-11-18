@@ -19,6 +19,7 @@ import { formatBrasiliaDateTime, getBrasiliaDateTimeISO } from '@/lib/date-utils
 import { useSearchParams } from 'react-router-dom';
 import BlingOrdersSyncPanel from './BlingOrdersSyncPanel';
 import BlingProductsSyncPanel from './BlingProductsSyncPanel';
+import ErpStockHealthPanel from './ErpStockHealthPanel';
 import BlingFiscalSettings from './BlingFiscalSettings';
 import BlingBulkAddressSync from './BlingBulkAddressSync';
 import BlingPaymentSettings from './BlingPaymentSettings';
@@ -923,6 +924,11 @@ export default function BlingIntegration({ tenantId }: BlingIntegrationProps) {
       {/* Painel de sincronização de produtos */}
       {modules.sync_products && isAuthorized && !isExpired && (
         <BlingProductsSyncPanel tenantId={tenantId} />
+      )}
+
+      {/* Saúde do estoque Bling → Cartzy */}
+      {isAuthorized && !isExpired && integration?.is_active && (
+        <ErpStockHealthPanel tenantId={tenantId} erp="bling" />
       )}
 
       {/* Dados Fiscais */}
