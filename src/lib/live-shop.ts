@@ -271,6 +271,28 @@ function filterCarrierOptions(options: any[], provider: ShippingProvider) {
 // e volta ao mesmo valor não espera de novo. Também serve de "aquecimento": o cálculo começa antes de abrir o checkout.
 const SHIP_TTL_MS = 5 * 60 * 1000;
 const shipCache = new Map<string, { ts: number; res: { options: ShippingOption[]; notice?: string } }>();
+// Também no navegador (30 min): a cliente que recarrega a página ou volta mais tarde vê o frete na hora.
+const SHIP_LS_TTL_MS = 30 * 60 * 1000;
+const SHIP_LS_PREFIX = 'cz_ship:';
+function shipCacheGet(key: string) {
+  const mem = shipCache.get(key);
+  if (mem && Date.now() - mem.ts < SHIP_TTL_MS) return mem;
+  try {
+    const raw = localStorage.getItem(SHIP_LS_PREFIX + key);
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    if (v && Date.now() - v.ts < SHIP_LS_TTL_MS && Array.isArray(v.res?.options) && v.res.options.length) { shipCache.set(key, v); return v; }
+    localStorage.removeItem(SHIP_LS_PREFIX + key);
+  } catch { /* sem localStorage (aba anônima etc.): segue sem */ }
+  return null;
+}
+function shipCacheSet(key: string, res: { options: ShippingOption[]; notice?: string }) {
+  const v = { ts: Date.now(), res };
+  shipCache.set(key, v);
+  // só guarda no navegador quando veio transportadora (cotação completa)
+  if (!res.options.some((o) => !String(o.id).startsWith('custom_'))) return;
+  try { localStorage.setItem(SHIP_LS_PREFIX + key, JSON.stringify(v)); } catch { /* cheio ou bloqueado */ }
+}
 const shipInflight = new Map<string, Promise<{ options: ShippingOption[]; notice?: string }>>();
 const cepCache = new Map<string, Promise<{ state: string; city: string }>>();
 let appSettingsCache: { ts: number; p: Promise<any> } | null = null;
@@ -321,8 +343,8 @@ export async function calculateLiveShipping(params: {
   const qty = params.lines.reduce((s, l) => s + l.qty, 0);
   const insurance = params.lines.reduce((s, l) => s + l.price * l.qty, 0);
   const key = `${params.tenantId}|${cep}|${qty}|${Math.round(insurance * 100)}|${Math.round(params.cartTotal * 100)}|${params.freeAbove ?? ''}`;
-  const hit = shipCache.get(key);
-  if (hit && Date.now() - hit.ts < SHIP_TTL_MS) {
+  const hit = shipCacheGet(key);
+  if (hit) {
     params.onPartial?.(hit.res.options);
     return hit.res;
   }
@@ -428,7 +450,7 @@ export async function calculateLiveShipping(params: {
   try {
     const res = await job;
     // só guarda no cache o que não foi falha de transportadora (falha passageira não pode ficar valendo por 5 minutos)
-    if (!res.notice) shipCache.set(key, { ts: Date.now(), res });
+    if (!res.notice) shipCacheSet(key, res);
     return res;
   } finally {
     shipInflight.delete(key);

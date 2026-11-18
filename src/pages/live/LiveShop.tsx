@@ -678,6 +678,11 @@ export default function LiveShop() {
   async function fillCep(cepValue: string) {
     const cep = onlyDigits(cepValue);
     if (cep.length !== 8) return;
+    // Começa a cotar o frete assim que o CEP fica completo: enquanto a cliente preenche o resto do cadastro,
+    // a cotação já roda e, ao abrir "Finalizar pedido", o valor sai do cache na hora.
+    if (meta && lines.length > 0) {
+      calculateLiveShipping({ tenantId: meta.tenant.id, cep, lines, cartTotal: cartSubtotal(lines), freeAbove: meta.affiliate?.free_ship_min ?? null }).catch(() => undefined);
+    }
     try {
       const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
       const d = await r.json();
