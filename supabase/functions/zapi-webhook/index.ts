@@ -840,12 +840,7 @@ serve(async (req) => {
                       if (autoMsg.content_type === 'text' && text) r = await uazSendText(uazCfg, phoneForSend, text);
                       else if (autoMsg.content_type === 'image' && autoMsg.media_url) r = await uazSendImage(uazCfg, phoneForSend, autoMsg.media_url, text);
                       console.log(`[zapi-webhook] Auto-message (uazapi) ${feEventType} to ${phoneForSend}: ${JSON.stringify(r)?.slice(0, 300)}`);
-                      if (r?.success) {
-                        await supabase.from('fe_auto_messages')
-                          .update({ sent_count: (autoMsg.sent_count || 0) + 1, last_sent_at: new Date().toISOString() })
-                          .eq('id', autoMsg.id);
-                        autoMsg.sent_count = (autoMsg.sent_count || 0) + 1;
-                      }
+                      if (r?.success) await supabase.rpc('fe_auto_message_inc', { p_id: autoMsg.id });
                     } catch (amErr: any) {
                       console.error('[zapi-webhook] Auto-message (uazapi) error:', amErr.message);
                     }
