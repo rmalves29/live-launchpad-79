@@ -288,9 +288,11 @@ Deno.serve(async (req) => {
         let parentId: string | null = jaPai?.id || null;
         const anexo = (pai?.anexos || []).map((x: any) => norm(x?.url)).find((u: string) => /^https?:\/\//i.test(u)) || null;
         const precoPai = num(pai?.precos?.preco);
+        // preço promocional da Olist (precos.precoPromocional): só vale se for maior que zero e menor que o preço normal
+        const promoPai = promoOf(pai?.precos?.precoPromocional, precoPai);
         if (!parentId) {
           const { data: novoPai, error } = await insertWithFreshCode(supabase, nextCode, {
-            tenant_id: tenantId, name: norm(pai?.descricao).slice(0, 200), price: precoPai, stock: 0, is_active: true,
+            tenant_id: tenantId, name: norm(pai?.descricao).slice(0, 200), price: precoPai, promotional_price: promoPai > 0 ? promoPai : null, stock: 0, is_active: true,
             sale_type: saleType, olist_product_id: paiId, sku_erp: norm(pai?.sku) || null, image_url: anexo,
           });
           if (error || !novoPai) return { ok: false, error: error?.message || "Falha ao criar o produto" };
@@ -303,9 +305,12 @@ Deno.serve(async (req) => {
           const { data: jaFilho } = await supabase.from("products").select("id").eq("tenant_id", tenantId).eq("olist_product_id", vid).maybeSingle();
           if (jaFilho) continue;
           const g = variationFromGrade(v?.grade, norm(v?.descricao));
+          const precoFilho = num(v?.precos?.preco) || precoPai;
+          // promocional da própria variação; se a Olist não mandou o campo, vale o do pai quando o preço é o mesmo
+          const promoFilho = v?.precos?.precoPromocional != null ? promoOf(v.precos.precoPromocional, precoFilho) : (precoFilho === precoPai ? promoPai : 0);
           const { error } = await insertWithFreshCode(supabase, nextCode, {
             tenant_id: tenantId, name: `${norm(pai?.descricao)} - ${g.label || norm(v?.sku) || vid}`.slice(0, 200),
-            price: num(v?.precos?.preco) || precoPai, stock: saldoPorId.get(vid) ?? 0, is_active: true, sale_type: saleType,
+            price: precoFilho, promotional_price: promoFilho > 0 ? promoFilho : null, stock: saldoPorId.get(vid) ?? 0, is_active: true, sale_type: saleType,
             image_url: anexo, color: g.color, size: g.size, parent_product_id: parentId,
             olist_product_id: vid, sku_erp: norm(v?.sku) || null,
           });

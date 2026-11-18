@@ -529,7 +529,8 @@ const PublicCheckout = () => {
         );
         const mergeOpt = nonCustom.find(o => o.id === 'merge_order');
         const others = nonCustom.filter(o => o.id !== 'merge_order');
-        return mergeOpt ? [mergeOpt, ...customs, ...others] : [...customs, ...others];
+        // fretes cadastrados pela loja (retirada, frete fixo...) ficam por ÚLTIMO, depois das transportadoras
+        return mergeOpt ? [mergeOpt, ...others, ...customs] : [...others, ...customs];
       });
     })();
     return () => { cancelled = true; };
@@ -794,8 +795,8 @@ const PublicCheckout = () => {
       if (carrierOptions.length > 0) {
         // Preservar opção de merge + opções customizadas + opções da(s) transportadora(s)
         const allOptions = mergeOption
-          ? [mergeOption, ...fallbackShipping, ...carrierOptions]
-          : [...fallbackShipping, ...carrierOptions];
+          ? [mergeOption, ...carrierOptions, ...fallbackShipping]
+          : [...carrierOptions, ...fallbackShipping];
         setShippingOptions(allOptions);
         toast({
           title: 'Frete calculado',

@@ -783,8 +783,8 @@ const Checkout = () => {
       if (carrierOptions.length > 0) {
         // Preservar opção de merge + opções customizadas + opções da(s) transportadora(s)
         const allOptions = mergeOption
-          ? [mergeOption, ...fallbackShipping, ...carrierOptions]
-          : [...fallbackShipping, ...carrierOptions];
+          ? [mergeOption, ...carrierOptions, ...fallbackShipping]
+          : [...carrierOptions, ...fallbackShipping];
         setShippingOptions(allOptions);
         console.log('✅ Opções de frete:', carrierOptions.length);
         toast({

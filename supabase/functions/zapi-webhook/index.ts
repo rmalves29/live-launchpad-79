@@ -808,6 +808,7 @@ serve(async (req) => {
                       });
                       const sendBody = await sendResult.text();
                       console.log(`[zapi-webhook] Auto-message text result for ${feEventType} to ${phoneForSend}: status=${sendResult.status} body=${sendBody.substring(0, 300)}`);
+                      if (sendResult.ok) await supabase.rpc('fe_auto_message_inc', { p_id: autoMsg.id });
                     } else if (autoMsg.content_type === 'image' && autoMsg.media_url) {
                       const sendResult = await fetch(`${baseUrl}/send-image`, {
                         method: 'POST',
@@ -816,6 +817,7 @@ serve(async (req) => {
                       });
                       const sendBody = await sendResult.text();
                       console.log(`[zapi-webhook] Auto-message image result for ${feEventType} to ${phoneForSend}: status=${sendResult.status} body=${sendBody.substring(0, 300)}`);
+                      if (sendResult.ok) await supabase.rpc('fe_auto_message_inc', { p_id: autoMsg.id });
                     }
                   } catch (amErr: any) {
                     console.error('[zapi-webhook] Auto-message error:', amErr.message);

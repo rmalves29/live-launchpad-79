@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Plus, Trash2, UserPlus, UserMinus, MessageSquare, Upload, X, Pencil, Gift } from 'lucide-react';
+import { Plus, Trash2, UserPlus, UserMinus, MessageSquare, Upload, X, Pencil, Gift, Send } from 'lucide-react';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -27,6 +27,8 @@ interface AutoMessage {
   content_text: string | null;
   media_url: string | null;
   is_active: boolean;
+  sent_count: number;
+  last_sent_at: string | null;
 }
 
 interface ReturnAutomation {
@@ -103,6 +105,7 @@ export default function AutoMessagesManager() {
   const [campaigns, setCampaigns] = useState<FeCampaign[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [returnStats, setReturnStats] = useState({ left: 0, returned: 0 });
+  const [autoStats, setAutoStats] = useState<Record<string, { invites: number; returned: number }>>({});
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [eventType, setEventType] = useState<'join' | 'leave'>('join');
@@ -115,7 +118,7 @@ export default function AutoMessagesManager() {
   const fetchData = useCallback(async () => {
     if (!tenant) return;
     setLoading(true);
-    const [{ data: msgs }, { data: autos }, { data: grps }, { data: camps }, { data: cps }, { count: leftCount }, { count: returnedCount }] = await Promise.all([
+    const [{ data: msgs }, { data: autos }, { data: grps }, { data: camps }, { data: cps }, { count: leftCount }, { count: returnedCount }, { data: statRows }] = await Promise.all([
       supabase.from('fe_auto_messages' as any).select('*').eq('tenant_id', tenant.id).eq('event_type', 'join').order('created_at', { ascending: false }),
       supabase.from('fe_return_automations' as any).select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }),
       supabase.from('fe_groups' as any).select('id, group_name, is_admin, is_active').eq('tenant_id', tenant.id).eq('is_admin', true).eq('is_active', true).order('group_name'),
@@ -123,7 +126,13 @@ export default function AutoMessagesManager() {
       supabase.from('coupons').select('id, code').eq('tenant_id', tenant.id).eq('is_active', true).neq('channel', 'live').order('code'),
       supabase.from('fe_return_pending' as any).select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id),
       supabase.from('fe_return_pending' as any).select('id', { count: 'exact', head: true }).eq('tenant_id', tenant.id).eq('status', 'rewarded'),
+      supabase.from('fe_return_automation_stats' as any).select('automation_id, invites_sent, returned'),
     ]);
+    const stats: Record<string, { invites: number; returned: number }> = {};
+    ((statRows as any[]) || []).forEach(r => {
+      stats[r.automation_id] = { invites: Number(r.invites_sent) || 0, returned: Number(r.returned) || 0 };
+    });
+    setAutoStats(stats);
     if (msgs) setJoinMessages(msgs as any);
     if (autos) setReturnAutos(autos as any);
     if (grps) setGroups(grps as any);
@@ -316,6 +325,9 @@ export default function AutoMessagesManager() {
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <Badge variant="default">Entrada</Badge>
                       <Badge variant="outline">{getJoinScope(msg)}</Badge>
+                      <Badge variant="secondary" title={msg.last_sent_at ? `Último envio: ${new Date(msg.last_sent_at).toLocaleString('pt-BR')}` : 'Contagem começa a partir de agora'}>
+                        <Send className="h-3 w-3 mr-1" />{(msg.sent_count || 0).toLocaleString('pt-BR')} enviadas
+                      </Badge>
                     </div>
                     <p className="text-sm whitespace-pre-wrap line-clamp-2">{msg.content_text}</p>
                   </div>
@@ -387,6 +399,7 @@ export default function AutoMessagesManager() {
                         <Badge variant="destructive">Saída → Retorno</Badge>
                         <Badge variant="outline">{inCamp ? 'Campanhas' : 'Grupos'}: {names.join(', ') || '—'}</Badge>
                         <Badge variant="secondary"><Gift className="h-3 w-3 mr-1" />{a.coupon_code}</Badge>
+                        <Badge variant="secondary"><Send className="h-3 w-3 mr-1" />{autoStats[a.id]?.invites || 0} convites · {autoStats[a.id]?.returned || 0} voltaram</Badge>
                         <span className="text-xs text-muted-foreground">Validade {a.validity_days}d · Cooldown {a.cooldown_hours}h</span>
                       </div>
                       <p className="text-sm font-medium">{a.name}</p>
