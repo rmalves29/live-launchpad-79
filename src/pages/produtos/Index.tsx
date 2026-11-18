@@ -813,10 +813,12 @@ const Produtos = () => {
       !term ||
       product.name.toLowerCase().includes(term) ||
       product.code.toLowerCase().includes(term) ||
+      (product.sku_erp || '').toLowerCase().includes(term) ||
       (childrenByParent[product.id] || []).some(
         (c) =>
           c.code.toLowerCase().includes(term) ||
-          c.name.toLowerCase().includes(term)
+          c.name.toLowerCase().includes(term) ||
+          (c.sku_erp || '').toLowerCase().includes(term)
       );
     const matchesType = saleTypeFilter === 'ALL' || 
       product.sale_type === saleTypeFilter || 
@@ -1802,7 +1804,7 @@ const Produtos = () => {
                 </Select>
                 <Search className="h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar produtos..."
+                  placeholder="Buscar por nome, código ou SKU do ERP..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="max-w-sm"
