@@ -9,6 +9,30 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const TTL_MS = 3 * 60 * 60 * 1000;
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 
+// Memória da instância (fica viva entre chamadas seguidas): evita ir ao banco buscar a integração
+// a cada cotação. 60 s de validade: troca de credencial/serviço vale em no máximo 1 minuto.
+const INTEG_TTL_MS = 60 * 1000;
+const integMemo = new Map<string, { ts: number; p: Promise<any> }>();
+let sharedClient: any = null;
+export function serviceClient(): any {
+  if (!sharedClient) sharedClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  return sharedClient;
+}
+/** Linha ativa de shipping_integrations do provedor (select *), guardada 60 s na memória da instância. */
+export function getIntegrationCached(tenantId: string, provider: string): Promise<any> {
+  const k = `${tenantId}|${provider}`;
+  const m = integMemo.get(k);
+  if (m && Date.now() - m.ts < INTEG_TTL_MS) return m.p;
+  const p = Promise.resolve(serviceClient().from("shipping_integrations").select("*")
+    .eq("tenant_id", tenantId).eq("provider", provider).eq("is_active", true).maybeSingle())
+    .then((r: any) => r.data || null)
+    .catch(() => { integMemo.delete(k); return null; });
+  integMemo.set(k, { ts: Date.now(), p });
+  return p;
+}
+/** Esquece a integração guardada (ex.: depois de renovar o token). */
+export function forgetIntegration(tenantId: string, provider: string) { integMemo.delete(`${tenantId}|${provider}`); }
+
 function quoteKey(products: any[], updatedAt: string): string {
   let kg = 0, insurance = 0, volume = 0;
   for (const p of products || []) {
@@ -33,9 +57,8 @@ export function withQuoteCache(provider: string, handler: (req: Request) => Prom
     let supabase: any;
     let key = "";
     try {
-      supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-      const { data: integ } = await supabase.from("shipping_integrations").select("updated_at")
-        .eq("tenant_id", tenantId).eq("provider", provider).eq("is_active", true).maybeSingle();
+      supabase = serviceClient();
+      const integ = await getIntegrationCached(tenantId, provider);
       if (!integ) return handler(req);
       key = quoteKey(body.products, integ.updated_at);
       const prefix = cep.slice(0, 5);

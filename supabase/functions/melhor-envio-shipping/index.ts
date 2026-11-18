@@ -1,4 +1,17 @@
-import { withQuoteCache } from "../_shared/shipping-quote-cache.ts";
+import { withQuoteCache, getIntegrationCached, forgetIntegration } from "../_shared/shipping-quote-cache.ts";
+
+// Medidas padrão do app (mudam raramente): 5 min na memória da instância.
+let appSettingsMemo: { ts: number; p: Promise<any> } | null = null;
+function appSettingsCached(supabase: any): Promise<any> {
+  if (!appSettingsMemo || Date.now() - appSettingsMemo.ts > 5 * 60 * 1000) {
+    appSettingsMemo = { ts: Date.now(), p: Promise.resolve(supabase.from("app_settings")
+      .select("default_weight_kg, default_width_cm, default_height_cm, default_length_cm").limit(1).single())
+      .then((r: any) => r.data || null).catch(() => { appSettingsMemo = null; return null; }) };
+  }
+  return appSettingsMemo.p;
+}
+// Melhor Envio às vezes trava por dezenas de segundos: depois de 8 s a cotação desiste (a loja mostra as outras opções).
+const ME_TIMEOUT_MS = 8000;
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -119,13 +132,12 @@ serve(withQuoteCache("melhor_envio", async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Buscar integração de frete do tenant
-    const { data: integration, error: integrationError } = await supabase
-      .from("shipping_integrations")
-      .select("*")
-      .eq("tenant_id", tenant_id)
-      .eq("provider", "melhor_envio")
-      .eq("is_active", true)
-      .single();
+    // Integração e medidas padrão ao mesmo tempo (e da memória, quando a instância já está quente)
+    const [integration, appSettings] = await Promise.all([
+      getIntegrationCached(tenant_id, "melhor_envio"),
+      appSettingsCached(supabase),
+    ]);
+    const integrationError = integration ? null : { message: "não encontrada" };
 
     console.log("[melhor-envio-shipping] Integration found:", !!integration, integrationError?.message);
 
@@ -158,18 +170,14 @@ serve(withQuoteCache("melhor_envio", async (req) => {
       if (expiresAt - Date.now() < bufferMs) {
         console.log("[melhor-envio-shipping] Token expiring soon, refreshing proactively...");
         const newToken = await refreshMelhorEnvioToken(supabase, integration);
+        forgetIntegration(tenant_id, "melhor_envio");
         if (newToken) {
           accessToken = newToken;
         }
       }
     }
 
-    // Buscar dimensões/peso padrão do app_settings
-    const { data: appSettings } = await supabase
-      .from("app_settings")
-      .select("default_weight_kg, default_width_cm, default_height_cm, default_length_cm")
-      .limit(1)
-      .single();
+    // Dimensões/peso padrão do app_settings (já buscados acima, junto com a integração)
 
     const defWeight = appSettings?.default_weight_kg ?? 0.01;
     const defWidth = appSettings?.default_width_cm ?? 13;
@@ -213,7 +221,7 @@ serve(withQuoteCache("melhor_envio", async (req) => {
       options: { insurance_value: totalInsuranceValue, receipt: false, own_hand: false }
     };
 
-    console.log("[melhor-envio-shipping] API request:", JSON.stringify(requestBody, null, 2));
+    console.log("[melhor-envio-shipping] API request:", JSON.stringify(requestBody));
 
     // Make the API call with auto-retry on 401
     let response = await fetch(`${baseUrl}/me/shipment/calculate`, {
@@ -224,7 +232,8 @@ serve(withQuoteCache("melhor_envio", async (req) => {
         "Content-Type": "application/json",
         "User-Agent": "OrderZaps/1.0"
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(ME_TIMEOUT_MS),
     });
 
     // If 401 Unauthorized, try refreshing the token and retry once
@@ -232,6 +241,7 @@ serve(withQuoteCache("melhor_envio", async (req) => {
       console.log("[melhor-envio-shipping] Got 401, attempting token refresh and retry...");
       await response.text(); // consume body
       const newToken = await refreshMelhorEnvioToken(supabase, integration);
+      forgetIntegration(tenant_id, "melhor_envio");
       if (newToken) {
         accessToken = newToken;
         response = await fetch(`${baseUrl}/me/shipment/calculate`, {
@@ -242,7 +252,8 @@ serve(withQuoteCache("melhor_envio", async (req) => {
             "Content-Type": "application/json",
             "User-Agent": "OrderZaps/1.0"
           },
-          body: JSON.stringify(requestBody)
+          body: JSON.stringify(requestBody),
+          signal: AbortSignal.timeout(ME_TIMEOUT_MS),
         });
       }
     }
