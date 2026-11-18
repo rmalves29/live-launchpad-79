@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { parsePurchaseLimitError, purchaseLimitCustomerMessage } from "../_shared/purchase-limit.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getGroupAdmins as evoGetGroupAdmins } from "../_shared/evolution-api.ts";
+import { getUazapiConfig, sendText as uazSendText, sendImage as uazSendImage } from "../_shared/uazapi-api.ts";
  import { antiBlockDelay, logAntiBlockDelay, antiBlockDelayLive, addMessageVariation, getTypingDelay, simulateTyping } from "../_shared/anti-block-delay.ts";
  import { activateConsentOnReply } from "../_shared/consent-v2.ts";
 
@@ -824,7 +825,32 @@ serve(async (req) => {
                   }
                 }
               } else {
-                console.warn(`[zapi-webhook] No Z-API credentials found for tenant ${eventTenantId} to send auto-message`);
+                // Loja na UazAPI (sem Z-API): envia a boas-vindas pela UazAPI
+                const { cfg: uazCfg, error: uazErr } = await getUazapiConfig(supabase, eventTenantId);
+                if (!uazCfg) {
+                  console.warn(`[zapi-webhook] Sem credenciais Z-API/UazAPI para o tenant ${eventTenantId}: ${uazErr}`);
+                } else {
+                  for (const autoMsg of autoMsgs) {
+                    try {
+                      const phoneForSend = `55${normalizedPhone}`;
+                      const text = (autoMsg.content_text || '')
+                        .replace(/\{\{phone\}\}/g, normalizedPhone)
+                        .replace(/\{\{group\}\}/g, feGroup.group_name || groupJid);
+                      let r: any = null;
+                      if (autoMsg.content_type === 'text' && text) r = await uazSendText(uazCfg, phoneForSend, text);
+                      else if (autoMsg.content_type === 'image' && autoMsg.media_url) r = await uazSendImage(uazCfg, phoneForSend, autoMsg.media_url, text);
+                      console.log(`[zapi-webhook] Auto-message (uazapi) ${feEventType} to ${phoneForSend}: ${JSON.stringify(r)?.slice(0, 300)}`);
+                      if (r?.success) {
+                        await supabase.from('fe_auto_messages')
+                          .update({ sent_count: (autoMsg.sent_count || 0) + 1, last_sent_at: new Date().toISOString() })
+                          .eq('id', autoMsg.id);
+                        autoMsg.sent_count = (autoMsg.sent_count || 0) + 1;
+                      }
+                    } catch (amErr: any) {
+                      console.error('[zapi-webhook] Auto-message (uazapi) error:', amErr.message);
+                    }
+                  }
+                }
               }
             }
           } else {
