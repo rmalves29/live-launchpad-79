@@ -1801,8 +1801,8 @@ async function sendOrderToBling(
 }
 
 /**
- * Todo pedido enviado ao Bling (com baixa de estoque):
- * lança o estoque no depósito escolhido e muda o pedido para "Atendido" (9).
+ * Todo pedido enviado ao Bling (com baixa de estoque): lança o estoque no depósito escolhido e,
+ * nas lojas com transportadora com API, muda o pedido para "Atendido" (9).
  * Falha aqui nunca derruba o envio do pedido — só registra no log.
  */
 async function finalizeAsAttended(accessToken: string, supabase: any, tenantId: string, blingOrderId: number) {
@@ -1819,12 +1819,18 @@ async function finalizeAsAttended(accessToken: string, supabase: any, tenantId: 
     const stock = await blingFetchWithRetry(stockUrl, { method: 'POST', headers }, { label: `lancar-estoque-${blingOrderId}`, maxAttempts: 3 });
     console.log(`[bling-sync-orders] lancar-estoque ${blingOrderId}: ${stock.response.status} ${stock.text?.slice(0, 300)}`);
 
-    const sit = await blingFetchWithRetry(
-      `${BLING_API_URL}/pedidos/vendas/${blingOrderId}/situacoes/9`,
-      { method: 'PATCH', headers },
-      { label: `situacao-atendido-${blingOrderId}`, maxAttempts: 3 }
-    );
-    console.log(`[bling-sync-orders] situacao Atendido ${blingOrderId}: ${sit.response.status} ${sit.text?.slice(0, 300)}`);
+    // "Atendido" no Bling vale como POSTAGEM para lojas sem transportadora com API (erpCanConfirmPostage).
+    // Nessas lojas, marcar Atendido na criação dispararia o "pedido enviado" antes da postagem real:
+    // o estoque é baixado do mesmo jeito, mas o pedido fica "Em aberto" até a loja marcar Atendido ao postar.
+    const atendidoEhPostagem = await erpCanConfirmPostage(supabase, tenantId);
+    const sit = atendidoEhPostagem
+      ? { response: { ok: true, status: 0 } as any, text: 'mantido Em aberto (Atendido = postagem nesta loja)' }
+      : await blingFetchWithRetry(
+          `${BLING_API_URL}/pedidos/vendas/${blingOrderId}/situacoes/9`,
+          { method: 'PATCH', headers },
+          { label: `situacao-atendido-${blingOrderId}`, maxAttempts: 3 }
+        );
+    console.log(`[bling-sync-orders] situacao ${blingOrderId}: ${sit.response.status} ${sit.text?.slice(0, 300)}`);
 
     await supabase.from('bling_sync_logs').insert({
       tenant_id: tenantId,
