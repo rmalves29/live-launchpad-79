@@ -317,7 +317,7 @@ export const ShippingOptionsManager = ({ channel = 'bazar' }: { channel?: 'bazar
             coverage_city: formData.coverage_city || null,
             coverage_state: formData.coverage_state || null,
             coverage_cep_ranges: cepRanges,
-            free_shipping_min_order: formData.price === 0 ? (formData.free_shipping_min_order || null) : null,
+            free_shipping_min_order: formData.free_shipping_min_order || null,
             updated_at: new Date().toISOString()
           })
           .eq('id', editingOption.id)
@@ -350,7 +350,7 @@ export const ShippingOptionsManager = ({ channel = 'bazar' }: { channel?: 'bazar
             coverage_city: formData.coverage_city || null,
             coverage_state: formData.coverage_state || null,
             coverage_cep_ranges: cepRanges,
-            free_shipping_min_order: formData.price === 0 ? (formData.free_shipping_min_order || null) : null
+            free_shipping_min_order: formData.free_shipping_min_order || null
           })
           .select()
           .single();
@@ -603,15 +603,14 @@ export const ShippingOptionsManager = ({ channel = 'bazar' }: { channel?: 'bazar
                   {/* Campo de pedido mínimo para frete grátis */}
                   <div className="space-y-2">
                     <Label htmlFor="free_shipping_min_order">
-                      Pedido mínimo para liberar frete grátis (R$)
+                      Frete grátis a partir de (R$)
                     </Label>
                     <Input
                       id="free_shipping_min_order"
                       type="number"
                       min={0}
                       step="0.01"
-                      placeholder="Ex: 99.00 — deixe em branco para sempre disponível"
-                      disabled={formData.price > 0}
+                      placeholder="Ex: 249.01 — em branco: sem frete grátis"
                       value={formData.free_shipping_min_order ?? ''}
                       onChange={(e) => {
                         const val = e.target.value;
@@ -623,8 +622,8 @@ export const ShippingOptionsManager = ({ channel = 'bazar' }: { channel?: 'bazar
                     />
                     <p className="text-xs text-muted-foreground">
                       {formData.price > 0
-                        ? 'Disponível somente quando o Valor estiver em R$ 0,00 (frete grátis).'
-                        : 'Se preenchido, este frete grátis só aparecerá no checkout quando o pedido atingir este valor (ex.: 99,00).'}
+                        ? 'Se preenchido, este frete custa o Valor acima e fica GRÁTIS quando o pedido chegar a este valor (ex.: R$ 9,90, grátis a partir de 249,01). Em branco: sempre cobra o Valor.'
+                        : 'Se preenchido, este frete grátis só aparece no checkout quando o pedido chegar a este valor (ex.: 99,00). Em branco: sempre disponível.'}
                     </p>
                   </div>
                   

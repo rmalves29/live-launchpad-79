@@ -765,7 +765,9 @@ export default function LiveShop() {
         // ou se não houver transportadora.
         setShipId((prev) => {
           if (options.some((o) => o.id === prev)) return prev;
-          const carriers = options.filter((o) => !String(o.id).startsWith('custom_'));
+          // entram as transportadoras e as entregas cadastradas pela loja (ex.: Log4, que fica grátis acima do mínimo);
+          // retirada na loja nunca vem marcada sozinha
+          const carriers = options.filter((o) => !String(o.id).startsWith('custom_') || (o as any).company === 'Envio');
           return (carriers.length ? carriers : options).slice().sort((a, b) => a.price - b.price)[0]?.id || '';
         });
       };

@@ -183,28 +183,38 @@ export async function fetchCustomShippingOptions(
       let filtered = filterByGeographicCoverage(data, customerState, customerCity, customerCep);
 
       // Filtrar frete grátis por valor mínimo de pedido
+      // Pedido mínimo do frete grátis:
+      //  - opção GRÁTIS (R$ 0,00): só aparece quando o pedido chega ao mínimo;
+      //  - opção PAGA (ex.: R$ 9,90): aparece sempre e fica grátis quando o pedido chega ao mínimo.
+      const freeAbove = (opt: any) => {
+        const minOrder = opt.free_shipping_min_order != null ? Number(opt.free_shipping_min_order) : null;
+        return minOrder !== null && cartTotal !== undefined && cartTotal >= minOrder;
+      };
       if (cartTotal !== undefined) {
         filtered = filtered.filter((opt: any) => {
           const minOrder = opt.free_shipping_min_order != null ? Number(opt.free_shipping_min_order) : null;
-          if (minOrder !== null && cartTotal < minOrder) return false;
+          if (minOrder !== null && Number(opt.price) <= 0 && cartTotal < minOrder) return false;
           return true;
         });
       }
 
       console.log(`📦 Frete customizado: ${data.length} total, ${filtered.length} após filtros (estado: ${customerState}, cidade: ${customerCity}, total: ${cartTotal})`);
 
-      return filtered.map((opt: any) => ({
+      return filtered.map((opt: any) => {
+        const price = freeAbove(opt) ? 0 : parseFloat(opt.price);
+        return {
         id: `custom_${opt.id}`,
         name: opt.name,
         company: opt.delivery_days === 0 ? 'Retirada' : 'Envio',
-        price: parseFloat(opt.price).toFixed(2),
+        price: price.toFixed(2),
         delivery_time: opt.description
           ? opt.description
           : opt.delivery_days === 0
             ? 'Imediato'
             : `${opt.delivery_days} dias para postagem + 5-10 dias úteis`,
-        custom_price: parseFloat(opt.price).toFixed(2)
-      }));
+        custom_price: price.toFixed(2)
+        };
+      });
     }
 
     return [];
