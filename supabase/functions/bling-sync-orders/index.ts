@@ -1801,7 +1801,7 @@ async function sendOrderToBling(
 }
 
 /**
- * Opção da loja (integration_bling.send_orders_attended):
+ * Todo pedido enviado ao Bling (com baixa de estoque):
  * lança o estoque no depósito escolhido e muda o pedido para "Atendido" (9).
  * Falha aqui nunca derruba o envio do pedido — só registra no log.
  */
@@ -1809,10 +1809,9 @@ async function finalizeAsAttended(accessToken: string, supabase: any, tenantId: 
   try {
     const { data: cfg } = await supabase
       .from('integration_bling')
-      .select('send_orders_attended, bling_deposit_id')
+      .select('bling_deposit_id')
       .eq('tenant_id', tenantId)
       .maybeSingle();
-    if (!cfg?.send_orders_attended) return;
 
     const headers = { 'Content-Type': 'application/json', 'enable-jwt': '1', 'Authorization': `Bearer ${accessToken}` };
     const dep = Number(cfg.bling_deposit_id) || 0;
