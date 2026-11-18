@@ -158,7 +158,14 @@ Deno.serve(async (req) => {
       const slotIso = new Date(at).toISOString();
       const r = await setMeeting(reg.lead_id, slotIso);
       if (r.error) return json({ success: false, error: r.error });
+      // Marcado pela Manuela na conversa (ou pela /agenda): o lead passa a ser do Jarvis, para os lembretes
+      // da agenda da Manuela (aviso 5 min antes e link na hora) — sem mexer em lead de afiliado.
+      if (r.lead.origem !== "jarvis" && r.lead.origem !== "afiliado") {
+        await sb.from("platform_affiliate_leads").update({ origem: "jarvis" }).eq("id", reg.lead_id);
+      }
       const g = await syncGoogle({ ...r.lead, email: email || null }, JARVIS_MINUTES);
+      // Na conversa a própria Manuela confirma: aqui não manda a confirmação de novo.
+      if (body.from_chat === true) return json({ success: true, meeting_at: slotIso, google: !g.error, whatsapp_sent: false });
       const wErr = await sendWhatsApp(r.lead.whatsapp,
         `Oi, ${nome.split(" ")[0]}! Aqui é a Manuela, da Cartzy 😊 Sua apresentação com o Rafael está confirmada para ${formatBrt(slotIso)} (horário de Brasília), com 30 minutos.\n\n` +
         `5 minutos antes eu te aviso por aqui, e no horário te mando o link da reunião.`, JARVIS_TENANT_ID);
