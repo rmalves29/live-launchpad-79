@@ -28,7 +28,7 @@ Os testes ficam em `tests/` com `package.json` próprio: nada disso entra no bui
 Cada achado tem um teste que mostra o comportamento atual. Os marcados como `todo` mostram o que deveria acontecer
 e passam a valer quando a correção for feita.
 
-- **P-01 · Desconto do Pix pode vir de um gateway e a cobrança sair por outro** (🔴 etapa 4, item 4.4)
+- **P-01 · Desconto do Pix pode vir de um gateway e a cobrança sair por outro** — ✅ corrigido no branch `correcoes-achados-p01-p04`. Decisão do Rafael (19/11, opção a): com mais de um gateway ativo vale a ordem da cobrança, InfinitePay > App Max > Pagar.me > Mercado Pago, para cobrança, desconto do Pix e telas. Regra única em `_shared/payment-provider.ts`
   - `_shared/pix-discount.ts` escolhe o desconto na ordem App Max > Pagar.me > Mercado Pago > InfinitePay.
   - `create-payment` cobra na ordem InfinitePay > App Max > Pagar.me > Mercado Pago.
   - Loja com InfinitePay e App Max ativos: cobra pela InfinitePay com o desconto configurado na App Max.
@@ -55,6 +55,11 @@ e passam a valer quando a correção for feita.
 - **P-08 · Funções internas não exportadas** — `create-payment`, `live-shop` e `bling-sync-orders` não exportam a lógica.
   Os testes leem as funções direto do arquivo (`tests/support/extract.mjs`), o que é frágil a renomeações.
   Na etapa 2, exportar essa lógica para módulos e trocar os testes para importação normal.
+
+- **P-09 · Pix com cupom: a tela da live mostra um desconto menor do que o servidor cobra** (aberto)
+  - Tela da live (`LiveShop.tsx`): Pix sobre (produtos − cupom). Servidor (`create-payment`): Pix sobre o total dos produtos,
+    e o cupom é descontado à parte. Com cupom e Pix juntos, a cliente paga um pouco menos do que viu e a loja perde a diferença.
+    Decidir qual base vale e alinhar as duas.
 
 ### Decisão a confirmar com o Rafael
 

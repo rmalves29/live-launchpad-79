@@ -418,10 +418,11 @@ const PublicCheckout = () => {
           pixEnabled = row?.enable_pix !== false;
           cardEnabled = row?.enable_credit_card !== false;
         };
-        if (appmaxRes.data?.is_active) { provider = 'appmax'; pick(appmaxRes.data); }
+        // Mesma ordem da cobrança (create-payment): InfinitePay > App Max > Pagar.me > Mercado Pago
+        if (infRes.data?.is_active) { provider = 'infinitepay'; pick(infRes.data); }
+        else if (appmaxRes.data?.is_active) { provider = 'appmax'; pick(appmaxRes.data); }
         else if (pagarmeRes.data?.is_active) { provider = 'pagarme'; pick(pagarmeRes.data); }
         else if (mpRes.data?.is_active) { provider = 'mp'; pick(mpRes.data); }
-        else if (infRes.data?.is_active) { provider = 'infinitepay'; pick(infRes.data); }
 
         setActivePaymentProvider(provider);
         setAcceptPix(pixEnabled);

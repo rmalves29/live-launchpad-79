@@ -163,21 +163,45 @@ test('Pix escolhido mas conta Mercado Pago da loja sem Pix ativo: bloqueia em ve
   assert.ok(!fn.calls.some((c) => c.url.includes('/checkout/preferences')));
 });
 
-test('desconto do Pix: prioridade App Max > Pagar.me > Mercado Pago > InfinitePay, só no Pix', async () => {
+test('desconto do Pix vem do gateway que cobra: InfinitePay > App Max > Pagar.me > Mercado Pago, só no Pix (P-01, corrigido)', async () => {
   const sb = createFakeSupabase({ tables: {
-    integration_appmax: [], integration_pagarme: [{ tenant_id: LOJA_A, is_active: true, pix_discount_percent: 3 }],
-    integration_mp: [{ tenant_id: LOJA_A, is_active: true, pix_discount_percent: 10 }], integration_infinitepay: [],
+    integration_appmax: [], integration_pagarme: [{ tenant_id: LOJA_A, is_active: true, api_key: 'sk', pix_discount_percent: 3 }],
+    integration_mp: [{ tenant_id: LOJA_A, is_active: true, access_token: 'tok', pix_discount_percent: 10 }], integration_infinitepay: [],
   } });
-  assert.deepEqual(await resolvePixDiscount(sb, LOJA_A, 'pix', 200), { percent: 3, value: 6, source: 'pagarme' });
+  assert.deepEqual(await resolvePixDiscount(sb, LOJA_A, 'pix', 200), { percent: 3, value: 6, source: 'pagarme' }, 'Pagar.me cobra, então vale o desconto dela (não os 10% do Mercado Pago)');
   assert.deepEqual(await resolvePixDiscount(sb, LOJA_A, 'card', 200), { percent: 0, value: 0, source: null });
   assert.deepEqual(await resolvePixDiscount(sb, LOJA_B, 'pix', 200), { percent: 0, value: 0, source: null });
 });
 
-test('desconto do Pix deveria vir do mesmo gateway que cobra (ver docs/refatoracao/decisoes.md, P-01)', { todo: 'divergência atual: a cobrança prioriza InfinitePay, o desconto prioriza App Max' }, async () => {
+test('InfinitePay e App Max ativos: cobra pela InfinitePay e usa o desconto DELA, nunca o da App Max (P-01, corrigido)', async () => {
   const sb = createFakeSupabase({ tables: {
-    integration_appmax: [{ tenant_id: LOJA_A, is_active: true, pix_discount_percent: 10 }], integration_pagarme: [], integration_mp: [],
-    integration_infinitepay: [{ tenant_id: LOJA_A, is_active: true, pix_discount_percent: 0 }],
+    integration_appmax: [{ tenant_id: LOJA_A, is_active: true, access_token: 'am', pix_discount_percent: 10 }], integration_pagarme: [], integration_mp: [],
+    integration_infinitepay: [{ tenant_id: LOJA_A, is_active: true, handle: 'lojaa', pix_discount_percent: 0 }],
   } });
-  const r = await resolvePixDiscount(sb, LOJA_A, 'pix', 100);
-  assert.equal(r.source, 'infinitepay');
+  assert.deepEqual(await resolvePixDiscount(sb, LOJA_A, 'pix', 100), { percent: 0, value: 0, source: null });
+
+  sb.db.integration_infinitepay[0].pix_discount_percent = 4;
+  assert.deepEqual(await resolvePixDiscount(sb, LOJA_A, 'pix', 100), { percent: 4, value: 4, source: 'infinitepay' });
+});
+
+test('gateway ativo sem credencial não cobra e não empresta desconto', async () => {
+  const sb = createFakeSupabase({ tables: {
+    integration_appmax: [{ tenant_id: LOJA_A, is_active: true, access_token: null, pix_discount_percent: 15 }], integration_pagarme: [],
+    integration_mp: [{ tenant_id: LOJA_A, is_active: true, access_token: 'tok', pix_discount_percent: 5 }], integration_infinitepay: [],
+  } });
+  assert.deepEqual(await resolvePixDiscount(sb, LOJA_A, 'pix', 100), { percent: 5, value: 5, source: 'mercado_pago' });
+});
+
+test('create-payment com InfinitePay e App Max: delega à InfinitePay sem o desconto configurado na App Max', async () => {
+  const fn = await loadEdgeFunction('create-payment', {
+    tables: tabelas({
+      appmax: [{ tenant_id: LOJA_A, is_active: true, access_token: 'am', pix_discount_percent: 10, enable_pix: true, enable_credit_card: true }],
+      infinitepay: [{ tenant_id: LOJA_A, is_active: true, handle: 'lojaa', pix_discount_percent: 0, enable_pix: true, enable_credit_card: true }],
+    }),
+    fetchHandler: respondeGateways,
+  });
+  await fn.call(pedido(LOJA_A, { payment_method: 'pix', pix_discount: 10 }));
+  const [delegado] = fn.sb.log.invokes;
+  assert.equal(delegado.name, 'create-infinitepay-payment');
+  assert.equal(delegado.body.pix_discount, 0);
 });
