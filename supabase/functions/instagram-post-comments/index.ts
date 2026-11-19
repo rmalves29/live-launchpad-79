@@ -166,6 +166,50 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: true, comment_id: replyJson?.id });
     }
 
+    // Novo comentário na postagem (comentário de primeiro nível, publicado pela conta conectada)
+    if (action === 'comment') {
+      const mediaId = String((body as any).media_id || '');
+      const message = String((body as any).message || '').trim();
+      if (!mediaId || !message) {
+        return jsonResponse({ error: 'media_id e message são obrigatórios' }, 400);
+      }
+      const res = await fetch(`https://graph.instagram.com/v21.0/${mediaId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, access_token: accessToken }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error(`[${timestamp}] [instagram-post-comments] Comment error:`, json);
+        return jsonResponse({ error: json?.error?.message || 'Erro ao publicar comentário' }, res.status);
+      }
+      console.log(`[${timestamp}] [instagram-post-comments] Comment published:`, json?.id);
+      return jsonResponse({ success: true, comment_id: json?.id });
+    }
+
+    // Mensagem privada (DM) em resposta a um comentário, com o texto digitado na tela.
+    // Usa a "private reply" da Meta (uma por comentário, até 7 dias depois do comentário).
+    if (action === 'private_reply') {
+      const commentId = String((body as any).comment_id || '');
+      const message = String((body as any).message || '').trim();
+      if (!commentId || !message) {
+        return jsonResponse({ error: 'comment_id e message são obrigatórios' }, 400);
+      }
+      const base = integration.page_access_token ? 'https://graph.facebook.com/v19.0' : 'https://graph.instagram.com/v21.0';
+      const res = await fetch(`${base}/me/messages?access_token=${encodeURIComponent(accessToken)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipient: { comment_id: commentId }, message: { text: message } }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error(`[${timestamp}] [instagram-post-comments] Private reply error:`, json);
+        return jsonResponse({ error: json?.error?.message || 'Erro ao enviar a mensagem' }, res.status);
+      }
+      console.log(`[${timestamp}] [instagram-post-comments] Private reply sent to comment ${commentId}`);
+      return jsonResponse({ success: true, message_id: json?.message_id || null });
+    }
+
     // Handle hide/unhide action (equivalente a "editar" — a API do Instagram
     // não permite alterar o texto de um comentário, só sua visibilidade)
     if (action === 'hide') {

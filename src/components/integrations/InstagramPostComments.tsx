@@ -44,6 +44,41 @@ export default function InstagramPostComments({ tenantId }: InstagramPostComment
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
   const [moderatingId, setModeratingId] = useState<string | null>(null);
+  const [newCommentPostId, setNewCommentPostId] = useState<string | null>(null);
+  const [newCommentText, setNewCommentText] = useState('');
+  const [dmTo, setDmTo] = useState<string | null>(null);
+  const [dmText, setDmText] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const call = async (body: Record<string, unknown>, okMsg: string, errMsg: string) => {
+    setBusy(true);
+    try {
+      const response = await supabase.functions.invoke('instagram-post-comments', { body: { tenant_id: tenantId, ...body } });
+      if (response.error || response.data?.error) {
+        toast.error(response.data?.error || errMsg);
+        return false;
+      }
+      toast.success(okMsg);
+      return true;
+    } catch {
+      toast.error(errMsg);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleNewComment = async () => {
+    if (!newCommentPostId || !newCommentText.trim()) return;
+    const ok = await call({ action: 'comment', media_id: newCommentPostId, message: newCommentText.trim() }, 'Comentário publicado na postagem!', 'Erro ao publicar comentário');
+    if (ok) { setNewCommentText(''); setNewCommentPostId(null); refetch(); }
+  };
+
+  const handleSendDm = async () => {
+    if (!dmTo || !dmText.trim()) return;
+    const ok = await call({ action: 'private_reply', comment_id: dmTo, message: dmText.trim() }, 'Mensagem enviada! Ela aparece no Direct do Instagram da pessoa.', 'Erro ao enviar a mensagem');
+    if (ok) { setDmText(''); setDmTo(null); }
+  };
 
   const { data, isLoading, isFetching, refetch, error } = useQuery({
     queryKey: ['instagram-post-comments', tenantId],
@@ -243,6 +278,27 @@ export default function InstagramPostComments({ tenantId }: InstagramPostComment
                   </div>
 
                   <div className="space-y-2 border-t pt-3">
+                    {newCommentPostId === post.id ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          placeholder="Escreva um comentário nesta postagem..."
+                          value={newCommentText}
+                          onChange={(e) => setNewCommentText(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && !busy && handleNewComment()}
+                          className="h-8 text-sm"
+                          autoFocus
+                        />
+                        <Button size="sm" className="h-8" onClick={handleNewComment} disabled={busy || !newCommentText.trim()}>
+                          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-8" onClick={() => setNewCommentPostId(null)}>✕</Button>
+                      </div>
+                    ) : (
+                      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { setNewCommentPostId(post.id); setNewCommentText(''); }}>
+                        <MessageCircle className="mr-1 h-3 w-3" />
+                        Comentar nesta postagem
+                      </Button>
+                    )}
                     {post.comments.length === 0 ? (
                       <p className="text-xs text-muted-foreground">Esta postagem ainda não recebeu comentários.</p>
                     ) : (
@@ -258,7 +314,7 @@ export default function InstagramPostComments({ tenantId }: InstagramPostComment
                             {comment.hidden && (
                               <Badge variant="secondary" className="text-[10px]">Oculto</Badge>
                             )}
-                            <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="ml-auto flex flex-wrap items-center gap-1">
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -270,6 +326,15 @@ export default function InstagramPostComments({ tenantId }: InstagramPostComment
                               >
                                 <Send className="mr-1 h-3 w-3" />
                                 Responder
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-2 text-xs"
+                                onClick={() => { setDmTo(comment.id); setDmText(''); }}
+                              >
+                                <MessageCircle className="mr-1 h-3 w-3" />
+                                Enviar mensagem (Direct)
                               </Button>
                               <Button
                                 variant="ghost"
@@ -300,6 +365,28 @@ export default function InstagramPostComments({ tenantId }: InstagramPostComment
                             </div>
                           </div>
                           <p className="mt-1 text-sm text-foreground/80 break-words">{comment.text || 'Comentário sem texto.'}</p>
+
+                          {dmTo === comment.id && (
+                            <div className="mt-2 space-y-1">
+                              <p className="text-[11px] text-muted-foreground">
+                                Mensagem privada para @{comment.username || 'cliente'} (chega no Direct do Instagram dela).
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  placeholder="Digite a mensagem..."
+                                  value={dmText}
+                                  onChange={(e) => setDmText(e.target.value)}
+                                  onKeyDown={(e) => e.key === 'Enter' && !busy && handleSendDm()}
+                                  className="h-8 text-sm"
+                                  autoFocus
+                                />
+                                <Button size="sm" className="h-8" onClick={handleSendDm} disabled={busy || !dmText.trim()}>
+                                  {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                                </Button>
+                                <Button size="sm" variant="ghost" className="h-8" onClick={() => setDmTo(null)}>✕</Button>
+                              </div>
+                            </div>
+                          )}
 
                           {replyingTo?.commentId === comment.id && (
                             <div className="mt-2 flex items-center gap-2">
