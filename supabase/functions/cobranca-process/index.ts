@@ -92,6 +92,16 @@ const EMOJI_VARIATIONS: Record<string, string[]> = {
   "📦": ["🎁", "📬", "📭", "🗳️"],
 };
 
+// Onde o caractere invisível anti-spam pode entrar sem quebrar nada: só entre dois espaços/quebras de linha
+// ou no começo da mensagem. Nunca dentro (nem colado) de link, código de produto, valor ou telefone.
+function invisibleCharPosition(text: string): number {
+  const options = [0];
+  for (let i = 1; i < text.length; i++) {
+    if (/\s/.test(text[i - 1]) && /\s/.test(text[i])) options.push(i);
+  }
+  return options[Math.floor(Math.random() * options.length)];
+}
+
 function addVariation(message: string): string {
   let result = message;
   if (Math.random() < 0.3) {
@@ -103,7 +113,7 @@ function addVariation(message: string): string {
     }
   }
   if (Math.random() < 0.6) {
-    const pos = Math.floor(Math.random() * result.length);
+    const pos = invisibleCharPosition(result);
     result = result.slice(0, pos) + "\u200B" + result.slice(pos);
   }
   return result;

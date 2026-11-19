@@ -3,6 +3,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadEdgeFunction, silenceLogs } from './support/edge.mjs';
+import { extractFunctions } from './support/extract.mjs';
 
 const LOJA = '33333333-3333-4333-8333-333333333333';
 let restore;
@@ -92,11 +93,21 @@ test('se o banco não responder a pausa, hoje a mensagem sai mesmo assim (ver do
   assert.equal(mensagensWhatsApp(fn).length, 1, 'comportamento atual registrado: envia sem pausa');
 });
 
-test('link do checkout nunca recebe caractere invisível no meio (ver docs/refatoracao/decisoes.md, P-04)', { todo: 'hoje o caractere anti-spam cai em posição sorteada, inclusive dentro do link' }, async () => {
+test('anti-spam nunca coloca caractere invisível dentro de link, código, valor ou telefone (P-04, corrigido)', async () => {
   const { addMessageVariation } = await import('../supabase/functions/_shared/anti-block-delay.ts');
+  const { addMessageVariation: daTela } = await import('../src/lib/whatsapp-anti-block.ts');
+  const { addVariation: daCobranca } = extractFunctions('supabase/functions/cobranca-process/index.ts', ['invisibleCharPosition', 'addVariation'], { EMOJI_VARIATIONS: {} });
   const link = 'https://app.cartzy.com.br/loja-teste/checkout?p=5531999887766';
-  const base = `Item adicionado ao pedido\n\nColar Aurora (C210)\nQtd: *1*\nValor: *R$ 89,90*\n\nFinalize seu pedido: ${link}\n\nQualquer duvida, estou a disposicao!`;
-  let quebrados = 0;
-  for (let i = 0; i < 2000; i++) if (!addMessageVariation(base, false).includes(link)) quebrados++;
-  assert.equal(quebrados, 0, `${quebrados} de 2000 mensagens saíram com o link alterado`);
+  const pedacos = [link, 'C210', 'R$ 89,90', '5531999887766'];
+  const base = `Item adicionado ao pedido\n\nColar Aurora (C210)\nQtd: *1*\nValor: *R$ 89,90*\n\nFinalize seu pedido: ${link}\n\nWhats da loja: 5531999887766`;
+  for (const [nome, variar] of [['servidor', (t) => addMessageVariation(t, false)], ['tela', daTela], ['cobrança', daCobranca]]) {
+    let variadas = 0;
+    for (let i = 0; i < 2000; i++) {
+      const msg = variar(base);
+      for (const p of pedacos) assert.ok(msg.includes(p), `${nome}: "${p}" alterado`);
+      assert.ok(!/https?:\/\/\S*\u200B/.test(msg), `${nome}: invisível colado no link`);
+      if (msg !== base) variadas++;
+    }
+    assert.ok(variadas > 600, `${nome}: a variação anti-spam continua acontecendo (${variadas} de 2000)`);
+  }
 });

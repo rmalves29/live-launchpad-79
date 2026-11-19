@@ -24,6 +24,16 @@ const EMOJI_VARIATIONS: Record<string, string[]> = {
  * Gera variação sutil da mensagem para evitar detecção de spam por similaridade.
  * Mantém o significado e a aparência da mensagem.
  */
+// Onde o caractere invisível anti-spam pode entrar sem quebrar nada: só entre dois espaços/quebras de linha
+// ou no começo da mensagem. Nunca dentro (nem colado) de link, código de produto, valor ou telefone.
+function invisibleCharPosition(text: string): number {
+  const options = [0];
+  for (let i = 1; i < text.length; i++) {
+    if (/\s/.test(text[i - 1]) && /\s/.test(text[i])) options.push(i);
+  }
+  return options[Math.floor(Math.random() * options.length)];
+}
+
 export function addMessageVariation(message: string): string {
   let result = message;
 
@@ -40,7 +50,7 @@ export function addMessageVariation(message: string): string {
 
   // 70% chance: inserir zero-width space em posição aleatória (invisível)
   if (Math.random() < 0.70 && result.length > 5) {
-    const pos = Math.floor(Math.random() * (result.length - 2)) + 1;
+    const pos = invisibleCharPosition(result);
     result = result.slice(0, pos) + '\u200B' + result.slice(pos);
   }
 
