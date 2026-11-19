@@ -12,7 +12,6 @@ const HANDLER_MAP: Record<string, string> = {
   mp: "mp-webhook",
   bling: "bling-webhook",
   pagarme: "pagarme-webhook",
-  appmax: "appmax-webhook",
   whatsapp: "zapi-webhook",
   uazapi: "uazapi-webhook",
   instagram: "instagram-webhook",

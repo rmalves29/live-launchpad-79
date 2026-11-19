@@ -8,8 +8,8 @@ Rode de novo depois de cada etapa da refatoração para ver o que mudou.
 | | |
 |---|---|
 | Edge functions com código no repositório | 152 |
-| Módulos compartilhados (`_shared`) | 37 |
-| Arquivos do front (sem `types.ts` gerado) | 287 |
+| Módulos compartilhados (`_shared`) | 38 |
+| Arquivos do front (sem `types.ts` gerado) | 286 |
 | Funções sem ninguém chamando no código (tela, outra função ou SQL) | 43 |
 
 > "Sem ninguém chamando no código" não quer dizer morta. Três casos ficam de fora desta busca:
@@ -33,19 +33,19 @@ Rode de novo depois de cada etapa da refatoração para ver o que mudou.
 | `whatsapp_messages` | 18 | 3 |
 | `webhook_logs` | 18 | 1 |
 | `app_settings` | 9 | 9 |
-| `integration_mp` | 6 | 9 |
 | `audit_logs` | 13 | 2 |
+| `integration_mp` | 6 | 8 |
 | `tenant_users` | 14 | 0 |
 | `sending_jobs` | 6 | 7 |
-| `integration_pagarme` | 5 | 7 |
 | `fe_groups` | 9 | 3 |
 | `integration_instagram` | 8 | 4 |
 | `coupons` | 4 | 7 |
+| `integration_pagarme` | 5 | 6 |
 | `whatsapp_templates` | 8 | 3 |
-| `integration_appmax` | 4 | 6 |
 | `carts` | 6 | 4 |
 | `push_subscriptions` | 8 | 1 |
 | `integration_infinitepay` | 5 | 2 |
+| `shipping_quote_cache` | 7 | 0 |
 
 ## Módulos compartilhados e quem usa
 
@@ -75,6 +75,7 @@ Rode de novo depois de cada etapa da refatoração para ver o que mudou.
 | `olist-catalog-sync` | 1: olist-products |
 | `olist` | 6: erp-stock-reconcile, olist-oauth, olist-oauth-callback, olist-orders, olist-products, olist-refresh-tokens |
 | `payment-method-lock` | 1: create-payment |
+| `payment-provider` | **ninguém** |
 | `pix-discount` | 2: create-infinitepay-payment, create-payment |
 | `plan-modules` | 2: pagarme-create-subscription-v2, pagarme-subscription-webhook |
 | `postage-confirmation` | 9: bling-sync-orders, bling-webhook, frenet-labels, frenet-tracking-sync, mandabem-labels, mandae-labels … (+3) |
@@ -106,7 +107,7 @@ Rode de novo depois de cada etapa da refatoração para ver o que mudou.
 | `asaas-renovar` | 88 | 1 / 0 / — | — | asaas | 3 |
 | `asaas-webhook` | 242 | 1 / 0 / — | — | admin-push-notify, asaas, conversions, provision-tenant | 7 |
 | `assinar-site` | 228 | 0 / 0 / — | — | agenda-core, asaas, conversions, rate-limit | 2 |
-| `backfill-merged-orders-discounts` | 334 | 0 / 0 / — | — | — | 6 |
+| `backfill-merged-orders-discounts` | 333 | 0 / 0 / — | — | — | 5 |
 | `backfill-payment-methods` | 292 | 0 / 0 / — | — | tenant-mp-token | 3 |
 | `bagy-import-products` | 298 | 1 / 0 / — | — | auth-guard, next-product-code | 4 |
 | `bagy-sync` | 665 | 3 / 1 / sim | — | auth-guard | 6 |
@@ -125,11 +126,11 @@ Rode de novo depois de cada etapa da refatoração para ver o que mudou.
 | `bling-webhook` | 368 | 2 / 0 / — | — | bling-product-sync, postage-confirmation | 7 |
 | `cleanup-fe-group-events` | 187 | 0 / 0 / sim | — | — | 2 |
 | `cleanup-whatsapp-messages` | 278 | 0 / 0 / sim | — | — | 2 |
-| `cobranca-process` | 451 | 0 / 0 / — | zapi-proxy | — | 2 |
+| `cobranca-process` | 461 | 0 / 0 / — | zapi-proxy | — | 2 |
 | `correios-labels` | 1784 | 2 / 0 / — | — | auth-guard, correios-prepostagem | 9 |
 | `correios-shipping` | 345 | 1 / 0 / — | — | correios-prepostagem | 2 |
-| `create-infinitepay-payment` | 473 | 0 / 1 / — | infinitepay-webhook | coupon-eligibility, pix-discount | 8 |
-| `create-payment` | 1221 | 3 / 0 / — | create-infinitepay-payment, mp-webhook | coupon-eligibility, payment-method-lock, pix-discount, rate-limit … (+1) | 9 |
+| `create-infinitepay-payment` | 473 | 0 / 1 / — | infinitepay-webhook | coupon-eligibility, pix-discount | 7 |
+| `create-payment` | 990 | 3 / 0 / — | create-infinitepay-payment, mp-webhook | coupon-eligibility, payment-method-lock, pix-discount, rate-limit … (+1) | 8 |
 | `create-sipag-payment` | 198 | 0 / 0 / — | — | — | 2 |
 | `create-subscription-payment` | 162 | 0 / 0 / — | subscription-webhook | — | 2 |
 | `create-tenant-admin` | 100 | 2 / 0 / — | — | tenant-onboarding | 2 |
@@ -163,7 +164,7 @@ Rode de novo depois de cada etapa da refatoração para ver o que mudou.
 | `instagram-sync-live-comments` | 341 | 1 / 0 / — | instagram-webhook | — | 3 |
 | `instagram-webhook` | 1170 | 1 / 2 / — | zapi-send-item-added | — | 10 |
 | `landing-fluxo-signup` | 182 | 1 / 0 / — | uazapi-webhook | admin-push-notify, rate-limit, uazapi-api | 4 |
-| `live-shop` | 1038 | 1 / 0 / — | — | purchase-limit | 18 |
+| `live-shop` | 1037 | 1 / 0 / — | — | purchase-limit | 17 |
 | `login-rate-limit` | 115 | 1 / 0 / — | — | rate-limit | 1 |
 | `mandabem-labels` | 337 | 0 / 0 / — | — | postage-confirmation | 6 |
 | `mandabem-shipping` | 238 | 1 / 0 / — | — | shipping-quote-cache | 2 |
@@ -232,7 +233,7 @@ Rode de novo depois de cada etapa da refatoração para ver o que mudou.
 | `waitlist-enqueue` | 134 | 0 / 2 / — | — | — | 4 |
 | `waitlist-expire-reservations` | 61 | 0 / 0 / — | — | — | 3 |
 | `waitlist-process-next` | 259 | 1 / 0 / sim | push-dispatch, zapi-send-message | push-fallback | 9 |
-| `webhook-retry` | 110 | 1 / 0 / — | — | — | 1 |
+| `webhook-retry` | 109 | 1 / 0 / — | — | — | 1 |
 | `whatsapp-official-auth-callback` | 144 | 0 / 1 / — | — | — | 1 |
 | `whatsapp-official-oauth-url` | 55 | 1 / 0 / — | whatsapp-official-auth-callback | — | 0 |
 | `whatsapp-official-send` | 143 | 0 / 1 / — | — | — | 2 |
@@ -243,7 +244,7 @@ Rode de novo depois de cada etapa da refatoração para ver o que mudou.
 | `zapi-proxy` | 751 | 6 / 2 / — | — | auth-guard | 3 |
 | `zapi-proxy-v2` | 747 | 1 / 0 / — | — | — | 1 |
 | `zapi-send-confirmation-link` | 208 | 0 / 0 / — | — | anti-block-delay, consent-v2, evolution-api | 4 |
-| `zapi-send-item-added` | 633 | 0 / 2 / sim | push-dispatch | anti-block-delay, consent-v2, evolution-api, live-whatsapp … (+1) | 9 |
+| `zapi-send-item-added` | 656 | 0 / 2 / sim | push-dispatch | anti-block-delay, consent-v2, evolution-api, live-whatsapp … (+1) | 9 |
 | `zapi-send-message` | 181 | 2 / 10 / sim | whatsapp-official-send | anti-block-delay, uazapi-api | 3 |
 | `zapi-send-paid-order` | 242 | 3 / 0 / sim | push-dispatch | anti-block-delay, evolution-api, live-whatsapp, push-fallback | 5 |
 | `zapi-send-product-canceled` | 225 | 1 / 0 / — | push-dispatch | anti-block-delay, consent-v2, evolution-api, push-fallback | 5 |

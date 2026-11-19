@@ -233,7 +233,7 @@ const PublicCheckout = () => {
   const [pixDiscountPercent, setPixDiscountPercent] = useState<number | null>(null);
   const [pixDiscountLoading, setPixDiscountLoading] = useState(true);
   const [pixDiscountValue, setPixDiscountValue] = useState(0);
-  const [activePaymentProvider, setActivePaymentProvider] = useState<'infinitepay' | 'mp' | 'pagarme' | 'appmax' | null>(null);
+  const [activePaymentProvider, setActivePaymentProvider] = useState<'infinitepay' | 'mp' | 'pagarme' | null>(null);
   const [acceptPix, setAcceptPix] = useState(true);
   const [acceptCard, setAcceptCard] = useState(true);
 
@@ -402,15 +402,14 @@ const PublicCheckout = () => {
     // 2) Revalidar do backend em paralelo (mesmo se já temos cache)
     const loadPixDiscount = async () => {
       try {
-        const [appmaxRes, pagarmeRes, mpRes, infRes] = await Promise.all([
-          supabase.from('integration_appmax').select('pix_discount_percent, is_active, enable_pix, enable_credit_card').eq('tenant_id', tenant.id).maybeSingle(),
+        const [pagarmeRes, mpRes, infRes] = await Promise.all([
           supabase.from('integration_pagarme').select('pix_discount_percent, is_active, enable_pix, enable_credit_card').eq('tenant_id', tenant.id).maybeSingle(),
           supabase.from('integration_mp').select('pix_discount_percent, is_active, enable_pix, enable_credit_card').eq('tenant_id', tenant.id).maybeSingle(),
           supabase.from('integration_infinitepay').select('pix_discount_percent, is_active, enable_pix, enable_credit_card').eq('tenant_id', tenant.id).maybeSingle(),
         ]);
 
         let discount = 0;
-        let provider: 'infinitepay' | 'mp' | 'pagarme' | 'appmax' | null = null;
+        let provider: 'infinitepay' | 'mp' | 'pagarme' | null = null;
         let pixEnabled = true;
         let cardEnabled = true;
         const pick = (row: any) => {
@@ -418,9 +417,8 @@ const PublicCheckout = () => {
           pixEnabled = row?.enable_pix !== false;
           cardEnabled = row?.enable_credit_card !== false;
         };
-        // Mesma ordem da cobrança (create-payment): InfinitePay > App Max > Pagar.me > Mercado Pago
+        // Mesma ordem da cobrança (create-payment): InfinitePay > Pagar.me > Mercado Pago
         if (infRes.data?.is_active) { provider = 'infinitepay'; pick(infRes.data); }
-        else if (appmaxRes.data?.is_active) { provider = 'appmax'; pick(appmaxRes.data); }
         else if (pagarmeRes.data?.is_active) { provider = 'pagarme'; pick(pagarmeRes.data); }
         else if (mpRes.data?.is_active) { provider = 'mp'; pick(mpRes.data); }
 

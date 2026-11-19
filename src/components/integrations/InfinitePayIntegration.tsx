@@ -57,12 +57,11 @@ export default function InfinitePayIntegration({ tenantId }: InfinitePayIntegrat
   const { data: otherActive } = useQuery({
     queryKey: ['infinitepay-other-active', tenantId],
     queryFn: async () => {
-      const [mp, pg, am] = await Promise.all([
+      const [mp, pg] = await Promise.all([
         supabase.from('integration_mp').select('is_active').eq('tenant_id', tenantId).eq('is_active', true).maybeSingle(),
         supabase.from('integration_pagarme').select('is_active').eq('tenant_id', tenantId).eq('is_active', true).maybeSingle(),
-        supabase.from('integration_appmax').select('is_active').eq('tenant_id', tenantId).eq('is_active', true).maybeSingle(),
       ]);
-      return !!(mp.data?.is_active || pg.data?.is_active || am.data?.is_active);
+      return !!(mp.data?.is_active || pg.data?.is_active);
     },
     enabled: !!tenantId,
   });
@@ -85,7 +84,6 @@ export default function InfinitePayIntegration({ tenantId }: InfinitePayIntegrat
     queryClient.invalidateQueries({ queryKey: ['infinitepay-checklist-status', tenantId] });
     queryClient.invalidateQueries({ queryKey: ['mp-status', tenantId] });
     queryClient.invalidateQueries({ queryKey: ['pagarme-status', tenantId] });
-    queryClient.invalidateQueries({ queryKey: ['appmax-status', tenantId] });
     queryClient.invalidateQueries({ queryKey: ['infinitepay-other-active', tenantId] });
   };
 

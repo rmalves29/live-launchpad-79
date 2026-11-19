@@ -2,7 +2,7 @@
 // This is the source of truth — frontend values are advisory only.
 //
 // O desconto vem SEMPRE do gateway que vai cobrar o pedido (ver payment-provider.ts):
-//   InfinitePay > App Max > Pagar.me > Mercado Pago.
+//   InfinitePay > Pagar.me > Mercado Pago.
 // Se esse gateway não tem desconto configurado, não há desconto (nunca usa o de outro gateway).
 //
 // Returns { percent, value, source } where:
@@ -54,11 +54,7 @@ export async function resolvePixDiscount(
   if (subtotal <= 0) return empty;
 
   try {
-    const [appmaxRes, pagarmeRes, mpRes, infRes] = await Promise.all([
-      sb.from("integration_appmax")
-        .select("pix_discount_percent, is_active, access_token")
-        .eq("tenant_id", tenantId)
-        .maybeSingle(),
+    const [pagarmeRes, mpRes, infRes] = await Promise.all([
       sb.from("integration_pagarme")
         .select("pix_discount_percent, is_active, api_key")
         .eq("tenant_id", tenantId)
@@ -74,7 +70,6 @@ export async function resolvePixDiscount(
     ]);
 
     const rows = {
-      appmax: appmaxRes?.data,
       pagarme: pagarmeRes?.data,
       mercado_pago: mpRes?.data,
       infinitepay: infRes?.data,

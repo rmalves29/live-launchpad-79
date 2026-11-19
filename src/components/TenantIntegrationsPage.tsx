@@ -11,11 +11,10 @@ import { useTenantContext } from '@/contexts/TenantContext';
 import { useAuth } from '@/hooks/useAuth';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Zap, Instagram, Printer, MessageSquare, ShoppingBag, Sparkles } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Instagram, Printer, MessageSquare, ShoppingBag, Sparkles } from 'lucide-react';
 import PaymentIntegrations from '@/components/integrations/PaymentIntegrations';
 import PagarMeIntegration from '@/components/integrations/PagarMeIntegration';
 import SipagIntegration from '@/components/integrations/SipagIntegration';
-import AppmaxIntegration from '@/components/integrations/AppmaxIntegration';
 import InfinitePayIntegration from '@/components/integrations/InfinitePayIntegration';
 import AsaasIntegration from '@/components/integrations/AsaasIntegration';
 import ShippingIntegrations from '@/components/integrations/ShippingIntegrations';
@@ -152,14 +151,6 @@ export default function TenantIntegrationsPage() {
     enabled: !!tenantId,
   });
 
-  const { data: appmaxIntegration } = useQuery({
-    queryKey: ['appmax-status', tenantId],
-    queryFn: async () => {
-      const { data } = await supabase.from('integration_appmax').select('is_active').eq('tenant_id', tenantId).maybeSingle();
-      return data;
-    },
-    enabled: !!tenantId,
-  });
 
   // Asaas: cobra a assinatura do site; só aparece para a empresa Cartzy
   const isCartzy = tenantId === 'b82a01c9-dbab-4f4d-b412-bb29fca58ffd';
@@ -334,14 +325,6 @@ export default function TenantIntegrationsPage() {
             {sipagIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
           )}
-          {en('appmax') && (
-          <TabsTrigger value="appmax" className="flex items-center gap-2">
-            <Zap className="h-4 w-4" />
-            <span className="hidden sm:inline">App Max</span>
-            <span className="sm:hidden">AM</span>
-            {appmaxIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
-          </TabsTrigger>
-          )}
           {en('infinitepay') && (
           <TabsTrigger value="infinitepay" className="flex items-center gap-2">
             <Sparkles className="h-4 w-4" />
@@ -458,11 +441,6 @@ export default function TenantIntegrationsPage() {
         {en('sipag') && (
         <TabsContent value="sipag" className="mt-6">
           <SipagIntegration tenantId={tenantId} />
-        </TabsContent>
-        )}
-        {en('appmax') && (
-        <TabsContent value="appmax" className="mt-6">
-          <AppmaxIntegration tenantId={tenantId} />
         </TabsContent>
         )}
         {en('infinitepay') && (

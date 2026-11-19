@@ -85,7 +85,7 @@ test('cada loja cobra com o próprio token do Mercado Pago, nunca com o de outra
   assert.match(pref.body.external_reference, new RegExp(`tenant:${LOJA_B}`));
 });
 
-test('ordem de escolha do gateway: InfinitePay, depois App Max, depois Pagar.me, depois Mercado Pago', async () => {
+test('ordem de escolha do gateway: InfinitePay, depois Pagar.me, depois Mercado Pago', async () => {
   const todos = {
     mp: [mpAtivo(LOJA_A, 'TOKEN-MP')],
     pagarme: [{ tenant_id: LOJA_A, is_active: true, api_key: 'sk_teste', enable_pix: true, enable_credit_card: true }],
@@ -163,7 +163,7 @@ test('Pix escolhido mas conta Mercado Pago da loja sem Pix ativo: bloqueia em ve
   assert.ok(!fn.calls.some((c) => c.url.includes('/checkout/preferences')));
 });
 
-test('desconto do Pix vem do gateway que cobra: InfinitePay > App Max > Pagar.me > Mercado Pago, só no Pix (P-01, corrigido)', async () => {
+test('desconto do Pix vem do gateway que cobra: InfinitePay > Pagar.me > Mercado Pago, só no Pix (P-01, corrigido)', async () => {
   const sb = createFakeSupabase({ tables: {
     integration_appmax: [], integration_pagarme: [{ tenant_id: LOJA_A, is_active: true, api_key: 'sk', pix_discount_percent: 3 }],
     integration_mp: [{ tenant_id: LOJA_A, is_active: true, access_token: 'tok', pix_discount_percent: 10 }], integration_infinitepay: [],
@@ -173,9 +173,9 @@ test('desconto do Pix vem do gateway que cobra: InfinitePay > App Max > Pagar.me
   assert.deepEqual(await resolvePixDiscount(sb, LOJA_B, 'pix', 200), { percent: 0, value: 0, source: null });
 });
 
-test('InfinitePay e App Max ativos: cobra pela InfinitePay e usa o desconto DELA, nunca o da App Max (P-01, corrigido)', async () => {
+test('InfinitePay e Pagar.me ativos: cobra pela InfinitePay e usa o desconto DELA, nunca o da Pagar.me (P-01, corrigido)', async () => {
   const sb = createFakeSupabase({ tables: {
-    integration_appmax: [{ tenant_id: LOJA_A, is_active: true, access_token: 'am', pix_discount_percent: 10 }], integration_pagarme: [], integration_mp: [],
+    integration_appmax: [], integration_pagarme: [{ tenant_id: LOJA_A, is_active: true, api_key: 'sk', pix_discount_percent: 10 }], integration_mp: [],
     integration_infinitepay: [{ tenant_id: LOJA_A, is_active: true, handle: 'lojaa', pix_discount_percent: 0 }],
   } });
   assert.deepEqual(await resolvePixDiscount(sb, LOJA_A, 'pix', 100), { percent: 0, value: 0, source: null });
@@ -186,16 +186,16 @@ test('InfinitePay e App Max ativos: cobra pela InfinitePay e usa o desconto DELA
 
 test('gateway ativo sem credencial não cobra e não empresta desconto', async () => {
   const sb = createFakeSupabase({ tables: {
-    integration_appmax: [{ tenant_id: LOJA_A, is_active: true, access_token: null, pix_discount_percent: 15 }], integration_pagarme: [],
+    integration_appmax: [], integration_pagarme: [{ tenant_id: LOJA_A, is_active: true, api_key: null, pix_discount_percent: 15 }],
     integration_mp: [{ tenant_id: LOJA_A, is_active: true, access_token: 'tok', pix_discount_percent: 5 }], integration_infinitepay: [],
   } });
   assert.deepEqual(await resolvePixDiscount(sb, LOJA_A, 'pix', 100), { percent: 5, value: 5, source: 'mercado_pago' });
 });
 
-test('create-payment com InfinitePay e App Max: delega à InfinitePay sem o desconto configurado na App Max', async () => {
+test('create-payment com InfinitePay e Pagar.me: delega à InfinitePay sem o desconto configurado na Pagar.me', async () => {
   const fn = await loadEdgeFunction('create-payment', {
     tables: tabelas({
-      appmax: [{ tenant_id: LOJA_A, is_active: true, access_token: 'am', pix_discount_percent: 10, enable_pix: true, enable_credit_card: true }],
+      pagarme: [{ tenant_id: LOJA_A, is_active: true, api_key: 'sk', pix_discount_percent: 10, enable_pix: true, enable_credit_card: true }],
       infinitepay: [{ tenant_id: LOJA_A, is_active: true, handle: 'lojaa', pix_discount_percent: 0, enable_pix: true, enable_credit_card: true }],
     }),
     fetchHandler: respondeGateways,
@@ -204,4 +204,20 @@ test('create-payment com InfinitePay e App Max: delega à InfinitePay sem o desc
   const [delegado] = fn.sb.log.invokes;
   assert.equal(delegado.name, 'create-infinitepay-payment');
   assert.equal(delegado.body.pix_discount, 0);
+});
+
+test('App Max removida: um cadastro antigo ativo da App Max é ignorado (não cobra nem dá desconto)', async () => {
+  const appmaxAntiga = [{ tenant_id: LOJA_A, is_active: true, access_token: 'am', environment: 'production', pix_discount_percent: 20, enable_pix: true, enable_credit_card: true }];
+  const semOutro = await loadEdgeFunction('create-payment', { tables: tabelas({ appmax: appmaxAntiga }), fetchHandler: respondeGateways });
+  const r = await semOutro.call(pedido(LOJA_A, { payment_method: 'pix' }));
+  assert.equal(r.body.error, 'Não há sistema de pagamento cadastrado.');
+  assert.ok(!semOutro.calls.some((c) => c.url.includes('appmax')));
+
+  const comMp = await loadEdgeFunction('create-payment', {
+    tables: tabelas({ appmax: appmaxAntiga, mp: [mpAtivo(LOJA_A, 'TOKEN-LOJA-A')] }), fetchHandler: respondeGateways,
+  });
+  await comMp.call(pedido(LOJA_A, { payment_method: 'pix' }));
+  const pref = comMp.calls.find((c) => c.url.includes('/checkout/preferences'));
+  assert.ok(pref, 'cobra pelo Mercado Pago');
+  assert.equal(pref.body.items.find((i) => i.title === 'Brinco Lunna').unit_price, 50, 'sem os 20% da App Max');
 });

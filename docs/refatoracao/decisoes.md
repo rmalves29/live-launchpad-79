@@ -82,3 +82,14 @@ e só então trocar os `as any` dos fluxos críticos, conferindo que o JavaScrip
 
 Também observado: `npm ci` falha porque o `package-lock.json` está desatualizado em relação ao `package.json`
 (o projeto usa `bun.lock`). Não afeta o Lovable, mas vale escolher um gerenciador só.
+
+## App Max removida do sistema — 19/11/2026 (branch `remove-appmax`)
+
+Situação no banco antes da remoção: 1 cadastro (Biquíni da Thay), **inativo** desde 18/02/2026, nenhum pedido pago pela
+App Max. Removido do código: aba e tela de configuração, checklist de integrações, lista de chaves por loja, escolha do
+gateway no checkout público, vitrine e live, desconto do Pix, trava Pix/cartão, `create-payment`, reenvio de webhooks e o
+backfill de descontos. Nova ordem: InfinitePay > Pagar.me > Mercado Pago.
+
+Fica para DEPOIS de publicar o código (nessa ordem, senão a versão antiga do `create-payment` quebra ao ler a tabela):
+1. Apagar no Supabase as funções publicadas `appmax-create-payment` e `appmax-webhook` (não estão no repositório).
+2. Apagar a tabela `integration_appmax` (1 linha inativa) e regenerar os tipos do Supabase.

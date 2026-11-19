@@ -247,17 +247,13 @@ serve(async (req) => {
       0,
     );
 
-    // Tudo que só lê o banco roda junto: limite de requisições, desconto PIX, pedidos e as 4 integrações.
-    const [rlBlocked, resolved, ordersRes, infinitepayInteg, appmaxInteg, mpInteg, pagarmeInteg] = await Promise.all([
+    // Tudo que só lê o banco roda junto: limite de requisições, desconto PIX, pedidos e as 3 integrações.
+    const [rlBlocked, resolved, ordersRes, infinitepayInteg, mpInteg, pagarmeInteg] = await Promise.all([
       enforceRateLimit(req, sb, "create-payment", 60, 60),
       resolvePixDiscount(sb, payload.tenant_id, payload.payment_method, productsSubtotalForDiscount),
       sb.from("orders").select("id, observation, total_amount, cart_id, created_at").in("id", orderIds),
       sb.from("integration_infinitepay")
         .select("is_active, handle, enable_pix, enable_credit_card")
-        .eq("tenant_id", payload.tenant_id)
-        .maybeSingle(),
-      sb.from("integration_appmax")
-        .select("access_token, environment, is_active, enable_pix, enable_credit_card")
         .eq("tenant_id", payload.tenant_id)
         .maybeSingle(),
       sb.from("integration_mp")
@@ -271,14 +267,12 @@ serve(async (req) => {
     ]);
     if (rlBlocked) return rlBlocked;
     const infinitepayIntegration = infinitepayInteg.data;
-    const appmaxIntegration = appmaxInteg.data;
     const mpIntegration = mpInteg.data;
     const pagarmeIntegration = pagarmeInteg.data;
     lap("leituras iniciais");
 
     const effectiveMpAccessToken = getActiveTenantMpToken(mpIntegration);
     if (!isPickupPay && !(infinitepayIntegration?.is_active && infinitepayIntegration?.handle) &&
-        !(appmaxIntegration?.is_active && appmaxIntegration?.access_token) &&
         !(pagarmeIntegration?.is_active && pagarmeIntegration?.api_key) &&
         !effectiveMpAccessToken) {
       return missingPaymentProviderResponse({ ...corsHeaders, "Content-Type": "application/json" });
@@ -581,249 +575,24 @@ serve(async (req) => {
       });
     }
 
-    // Determinar qual provedor usar (ordem: App Max > Pagar.me > Mercado Pago)
-    const useAppmax = appmaxIntegration?.is_active && appmaxIntegration?.access_token;
-    const usePagarme = !useAppmax && pagarmeIntegration?.is_active && pagarmeIntegration?.api_key;
-    const useMercadoPago = !useAppmax && !usePagarme && effectiveMpAccessToken;
+    // Determinar qual provedor usar (ordem: Pagar.me > Mercado Pago; InfinitePay já foi delegada acima)
+    const usePagarme = pagarmeIntegration?.is_active && pagarmeIntegration?.api_key;
+    const useMercadoPago = !usePagarme && effectiveMpAccessToken;
 
     // Defesa em profundidade: aplica restrição de método conforme flags do gateway escolhido
-    if (useAppmax) {
-      const e = enforcePaymentMethod(appmaxIntegration!.enable_pix, appmaxIntegration!.enable_credit_card, "appmax");
-      if (!e.ok) return new Response(JSON.stringify({ success: false, error: e.error }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    } else if (usePagarme) {
+    if (usePagarme) {
       const e = enforcePaymentMethod(pagarmeIntegration!.enable_pix, pagarmeIntegration!.enable_credit_card, "pagarme");
       if (!e.ok) return new Response(JSON.stringify({ success: false, error: e.error }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     } else if (useMercadoPago) {
       const e = enforcePaymentMethod(mpIntegration!.enable_pix, mpIntegration!.enable_credit_card, "mercado_pago");
       if (!e.ok) return new Response(JSON.stringify({ success: false, error: e.error }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    if (!useAppmax && !usePagarme && !useMercadoPago) {
+    if (!usePagarme && !useMercadoPago) {
       return missingPaymentProviderResponse({ ...corsHeaders, "Content-Type": "application/json" });
     }
 
     // Reutilizar orderIds já declarado na linha 185
     const externalReference = `tenant:${payload.tenant_id};orders:${orderIds.join(",")}`;
-
-    // ==== APP MAX ====
-    if (useAppmax) {
-      console.log("[create-payment] Using App Max for tenant:", payload.tenant_id);
-      
-      const APPMAX_SANDBOX_URL = "https://homolog.sandboxappmax.com.br/api/v3";
-      const APPMAX_PRODUCTION_URL = "https://appmax.com.br/api/v3";
-      const isSandbox = appmaxIntegration.environment === "sandbox";
-      const baseUrl = isSandbox ? APPMAX_SANDBOX_URL : APPMAX_PRODUCTION_URL;
-      const accessToken = appmaxIntegration.access_token;
-
-      // Função para formatar telefone para App Max
-      const formatPhoneForAppmax = (phone: string): string => {
-        const digits = phone.replace(/\D/g, "");
-        if (digits.length === 11) {
-          return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
-        }
-        if (digits.length === 10) {
-          return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
-        }
-        return phone;
-      };
-
-      // Função para formatar CEP
-      const formatCep = (cep: string): string => {
-        const digits = cep.replace(/\D/g, "");
-        if (digits.length === 8) {
-          return `${digits.slice(0, 5)}-${digits.slice(5)}`;
-        }
-        return cep;
-      };
-
-      // Separar nome
-      const nameParts = payload.customerData.name.trim().split(/\s+/);
-      const firstname = nameParts[0] || "";
-      const lastname = nameParts.slice(1).join(" ") || firstname;
-
-      // Criar cliente no App Max
-      const customerBody = {
-        "access-token": accessToken,
-        firstname,
-        lastname,
-        email: payload.customerData.email || `${payload.customerData.phone}@checkout.local`,
-        telephone: formatPhoneForAppmax(payload.customerData.phone),
-        postcode: formatCep(payload.addressData.cep),
-        address_street: payload.addressData.street,
-        address_street_number: payload.addressData.number,
-        address_street_complement: payload.addressData.complement || "",
-        address_street_district: payload.addressData.neighborhood,
-        address_city: payload.addressData.city,
-        address_state: payload.addressData.state,
-        ip: "127.0.0.1",
-        custom_txt: `Pedido(s): ${orderIds.join(", ")}`,
-        products: payload.cartItems.map(item => ({
-          product_sku: item.product_code || `SKU-${Date.now()}`,
-          product_qty: item.qty,
-        })),
-      };
-
-      console.log("[create-payment] Creating App Max customer...");
-      let customerRes: Response;
-      try {
-        customerRes = await fetch(`${baseUrl}/customer`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(customerBody),
-          signal: AbortSignal.timeout(60000),
-        });
-      } catch (fetchErr: any) {
-        console.error("[create-payment] App Max customer fetch error:", fetchErr.message);
-        return new Response(JSON.stringify({ 
-          error: `App Max indisponível: ${fetchErr.message}` 
-        }), {
-          status: 502,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const customerContentType = customerRes.headers.get("content-type") || "";
-      if (!customerContentType.includes("application/json")) {
-        const rawText = await customerRes.text();
-        console.error("[create-payment] App Max returned non-JSON for customer:", rawText.substring(0, 300));
-        return new Response(JSON.stringify({ 
-          error: "App Max retornou resposta inválida. Verifique se o Access Token está correto e tente novamente.",
-          details: `Status: ${customerRes.status}, Content-Type: ${customerContentType}`
-        }), {
-          status: 502,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      let customerJson: any;
-      try {
-        customerJson = await customerRes.json();
-      } catch (parseErr) {
-        console.error("[create-payment] App Max customer JSON parse error:", parseErr);
-        return new Response(JSON.stringify({ 
-          error: "App Max retornou resposta malformada. Tente novamente." 
-        }), {
-          status: 502,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      
-      if (!customerRes.ok || !customerJson.data?.id) {
-        console.error("[create-payment] App Max customer creation failed:", customerJson);
-        return new Response(JSON.stringify({ 
-          error: customerJson?.message || "Erro ao criar cliente no App Max", 
-          details: customerJson 
-        }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const appmaxCustomerId = customerJson.data.id;
-      console.log("[create-payment] App Max customer created:", appmaxCustomerId);
-
-      // Criar pedido no App Max
-      const productsTotal = payload.cartItems.reduce((sum, it) => sum + (it.unit_price * it.qty), 0);
-      const totalWithShipping = productsTotal + payload.shippingCost;
-
-      const orderBody: Record<string, any> = {
-        "access-token": accessToken,
-        total: totalWithShipping,
-        products: payload.cartItems.map(item => ({
-          sku: item.product_code || `SKU-${Date.now()}`,
-          name: item.product_name,
-          qty: item.qty,
-          price: item.unit_price,
-        })),
-        shipping: payload.shippingCost,
-        customer_id: appmaxCustomerId,
-        discount: payload.coupon_discount || 0,
-        freight_type: payload.shippingData?.service_name || "Retirada",
-      };
-
-      // Trava método de pagamento (PIX-only ou Cartão-only) conforme escolha do cliente
-      applyPaymentMethodLock("appmax", orderBody, payload.payment_method);
-
-      console.log("[create-payment] Creating App Max order...");
-      let orderRes: Response;
-      try {
-        orderRes = await fetch(`${baseUrl}/order`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(orderBody),
-          signal: AbortSignal.timeout(60000),
-        });
-      } catch (fetchErr: any) {
-        console.error("[create-payment] App Max order fetch error:", fetchErr.message);
-        return new Response(JSON.stringify({ 
-          error: `App Max indisponível ao criar pedido: ${fetchErr.message}` 
-        }), {
-          status: 502,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const orderContentType = orderRes.headers.get("content-type") || "";
-      if (!orderContentType.includes("application/json")) {
-        const rawText = await orderRes.text();
-        console.error("[create-payment] App Max returned non-JSON for order:", rawText.substring(0, 300));
-        return new Response(JSON.stringify({ 
-          error: "App Max retornou resposta inválida ao criar pedido. Verifique o Access Token.",
-          details: `Status: ${orderRes.status}, Content-Type: ${orderContentType}`
-        }), {
-          status: 502,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      let orderJson: any;
-      try {
-        orderJson = await orderRes.json();
-      } catch (parseErr) {
-        console.error("[create-payment] App Max order JSON parse error:", parseErr);
-        return new Response(JSON.stringify({ 
-          error: "App Max retornou resposta malformada ao criar pedido." 
-        }), {
-          status: 502,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      
-      if (!orderRes.ok || !orderJson.data?.id) {
-        console.error("[create-payment] App Max order creation failed:", orderJson);
-        return new Response(JSON.stringify({ 
-          error: orderJson?.message || "Erro ao criar pedido no App Max", 
-          details: orderJson 
-        }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const appmaxOrderId = orderJson.data.id;
-      console.log("[create-payment] App Max order created:", appmaxOrderId);
-
-      // Construir URL do checkout App Max
-      const checkoutUrl = isSandbox 
-        ? `https://homolog.sandboxappmax.com.br/checkout/${appmaxOrderId}`
-        : `https://appmax.com.br/checkout/${appmaxOrderId}`;
-
-      // Salvar link de pagamento nos pedidos
-      bg(sb
-        .from("orders")
-        .update({ payment_link: checkoutUrl })
-        .in("id", orderIds));
-      lap("appmax pronto");
-
-      return new Response(
-        JSON.stringify({ 
-          init_point: checkoutUrl, 
-          provider: "appmax",
-          appmax_customer_id: appmaxCustomerId,
-          appmax_order_id: appmaxOrderId,
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
 
     // ==== PAGAR.ME ====
     if (usePagarme) {

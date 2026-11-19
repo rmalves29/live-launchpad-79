@@ -103,7 +103,6 @@ export default function SipagIntegration({ tenantId }: SipagIntegrationProps) {
       queryClient.invalidateQueries({ queryKey: ['sipag-status', tenantId] });
       queryClient.invalidateQueries({ queryKey: ['mp-status', tenantId] });
       queryClient.invalidateQueries({ queryKey: ['pagarme-status', tenantId] });
-      queryClient.invalidateQueries({ queryKey: ['appmax-status', tenantId] });
       queryClient.invalidateQueries({ queryKey: ['infinitepay-status', tenantId] });
       setIsEditing(false);
       toast({
@@ -178,7 +177,7 @@ export default function SipagIntegration({ tenantId }: SipagIntegrationProps) {
             <a href="https://developers.sicoob.com.br" target="_blank" rel="noopener noreferrer" className="underline">
               developers.sicoob.com.br
             </a>{' '}
-            e chave PIX recebedora cadastrada. Ao ativar, outros gateways (MP, Pagar.me, Appmax, InfinitePay) serão desativados.
+            e chave PIX recebedora cadastrada. Ao ativar, outros gateways (MP, Pagar.me, InfinitePay) serão desativados.
           </AlertDescription>
         </Alert>
 

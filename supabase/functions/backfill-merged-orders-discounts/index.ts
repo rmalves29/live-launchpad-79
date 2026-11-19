@@ -124,14 +124,13 @@ serve(async (req) => {
     const pctCache = new Map<string, number>();
     async function getTenantPixPercent(tenantId: string): Promise<number> {
       if (pctCache.has(tenantId)) return pctCache.get(tenantId)!;
-      const [a, p, m, i] = await Promise.all([
-        sb.from("integration_appmax").select("pix_discount_percent, is_active").eq("tenant_id", tenantId).maybeSingle(),
+      const [p, m, i] = await Promise.all([
         sb.from("integration_pagarme").select("pix_discount_percent, is_active").eq("tenant_id", tenantId).maybeSingle(),
         sb.from("integration_mp").select("pix_discount_percent, is_active").eq("tenant_id", tenantId).maybeSingle(),
         sb.from("integration_infinitepay").select("pix_discount_percent, is_active").eq("tenant_id", tenantId).maybeSingle(),
       ]);
       const pick = (d: any) => (d?.is_active && Number(d?.pix_discount_percent) > 0 ? Number(d.pix_discount_percent) : 0);
-      const pct = pick(a.data) || pick(p.data) || pick(m.data) || pick(i.data) || 0;
+      const pct = pick(i.data) || pick(p.data) || pick(m.data) || 0;
       pctCache.set(tenantId, pct);
       return pct;
     }
