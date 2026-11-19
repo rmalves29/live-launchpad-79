@@ -33,7 +33,7 @@ e passam a valer quando a correção for feita.
   - `create-payment` cobra na ordem InfinitePay > App Max > Pagar.me > Mercado Pago.
   - Loja com InfinitePay e App Max ativos: cobra pela InfinitePay com o desconto configurado na App Max.
   - Teste `todo` em `pagamento-gateway.test.mjs`.
-- **P-02 · Se o banco não responder, a mensagem de item adicionado sai sem pausa** (🔴 etapa 4, item 4.2)
+- **P-02 · Se o banco não responder, a mensagem de item adicionado sai sem pausa** — ✅ corrigido no branch `correcoes-achados-p01-p04`: tenta a pausa 3 vezes; se o banco seguir sem responder, só manda quando a cliente não recebeu mensagem nos últimos 30 min, e não manda se nem isso der para conferir
   - `zapi-send-item-added`: `supabase.rpc` devolve o erro em vez de lançar exceção, então o `catch` nunca roda e a decisão
     fica vazia, o que cai no "manda agora". Com o banco lento numa live, a regra anti-bloqueio deixa de valer.
   - Teste em `item-adicionado-envio.test.mjs` registra o comportamento atual.
@@ -41,7 +41,7 @@ e passam a valer quando a correção for feita.
   - `validateInternalRequest` sempre retorna `true` (só escreve um aviso no log). A única barreira é a chave pública do site,
     que qualquer pessoa vê no navegador. Com o `tenant_id` de uma loja, dá para disparar mensagens pelo chip dela.
   - Confirmar com o escritório de Segurança antes de mexer (quem chama a função hoje: gatilho do banco e outras funções).
-- **P-04 · ~20% das mensagens de item adicionado saem com caractere invisível dentro do link do checkout** (🔵 correção pequena)
+- **P-04 · ~20% das mensagens de item adicionado saem com caractere invisível dentro do link do checkout** — ✅ corrigido no branch `correcoes-achados-p01-p04` (nas três cópias da regra, inclusive mensagens de cobrança)
   - `addMessageVariation` coloca um caractere invisível (anti-spam) em posição sorteada da mensagem inteira, inclusive no
     meio do link. Medido no teste: 403 de 2.000 mensagens com o link alterado. O link pode abrir errado ou nem abrir.
   - Teste `todo` em `item-adicionado-envio.test.mjs`. Correção: nunca inserir dentro de links. Vale também para outras mensagens

@@ -17,8 +17,8 @@ function installFastTimers() {
   globalThis.setTimeout = (fn, ms, ...args) => realSetTimeout(fn, ms > 50 ? 0 : ms, ...args);
 }
 
-export async function loadEdgeFunction(name, { tables, rpc, functions, env = {}, fetchHandler, fast = true } = {}) {
-  const sb = createFakeSupabase({ tables, rpc, functions });
+export async function loadEdgeFunction(name, { tables, rpc, functions, failReads, env = {}, fetchHandler, fast = true } = {}) {
+  const sb = createFakeSupabase({ tables, rpc, functions, failReads });
   const calls = [];
   const fullEnv = { SUPABASE_URL: 'https://teste.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'service-role-teste', ...env };
 

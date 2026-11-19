@@ -35,7 +35,7 @@ function matches(row, filters) {
   });
 }
 
-export function createFakeSupabase({ tables = {}, rpc = {}, functions = {} } = {}) {
+export function createFakeSupabase({ tables = {}, rpc = {}, functions = {}, failReads = [] } = {}) {
   const db = Object.fromEntries(Object.entries(tables).map(([k, rows]) => [k, clone(rows)]));
   const log = { reads: [], writes: [], rpc: [], invokes: [] };
   let nextId = 1000;
@@ -48,6 +48,7 @@ export function createFakeSupabase({ tables = {}, rpc = {}, functions = {} } = {
       const all = rows();
       if (state.action === 'select') {
         log.reads.push({ table, filters: clone(state.filters) });
+        if (failReads.includes(table)) return { data: null, error: { message: 'falha simulada de leitura' } };
         let out = all.filter((r) => matches(r, state.filters));
         if (state.order) {
           const { col, asc } = state.order;

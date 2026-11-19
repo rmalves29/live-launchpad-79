@@ -23,11 +23,19 @@ const mensagensWhatsApp = (fn) => fn.calls.filter((c) => c.url.startsWith('https
 // O envio insere caracteres invisíveis em posições sorteadas (anti-spam); tiramos antes de comparar o texto.
 const texto = (call) => String(call.body.text ?? '').replace(/[\u200B-\u200D\u2060\uFEFF]/g, '');
 
-async function carregar(decisao, extraWhats) {
+async function carregar(decisao, extraWhats, { mensagensAntigas = [], failReads } = {}) {
+  const respostas = Array.isArray(decisao) ? [...decisao] : null;
+  const tables = tabelas({ whatsapp: extraWhats });
+  tables.whatsapp_messages.push(...mensagensAntigas);
   return loadEdgeFunction('zapi-send-item-added', {
-    tables: tabelas({ whatsapp: extraWhats }),
+    tables,
+    failReads,
     rpc: {
-      item_added_claim: () => { if (decisao instanceof Error) throw decisao; return decisao; },
+      item_added_claim: () => {
+        const d = respostas ? respostas.shift() : decisao;
+        if (d instanceof Error) throw d;
+        return d;
+      },
       reserve_send_slot: () => new Date().toISOString(),
     },
     fetchHandler: async (call) => (call.url.includes('/functions/v1/push-dispatch') ? { status: 200, body: { sent: false } } : { status: 200, body: { id: 'msg-1', messageid: 'msg-1' } }),
@@ -87,10 +95,34 @@ test('telefone inválido é recusado sem mandar mensagem', async () => {
   assert.equal(mensagensWhatsApp(fn).length, 0);
 });
 
-test('se o banco não responder a pausa, hoje a mensagem sai mesmo assim (ver docs/refatoracao/decisoes.md, P-02)', async () => {
-  const fn = await carregar(new Error('banco fora do ar'));
+const banco = () => new Error('banco fora do ar');
+const recente = (minutos) => ({ tenant_id: LOJA, phone: '5531999887766', type: 'item_added', delivery_status: 'SENT', sent_at: new Date(Date.now() - minutos * 60_000).toISOString() });
+
+test('banco lento: tenta a pausa de novo e respeita a resposta quando ela chega (P-02, corrigido)', async () => {
+  const fn = await carregar([banco(), 'deferred']);
   await fn.call(pedido());
-  assert.equal(mensagensWhatsApp(fn).length, 1, 'comportamento atual registrado: envia sem pausa');
+  assert.equal(mensagensWhatsApp(fn).length, 0, 'segunda tentativa disse "acumular": não manda');
+  assert.equal(fn.sb.log.rpc.filter((r) => r.name === 'item_added_claim').length, 2);
+});
+
+test('banco sem resposta e cliente já recebeu mensagem há menos de 30 min: NÃO manda (P-02, corrigido)', async () => {
+  const fn = await carregar(banco(), undefined, { mensagensAntigas: [recente(10)] });
+  await fn.call(pedido());
+  assert.equal(mensagensWhatsApp(fn).length, 0);
+  assert.equal(fn.sb.log.rpc.filter((r) => r.name === 'item_added_claim').length, 3, 'tentou 3 vezes');
+  assert.ok(fn.sb.db.whatsapp_messages.some((m) => m.delivery_status === 'SKIPPED'));
+});
+
+test('banco sem resposta e nenhuma mensagem nos últimos 30 min: manda normalmente', async () => {
+  const fn = await carregar(banco(), undefined, { mensagensAntigas: [recente(45)] });
+  await fn.call(pedido());
+  assert.equal(mensagensWhatsApp(fn).length, 1);
+});
+
+test('banco totalmente fora (nem a conferência funciona): não manda, protege o chip', async () => {
+  const fn = await carregar(banco(), undefined, { failReads: ['whatsapp_messages'] });
+  await fn.call(pedido());
+  assert.equal(mensagensWhatsApp(fn).length, 0);
 });
 
 test('anti-spam nunca coloca caractere invisível dentro de link, código, valor ou telefone (P-04, corrigido)', async () => {

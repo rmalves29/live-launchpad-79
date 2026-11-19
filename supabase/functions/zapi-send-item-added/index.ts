@@ -451,21 +451,44 @@ serve(async (req) => {
         }
         consolidated = consolidateItems(body.consolidated_items!);
       } else if (pKey) {
-        try {
-          const { data: decision } = await supabase.rpc("item_added_claim", {
-            p_tenant_id: tenant_id,
-            p_phone_key: pKey,
-            p_cooldown_minutes: ITEM_ADDED_COOLDOWN_MINUTES,
-            p_item: { product_name, product_code, quantity: Number(quantity) || 1, unit_price: Number(unit_price) || 0 },
-            p_body: { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, order_id: order_id || null, cart_id: cart_id || null },
-          });
-          if (decision === "deferred") {
-            console.log("[zapi-send-item-added] PAUSA: acumulado para", formattedPhone, "|", product_code);
-            await supabase.from("whatsapp_messages").insert({ tenant_id, phone: formattedPhone, message: "[PAUSA 30min] Item acumulado para a próxima mensagem: " + product_name + (product_code ? " (" + product_code + ")" : ""), type: "system_log", product_name: product_name.substring(0, 100), sent_at: new Date().toISOString(), order_id: order_id || null, delivery_status: "DEFERRED" });
+        // A pausa é a proteção do chip: tenta o banco até 3 vezes antes de decidir.
+        let decision: string | null = null;
+        let claimError = "";
+        for (let attempt = 1; attempt <= 3 && !decision; attempt++) {
+          try {
+            const { data, error } = await supabase.rpc("item_added_claim", {
+              p_tenant_id: tenant_id,
+              p_phone_key: pKey,
+              p_cooldown_minutes: ITEM_ADDED_COOLDOWN_MINUTES,
+              p_item: { product_name, product_code, quantity: Number(quantity) || 1, unit_price: Number(unit_price) || 0 },
+              p_body: { tenant_id, customer_phone, product_name, product_code, quantity, unit_price, order_id: order_id || null, cart_id: cart_id || null },
+            });
+            if (!error && (data === "send" || data === "deferred")) decision = data;
+            else claimError = error?.message || "resposta inesperada: " + JSON.stringify(data);
+          } catch (e: any) {
+            claimError = e?.message || String(e);
+          }
+          if (!decision && attempt < 3) await new Promise((r) => setTimeout(r, attempt * 400));
+        }
+        if (decision === "deferred") {
+          console.log("[zapi-send-item-added] PAUSA: acumulado para", formattedPhone, "|", product_code);
+          await supabase.from("whatsapp_messages").insert({ tenant_id, phone: formattedPhone, message: "[PAUSA 30min] Item acumulado para a próxima mensagem: " + product_name + (product_code ? " (" + product_code + ")" : ""), type: "system_log", product_name: product_name.substring(0, 100), sent_at: new Date().toISOString(), order_id: order_id || null, delivery_status: "DEFERRED" });
+          return;
+        }
+        if (!decision) {
+          // Banco não respondeu a pausa: só manda se a cliente não recebeu "item adicionado" nos últimos 30 min.
+          // Sem conseguir conferir nem isso, não manda (protege o chip; o item continua no pedido).
+          console.warn("[zapi-send-item-added] item_added_claim falhou 3x:", claimError);
+          const since = new Date(Date.now() - ITEM_ADDED_COOLDOWN_MINUTES * 60_000).toISOString();
+          const { data: recent, error: recentError } = await supabase.from("whatsapp_messages")
+            .select("id").eq("tenant_id", tenant_id).eq("phone", formattedPhone).eq("type", "item_added")
+            .in("delivery_status", ["SENT", "PUSH_SENT"]).gte("sent_at", since).limit(1);
+          if (recentError || (recent && recent.length > 0)) {
+            const why = recentError ? "sem resposta do banco" : "cliente já recebeu mensagem nos últimos 30 min";
+            console.warn("[zapi-send-item-added] PAUSA sem banco: não enviado (" + why + ") |", formattedPhone, "|", product_code);
+            await supabase.from("whatsapp_messages").insert({ tenant_id, phone: formattedPhone, message: "[PAUSA] Banco não respondeu a pausa; não enviado (" + why + "): " + product_name + (product_code ? " (" + product_code + ")" : ""), type: "system_log", product_name: product_name.substring(0, 100), sent_at: new Date().toISOString(), order_id: order_id || null, delivery_status: "SKIPPED" });
             return;
           }
-        } catch (e: any) {
-          console.warn("[zapi-send-item-added] item_added_claim falhou (enviando sem pausa):", e?.message);
         }
       }
       const releasePause = async () => {
