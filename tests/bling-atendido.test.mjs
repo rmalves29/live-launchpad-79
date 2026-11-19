@@ -7,14 +7,14 @@ import { extractFunctions } from './support/extract.mjs';
 import { createFakeSupabase } from './support/fake-supabase.mjs';
 import { silenceLogs } from './support/edge.mjs';
 import { erpCanConfirmPostage, isPostedStatus, isPostedFromEvents } from '../supabase/functions/_shared/postage-confirmation.ts';
+// Saiu do index na etapa 3 (item 3.2): agora é um módulo importável.
+import { blingFetchWithRetry } from '../supabase/functions/_shared/bling-order-helpers.ts';
 
 const LOJA = '66666666-6666-4666-8666-666666666666';
 let restore;
 before(() => { restore = silenceLogs(); });
 after(() => restore());
 
-const delay = () => Promise.resolve();
-const { blingFetchWithRetry } = extractFunctions('supabase/functions/bling-sync-orders/index.ts', ['blingFetchWithRetry'], { delay });
 const { finalizeAsAttended } = extractFunctions('supabase/functions/bling-sync-orders/index.ts', ['finalizeAsAttended'], {
   BLING_API_URL: 'https://api.bling.com.br/Api/v3', blingFetchWithRetry, erpCanConfirmPostage,
 });
@@ -59,7 +59,7 @@ test('transportadora sem API de rastreio (ex.: Correios manual) conta como "sem 
 test('Bling instável (429): tenta de novo antes de desistir', async () => {
   let n = 0;
   globalThis.fetch = async () => new Response('{}', { status: ++n < 3 ? 429 : 200 });
-  const r = await blingFetchWithRetry('https://api.bling.com.br/Api/v3/x', { method: 'PATCH' }, { maxAttempts: 3 });
+  const r = await blingFetchWithRetry('https://api.bling.com.br/Api/v3/x', { method: 'PATCH' }, { maxAttempts: 3, baseDelayMs: 1 });
   assert.equal(r.response.status, 200);
   assert.equal(n, 3);
 });
@@ -71,4 +71,28 @@ test('"pedido enviado" só sai com postagem real: etiqueta gerada não conta', (
   assert.equal(isPostedStatus('Aguardando postagem'), false);
   assert.equal(isPostedFromEvents({ status: 'created', postedAt: null }), false, 'nome de campo não dispara a mensagem');
   assert.equal(isPostedFromEvents([{ status: 'Coleta realizada' }]), true);
+});
+
+test('P-05: loja sem linha de integração do Bling baixa estoque no depósito padrão (antes: nada acontecia)', async () => {
+  const chamadas = blingFalso();
+  const sb = createFakeSupabase({ tables: {
+    integration_bling: [],
+    shipping_integrations: [{ tenant_id: LOJA, provider: 'melhor_envio', is_active: true }],
+    bling_sync_logs: [],
+  } });
+  await finalizeAsAttended('tok', sb, LOJA, 125);
+  assert.deepEqual(chamadas.map((c) => `${c.method} ${c.url.replace('https://api.bling.com.br/Api/v3', '')}`), [
+    'POST /pedidos/vendas/125/lancar-estoque',
+    'PATCH /pedidos/vendas/125/situacoes/9',
+  ]);
+  assert.equal(sb.db.bling_sync_logs[0].status, 'success');
+});
+
+test('P-05: falha inesperada fica registrada em bling_sync_logs (antes: só no console)', async () => {
+  globalThis.fetch = async () => { throw new Error('rede caiu'); };
+  const sb = banco(['melhor_envio']);
+  await finalizeAsAttended('tok', sb, LOJA, 126);
+  assert.equal(sb.db.bling_sync_logs.length, 1);
+  assert.equal(sb.db.bling_sync_logs[0].status, 'error');
+  assert.match(sb.db.bling_sync_logs[0].details, /rede caiu/);
 });

@@ -415,10 +415,19 @@ async function getTracking(supabase: any, integration: any, order: any, baseUrl:
   const responseText = await response.text();
   console.log("[mandae-labels] Tracking response:", response.status, responseText.substring(0, 500));
 
+  // Encomenda ainda não existe na Mandaê (ex.: rastreio veio do ERP e é de outra transportadora).
+  // Não é falha do sistema: responde 404 para não aparecer como erro (500) a cada rodada do cron.
+  if (response.status === 404) {
+    return new Response(
+      JSON.stringify({ success: false, not_found: true, error: "Encomenda ainda não encontrada na Mandaê" }),
+      { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
   if (!response.ok) {
     return new Response(
-      JSON.stringify({ 
-        success: false, 
+      JSON.stringify({
+        success: false,
         error: "Erro ao buscar rastreamento",
         details: responseText
       }),

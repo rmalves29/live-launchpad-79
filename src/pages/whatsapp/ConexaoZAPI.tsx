@@ -224,7 +224,7 @@ export default function ConexaoZAPI({ restrictToUazapi = false }: ConexaoZAPIPro
     if (!tenant?.id) return;
     toast({ title: 'Sincronizando grupos...', description: 'Carregando grupos que você é administrador' });
     try {
-      await callFunction('fe-list-groups-v2', { tenant_id: tenant.id, admin_only: true });
+      await callFunction('fe-list-groups', { tenant_id: tenant.id, admin_only: true });
       toast({ title: 'Grupos sincronizados', description: 'Grupos atualizados com sucesso' });
     } catch (e) {
       console.error('[syncGroups] error:', e);

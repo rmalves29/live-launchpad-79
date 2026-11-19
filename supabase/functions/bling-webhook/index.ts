@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { erpCanConfirmPostage } from "../_shared/postage-confirmation.ts";
-import { findIntegrationBySignature, syncProductEvent, syncStockEvent, touchErpState, validToken } from "../_shared/bling-product-sync.ts";
+import { diagnoseSignature, findIntegrationBySignature, syncProductEvent, syncStockEvent, touchErpState, validToken } from "../_shared/bling-product-sync.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -140,7 +140,8 @@ serve(async (req) => {
     if (["product", "stock", "virtual_stock"].includes(resource)) {
       const integ = await findIntegrationBySignature(supabase, rawBody, req.headers.get("x-bling-signature-256"));
       if (!integ) {
-        await supabase.from('webhook_logs').insert({ webhook_type: `bling_${resource}:assinatura_invalida`, status_code: 401, payload: { event: body?.event, eventId: body?.eventId, companyId: body?.companyId } } as any);
+        const diag = await diagnoseSignature(supabase, rawBody, req.headers.get("x-bling-signature-256")).catch(() => ({}));
+        await supabase.from('webhook_logs').insert({ webhook_type: `bling_${resource}:assinatura_invalida`, status_code: 401, payload: { event: body?.event, eventId: body?.eventId, companyId: body?.companyId, ...diag } } as any);
         return new Response(JSON.stringify({ error: 'invalid signature' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
       const eventId = String(body?.eventId || "");

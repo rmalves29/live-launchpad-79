@@ -46,7 +46,7 @@ e passam a valer quando a correção for feita.
     meio do link. Medido no teste: 403 de 2.000 mensagens com o link alterado. O link pode abrir errado ou nem abrir.
   - Teste `todo` em `item-adicionado-envio.test.mjs`. Correção: nunca inserir dentro de links. Vale também para outras mensagens
     que usam a mesma função.
-- **P-05 · Bling: sem a linha de integração, o pedido não baixa estoque nem vira Atendido, e nada fica registrado** (🔵)
+- **P-05 · Bling: sem a linha de integração, o pedido não baixa estoque nem vira Atendido, e nada fica registrado** — ✅ corrigido na etapa 3 (sem a linha usa o depósito padrão; qualquer falha vai para `bling_sync_logs`)
   - `finalizeAsAttended` lê `cfg.bling_deposit_id` sem checar se `cfg` existe; o erro cai no `catch` e só aparece no console.
 - **P-06 · Regra do cupom em duas cópias** (tela e servidor) — hoje iguais, protegidas pelo teste de 5.000 casos.
   Juntar numa cópia só na etapa 2 (item 2.5).
@@ -56,7 +56,7 @@ e passam a valer quando a correção for feita.
   Os testes leem as funções direto do arquivo (`tests/support/extract.mjs`), o que é frágil a renomeações.
   Na etapa 2, exportar essa lógica para módulos e trocar os testes para importação normal.
 
-- **P-09 · Pix com cupom: a tela da live mostra um desconto menor do que o servidor cobra** (aberto)
+- **P-09 · Pix com cupom: a tela da live mostra um desconto menor do que o servidor cobra** — ✅ corrigido na etapa 3. Decisão do Rafael (19/11): Pix sobre o subtotal cheio dos produtos (igual ao servidor e ao checkout público); a tela da live passou a usar essa base
   - Tela da live (`LiveShop.tsx`): Pix sobre (produtos − cupom). Servidor (`create-payment`): Pix sobre o total dos produtos,
     e o cupom é descontado à parte. Com cupom e Pix juntos, a cliente paga um pouco menos do que viu e a loja perde a diferença.
     Decidir qual base vale e alinhar as duas.
@@ -141,3 +141,26 @@ bling-devolucao-preparar, bling-pedido-cancelar, zapi-send-item-added-v4, evolut
 calculate-shipping, update-zapi-client-token, whatsapp-send-template, whatsapp-proxy, whatsapp-add-label e as temporárias
 recentes (correios-debug-tmp, tmp-drive-kit-images, erp-stock-diagnose, pagarme-due-dates).
 `fe_group_events` **não** será apagada (histórico) — já está fora do `limpeza-banco.sql`.
+
+
+## Etapa 3 · Risco médio 🟡 — 19/11/2026
+Branch: `etapa-3-medio` (sai de `etapa-2-limpeza`; juntar no `main` leva as etapas 1, 2 e 3).
+- **3.5 Mandaê**: rastreio que não existe na Mandaê responde 404 "Encomenda ainda não encontrada" em vez de erro 500 a cada rodada do cron.
+- **3.3 Bling (P-05)**: ver acima. Testes novos em `bling-atendido.test.mjs`.
+- **3.4 Bling, assinatura inválida**: duas contas mandam avisos de produto que o Cartzy recusa desde 16/11
+  (companyId `e056cd50…` = MANIA DE MULHER; `86be1259…` = ainda não identificada). Pedidos não são afetados (não exigem assinatura).
+  Causa provável: os avisos de produto estão ligados a um aplicativo do Bling diferente do conectado no Cartzy.
+  Correção no código: o registro passa a dizer o motivo (`sem_assinatura`, `app_de_integracao_desativada` + loja, `app_desconhecido`).
+  Correção de verdade: no Bling da loja, deixar os avisos de produto/estoque no mesmo aplicativo conectado no Cartzy (ou reconectar).
+- **3.7 Pix com cupom (P-09)**: ver acima.
+- **3.1 Funções duplicadas**: fica uma versão só.
+  `fe-list-groups-v2` → telas usam `fe-list-groups` (que não apaga grupos e atende UazAPI) e ela ganhou a trava de acesso da v2
+  (antes qualquer pessoa sincronizava os grupos de qualquer loja e recebia os links de convite).
+  `zapi-proxy-v2` → sorteio usa `zapi-proxy` (já tinha a trava e o campo `profilePictureUrl`).
+  `pagarme-create-subscription` (v1, sem uso) removida; a tela usa a `-v2`, que continua com esse nome.
+  **Depois de publicar no main**: apagar do Supabase `fe-list-groups-v2`, `zapi-proxy-v2` e `pagarme-create-subscription`.
+- **3.2 Arquivos gigantes**: saíram para módulos testáveis as funções puras do `bling-sync-orders` (`_shared/bling-order-helpers.ts`:
+  UF, CPF, telefone, e-mail, erros do Bling, frete Frenet, chamada com nova tentativa) e do `zapi-webhook` (`_shared/zapi-phone.ts`:
+  telefones e data). Dividir o atendimento principal do `zapi-webhook` (~2.000 linhas num bloco só) fica para a etapa 4.
+- **3.6 Limpeza do banco**: não aplicada — o Supabase pediu confirmação e ela não foi respondida. Script pronto em `limpeza-banco.sql`.
+- Testes: 116 passando (eram 99). Front compila.

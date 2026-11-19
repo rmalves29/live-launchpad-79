@@ -35,6 +35,19 @@ export async function findIntegrationBySignature(supabase: any, raw: string, hea
   return null;
 }
 
+// Diagnóstico de assinatura inválida (só para o registro, nunca autoriza nada):
+// diz se o aviso veio sem assinatura ou se ela bate com o secret de uma integração DESATIVADA
+// — o caso típico é a loja ter reconectado o Bling com outro aplicativo e os avisos seguirem no app antigo.
+export async function diagnoseSignature(supabase: any, raw: string, header: string | null): Promise<Record<string, unknown>> {
+  const sig = String(header || "").replace(/^sha256=/i, "").trim().toLowerCase();
+  if (!sig) return { motivo: "sem_assinatura" };
+  const { data: list } = await supabase.from("integration_bling").select("tenant_id, client_secret").eq("is_active", false).not("client_secret", "is", null);
+  for (const integ of list || []) {
+    if (sameString(await hmacHex(String(integ.client_secret), raw), sig)) return { motivo: "app_de_integracao_desativada", tenant_id: integ.tenant_id };
+  }
+  return { motivo: "app_desconhecido" };
+}
+
 // ---------- token + chamadas ----------
 async function refreshToken(supabase: any, integ: any): Promise<string | null> {
   if (!integ.refresh_token || !integ.client_id || !integ.client_secret) return null;
