@@ -105,7 +105,7 @@ export default function EmpresasIndex() {
   const [editingTenant, setEditingTenant] = useState<Tenant | null>(null);
   const [showPasswords, setShowPasswords] = useState<{[key: string]: boolean}>({});
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive' | 'blocked' | 'expired' | 'awaiting'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive' | 'blocked' | 'expired' | 'awaiting'>('active');
   const [filterPrazo, setFilterPrazo] = useState<'all' | 'expired' | 'critical' | 'warning' | 'ok' | 'unlimited'>('all');
   const [activeTab, setActiveTab] = useState<'cartzy' | 'fluxo'>('cartzy');
   const [fluxoTenantIds, setFluxoTenantIds] = useState<Set<string>>(new Set());
@@ -1429,12 +1429,12 @@ Vamos agendar nossa reunião de integração para configurar pagamento, frete e 
                 </select>
               </div>
 
-              {(filterStatus !== 'all' || filterPrazo !== 'all') && (
+              {(filterStatus !== 'active' || filterPrazo !== 'all') && (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => {
-                    setFilterStatus('all');
+                    setFilterStatus('active');
                     setFilterPrazo('all');
                   }}
                   className="text-muted-foreground hover:text-foreground"
