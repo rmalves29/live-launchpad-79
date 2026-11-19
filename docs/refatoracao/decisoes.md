@@ -124,3 +124,20 @@ Nunca cobrou (o checkout não chamava a `create-sipag-payment`) e nenhuma loja c
 menu por loja e as funções `create-sipag-payment` e `sipag-webhook`. Migração `20261119150000_remove_sipag.sql` tira a Sipag
 da regra de gateway único e arquiva a tabela em `arquivo.integration_sipag_removida` (reversível).
 Gateways do sistema a partir de agora: **InfinitePay, Pagar.me e Mercado Pago**.
+
+### Funções mortas apagadas do Supabase — 19/11/2026 (decisão do Rafael)
+Apagadas do painel 48 funções publicadas que não estavam mais no código e não tiveram nenhuma chamada nos registros:
+admin-update-user-email, backfill-merged-orders-discounts, backfill-payment-methods, bling-debug-product, bling-integration,
+create-subscription-payment, subscription-webhook, sendflow-runner-v2, zapi-broadcast, zapi-check-message-status,
+zapi-send-confirmation-link, zapi-send-item-added-v2, zapi-send-item-added-v3, create-sipag-payment, sipag-webhook,
+appmax-create-payment, appmax-webhook, whatsapp-send, whatsapp-multitenant, whatsapp-connection, whatsapp-monitor,
+whatsapp-auto-response, whatsapp-process-message, whatsapp-add-label-bulk, whatsapp-send-item-added, whatsapp-send-paid-order,
+whatsapp-send-product-canceled, evo-fix-webhook, evo-test-secrets, webhook-bling, webhook-mercadopago, webhook-melhorenvio,
+webhook-melhor-envio, webhook-whatsapp, callback-empresa, admin-set-password, admin-metrics, tenant-create-user,
+tenant-reset-password, tenant-generate-login-link, get-integration-settings, save-integration-settings, melhor-envio-oauth,
+melhor-envio-token-refresh, melhor-envio-healthcheck, mp-diagnose, recalculate-order-total, recheck-pending-payments.
+Mantidas de propósito (precisam de ok antes): mercadopago-webhook, bling-nfe-probe, bling-order-lookup, bling-cancelados-status,
+bling-devolucao-preparar, bling-pedido-cancelar, zapi-send-item-added-v4, evolution-webhook, create-pix-payment,
+calculate-shipping, update-zapi-client-token, whatsapp-send-template, whatsapp-proxy, whatsapp-add-label e as temporárias
+recentes (correios-debug-tmp, tmp-drive-kit-images, erp-stock-diagnose, pagarme-due-dates).
+`fe_group_events` **não** será apagada (histórico) — já está fora do `limpeza-banco.sql`.
