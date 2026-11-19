@@ -90,6 +90,9 @@ App Max. Removido do código: aba e tela de configuração, checklist de integra
 gateway no checkout público, vitrine e live, desconto do Pix, trava Pix/cartão, `create-payment`, reenvio de webhooks e o
 backfill de descontos. Nova ordem: InfinitePay > Pagar.me > Mercado Pago.
 
-Fica para DEPOIS de publicar o código (nessa ordem, senão a versão antiga do `create-payment` quebra ao ler a tabela):
-1. Apagar no Supabase as funções publicadas `appmax-create-payment` e `appmax-webhook` (não estão no repositório).
-2. Apagar a tabela `integration_appmax` (1 linha inativa) e regenerar os tipos do Supabase.
+Limpeza do banco: migração `20261119140000_remove_appmax.sql` (vai junto com o código).
+- Tira a App Max da regra "só um gateway ativo por loja" (`deactivate_other_payment_integrations`). Sem isso, ativar
+  Mercado Pago, Pagar.me, InfinitePay ou Sipag daria erro quando a tabela saísse.
+- Arquiva a tabela (reversível): `integration_appmax` vai para `arquivo.integration_appmax_removida`, fora da API.
+- As funções publicadas `appmax-create-payment` e `appmax-webhook` já estavam desativadas desde 10/10/2026
+  (respondem 410). Podem ser apagadas no painel do Supabase quando quiser; não fazem nada.
