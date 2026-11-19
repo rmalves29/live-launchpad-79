@@ -1,5 +1,6 @@
 // Programa de afiliados: agenda pública (/indicacao), indicação pelo painel do afiliado e gestão de reuniões no admin.
 // deno-lint-ignore-file no-explicit-any
+import { ORDERZAP_TENANT_ID } from "../_shared/platform.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { formatBrt, isValidSlot, listSlots, normalizeAgenda } from "../_shared/affiliate-agenda.ts";
 import { createMeetEvent, deleteEvent, googleConfigured, moveEvent } from "../_shared/google-calendar.ts";
@@ -14,7 +15,6 @@ const corsHeaders = {
 const json = (b: unknown, status = 200) =>
   new Response(JSON.stringify(b), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-const ORDERZAP_TENANT_ID = "d5671cfb-9c42-4c44-8f94-0a19a39473d8";
 const SITE = "https://app.cartzy.com.br";
 const url = Deno.env.get("SUPABASE_URL")!;
 const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;

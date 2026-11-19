@@ -96,3 +96,25 @@ Limpeza do banco: migração `20261119140000_remove_appmax.sql` (vai junto com o
 - Arquiva a tabela (reversível): `integration_appmax` vai para `arquivo.integration_appmax_removida`, fora da API.
 - As funções publicadas `appmax-create-payment` e `appmax-webhook` já estavam desativadas desde 10/10/2026
   (respondem 410). Podem ser apagadas no painel do Supabase quando quiser; não fazem nada.
+
+## Etapa 2 · Risco baixo 🔵 — 19/11/2026 (branch `etapa-2-limpeza`, em cima de `remove-appmax`)
+
+| Item | O que foi feito |
+|---|---|
+| 2.1/2.2 | 10 funções sem nenhuma chamada saíram do repositório: `backfill-merged-orders-discounts`, `backfill-payment-methods`, `bling-debug-product`, `admin-update-user-email`, `create-subscription-payment`, `subscription-webhook`, `sendflow-runner-v2`, `zapi-broadcast`, `zapi-check-message-status`, `zapi-send-confirmation-link`. Conferido: nada no código, nas migrações nem nos agendamentos chama essas funções |
+| 2.3 | Identificador da empresa OrderZap num lugar só (`_shared/platform.ts`), usado por 7 funções |
+| 2.4 | 26 erros que eram engolidos em silêncio agora aparecem no log (`[função] erro ignorado: ...`). Não muda nenhuma decisão do código. Ficaram de fora os `JSON.parse` opcionais e as tentativas de endereço alternativo do `fe-list-groups-v2` (falha ali é esperada) |
+| 2.5 | Regra do cupom numa cópia só (`_shared/coupon-rules.ts`), usada pela tela e pelo servidor. O teste de 5.000 carrinhos continua garantindo que os dois chegam no mesmo valor. Total do pedido e Pix ficam para depois da decisão do P-09 |
+| 2.6 | Script pronto em `docs/refatoracao/limpeza-banco.sql` (~230 MB), **não aplicado**: depende do "ok" e de permissão para mexer no banco |
+| 1.7 | Verificação de tipos só para medir (`tests/tsconfig.typecheck.json`, não entra no build): **95 erros** no front hoje, nenhum novo vindo das etapas 1 e 2 |
+
+Conferido: build do Vite passa; 99 testes passam; nenhum erro de tipo novo.
+
+### Pendências encontradas na etapa 2
+- **Funções ainda publicadas no Supabase**: tirar do repositório não apaga a função publicada. As 10 acima e as ~35 do grupo 1
+  continuam no ar até alguém apagar no painel do Supabase. Atenção a `admin-update-user-email`, que está publicada **sem
+  exigência de login**: apagar primeiro.
+- **Sipag aparece na tela mas não cobra**: a loja consegue ativar a Sipag (e isso desliga os outros gateways), mas nenhuma
+  parte do checkout usa a `create-sipag-payment`. Nenhuma loja ativou até hoje. Decidir: completar ou tirar da tela (item 3.7).
+- **Funções de limpeza `cleanup-fe-group-events` e `cleanup-whatsapp-messages`** ficaram: sem agendamento hoje, mas
+  servem de base para a limpeza do item 2.6. `fe_group_events` NÃO deve ser apagada (relatório de grupos usa o histórico).

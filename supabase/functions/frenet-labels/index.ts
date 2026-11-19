@@ -143,7 +143,7 @@ async function createShipping(
       const valid = arr.filter((s: any) => s.ShippingPrice && s.Error !== true);
       valid.sort((a: any, b: any) => Number(String(a.ShippingPrice).replace(",", ".")) - Number(String(b.ShippingPrice).replace(",", ".")));
       serviceCode = valid[0]?.ServiceCode;
-    } catch {}
+    } catch (err) { console.warn("[frenet-labels] erro ignorado:", (err as any)?.message ?? err); }
   }
 
   const partnerToken = Deno.env.get("FRENET_PARTNER_TOKEN") || "";
@@ -248,7 +248,7 @@ async function createShipping(
       const errBody = JSON.parse(text);
       msg = errBody.Message || errBody.message || msg;
       if (errBody.Details?.[0]?.Message) msg += ` — ${errBody.Details[0].Message}`;
-    } catch {}
+    } catch (err) { console.warn("[frenet-labels] erro ignorado:", (err as any)?.message ?? err); }
     return json({ success: false, error: msg, details: text.substring(0, 500) }, 200);
   }
 

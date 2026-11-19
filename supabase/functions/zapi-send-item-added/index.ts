@@ -625,7 +625,7 @@ serve(async (req) => {
         try {
           const responseJson = JSON.parse(responseText);
           zapiMessageId = responseJson.messageId || responseJson.id || null;
-        } catch (e) {}
+        } catch (e) { console.warn("[zapi-send-item-added] erro ignorado:", (e as any)?.message ?? e); }
       }
 
       if (sendOk && markWaitingAfterSend) {

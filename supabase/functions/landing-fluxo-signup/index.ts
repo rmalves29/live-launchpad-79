@@ -90,7 +90,7 @@ Deno.serve(async (req) => {
 
     if (tenantErr || !tenant) {
       // rollback do usuário
-      await admin.auth.admin.deleteUser(userId).catch(() => {});
+      await admin.auth.admin.deleteUser(userId).catch((err) => console.warn("[landing-fluxo-signup] erro ignorado:", err?.message ?? err));
       return new Response(JSON.stringify({ success: false, error: tenantErr?.message || 'Falha ao criar empresa.' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
@@ -107,8 +107,8 @@ Deno.serve(async (req) => {
       }, { onConflict: 'id' });
 
     if (profileErr) {
-      await admin.from('tenants').delete().eq('id', tenant.id).catch(() => {});
-      await admin.auth.admin.deleteUser(userId).catch(() => {});
+      await admin.from('tenants').delete().eq('id', tenant.id).catch((err) => console.warn("[landing-fluxo-signup] erro ignorado:", err?.message ?? err));
+      await admin.auth.admin.deleteUser(userId).catch((err) => console.warn("[landing-fluxo-signup] erro ignorado:", err?.message ?? err));
       return new Response(JSON.stringify({ success: false, error: profileErr.message }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
@@ -155,7 +155,7 @@ Deno.serve(async (req) => {
           await setWebhook(
             { url: sample.uazapi_url, token: created.token },
             `${Deno.env.get('SUPABASE_URL')}/functions/v1/uazapi-webhook`,
-          ).catch(() => {});
+          ).catch((err) => console.warn("[landing-fluxo-signup] erro ignorado:", err?.message ?? err));
           whatsappProvisioned = true;
         }
       }

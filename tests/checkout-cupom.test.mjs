@@ -1,13 +1,14 @@
 // Checkout: o desconto de cupom mostrado na tela tem que ser o mesmo que o servidor cobra.
-// Hoje a regra existe em duas cópias (src/lib/live-shop.ts e supabase/functions/live-shop/index.ts).
-// Este teste compara as duas com milhares de carrinhos para pegar qualquer diferença.
+// Desde a etapa 2 a regra fica num lugar só (_shared/coupon-rules.ts); este teste garante que tela e servidor
+// continuam chegando no mesmo desconto (as "capas" de cada lado convertem o carrinho de jeitos diferentes).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { extractFunctions } from './support/extract.mjs';
 import { previewCoupon, bestAutoCoupon, cartSubtotal, cartOriginal } from '../src/lib/live-shop.ts';
 import { isOrderWithinCoupon } from '../supabase/functions/_shared/coupon-eligibility.ts';
+import { computeCouponDiscount } from '../supabase/functions/_shared/coupon-rules.ts';
 
-const servidor = extractFunctions('supabase/functions/live-shop/index.ts', ['round2', 'num', 'couponActive', 'computeCoupon']);
+const servidor = extractFunctions('supabase/functions/live-shop/index.ts', ['round2', 'num', 'couponActive', 'computeCoupon'], { computeCouponDiscount });
 
 const linha = (price, qty, was = null) => ({ product_id: 1, qty, code: 'C1', name: 'Peça', label: '', image_url: null, price, was, stock: 99 });
 const paraServidor = (lines) => lines.map((l) => ({ unit_price: l.price, qty: l.qty, promotional: !!l.was }));

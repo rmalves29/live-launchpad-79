@@ -185,7 +185,7 @@ Deno.serve(async (req) => {
         try {
           const cr = await fetch(`${evolutionApiUrl}/webhook/find/${instName}`, { headers: { apikey: evolutionApiKey } });
           current = await cr.json().catch(() => null);
-        } catch (_) {}
+        } catch (_) { console.warn("[evolution-instance-manager] erro ignorado:", (_ as any)?.message ?? _); }
 
         return new Response(JSON.stringify({ success: r.ok, set_result: r, current_webhook: current, webhook_url: webhookUrl, instance: instName }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }

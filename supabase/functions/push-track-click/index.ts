@@ -17,7 +17,7 @@ serve(async (req) => {
     if (log) {
       await supabase.from("push_notifications_log").update({ status: "clicked", clicked_at: new Date().toISOString() }).eq("id", (log as any).id);
       if ((log as any).campaign_id) {
-        await supabase.rpc("push_increment_campaign_clicks", { p_campaign_id: (log as any).campaign_id }).then(()=>{}).catch(()=>{});
+        await supabase.rpc("push_increment_campaign_clicks", { p_campaign_id: (log as any).campaign_id }).then(()=>{}).catch((err) => console.warn("[push-track-click] erro ignorado:", err?.message ?? err));
         // fallback direct update if rpc missing
         const { data: c } = await supabase.from("push_campaigns").select("total_clicked").eq("id", (log as any).campaign_id).maybeSingle();
         if (c) await supabase.from("push_campaigns").update({ total_clicked: ((c as any).total_clicked || 0) + 1 }).eq("id", (log as any).campaign_id);

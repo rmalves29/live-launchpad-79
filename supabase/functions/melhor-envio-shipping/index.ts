@@ -280,7 +280,7 @@ serve(withQuoteCache("melhor_envio", async (req) => {
         const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
         if (typeof parsed === 'object' && !Array.isArray(parsed)) enabledServices = parsed;
       }
-    } catch {}
+    } catch (err) { console.warn("[melhor-envio-shipping] erro ignorado:", (err as any)?.message ?? err); }
 
     const validOptions = (Array.isArray(shippingData) ? shippingData : [])
       .filter((option: any) => {

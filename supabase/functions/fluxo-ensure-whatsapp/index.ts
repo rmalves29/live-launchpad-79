@@ -109,7 +109,7 @@ Deno.serve(async (req) => {
     await setWebhook(
       { url, token: created.token },
       `${Deno.env.get('SUPABASE_URL')}/functions/v1/uazapi-webhook`,
-    ).catch(() => {});
+    ).catch((err) => console.warn("[fluxo-ensure-whatsapp] erro ignorado:", err?.message ?? err));
 
     return json({ success: true, provisioned: true });
   } catch (e) {

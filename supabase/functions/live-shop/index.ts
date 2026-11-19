@@ -3,6 +3,7 @@
 // Ações: catalog | customer_lookup | customer_save | coupon_check | reserve | create_order | cancel_order
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { parsePurchaseLimitError, purchaseLimitCustomerMessage } from '../_shared/purchase-limit.ts';
+import { computeCouponDiscount } from '../_shared/coupon-rules.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -161,37 +162,8 @@ function couponActive(c: any) {
 
 function computeCoupon(coupon: any, lines: Line[]): { ok: boolean; discount: number; message?: string } {
   if (!couponActive(coupon)) return { ok: false, discount: 0, message: 'Cupom inválido ou expirado.' };
-  const eligible = coupon.apply_to_promotional === false ? lines.filter((l) => !l.promotional) : lines;
-  const base = eligible.reduce((s, l) => s + l.unit_price * l.qty, 0);
-  const itemCount = eligible.reduce((s, l) => s + l.qty, 0);
-  if (base <= 0) return { ok: false, discount: 0, message: 'Este cupom não vale para produtos em promoção.' };
-
-  const type = String(coupon.discount_type);
-  if (type !== 'progressive') {
-    const min = num(coupon.min_purchase_amount);
-    if (min > 0 && base < min) return { ok: false, discount: 0, message: `Este cupom vale em compras acima de R$ ${min.toFixed(2).replace('.', ',')}.` };
-    const minItems = num(coupon.min_items_quantity);
-    if (minItems > 0 && itemCount < minItems) return { ok: false, discount: 0, message: `Este cupom vale a partir de ${minItems} item(ns).` };
-  }
-
-  let discount = 0;
-  if (type === 'percentage') discount = (base * num(coupon.discount_value)) / 100;
-  else if (type === 'fixed') discount = Math.min(num(coupon.discount_value), base);
-  else if (type === 'progressive') {
-    const tiers: any[] = Array.isArray(coupon.progressive_tiers) ? coupon.progressive_tiers : [];
-    // Faixa por QUANTIDADE de produtos (min_qty/max_qty) ou por VALOR do pedido (min_value/max_value, o formato antigo)
-    const tier = tiers.find((t) => t.min_qty != null
-      ? itemCount >= num(t.min_qty) && (t.max_qty == null || itemCount <= num(t.max_qty))
-      : base >= num(t.min_value) && (t.max_value == null || base <= num(t.max_value)));
-    if (!tier) {
-      const byQty = tiers.some((t) => t.min_qty != null);
-      return { ok: false, discount: 0, message: byQty ? 'Adicione mais produtos para atingir a faixa de desconto deste cupom.' : 'Seu pedido ainda não atingiu a faixa de desconto deste cupom.' };
-    }
-    discount = (base * num(tier.discount)) / 100;
-  } else return { ok: false, discount: 0, message: 'Cupom inválido.' };
-
-  discount = round2(Math.min(discount, base));
-  return discount > 0 ? { ok: true, discount } : { ok: false, discount: 0, message: 'Cupom sem desconto para este pedido.' };
+  // Mesma regra da tela (src/lib/live-shop.ts): uma cópia só em _shared/coupon-rules.ts
+  return computeCouponDiscount(coupon, lines.map((l) => ({ unitPrice: l.unit_price, qty: l.qty, promotional: l.promotional })));
 }
 
 async function loadCoupon(tenantId: string, code: unknown, affId?: string | null) {

@@ -549,7 +549,7 @@ async function sendProductToBling(
         } else if (parsed?.error?.message) {
           friendlyError = parsed.error.message;
         }
-      } catch {}
+      } catch (err) { console.warn("[bling-sync-products] erro ignorado:", (err as any)?.message ?? err); }
       throw new Error(friendlyError);
     }
   } else {

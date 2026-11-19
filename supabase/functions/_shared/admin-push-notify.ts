@@ -4,7 +4,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendWebPush } from "./web-push.ts";
 
-export const CARTZY_TENANT_ID = "d5671cfb-9c42-4c44-8f94-0a19a39473d8";
+import { ORDERZAP_TENANT_ID } from "./platform.ts";
+export const CARTZY_TENANT_ID = ORDERZAP_TENANT_ID;
 
 export interface AdminNotifyArgs {
   title: string;

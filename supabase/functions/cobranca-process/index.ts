@@ -386,7 +386,7 @@ async function processCobranca({
             tenant_id: tenantId,
             phone,
             tagId,
-          }).catch(() => {});
+          }).catch((err) => console.warn("[cobranca-process] erro ignorado:", err?.message ?? err));
         }
       }
     } catch (e: any) {

@@ -1,3 +1,4 @@
+import { ORDERZAP_TENANT_ID } from "../_shared/platform.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { parsePurchaseLimitError, purchaseLimitCustomerMessage } from "../_shared/purchase-limit.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -1041,9 +1042,9 @@ serve(async (req) => {
        
        // Prospecção (Harvey): respostas privadas que chegam no WhatsApp da OrderZap
        // ficam guardadas para o prospect-agent ler (ele só devolve as de lojas abordadas).
-       if (!fromMe && messageText && (payload as any).uazapi_tenant_id === 'd5671cfb-9c42-4c44-8f94-0a19a39473d8') {
+       if (!fromMe && messageText && (payload as any).uazapi_tenant_id === ORDERZAP_TENANT_ID) {
          const { error: inErr } = await supabase.from('whatsapp_messages').insert({
-           tenant_id: 'd5671cfb-9c42-4c44-8f94-0a19a39473d8',
+           tenant_id: ORDERZAP_TENANT_ID,
            phone: senderPhone,
            message: messageText,
            type: 'incoming',
@@ -3183,7 +3184,7 @@ async function updateOrderTotal(supabase: any, orderId: number) {
          try {
            const responseJson = JSON.parse(responseText);
            zapiMessageId = responseJson.messageId || responseJson.id || null;
-         } catch (e) { }
+         } catch (e) { console.warn("[zapi-webhook] erro ignorado:", (e as any)?.message ?? e); }
 
          // Log da mensagem enviada
          await supabase.from('whatsapp_messages').insert({
@@ -3334,7 +3335,7 @@ async function updateOrderTotal(supabase: any, orderId: number) {
    try {
      const responseJson = JSON.parse(responseText);
      zapiMessageId = responseJson.messageId || responseJson.id || null;
-   } catch (e) { }
+   } catch (e) { console.warn("[zapi-webhook] erro ignorado:", (e as any)?.message ?? e); }
    
    // Update confirmation status
    await supabase

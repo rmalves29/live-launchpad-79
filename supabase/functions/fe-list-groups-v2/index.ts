@@ -71,7 +71,7 @@ async function syncZapi(supabase: any, tenant_id: string, cfg: any, admin_only: 
         const isAdmin = connPhone ? pts.some((p: any) => match(norm(p.phone), connPhone) && (p.isAdmin || p.isSuperAdmin)) : false;
         return { group_jid: g.phone, group_name: g.name || g.subject || g.phone, participant_count: count, invite_link: m.invitationLink || m.inviteLink || g.invitationLink || null, _include: effectiveAdmin ? isAdmin : true };
       }
-    } catch {}
+    } catch (err) { console.warn("[fe-list-groups-v2] erro ignorado:", (err as any)?.message ?? err); }
     return { group_jid: g.phone, group_name: g.name || g.subject || g.phone, participant_count: base2, invite_link: g.invitationLink || null, _include: !effectiveAdmin };
   });
 

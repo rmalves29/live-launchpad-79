@@ -112,19 +112,19 @@ async function applyGroupSettings(uazUrl: string, uazTok: string, groupJid: stri
     await fetch(`${uazUrl}/group/description`, {
       method: "POST", headers,
       body: JSON.stringify({ groupjid: groupJid, description: template.description }),
-    }).catch(() => {});
+    }).catch((err) => console.warn("[fe-spawn-group] erro ignorado:", err?.message ?? err));
   }
   if (template.image_url) {
     await fetch(`${uazUrl}/group/image`, {
       method: "POST", headers,
       body: JSON.stringify({ groupjid: groupJid, image: template.image_url }),
-    }).catch(() => {});
+    }).catch((err) => console.warn("[fe-spawn-group] erro ignorado:", err?.message ?? err));
   }
   // Só admin fala — comportamento padrão do SendFlow (onlyAdminsSpeak)
   await fetch(`${uazUrl}/group/settings`, {
     method: "POST", headers,
     body: JSON.stringify({ groupjid: groupJid, announce: true }),
-  }).catch(() => {});
+  }).catch((err) => console.warn("[fe-spawn-group] erro ignorado:", err?.message ?? err));
 }
 
 serve(async (req) => {
