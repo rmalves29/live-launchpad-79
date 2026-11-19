@@ -14,7 +14,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CheckCircle2, XCircle, Loader2, CreditCard, Truck, Building2, Package, Wallet, Mail, Instagram, Printer, MessageSquare, ShoppingBag, Sparkles } from 'lucide-react';
 import PaymentIntegrations from '@/components/integrations/PaymentIntegrations';
 import PagarMeIntegration from '@/components/integrations/PagarMeIntegration';
-import SipagIntegration from '@/components/integrations/SipagIntegration';
 import InfinitePayIntegration from '@/components/integrations/InfinitePayIntegration';
 import AsaasIntegration from '@/components/integrations/AsaasIntegration';
 import ShippingIntegrations from '@/components/integrations/ShippingIntegrations';
@@ -111,15 +110,6 @@ export default function TenantIntegrationsPage() {
     queryFn: async () => {
       const { data } = await supabase.from('integration_pagarme').select('is_active').eq('tenant_id', tenantId).maybeSingle();
       return data;
-    },
-    enabled: !!tenantId,
-  });
-
-  const { data: sipagIntegration } = useQuery({
-    queryKey: ['sipag-status', tenantId],
-    queryFn: async () => {
-      const { data } = await supabase.from('integration_sipag' as any).select('is_active').eq('tenant_id', tenantId).maybeSingle();
-      return data as { is_active: boolean } | null;
     },
     enabled: !!tenantId,
   });
@@ -317,14 +307,6 @@ export default function TenantIntegrationsPage() {
             {pagarmeIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
           </TabsTrigger>
           )}
-          {en('sipag') && (
-          <TabsTrigger value="sipag" className="flex items-center gap-2">
-            <Building2 className="h-4 w-4" />
-            <span className="hidden sm:inline">Sipag (Sicoob)</span>
-            <span className="sm:hidden">SP</span>
-            {sipagIntegration?.is_active && <CheckCircle2 className="h-4 w-4 text-primary" />}
-          </TabsTrigger>
-          )}
           {en('infinitepay') && (
           <TabsTrigger value="infinitepay" className="flex items-center gap-2">
             <Sparkles className="h-4 w-4" />
@@ -436,11 +418,6 @@ export default function TenantIntegrationsPage() {
         {en('pagarme') && (
         <TabsContent value="pagarme" className="mt-6">
           <PagarMeIntegration tenantId={tenantId} />
-        </TabsContent>
-        )}
-        {en('sipag') && (
-        <TabsContent value="sipag" className="mt-6">
-          <SipagIntegration tenantId={tenantId} />
         </TabsContent>
         )}
         {en('infinitepay') && (

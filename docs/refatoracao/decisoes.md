@@ -118,3 +118,9 @@ Conferido: build do Vite passa; 99 testes passam; nenhum erro de tipo novo.
   parte do checkout usa a `create-sipag-payment`. Nenhuma loja ativou até hoje. Decidir: completar ou tirar da tela (item 3.7).
 - **Funções de limpeza `cleanup-fe-group-events` e `cleanup-whatsapp-messages`** ficaram: sem agendamento hoje, mas
   servem de base para a limpeza do item 2.6. `fe_group_events` NÃO deve ser apagada (relatório de grupos usa o histórico).
+
+### Sipag removida — 19/11/2026 (decisão do Rafael)
+Nunca cobrou (o checkout não chamava a `create-sipag-payment`) e nenhuma loja cadastrou. Saíram a aba e a tela, a chave de
+menu por loja e as funções `create-sipag-payment` e `sipag-webhook`. Migração `20261119150000_remove_sipag.sql` tira a Sipag
+da regra de gateway único e arquiva a tabela em `arquivo.integration_sipag_removida` (reversível).
+Gateways do sistema a partir de agora: **InfinitePay, Pagar.me e Mercado Pago**.

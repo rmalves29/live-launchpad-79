@@ -10,7 +10,6 @@ export const INTEGRATION_KEYS = [
   { key: 'omie', label: 'Omie ERP' },
   { key: 'mercadopago', label: 'Mercado Pago' },
   { key: 'pagarme', label: 'Pagar.me' },
-  { key: 'sipag', label: 'Sipag (Sicoob)' },
   { key: 'infinitepay', label: 'InfinitePay' },
   { key: 'melhorenvio', label: 'Melhor Envio' },
   { key: 'mandae', label: 'Mandaê' },

@@ -792,7 +792,7 @@ export default function TenantsManager() {
 
 const INTEGRATION_GROUPS: { title: string; keys: string[] }[] = [
   { title: 'WhatsApp', keys: ['zapi', 'uazapi', 'whatsapp_oficial'] },
-  { title: 'Meios de Pagamento', keys: ['mercadopago', 'pagarme', 'sipag', 'infinitepay'] },
+  { title: 'Meios de Pagamento', keys: ['mercadopago', 'pagarme', 'infinitepay'] },
   { title: 'Fretes', keys: ['melhorenvio', 'mandae', 'mandabem', 'superfrete', 'fretebarato', 'correios', 'meuscorreios'] },
   { title: 'ERP', keys: ['bling', 'olist', 'omie'] },
   { title: 'Outros', keys: ['instagram', 'bagy'] },
