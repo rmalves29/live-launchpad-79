@@ -1,0 +1,59 @@
+# Etapa 5.1 — testes rodando sozinhos a cada mudança (inclusive as que vêm do Lovable).
+# Não publica nada e não mexe em produção: só marca o commit com ✅ ou ❌.
+name: Testes do Cartzy
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: testes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  testes:
+    name: Fluxos críticos (cupom, Pix, item adicionado, Bling, estoque, alertas)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Instalar dependências dos testes
+        working-directory: tests
+        run: npm install --no-audit --no-fund
+      - name: Rodar testes
+        working-directory: tests
+        run: npm test
+
+  build:
+    name: Sistema compila
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Instalar dependências
+        run: npm ci --no-audit --no-fund
+      - name: Build
+        run: npx vite build
+
+  tipos:
+    name: Checagem de tipos (0 avisos)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Instalar dependências
+        run: npm ci --no-audit --no-fund
+      - name: Checar tipos
+        working-directory: tests
+        run: npm run typecheck
