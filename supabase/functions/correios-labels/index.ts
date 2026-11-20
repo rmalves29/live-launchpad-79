@@ -7,6 +7,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { desenharDeclaracao, faltaNaDeclaracao, type Declaracao } from "./declaracao.ts";
 import { authorizeTenantCaller, guardResponse } from "../_shared/auth-guard.ts";
+import { observeCaller } from "../_shared/internal-auth.ts";
 import {
   ajustarDimensoes,
   codigoNaoExisteNoCartao,
@@ -1218,6 +1219,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+  observeCaller(req, "correios-labels"); // etapa 4.4: só registra quem chama (não bloqueia)
 
   try {
     const supabase = createClient(

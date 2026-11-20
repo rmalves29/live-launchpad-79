@@ -2,6 +2,7 @@
 // Cria pedido reservado, decrementa estoque atomicamente, envia WhatsApp.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { tryPushBeforeWhatsApp } from "../_shared/push-fallback.ts";
+import { observeCaller } from "../_shared/internal-auth.ts";
 
 
 const corsHeaders = {
@@ -24,6 +25,7 @@ function todayBR(): string {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  observeCaller(req, "waitlist-process-next"); // etapa 4.4: só registra quem chama (não bloqueia)
 
   try {
     const body = await req.json().catch(() => ({}));

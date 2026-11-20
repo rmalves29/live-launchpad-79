@@ -11,6 +11,7 @@ import {
   getGroupParticipants as evoGetGroupParticipants,
 } from "../_shared/evolution-api.ts";
 import { sendMedia as uazSendMedia } from "../_shared/uazapi-api.ts";
+import { observeCaller } from "../_shared/internal-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -223,6 +224,7 @@ async function sendToGroupEvolution(
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  observeCaller(req, "fe-send-message"); // etapa 4.4: só registra quem chama (não bloqueia)
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;

@@ -14,6 +14,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { observeCaller } from "../_shared/internal-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -129,6 +130,7 @@ async function applyGroupSettings(uazUrl: string, uazTok: string, groupJid: stri
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  observeCaller(req, "fe-spawn-group"); // etapa 4.4: só registra quem chama (não bloqueia)
 
   try {
     const { tenant_id, campaign_id } = await req.json();

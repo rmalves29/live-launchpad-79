@@ -228,3 +228,10 @@ Achados (sem mudança de comportamento, só registro):
 - O topo do sistema usa `profile.full_name`, que não existe em `profiles`: o nome exibido sempre cai no nome da loja.
 - `TenantProducts`: o formulário começava sem `promotional_price`/`observation` (campos ficavam "soltos" até digitar); agora começam vazios.
 - `BlingFiscalSettings`: `default_ipi` é numérico no banco e texto na tela — conferir se o IPI salvo aparece selecionado ao reabrir.
+
+### 4.4 · Revisão de segurança das funções (20/11)
+Relatório completo: `docs/refatoracao/seguranca-funcoes.md`. 138 funções; 74 sem trava; 19 de risco alto (mensagem pela loja ou
+custo dela). Crons chamam com a chave pública; 8 funções são chamadas pelo banco sem identificação.
+Feito agora (sem bloquear nada): `observeCaller` em 20 funções de risco (só registra quem chama em `internal_call_audit`,
+lendo cabeçalhos, sem chamada extra e sem nunca derrubar a função). Nenhuma trava ligada antes da Black Friday.
+Achados em produção: `whatsapp-add-label` recusa as chamadas do gatilho da etiqueta do app (401); WhatsApp da Mania caiu de manhã.

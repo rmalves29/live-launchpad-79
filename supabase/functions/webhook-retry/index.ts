@@ -3,6 +3,7 @@
 // Idempotência garantida via external_event_id (Fase 1).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { observeCaller } from "../_shared/internal-auth.ts";
 
 const MAX_RETRIES = 3;
 
@@ -21,6 +22,7 @@ const HANDLER_MAP: Record<string, string> = {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  observeCaller(req, "webhook-retry"); // etapa 4.4: só registra quem chama (não bloqueia)
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,

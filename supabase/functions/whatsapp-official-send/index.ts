@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { observeCaller } from "../_shared/internal-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -44,6 +45,7 @@ async function isWithin24h(supabase: any, tenantId: string, phone: string): Prom
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  observeCaller(req, "whatsapp-official-send"); // etapa 4.4: só registra quem chama (não bloqueia)
 
   try {
     const body = (await req.json()) as SendBody;

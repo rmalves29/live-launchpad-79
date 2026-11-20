@@ -31,13 +31,15 @@ $$;
 revoke all on function public.internal_key_check(text, text) from public, anon, authenticated;
 grant execute on function public.internal_key_check(text, text) to service_role;
 
--- Registro de quem chama as funções internas (para decidir quando travar). Volume: ~100 linhas/dia.
+-- Registro de quem chama as funções internas/públicas (para decidir quando travar). Etapa 4.4 amplia para ~20 funções.
 create table if not exists public.internal_call_audit (
   id         bigserial primary key,
   fn         text not null,
   caller     text not null,          -- service_role | internal_key | sem_chave
   user_agent text,
   allowed    boolean not null,
+  user_id    uuid,                   -- quando a chamada vem de usuário logado (etapa 4.4, só registro)
+  origin     text,                   -- origin/referer da chamada
   created_at timestamptz not null default now()
 );
 create index if not exists internal_call_audit_fn_idx on public.internal_call_audit (fn, created_at desc);

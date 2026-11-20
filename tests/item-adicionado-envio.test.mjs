@@ -193,3 +193,18 @@ test('P-03 trava ligada: gatilho do banco (chave interna) e funções do sistema
     assert.equal(auditoria(fn)[0].caller, caller);
   }
 });
+
+// ---- Etapa 4.4: observação ampla — identifica quem chama só pelos cabeçalhos, sem validar e sem bloquear ----
+import { describeCaller } from '../supabase/functions/_shared/internal-auth.ts';
+const jwt = (payload) => `x.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.y`;
+const req = (headers) => new Request('https://x.test/fn', { method: 'POST', headers });
+
+test('4.4: quem chama é identificado só pelos cabeçalhos (usuário, chave pública, sistema, chave interna, nenhuma)', () => {
+  assert.deepEqual(describeCaller(req({ Authorization: 'Bearer srv' }), 'srv'), { caller: 'service_role', userId: null });
+  assert.deepEqual(describeCaller(req({ 'x-cartzy-internal-key': 'k' }), 'srv'), { caller: 'chave_interna', userId: null });
+  assert.deepEqual(describeCaller(req({ Authorization: `Bearer ${jwt({ role: 'authenticated', sub: 'u-1' })}` }), 'srv'), { caller: 'usuario', userId: 'u-1' });
+  assert.deepEqual(describeCaller(req({ Authorization: `Bearer ${jwt({ role: 'anon' })}` }), 'srv'), { caller: 'chave_publica', userId: null });
+  assert.deepEqual(describeCaller(req({ apikey: 'qualquer' }), 'srv'), { caller: 'chave_publica', userId: null });
+  assert.deepEqual(describeCaller(req({}), 'srv'), { caller: 'nenhuma', userId: null });
+  assert.deepEqual(describeCaller(req({ Authorization: 'Bearer lixo.lixo.lixo' }), 'srv'), { caller: 'nenhuma', userId: null });
+});

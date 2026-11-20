@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { observeCaller } from "../_shared/internal-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -170,6 +171,7 @@ async function selfReinvoke(supabaseUrl: string, serviceKey: string, jobId: stri
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  observeCaller(req, "cobranca-process"); // etapa 4.4: só registra quem chama (não bloqueia)
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
