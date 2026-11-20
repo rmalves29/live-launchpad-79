@@ -251,3 +251,15 @@ live (`LiveShop.tsx`) e pelo checkout público (`PublicCheckout.tsx`). Pix = % s
 por pedido (a conta da cobrança). Correção junto: o checkout público, com promoção "leve X pague Y", calculava o Pix sobre o
 subtotal já descontado da promoção e mostrava total MAIOR do que o cobrado (ex.: 10% de Pix em R$ 300 com R$ 100 de promoção:
 tela R$ 20, cobrança R$ 30). Agora a tela mostra o que é cobrado. Testes de equivalência: `total-pedido.test.mjs` (90 mil casos).
+
+### 4.2 · Atendimento do WhatsApp dividido (preparado, publicar só depois da Black)
+O bloco principal do `zapi-webhook` (≈1.970 linhas) ficou com ≈1.450: saíram, sem mudar a lógica (conferido linha a linha),
+`handleConnectionEvent` (conexão/queda), `handleGroupParticipantEvent` (entrada/saída de grupos) e a leitura dos códigos do
+comentário (`_shared/live-comment-codes.ts`, idêntica à antiga em 50 mil comentários — `comentario-codigo.test.mjs`).
+Teste de comportamento (`zapi-webhook-equivalencia.test.mjs`): a versão antiga (guardada em `tests/fixtures/`) e a nova recebem
+os mesmos 12 eventos (conexão, queda, entrada/saída de grupo, status, mensagem sem código, com código, privada, divulgação,
+código inexistente, esgotado) e gravam/chamam/respondem igual.
+**Bug corrigido junto:** quando a cliente pedia mais do que o estoque restante (ex.: "C210x2" com 1 em estoque), o aviso
+"produto esgotado / você está na fila" chamava uma função inexistente (`sendZAPIMessage`): dava erro, o item virava
+"erro inesperado" e a cliente não era avisada. Agora o aviso sai pelo envio padrão (`zapi-send-message`).
+Próximo passo (pós-Black): dividir o processamento de cada item (~780 linhas) com o mesmo método.
