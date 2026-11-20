@@ -36,9 +36,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - name: Instalar dependências
-        run: npm ci --no-audit --no-fund
+      - uses: oven-sh/setup-bun@v2
+      - name: Instalar dependências (bun.lock, o mesmo do Lovable)
+        run: bun install --frozen-lockfile
       - name: Build
         run: npx vite build
 
@@ -51,9 +51,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - name: Instalar dependências
-        run: npm ci --no-audit --no-fund
+      - uses: oven-sh/setup-bun@v2
+      - name: Instalar dependências (bun.lock, o mesmo do Lovable)
+        run: bun install --frozen-lockfile
+      - name: Instalar TypeScript dos testes
+        working-directory: tests
+        run: npm install --no-audit --no-fund
       - name: Checar tipos
         working-directory: tests
         run: npm run typecheck
