@@ -220,7 +220,7 @@ export default function InstagramPostComments({ tenantId }: InstagramPostComment
         <div>
           <p className="text-sm font-medium text-foreground">Posts e comentários da conta</p>
           <p className="text-xs text-muted-foreground">
-            {data?.account_username ? `@${data.account_username}` : 'Instagram conectado'} • {posts.length} postagens carregadas
+            <span>{`${data?.account_username ? `@${data.account_username}` : 'Instagram conectado'} • ${posts.length} postagens carregadas`}</span>
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isFetching}>
@@ -256,7 +256,7 @@ export default function InstagramPostComments({ tenantId }: InstagramPostComment
                         <Badge variant="outline">{post.media_type || 'POST'}</Badge>
                         <Badge variant="outline">
                           <MessageCircle className="mr-1 h-3 w-3" />
-                          {post.comments.length} comentário{post.comments.length === 1 ? '' : 's'}
+                          <span>{`${post.comments.length} comentário${post.comments.length === 1 ? '' : 's'}`}</span>
                         </Badge>
                         {post.timestamp && (
                           <span className="text-xs text-muted-foreground">{formatDateTime(post.timestamp)}</span>
@@ -310,7 +310,7 @@ export default function InstagramPostComments({ tenantId }: InstagramPostComment
                         <div key={comment.id} className="rounded-md bg-muted/50 p-3 group">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-sm font-medium text-foreground">
-                              @{comment.username || 'desconhecido'}
+                              <span>{`@${comment.username || 'desconhecido'}`}</span>
                             </span>
                             {comment.timestamp && (
                               <span className="text-[11px] text-muted-foreground">{formatDateTime(comment.timestamp)}</span>
@@ -354,7 +354,7 @@ export default function InstagramPostComments({ tenantId }: InstagramPostComment
                                 ) : (
                                   <EyeOff className="mr-1 h-3 w-3" />
                                 )}
-                                {comment.hidden ? 'Mostrar' : 'Ocultar'}
+                                <span>{comment.hidden ? 'Mostrar' : 'Ocultar'}</span>
                               </Button>
                               <Button
                                 variant="ghost"
@@ -373,7 +373,7 @@ export default function InstagramPostComments({ tenantId }: InstagramPostComment
                           {dmTo === comment.id && (
                             <div className="mt-2 space-y-1">
                               <p className="text-[11px] text-muted-foreground">
-                                Mensagem privada para @{comment.username || 'cliente'} (chega no Direct do Instagram dela).
+                                <span>{`Mensagem privada para @${comment.username || 'cliente'} (chega no Direct do Instagram dela).`}</span>
                               </p>
                               <div className="flex items-center gap-2">
                                 <Input
