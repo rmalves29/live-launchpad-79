@@ -97,7 +97,11 @@ export default function InstagramPostComments({ tenantId }: InstagramPostComment
     staleTime: 1000 * 60,
   });
 
-  const posts = data?.posts ?? [];
+  // Defensivo: a Meta às vezes devolve post sem a lista de comentários; isso nunca deve derrubar a tela.
+  const posts = (Array.isArray(data?.posts) ? data!.posts : []).map((p) => ({
+    ...p,
+    comments: Array.isArray(p?.comments) ? p.comments.filter(Boolean) : [],
+  }));
 
   const handleRefresh = async () => {
     const result = await refetch();

@@ -8,6 +8,7 @@ import { Trash2, Radio, Download, MessageCircle, RefreshCw, BarChart3, Activity 
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import InstagramPostComments from './InstagramPostComments';
+import InstagramCommentsBoundary from './InstagramCommentsBoundary';
 import InstagramLiveReport from './InstagramLiveReport';
 import InstagramLiveInsights from './InstagramLiveInsights';
 
@@ -372,7 +373,9 @@ export default function InstagramLiveComments({ tenantId }: InstagramLiveComment
           </TabsContent>
 
           <TabsContent value="posts" className="mt-0">
-            <InstagramPostComments tenantId={tenantId} />
+            <InstagramCommentsBoundary>
+              <InstagramPostComments tenantId={tenantId} />
+            </InstagramCommentsBoundary>
           </TabsContent>
 
           <TabsContent value="insights" className="mt-0">
