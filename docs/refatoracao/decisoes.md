@@ -235,3 +235,10 @@ custo dela). Crons chamam com a chave pública; 8 funções são chamadas pelo b
 Feito agora (sem bloquear nada): `observeCaller` em 20 funções de risco (só registra quem chama em `internal_call_audit`,
 lendo cabeçalhos, sem chamada extra e sem nunca derrubar a função). Nenhuma trava ligada antes da Black Friday.
 Achados em produção: `whatsapp-add-label` recusa as chamadas do gatilho da etiqueta do app (401); WhatsApp da Mania caiu de manhã.
+
+## Etapa 5 (pós-Black) — itens adiantados em 20/11 por não terem risco
+- **5.1 CI**: `.github/workflows/testes.yml` roda testes, build (instalando pelo `bun.lock`, o do Lovable) e checagem de tipos a
+  cada push/PR. Primeira rodada ✅. Ao juntar no `main`, as mudanças do Lovable também passam a ser conferidas.
+- **5.3 Gatilhos com chave interna** (`20261120130000_triggers_internal_key.sql`, chave `sistema`): pedido pago, rastreio
+  postado e aviso da agenda mandam `x-cartzy-internal-key`. As funções ainda ignoram o header (nada muda). Ficaram de fora:
+  fila de espera (`http_post` da extensão http, sem headers) e etiqueta do app (a função exige login). Testes: `gatilhos-chave.test.mjs`.
