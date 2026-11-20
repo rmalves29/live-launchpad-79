@@ -24,13 +24,16 @@ Deno.serve(async (req) => {
   try {
     const alerts = await evaluateHealth(supabase);
 
-    const cooldownSince = new Date(Date.now() - COOLDOWN_HOURS * 3600_000).toISOString();
-    const { data: recentAlerts } = await supabase.from("health_alerts_log").select("rule_key").gt("sent_at", cooldownSince);
-    const recentKeys = new Set((recentAlerts || []).map((r: any) => r.rule_key));
-    const toSend = alerts.filter((a) => !recentKeys.has(a.key));
-
     const { data: settings } = await supabase.from("app_settings").select("health_alert_phone").maybeSingle();
     const alertPhone = settings?.health_alert_phone?.trim() || null;
+
+    // Cooldown: com telefone cadastrado, só conta o que de fato foi ENVIADO (alerta só registrado não bloqueia o envio).
+    const cooldownSince = new Date(Date.now() - COOLDOWN_HOURS * 3600_000).toISOString();
+    let recentQ = supabase.from("health_alerts_log").select("rule_key").gt("sent_at", cooldownSince);
+    if (alertPhone) recentQ = recentQ.not("sent_to", "is", null);
+    const { data: recentAlerts } = await recentQ;
+    const recentKeys = new Set((recentAlerts || []).map((r: any) => r.rule_key));
+    const toSend = alerts.filter((a) => !recentKeys.has(a.key));
 
     let delivered = false;
     let sendError: string | null = null;
