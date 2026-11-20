@@ -157,7 +157,7 @@ export default function TenantIntegrationsPage() {
     queryKey: ['infinitepay-status', tenantId],
     queryFn: async () => {
       const { data } = await supabase.from('integration_infinitepay' as any).select('is_active').eq('tenant_id', tenantId).maybeSingle();
-      return data as { is_active: boolean } | null;
+      return data as unknown as { is_active: boolean } | null;
     },
     enabled: !!tenantId,
   });
@@ -186,7 +186,7 @@ export default function TenantIntegrationsPage() {
     queryKey: ['omie-status', tenantId],
     queryFn: async () => {
       const { data } = await supabase.from('integration_omie' as any).select('is_active').eq('tenant_id', tenantId).maybeSingle();
-      return data as { is_active: boolean } | null;
+      return data as unknown as { is_active: boolean } | null;
     },
     enabled: !!tenantId,
   });
@@ -195,7 +195,7 @@ export default function TenantIntegrationsPage() {
     queryKey: ['bagy-status', tenantId],
     queryFn: async () => {
       const { data } = await supabase.from('integration_bagy' as any).select('is_active').eq('tenant_id', tenantId).maybeSingle();
-      return data as { is_active: boolean } | null;
+      return data as unknown as { is_active: boolean } | null;
     },
     enabled: !!tenantId,
   });

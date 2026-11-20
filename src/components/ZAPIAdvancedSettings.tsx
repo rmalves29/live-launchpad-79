@@ -79,7 +79,7 @@ export function ZAPIAdvancedSettings() {
     try {
       const { error } = await supabase
         .from('integration_whatsapp')
-        .update({ [flag]: newValue, updated_at: new Date().toISOString() })
+        .update({ [flag]: newValue, updated_at: new Date().toISOString() } as any) // flag dinâmica (nome da coluna vem da tela)
         .eq('id', integrationId);
       if (error) throw error;
       toast({ title: newValue ? 'Ativado' : 'Desativado' });

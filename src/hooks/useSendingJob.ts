@@ -95,7 +95,7 @@ export const useSendingJob = () => {
           .single();
 
         if (currentJob) {
-          updateData.job_data = { ...currentJob.job_data, ...jobData };
+          updateData.job_data = { ...(currentJob.job_data as Record<string, unknown>), ...jobData };
         }
       }
 
@@ -183,7 +183,7 @@ export const useSendingJob = () => {
         .maybeSingle();
 
       if (error) throw error;
-      return data as SendingJob | null;
+      return data as unknown as SendingJob | null;
     } catch (error) {
       console.error('Erro ao buscar job pausado:', error);
       return null;

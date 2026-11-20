@@ -95,7 +95,7 @@ export default function TenantsManager() {
         .order("created_at", { ascending: false });
 
       if (tenantsError) throw tenantsError;
-      setTenants(tenantsData || []);
+      setTenants((tenantsData || []) as unknown as Tenant[]);
 
       // Carregar credenciais
       const { data: credentialsData, error: credentialsError } = await supabase

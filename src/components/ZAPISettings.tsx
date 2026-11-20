@@ -285,7 +285,7 @@ export function ZAPISettings() {
         .update({ 
           [flag]: newValue,
           updated_at: new Date().toISOString()
-        })
+        } as any /* flag dinâmica */)
         .eq('id', integration.id);
 
       if (error) throw error;

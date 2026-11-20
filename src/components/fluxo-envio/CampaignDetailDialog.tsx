@@ -127,8 +127,8 @@ export default function CampaignDetailDialog({
       setTemplateImageUrl(tpl.image_url || '');
       setTemplateMaxParticipants(tpl.max_participants || 1000);
 
-      const cgs = (cgData || []) as CampaignGroup[];
-      const groups = (gData || []) as FeGroup[];
+      const cgs = (cgData || []) as unknown as CampaignGroup[];
+      const groups = (gData || []) as unknown as FeGroup[];
       const visibleGroupIds = new Set(groups.map((group) => group.id));
       const visibleCampaignGroups = cgs.filter((campaignGroup) => visibleGroupIds.has(campaignGroup.group_id));
 

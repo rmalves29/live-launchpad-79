@@ -110,7 +110,7 @@ export default function CorreiosIntegration({ tenantId }: CorreiosIntegrationPro
       if (data.id) {
         const { error } = await supabase
           .from('shipping_integrations')
-          .update(payload)
+          .update(payload as any)
           .eq('id', data.id);
         if (error) throw error;
       } else {

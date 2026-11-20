@@ -216,3 +216,15 @@ Feito (MODO OBSERVAÇÃO — nada é recusado):
 Para ligar a trava (depois da Black): publicar; acompanhar alguns dias; consulta
 `select caller, count(*) from internal_call_audit where fn='zapi-send-item-added' and created_at > now()-interval '3 days' group by 1;`
 deve mostrar zero `sem_chave` (e o sininho sem o alerta). Só então criar o secret.
+
+### 4.5 · Erros de tipo: 92 → 0 (20/11)
+Só declarações de tipo; o que as telas fazem não mudou (build ok, 135 testes ok). Rodar: `cd tests && npm run typecheck`.
+- Campos que existem no banco mas faltavam nas interfaces locais (`promotional_price`, `product_name/code/image_url` do item,
+  `shipping_provider`, `payment_installments`, `full_name`).
+- Tabelas acessadas com `as any` (InfinitePay, Omie, Bagy, campanhas): conversão via `as unknown as`.
+- `menu_flags` (jsonb) convertido para o tipo da loja na entrada (TenantContext/useTenant).
+- Arquivos `*.test.ts` de src/ rodam no bun e saíram desta checagem.
+Achados (sem mudança de comportamento, só registro):
+- O topo do sistema usa `profile.full_name`, que não existe em `profiles`: o nome exibido sempre cai no nome da loja.
+- `TenantProducts`: o formulário começava sem `promotional_price`/`observation` (campos ficavam "soltos" até digitar); agora começam vazios.
+- `BlingFiscalSettings`: `default_ipi` é numérico no banco e texto na tela — conferir se o IPI salvo aparece selecionado ao reabrir.

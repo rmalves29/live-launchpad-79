@@ -52,7 +52,7 @@ interface SendFlowTask {
 
 interface SendingProgressLiveProps {
   jobType?: 'sendflow' | 'mass_message';
-  onResumeJob?: (job: SendingJob) => void;
+  onResumeJob?: (job: SendingJob) => void | Promise<void>;
   onNewSend?: () => void;
 }
 

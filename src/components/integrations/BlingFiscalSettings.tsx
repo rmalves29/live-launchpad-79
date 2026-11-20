@@ -128,7 +128,7 @@ export default function BlingFiscalSettings({ tenantId }: BlingFiscalSettingsPro
           default_ncm: data.default_ncm || null,
           default_cfop_same_state: data.default_cfop_same_state || null,
           default_cfop_other_state: data.default_cfop_other_state || null,
-          default_ipi: data.default_ipi || null,
+          default_ipi: (data.default_ipi as any) || null, // coluna numérica no banco; a tela trata como texto
           default_icms_situacao: data.default_icms_situacao || null,
           default_icms_origem: data.default_icms_origem || null,
           default_pis_cofins: data.default_pis_cofins || null,
@@ -152,7 +152,7 @@ export default function BlingFiscalSettings({ tenantId }: BlingFiscalSettingsPro
           default_ncm: fiscalData.default_ncm,
           default_cfop_same_state: fiscalData.default_cfop_same_state,
           default_cfop_other_state: fiscalData.default_cfop_other_state,
-          default_ipi: fiscalData.default_ipi,
+          default_ipi: fiscalData.default_ipi as any,
           default_icms_situacao: fiscalData.default_icms_situacao,
           default_icms_origem: fiscalData.default_icms_origem,
           default_pis_cofins: fiscalData.default_pis_cofins,

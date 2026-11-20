@@ -47,6 +47,8 @@ export default function TenantProducts() {
     code: '',
     name: '',
     price: '',
+    promotional_price: '',
+    observation: '',
     stock: '0',
     is_active: true
   });

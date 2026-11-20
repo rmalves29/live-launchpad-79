@@ -9,6 +9,7 @@ interface UserProfile {
   role: 'super_admin' | 'tenant_admin' | 'staff' | 'affiliate';
   tenant_id: string | null;
   access_scope?: 'full' | 'fluxo_envio' | string | null;
+  full_name?: string | null; // não existe em profiles hoje: o topo cai no nome da loja
   created_at: string;
   updated_at: string;
 }

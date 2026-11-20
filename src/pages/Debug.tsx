@@ -39,7 +39,7 @@ const Debug = () => {
           <h2 className="font-bold text-lg mb-2">🏢 Tenant</h2>
           <p><strong>ID:</strong> {tenant?.id || 'N/A'}</p>
           <p><strong>Name:</strong> {tenant?.name || 'N/A'}</p>
-          <p><strong>Email:</strong> {tenant?.email || 'N/A'}</p>
+          <p><strong>Email:</strong> {(tenant as any)?.email || 'N/A'}</p>
         </div>
 
         <div className={`p-4 rounded ${showNavbar ? 'bg-green-100' : 'bg-red-100'}`}>

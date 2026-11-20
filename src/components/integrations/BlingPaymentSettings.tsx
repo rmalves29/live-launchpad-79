@@ -61,7 +61,7 @@ export default function BlingPaymentSettings({ tenantId }: BlingPaymentSettingsP
 
       const { error } = await supabase
         .from('integration_bling')
-        .update(payload)
+        .update(payload as any)
         .eq('id', integration.id);
       if (error) throw error;
     },

@@ -272,7 +272,7 @@ export default function WhatsappTemplates() {
       setLoading(true);
       const tpls = await listLatestWhatsAppTemplates();
       const existingTypes = tpls.map((t) => t.type);
-      const toCreate = DEFAULT_TEMPLATES.filter((dt) => !existingTypes.includes(dt.type));
+      const toCreate = DEFAULT_TEMPLATES.filter((dt) => !(existingTypes as string[]).includes(dt.type));
 
       if (toCreate.length > 0) {
         await Promise.all(

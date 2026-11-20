@@ -140,7 +140,7 @@ export default function OmieIntegration({ tenantId }: OmieIntegrationProps) {
         });
       }
 
-      return data as OmieIntegrationData | null;
+      return data as unknown as OmieIntegrationData | null;
     },
     enabled: !!tenantId,
   });

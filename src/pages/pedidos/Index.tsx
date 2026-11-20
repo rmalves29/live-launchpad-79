@@ -98,6 +98,7 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
         size?: string;
       } | null;
     }[];
+    payment_installments?: number | null;
   }
 
   // Texto exibido do tipo de evento: pedidos da live (LIVE ou INSTAGRAM_LIVE) aparecem só como "Live".
@@ -2253,7 +2254,7 @@ const displayCustomerName = (order: { customer_name?: string | null; customer?: 
                       {/* Disparo (Mensagens) */}
                       <TableCell className="px-3 py-3 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <MessageCircle className={cn("h-4 w-4", order.item_added_delivered ? "text-green-500" : "text-muted-foreground/40")} title="Item adicionado" />
+                          <MessageCircle className={cn("h-4 w-4", order.item_added_delivered ? "text-green-500" : "text-muted-foreground/40")} {...({ title: "Item adicionado" } as any)} />
                         </div>
                       </TableCell>
                       

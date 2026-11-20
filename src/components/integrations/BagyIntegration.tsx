@@ -86,7 +86,7 @@ export default function BagyIntegration({ tenantId }: BagyIntegrationProps) {
         setSyncOrdersOut((data as any).sync_orders_out ?? true);
         setSyncStock((data as any).sync_stock ?? true);
       }
-      return data as BagyIntegrationData | null;
+      return data as unknown as BagyIntegrationData | null;
     },
     enabled: !!tenantId,
   });

@@ -123,8 +123,8 @@ export const TenantProvider = ({ children }: TenantProviderProps) => {
             supabaseTenant.setTenantId(null);
           } else {
             console.log('✅ [TenantContext] Tenant carregado:', data.name);
-            tenantCache.set(data.id, data);
-            setTenant(data);
+            tenantCache.set(data.id, data as Tenant);
+            setTenant(data as Tenant);
             supabaseTenant.setTenantId(data.id);
             lastUserId.current = user.id;
             lastTenantId.current = data.id;
@@ -166,8 +166,8 @@ export const TenantProvider = ({ children }: TenantProviderProps) => {
 
           if (!fetchError && data) {
             console.log('👁️ [TenantContext] Super admin usando preview tenant:', data.name);
-            tenantCache.set(data.id, data);
-            setTenant(data);
+            tenantCache.set(data.id, data as Tenant);
+            setTenant(data as Tenant);
             supabaseTenant.setTenantId(data.id);
             lastUserId.current = user.id;
             lastTenantId.current = data.id;
@@ -186,9 +186,9 @@ export const TenantProvider = ({ children }: TenantProviderProps) => {
       if (tenants && tenants.length > 0) {
         const firstTenant = tenants[0];
         localStorage.setItem(PREVIEW_TENANT_KEY, firstTenant.id);
-        tenantCache.set(firstTenant.id, firstTenant);
+        tenantCache.set(firstTenant.id, firstTenant as Tenant);
         console.log('👁️ [TenantContext] Super admin carregou primeiro tenant:', firstTenant.name);
-        setTenant(firstTenant);
+        setTenant(firstTenant as Tenant);
         supabaseTenant.setTenantId(firstTenant.id);
         lastUserId.current = user.id;
         lastTenantId.current = firstTenant.id;

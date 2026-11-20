@@ -73,8 +73,8 @@ export function useTenant() {
               .maybeSingle();
 
             if (!fetchError && data) {
-              userTenantCache.set(userId, { tenantId: data.id, tenant: data });
-              setTenant(data);
+              userTenantCache.set(userId, { tenantId: data.id, tenant: data as Tenant });
+              setTenant(data as Tenant);
               supabaseTenant.setTenantId(data.id);
               setLoading(false);
               return;
@@ -91,8 +91,8 @@ export function useTenant() {
         if (tenants && tenants.length > 0) {
           const firstTenant = tenants[0];
           localStorage.setItem(PREVIEW_TENANT_KEY, firstTenant.id);
-          userTenantCache.set(userId, { tenantId: firstTenant.id, tenant: firstTenant });
-          setTenant(firstTenant);
+          userTenantCache.set(userId, { tenantId: firstTenant.id, tenant: firstTenant as Tenant });
+          setTenant(firstTenant as Tenant);
           supabaseTenant.setTenantId(firstTenant.id);
         }
         setLoading(false);
@@ -149,8 +149,8 @@ export function useTenant() {
         }
 
         // Atualiza cache por usuário
-        userTenantCache.set(userId, { tenantId: profile.tenant_id, tenant: data });
-        setTenant(data);
+        userTenantCache.set(userId, { tenantId: profile.tenant_id, tenant: data as Tenant });
+        setTenant(data as Tenant);
         supabaseTenant.setTenantId(data.id);
         
         console.log('✅ Tenant carregado:', data.name, '(id:', data.id, ')');
