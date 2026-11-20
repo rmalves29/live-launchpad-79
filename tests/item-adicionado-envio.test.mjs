@@ -143,3 +143,53 @@ test('anti-spam nunca coloca caractere invisível dentro de link, código, valor
     assert.ok(variadas > 600, `${nome}: a variação anti-spam continua acontecendo (${variadas} de 2000)`);
   }
 });
+
+// ---- P-03 (etapa 4.1): quem pode chamar a função. Modo observação primeiro, trava depois. ----
+const CHAVE = 'chave-interna-teste';
+async function carregarComTrava(enforce) {
+  const tables = tabelas();
+  return loadEdgeFunction('zapi-send-item-added', {
+    tables,
+    env: enforce ? { ITEM_ADDED_ENFORCE_AUTH: 'true' } : {},
+    rpc: {
+      item_added_claim: () => 'send',
+      reserve_send_slot: () => new Date().toISOString(),
+      internal_key_check: (args) => args.p_name === 'item_added' && args.p_key === CHAVE,
+    },
+    fetchHandler: async (call) => (call.url.includes('/functions/v1/push-dispatch') ? { status: 200, body: { sent: false } } : { status: 200, body: { id: 'msg-1' } }),
+  });
+}
+const auditoria = (fn) => fn.sb.db.internal_call_audit || [];
+
+test('P-03 observação: chamada SEM chave ainda manda a mensagem, mas fica registrada como "sem_chave"', async () => {
+  const fn = await carregarComTrava(false);
+  await fn.call(pedido());
+  assert.equal(mensagensWhatsApp(fn).length, 1, 'nada muda para as lojas no modo observação');
+  assert.deepEqual(auditoria(fn).map((a) => [a.caller, a.allowed]), [['sem_chave', true]]);
+});
+
+test('P-03 observação: gatilho do banco com a chave interna é identificado como "internal_key"', async () => {
+  const fn = await carregarComTrava(false);
+  await fn.call(pedido(), { headers: { 'x-cartzy-internal-key': CHAVE } });
+  assert.equal(mensagensWhatsApp(fn).length, 1);
+  assert.equal(auditoria(fn)[0].caller, 'internal_key');
+});
+
+test('P-03 trava ligada: sem chave ou com chave errada é recusada (401) e nada é enviado', async () => {
+  for (const headers of [{}, { 'x-cartzy-internal-key': 'chute' }, { Authorization: 'Bearer anon-qualquer' }]) {
+    const fn = await carregarComTrava(true);
+    const r = await fn.call(pedido(), { headers });
+    assert.equal(r.status, 401);
+    assert.equal(mensagensWhatsApp(fn).length, 0);
+    assert.deepEqual(auditoria(fn).map((a) => [a.caller, a.allowed]), [['sem_chave', false]]);
+  }
+});
+
+test('P-03 trava ligada: gatilho do banco (chave interna) e funções do sistema (service role) continuam enviando', async () => {
+  for (const [headers, caller] of [[{ 'x-cartzy-internal-key': CHAVE }, 'internal_key'], [{ Authorization: 'Bearer service-role-teste' }, 'service_role']]) {
+    const fn = await carregarComTrava(true);
+    await fn.call(pedido(), { headers });
+    assert.equal(mensagensWhatsApp(fn).length, 1, `${caller} manda`);
+    assert.equal(auditoria(fn)[0].caller, caller);
+  }
+});

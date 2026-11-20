@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { liveTemplateOverride } from "../_shared/live-whatsapp.ts";
+import { checkInternalCall, isEnforced } from "../_shared/internal-auth.ts";
 import {
   antiBlockDelayLive,
   logAntiBlockDelay,
@@ -79,17 +80,6 @@ function consolidateItems(items: Array<{ product_name: string; product_code: str
     totalQty,
     totalValue,
   };
-}
-
-function validateInternalRequest(req: Request): boolean {
-  const authHeader = req.headers.get("authorization");
-  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (authHeader && supabaseServiceKey && authHeader.includes(supabaseServiceKey.substring(0, 50))) return true;
-  const origin = req.headers.get("origin") || req.headers.get("referer") || "";
-  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-  if (supabaseUrl && origin.includes(new URL(supabaseUrl).hostname)) return true;
-  console.log("[zapi-send-item-added] Warning: Request without internal validation markers");
-  return true;
 }
 
 function hasServiceRoleAuthorization(req: Request): boolean {
@@ -394,7 +384,17 @@ serve(async (req) => {
   const timestamp = new Date().toISOString();
 
   try {
-    if (!validateInternalRequest(req)) {
+    // P-03 (etapa 4.1): só o sistema deveria chamar esta função. Hoje em MODO OBSERVAÇÃO: registra quem chama
+    // (service_role / internal_key / sem_chave) em internal_call_audit e aceita tudo. A trava liga com o secret
+    // ITEM_ADDED_ENFORCE_AUTH=true — só depois de o registro mostrar 100% das chamadas identificadas.
+    const authClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const gate = await checkInternalCall(req, authClient, {
+      fn: "zapi-send-item-added",
+      keyName: "item_added",
+      serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"),
+      enforce: isEnforced(Deno.env.get("ITEM_ADDED_ENFORCE_AUTH")),
+    });
+    if (!gate.allowed) {
       return new Response(JSON.stringify({ error: "Nao autorizado" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 

@@ -196,3 +196,23 @@ só para o super admin, com o número de problemas em aberto; ao clicar, cada um
   (antes contava sessões de janeiro) · push parado · Bling sem credenciais · Bling com acesso vencido · mesmo aplicativo Bling em
   várias lojas · 5+ falhas de envio ao Bling/h por loja · tarefas agendadas falhando (`admin_health_cron_failures`,
   migração `20261120090000_health_cron_failures.sql`). Testes: `tests/alertas-saude.test.mjs`.
+
+## Etapa 4 · Risco alto 🔴 — 20/11/2026
+Branch: `etapa-4-alto` (sai de `etapa-3-medio`). Regra: itens de risco alto só publicam depois da Black Friday (27/11).
+
+### 4.1 · Trava da função de item adicionado (P-03) — "testar primeiro antes de travar" (pedido do Rafael)
+Hoje `zapi-send-item-added` aceita qualquer chamada da internet. Quem chama (registros de 20/11): o banco (gatilhos
+`send_whatsapp_on_item_added` e `item_added_flush_tick`, 66 chamadas, SEM identificação) e o webhook do WhatsApp/Instagram
+(service role). Travar hoje pararia todas as mensagens de item adicionado.
+Feito (MODO OBSERVAÇÃO — nada é recusado):
+- Migração `20261120120000_item_added_internal_key.sql`: chave interna em `private.internal_keys` (schema fora da API),
+  os dois gatilhos mandam o header `x-cartzy-internal-key`, conferência `public.internal_key_check` (só service role),
+  registro de quem chama em `internal_call_audit` (só super admin lê).
+- Função: `_shared/internal-auth.ts` classifica cada chamada (service_role / internal_key / sem_chave), registra e aceita.
+  A trava liga com o secret `ITEM_ADDED_ENFORCE_AUTH=true` (sem mudar código); tirar o secret volta para observação.
+- Sininho: alerta "chamada sem identificação" enquanto houver chamada sem chave nas últimas 24h.
+- Testes: `item-adicionado-envio.test.mjs` (observação e trava) e `item-adicionado-chave.test.mjs` (gatilhos mandam a chave;
+  anon/authenticated não leem nem conferem a chave).
+Para ligar a trava (depois da Black): publicar; acompanhar alguns dias; consulta
+`select caller, count(*) from internal_call_audit where fn='zapi-send-item-added' and created_at > now()-interval '3 days' group by 1;`
+deve mostrar zero `sem_chave` (e o sininho sem o alerta). Só então criar o secret.
