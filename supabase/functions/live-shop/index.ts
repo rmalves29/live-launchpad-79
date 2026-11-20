@@ -349,7 +349,7 @@ async function buildItems(list: any[], tenantId: string) {
       });
       groups.set(key, g);
     } else if (!list.some((c: any) => c.parent_product_id === p.id)) {
-      groups.set(`p${p.id}`, { key: `p${p.id}`, id: p.id, code: p.code, name: p.name, image_url: p.image_url, is_live: !!p.is_live, variants: [], stock: p.stock, price: effectivePrice(p), was: wasPrice(p) });
+      groups.set(`p${p.id}`, { key: `p${p.id}`, id: p.id, code: p.code, name: p.name, image_url: p.image_url, is_live: !!p.is_live, variants: [], stock: p.stock, price: effectivePrice(p), was: wasPrice(p), color: p.color || null, size: p.size || null });
     }
   }
   return Array.from(groups.values()).map((g) => {

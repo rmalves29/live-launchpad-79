@@ -27,6 +27,9 @@ export interface LiveProduct {
   price_from?: boolean;
   stock: number;
   variants: LiveVariant[];
+  // produto simples: cor e tamanho do próprio cadastro (com variações, vêm de cada variação)
+  color?: string | null;
+  size?: string | null;
 }
 
 export interface LiveCoupon {

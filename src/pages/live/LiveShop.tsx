@@ -1047,6 +1047,19 @@ export default function LiveShop() {
                     <button className="buy" onClick={() => onAdd(p, 'buy')} type="button">Comprar</button>
                   </div>
                 </div>
+                {(() => {
+                  // Só as variações que o produto tem (com estoque): tamanho e/ou cor; sem nenhuma, não mostra nada.
+                  const uniq = (xs: Array<string | null | undefined>) => Array.from(new Set(xs.map((x) => String(x || '').trim()).filter(Boolean)));
+                  const sizes = uniq(p.variants.length ? p.variants.map((v) => v.size) : [p.size]);
+                  const colors = uniq(p.variants.length ? p.variants.map((v) => v.color) : [p.color]);
+                  if (!sizes.length && !colors.length) return null;
+                  return (
+                    <div className="vars">
+                      {sizes.length > 0 && <div className="vr"><b>Tam:</b> {sizes.join(' · ')}</div>}
+                      {colors.length > 0 && <div className="vr"><b>Cor:</b> {colors.join(' · ')}</div>}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           );
