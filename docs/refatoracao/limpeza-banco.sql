@@ -1,3 +1,5 @@
+-- ⚠️ DESCARTADO em 20/11/2026: apagaria sem cópia e duplicaria a rotina existente cleanup-cron-logs (arquivo no Drive, 7 dias).
+-- Ver decisoes.md (Etapa 3 · 3.6). Mantido só como histórico.
 -- Etapa 2 · item 2.6 — limpeza de logs do banco do Cartzy (NÃO roda sozinho: é para aplicar com o "ok" do Rafael)
 -- Medido em 19/11/2026:
 --   cron.job_run_details  162 MB  ~190 mil linhas   (guarda ~16 dias; ~12 mil execuções por dia)

@@ -173,7 +173,12 @@ Branch: `etapa-3-medio` (sai de `etapa-2-limpeza`; juntar no `main` leva as etap
 - **3.2 Arquivos gigantes**: saíram para módulos testáveis as funções puras do `bling-sync-orders` (`_shared/bling-order-helpers.ts`:
   UF, CPF, telefone, e-mail, erros do Bling, frete Frenet, chamada com nova tentativa) e do `zapi-webhook` (`_shared/zapi-phone.ts`:
   telefones e data). Dividir o atendimento principal do `zapi-webhook` (~2.000 linhas num bloco só) fica para a etapa 4.
-- **3.6 Limpeza do banco**: não aplicada — o Supabase pediu confirmação e ela não foi respondida. Script pronto em `limpeza-banco.sql`.
+- **3.6 Limpeza do banco** (refeita em 20/11 após conferência): já existia `cleanup-cron-logs-weekly` (segunda 02h) que arquiva no
+  Google Drive o histórico das rotinas com mais de 7 dias e só apaga depois da cópia. Ela travava no 2º bloco (Drive 403, cota por
+  minuto), tirando só 50 mil linhas/semana para ~84 mil que entram — o histórico chegou a 17 dias. Correção: rotina **diária** às 02h
+  (`cron.alter_job`, o nome ficou "weekly"), código trazido para o GitHub com pausa de 65 s entre blocos, e o atrasado arquivado
+  em rodadas de um bloco. Mantidos os 7 dias e a cópia no Drive. O plano antigo (apagar > 3 dias sem cópia, `limpeza-banco.sql`)
+  foi **descartado**. `VACUUM FULL net._http_response` agendado uma vez para a madrugada de 21/11 (03:30).
 - Testes: 116 passando (eram 99). Front compila.
   - **20/11 08:30 — Ela Up desconectada do Bling (decisão do Rafael):** integração desativada e credenciais/tokens apagados no
     Cartzy (a loja nunca enviou pedido ao Bling). Agora só a Mania usa o aplicativo `a10873…`, então os avisos dele voltam a ir
