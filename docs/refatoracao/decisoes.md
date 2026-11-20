@@ -242,3 +242,5 @@ Achados em produção: `whatsapp-add-label` recusa as chamadas do gatilho da eti
 - **5.3 Gatilhos com chave interna** (`20261120130000_triggers_internal_key.sql`, chave `sistema`): pedido pago, rastreio
   postado e aviso da agenda mandam `x-cartzy-internal-key`. As funções ainda ignoram o header (nada muda). Ficaram de fora:
   fila de espera (`http_post` da extensão http, sem headers) e etiqueta do app (a função exige login). Testes: `gatilhos-chave.test.mjs`.
+- **5.5 Limpeza final — levantamento** (`docs/refatoracao/limpeza-final-proposta.md`): 18 funções para apagar depois da Black
+  (2 só depois de publicar; 2 a confirmar), 2 rotinas repetidas e 4 tabelas sem uso para arquivar. Nada apagado; aguarda aprovação.
