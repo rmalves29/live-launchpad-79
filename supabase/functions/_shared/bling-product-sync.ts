@@ -23,16 +23,27 @@ function sameString(a: string, b: string): boolean {
   return diff === 0;
 }
 
-// O Bling assina o corpo com o client secret do aplicativo da empresa (header X-Bling-Signature-256: sha256=<hmac>).
-// A empresa é a única cujo secret reproduz a assinatura.
-export async function findIntegrationBySignature(supabase: any, raw: string, header: string | null): Promise<any | null> {
+// O Bling assina o corpo com o client secret do aplicativo (header X-Bling-Signature-256: sha256=<hmac>).
+// Duas lojas podem usar o MESMO aplicativo (mesmo secret): aí a assinatura bate nas duas e quem decide é o
+// companyId do aviso (integration_bling.bling_company_id). Sem como decidir, recusa — nunca entrega o aviso
+// de uma loja para outra (foi o que aconteceu com Mania de Mulher × Ela Up em 16/11/2026).
+export async function findIntegrationBySignature(supabase: any, raw: string, header: string | null, companyId?: string | null): Promise<any | null> {
   const sig = String(header || "").replace(/^sha256=/i, "").trim().toLowerCase();
   if (!sig) return null;
   const { data: list } = await supabase.from("integration_bling").select("*").eq("is_active", true).not("client_secret", "is", null);
+  const matches: any[] = [];
   for (const integ of list || []) {
-    if (sameString(await hmacHex(String(integ.client_secret), raw), sig)) return integ;
+    if (sameString(await hmacHex(String(integ.client_secret), raw), sig)) matches.push(integ);
   }
-  return null;
+  const company = String(companyId || "").trim();
+  if (company) {
+    const exact = matches.find((i) => i.bling_company_id && String(i.bling_company_id) === company);
+    if (exact) return exact;
+    // empresa já cadastrada em outra integração: não é nenhuma destas
+    const others = matches.filter((i) => !i.bling_company_id || String(i.bling_company_id) === company);
+    return others.length === 1 ? others[0] : null;
+  }
+  return matches.length === 1 ? matches[0] : null;
 }
 
 // Diagnóstico de assinatura inválida (só para o registro, nunca autoriza nada):
@@ -41,6 +52,12 @@ export async function findIntegrationBySignature(supabase: any, raw: string, hea
 export async function diagnoseSignature(supabase: any, raw: string, header: string | null): Promise<Record<string, unknown>> {
   const sig = String(header || "").replace(/^sha256=/i, "").trim().toLowerCase();
   if (!sig) return { motivo: "sem_assinatura" };
+  const { data: ativas } = await supabase.from("integration_bling").select("tenant_id, client_secret").eq("is_active", true).not("client_secret", "is", null);
+  const iguais: string[] = [];
+  for (const integ of ativas || []) {
+    if (sameString(await hmacHex(String(integ.client_secret), raw), sig)) iguais.push(integ.tenant_id);
+  }
+  if (iguais.length > 1) return { motivo: "app_compartilhado_sem_empresa_cadastrada", tenants: iguais };
   const { data: list } = await supabase.from("integration_bling").select("tenant_id, client_secret").eq("is_active", false).not("client_secret", "is", null);
   for (const integ of list || []) {
     if (sameString(await hmacHex(String(integ.client_secret), raw), sig)) return { motivo: "app_de_integracao_desativada", tenant_id: integ.tenant_id };

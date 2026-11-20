@@ -28,3 +28,14 @@ test('sem assinatura ou de app desconhecido: recusado com o motivo certo', async
   assert.deepEqual(await diagnoseSignature(banco(), corpo, null), { motivo: 'sem_assinatura' });
   assert.deepEqual(await diagnoseSignature(banco(), corpo, assina('outro')), { motivo: 'app_desconhecido' });
 });
+
+test('mesmo aplicativo em duas lojas: o companyId do aviso decide (nunca entrega para a loja errada)', async () => {
+  const sb = () => createFakeSupabase({ tables: { integration_bling: [
+    { tenant_id: 'mania', is_active: true, client_secret: 'segredo-comum', bling_company_id: 'emp-mania' },
+    { tenant_id: 'elaup', is_active: true, client_secret: 'segredo-comum', bling_company_id: null },
+  ] } });
+  assert.equal((await findIntegrationBySignature(sb(), corpo, assina('segredo-comum'), 'emp-mania'))?.tenant_id, 'mania');
+  assert.equal((await findIntegrationBySignature(sb(), corpo, assina('segredo-comum'), 'emp-outra'))?.tenant_id, 'elaup', 'só sobra a sem empresa cadastrada');
+  assert.equal(await findIntegrationBySignature(sb(), corpo, assina('segredo-comum'), null), null, 'sem companyId e duas candidatas: recusa');
+  assert.deepEqual(await diagnoseSignature(sb(), corpo, assina('segredo-comum')), { motivo: 'app_compartilhado_sem_empresa_cadastrada', tenants: ['mania', 'elaup'] });
+});

@@ -138,7 +138,7 @@ serve(async (req) => {
     // Respondem 2xx na hora (o Bling espera até 5 s) e processam em segundo plano.
     const resource = String(body?.event || "").split(".")[0];
     if (["product", "stock", "virtual_stock"].includes(resource)) {
-      const integ = await findIntegrationBySignature(supabase, rawBody, req.headers.get("x-bling-signature-256"));
+      const integ = await findIntegrationBySignature(supabase, rawBody, req.headers.get("x-bling-signature-256"), body?.companyId);
       if (!integ) {
         const diag = await diagnoseSignature(supabase, rawBody, req.headers.get("x-bling-signature-256")).catch(() => ({}));
         await supabase.from('webhook_logs').insert({ webhook_type: `bling_${resource}:assinatura_invalida`, status_code: 401, payload: { event: body?.event, eventId: body?.eventId, companyId: body?.companyId, ...diag } } as any);

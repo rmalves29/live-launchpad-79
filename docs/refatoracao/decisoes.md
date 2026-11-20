@@ -152,6 +152,17 @@ Branch: `etapa-3-medio` (sai de `etapa-2-limpeza`; juntar no `main` leva as etap
   Causa provável: os avisos de produto estão ligados a um aplicativo do Bling diferente do conectado no Cartzy.
   Correção no código: o registro passa a dizer o motivo (`sem_assinatura`, `app_de_integracao_desativada` + loja, `app_desconhecido`).
   Correção de verdade: no Bling da loja, deixar os avisos de produto/estoque no mesmo aplicativo conectado no Cartzy (ou reconectar).
+  **Investigação (19/11, noite):**
+  - `86be1259…` = **Pabeli**: integração ativa no Cartzy mas **sem client_id/client_secret** → nenhum aviso dela pode ser validado.
+    Correção: a Pabeli reconectar o Bling no Cartzy informando as credenciais do aplicativo.
+  - Mania de Mulher e **Ela Up usam o MESMO aplicativo** (mesmo client_id e secret; Ela Up conectada em 16/11 13:34).
+    O código pegava a primeira loja cuja chave batia: ~620 avisos de produto entre 16/11 13:34 e 17/11 03:39 foram tratados
+    como Ela Up (provavelmente eram da Mania; a Ela Up tem 2 produtos vinculados — sem efeito porque "produto_nao_vinculado").
+    Correção no código: coluna `integration_bling.bling_company_id` (migração `20261120010000_bling_company_id.sql`, já preenche
+    Mania e Pabeli) e o `companyId` do aviso decide; com duas candidatas e sem como decidir, recusa.
+  - Depois de 17/11 03:39 os avisos de produto da Mania não batem com nenhuma chave cadastrada, embora a chave da Mania
+    renove o token normalmente. Os avisos que chegam vêm de outro aplicativo da conta da Mania apontando para o Cartzy.
+    Precisa olhar no Bling (Central de Extensões → Área do integrador) — o Chrome estava deslogado do Bling.
 - **3.7 Pix com cupom (P-09)**: ver acima.
 - **3.1 Funções duplicadas**: fica uma versão só.
   `fe-list-groups-v2` → telas usam `fe-list-groups` (que não apaga grupos e atende UazAPI) e ela ganhou a trava de acesso da v2
