@@ -37,8 +37,10 @@
 .ls-root .cp.ship{background:var(--info-soft);color:var(--info)}
 .ls-root .cp.off{background:var(--accent-soft);color:var(--accent)}
 .ls-root .cp.gift{background:var(--warn-soft);color:var(--warn)}
-.ls-root .list{padding:4px 16px 0;display:grid;gap:14px}
+.ls-root .list{padding:6px 14px 0;display:grid;gap:12px}
 .ls-root .item{display:grid;grid-template-columns:92px 1fr;gap:12px}
+/* cada produto num card branco: foto, nome, preço, botões e variações dentro dele */
+.ls-root .list .item{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:10px;box-shadow:0 2px 10px rgba(28,24,38,.06)}
 .ls-root .ph{width:92px;height:92px;border-radius:12px;overflow:hidden;position:relative;background:var(--line)}
 .ls-root .ph img{width:100%;height:100%;object-fit:cover;display:block}
 .ls-root .ph .n{position:absolute;left:6px;top:6px;background:rgba(20,16,28,.78);color:#fff;font-size:11px;font-weight:700;border-radius:6px;padding:1px 6px}
@@ -53,7 +55,8 @@
 .ls-root .pr s{display:block;font-size:12px;color:var(--muted)}
 .ls-root .pr strong{font-family:var(--display);font-size:20px}
 .ls-root .pr .pc{font-size:11px;font-weight:700;color:var(--accent);margin-left:4px}
-.ls-root .it .vars{margin-top:8px;padding-top:7px;border-top:1px dashed var(--line)}
+.ls-root .list .item.it{row-gap:8px}
+.ls-root .it .vars{grid-column:1 / -1;margin-top:0;padding-top:8px;border-top:1px dashed var(--line);display:flex;flex-wrap:wrap;gap:4px 14px}
 .ls-root .it .vr{font-size:12.5px;color:var(--muted);line-height:1.45}
 .ls-root .it .vr b{color:var(--ink);font-weight:700}
 .ls-root .acts{display:flex;gap:6px}
