@@ -3,9 +3,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/use-toast";
-import { RefreshCw, Activity, AlertTriangle, CheckCircle2, Phone, Save, Play } from "lucide-react";
+import { RefreshCw, Activity, AlertTriangle, CheckCircle2, Play } from "lucide-react";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -33,20 +32,14 @@ interface Snapshot {
 export default function SaudeSistema() {
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [loading, setLoading] = useState(true);
-  const [alertPhone, setAlertPhone] = useState("");
-  const [savingPhone, setSavingPhone] = useState(false);
   const [running, setRunning] = useState(false);
   const [retrying, setRetrying] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: snapData, error: snapErr }, { data: settings }] = await Promise.all([
-      supabase.rpc("get_health_snapshot"),
-      supabase.from("app_settings").select("health_alert_phone").maybeSingle(),
-    ]);
+    const { data: snapData, error: snapErr } = await supabase.rpc("get_health_snapshot");
     if (snapErr) toast({ title: "Erro ao carregar", description: snapErr.message, variant: "destructive" });
     setSnap(snapData as any);
-    setAlertPhone(settings?.health_alert_phone || "");
     setLoading(false);
   }, []);
 
@@ -56,18 +49,6 @@ export default function SaudeSistema() {
     return () => clearInterval(iv);
   }, [load]);
 
-  const savePhone = async () => {
-    setSavingPhone(true);
-    const digits = alertPhone.replace(/\D/g, "");
-    const { data: existing } = await supabase.from("app_settings").select("id").maybeSingle();
-    const { error } = existing?.id
-      ? await supabase.from("app_settings").update({ health_alert_phone: digits }).eq("id", existing.id)
-      : await supabase.from("app_settings").insert({ health_alert_phone: digits });
-    setSavingPhone(false);
-    if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
-    else toast({ title: "Telefone salvo", description: "Alertas de saúde serão enviados aqui" });
-  };
-
   const runHealthCheck = async () => {
     setRunning(true);
     const { data, error } = await supabase.functions.invoke("system-health-check", { body: {} });
@@ -75,7 +56,7 @@ export default function SaudeSistema() {
     if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
     else toast({
       title: "Checagem executada",
-      description: `Avaliados: ${data?.evaluated ?? 0} · Enviados: ${data?.sent ?? 0}`,
+      description: `Problemas em aberto: ${data?.open ?? 0} · novos: ${data?.opened ?? 0} · resolvidos: ${data?.resolved ?? 0} (veja no sininho)`,
     });
     load();
   };
@@ -148,31 +129,6 @@ export default function SaudeSistema() {
               Banco: {snap.db_total_size} · Filas travadas: {totalStuck} · Alertas 24h: {snap.recent_health_alerts.length}
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Config telefone */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Phone className="h-4 w-4" />
-            Telefone para alertas
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex gap-2 items-center">
-          <Input
-            value={alertPhone}
-            onChange={(e) => setAlertPhone(e.target.value)}
-            placeholder="55DDDNNNNNNNNN (ex: 5511999999999)"
-            className="max-w-xs"
-          />
-          <Button onClick={savePhone} disabled={savingPhone}>
-            <Save className="h-4 w-4 mr-2" />
-            Salvar
-          </Button>
-          <p className="text-xs text-muted-foreground ml-4">
-            Cooldown de 2h por regra para não spammar
-          </p>
         </CardContent>
       </Card>
 

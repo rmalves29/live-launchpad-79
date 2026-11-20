@@ -179,12 +179,15 @@ Branch: `etapa-3-medio` (sai de `etapa-2-limpeza`; juntar no `main` leva as etap
     Cartzy (a loja nunca enviou pedido ao Bling). Agora só a Mania usa o aplicativo `a10873…`, então os avisos dele voltam a ir
     só para a Mania. Falta revogar o acesso do aplicativo dentro do Bling da Ela Up (Central de Extensões → Minhas instalações).
 
-## Alertas para o super admin — 20/11/2026
-A checagem `system-health-check` (cron a cada 15 min) já existia mas **nunca enviou nada**: o telefone de alerta não estava
-cadastrado, e o remetente era o WhatsApp da primeira loja com WhatsApp ativo (sairia pelo número de um cliente, hoje a OF Beauty).
-Mudanças: remetente fixo = WhatsApp da plataforma (`ORDERZAP_TENANT_ID`); uma mensagem por rodada com todos os alertas novos e
-"o que fazer"; regras em `_shared/health-rules.ts` (testes em `tests/alertas-saude.test.mjs`).
-Regras: webhooks com >20% de erro/h · envios de WhatsApp travados · WhatsApp que caiu nas últimas 24h (antes contava sessões de
-janeiro, ruído) · push parado · Bling sem credenciais · Bling com acesso vencido · mesmo aplicativo Bling em várias lojas ·
-5+ falhas de envio ao Bling/h por loja · tarefas agendadas falhando (função `admin_health_cron_failures`, migração
-`20261120090000_health_cron_failures.sql`). Repetição do mesmo alerta: no máximo a cada 2 h. Painel: /admin/saude.
+## Alertas para o super admin (sininho) — 20/11/2026
+Decisão do Rafael: **nada é enviado por WhatsApp**. Os alertas aparecem num sininho no topo do sistema (ao lado de Tutoriais),
+só para o super admin, com o número de problemas em aberto; ao clicar, cada um mostra o que está acontecendo, o problema
+(efeito para as lojas) e o que fazer.
+- Tabela `system_alerts` (migração `20261120100000_system_alerts.sql`): uma linha por problema; leitura só para super admin.
+- `system-health-check` (cron a cada 15 min, já existia) agora só grava esse quadro: abre o que encontrou, atualiza o que
+  continua e resolve o que sumiu (`_shared/system-alerts.ts`). Antes tentava mandar WhatsApp — e pelo número da primeira loja
+  com WhatsApp ativo (OF Beauty) — mas nunca enviou porque não havia telefone cadastrado. O campo de telefone saiu da tela /admin/saude.
+- Regras em `_shared/health-rules.ts`: webhooks com >20% de erro/h · envios de WhatsApp travados · WhatsApp que caiu nas últimas 24h
+  (antes contava sessões de janeiro) · push parado · Bling sem credenciais · Bling com acesso vencido · mesmo aplicativo Bling em
+  várias lojas · 5+ falhas de envio ao Bling/h por loja · tarefas agendadas falhando (`admin_health_cron_failures`,
+  migração `20261120090000_health_cron_failures.sql`). Testes: `tests/alertas-saude.test.mjs`.

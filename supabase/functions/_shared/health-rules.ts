@@ -6,6 +6,7 @@
 export interface HealthAlert {
   key: string;
   title: string;
+  problem?: string; // por que importa (efeito para as lojas)
   hint?: string; // o que fazer
   detail: Record<string, unknown>;
   severity: "warn" | "error";
@@ -49,6 +50,9 @@ export async function evaluateHealth(supabase: any, now = Date.now()): Promise<H
       alerts.push({
         key: `webhook_error_rate_${type}`,
         title: `Webhook ${webhookLabel(type)}: ${Math.round((s.err / s.total) * 100)}% de erro na última hora (${s.err} de ${s.total})`,
+        problem: type.endsWith(":assinatura_invalida")
+          ? "Os avisos de produto/estoque do Bling estão sendo recusados: alterações feitas no Bling não chegam ao Cartzy."
+          : "Avisos externos (pagamento, ERP ou frete) estão falhando: pedidos podem não atualizar sozinhos.",
         hint: "Ver em Admin › Saúde do sistema › Últimos webhooks com erro.",
         detail: { type, total: s.total, errors: s.err },
         severity: "error",
@@ -60,7 +64,7 @@ export async function evaluateHealth(supabase: any, now = Date.now()): Promise<H
   const { count: stuckJobs } = await supabase.from("sending_jobs").select("*", { count: "exact", head: true })
     .eq("status", "running").lt("updated_at", since(30 * 60_000));
   if ((stuckJobs || 0) > 0) {
-    alerts.push({ key: "sending_jobs_stuck", title: `${stuckJobs} envio(s) de WhatsApp travado(s) há mais de 30 min`, detail: { count: stuckJobs }, severity: "error" });
+    alerts.push({ key: "sending_jobs_stuck", title: `${stuckJobs} envio(s) de WhatsApp travado(s) há mais de 30 min`, problem: "Mensagens em massa pararam no meio: parte das clientes não recebeu.", hint: "Ver o envio em andamento na tela de disparos e reiniciar.", detail: { count: stuckJobs }, severity: "error" });
   }
 
   // 3) Sessões de WhatsApp que caíram nas últimas 24h (antes contava sessões antigas, de meses atrás, e gerava ruído)
@@ -68,14 +72,14 @@ export async function evaluateHealth(supabase: any, now = Date.now()): Promise<H
     .eq("status", "disconnected").gt("last_heartbeat", since(24 * H));
   if ((sess || []).length > 0) {
     const nums = [...new Set((sess || []).map((s: any) => s.phone_number || s.instance_name))];
-    alerts.push({ key: "whatsapp_disconnected", title: `WhatsApp desconectado nas últimas 24h: ${nums.join(", ")}`, detail: { sessions: nums }, severity: "warn" });
+    alerts.push({ key: "whatsapp_disconnected", title: `WhatsApp desconectado nas últimas 24h: ${nums.join(", ")}`, problem: "Enquanto desconectado, nenhuma mensagem sai por esse número.", hint: "Reconectar o número (ler o QR code) na tela de conexão do WhatsApp.", detail: { sessions: nums }, severity: "warn" });
   }
 
   // 4) Campanhas push paradas há mais de 2h
   const { count: pushStuck } = await supabase.from("push_campaigns").select("*", { count: "exact", head: true })
     .in("status", ["queued", "running", "sending"]).lt("created_at", since(2 * H));
   if ((pushStuck || 0) > 0) {
-    alerts.push({ key: "push_campaigns_stuck", title: `${pushStuck} campanha(s) push parada(s) há mais de 2h`, detail: { count: pushStuck }, severity: "warn" });
+    alerts.push({ key: "push_campaigns_stuck", title: `${pushStuck} campanha(s) push parada(s) há mais de 2h`, problem: "Notificações push não terminaram de sair.", hint: "Ver as campanhas push e reenviar.", detail: { count: pushStuck }, severity: "warn" });
   }
 
   // 5–7) Bling: configuração das integrações ativas
@@ -90,7 +94,8 @@ export async function evaluateHealth(supabase: any, now = Date.now()): Promise<H
       alerts.push({
         key: `bling_sem_credenciais_${b.tenant_id}`,
         title: `Bling da ${nm(b.tenant_id)}: integração ativa sem as credenciais do aplicativo`,
-        hint: "Avisos de produto/estoque dessa loja são recusados. A loja precisa reconectar o Bling no Cartzy.",
+        problem: "Avisos de produto/estoque dessa loja são recusados: alterações no Bling não chegam ao Cartzy.",
+        hint: "A loja precisa reconectar o Bling no Cartzy informando as credenciais do aplicativo.",
         detail: { tenant_id: b.tenant_id },
         severity: "warn",
       });
@@ -99,7 +104,8 @@ export async function evaluateHealth(supabase: any, now = Date.now()): Promise<H
       alerts.push({
         key: `bling_token_vencido_${b.tenant_id}`,
         title: `Bling da ${nm(b.tenant_id)}: acesso vencido desde ${new Date(b.token_expires_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}`,
-        hint: "A renovação automática falhou: pedidos não vão para o Bling. A loja precisa reconectar.",
+        problem: "A renovação automática do acesso falhou: pedidos e estoque não vão para o Bling.",
+        hint: "A loja precisa reconectar o Bling no Cartzy.",
         detail: { tenant_id: b.tenant_id, token_expires_at: b.token_expires_at },
         severity: "error",
       });
@@ -112,7 +118,8 @@ export async function evaluateHealth(supabase: any, now = Date.now()): Promise<H
       alerts.push({
         key: `bling_app_compartilhado_${clientId.slice(0, 8)}`,
         title: `Bling: o mesmo aplicativo está em ${list.length} lojas (${list.map((b) => nm(b.tenant_id)).join(", ")})`,
-        hint: "Avisos de produto podem ir para a loja errada ou ser recusados. Cada loja deve ter o próprio aplicativo.",
+        problem: "Avisos de produto do Bling podem ir para a loja errada ou ser recusados.",
+        hint: "Cada loja deve conectar o Bling com o próprio aplicativo (nunca o de outra loja).",
         detail: { client_id: clientId, tenants: list.map((b) => b.tenant_id) },
         severity: "warn",
       });
@@ -129,6 +136,7 @@ export async function evaluateHealth(supabase: any, now = Date.now()): Promise<H
       alerts.push({
         key: `bling_falhas_envio_${tid}`,
         title: `Bling da ${errNames.get(tid) || tid}: ${n} falhas ao enviar pedido ou baixar estoque na última hora`,
+        problem: "Pedidos podem não estar chegando ao Bling ou sem baixa de estoque.",
         hint: "Ver o registro de sincronização do Bling da loja.",
         detail: { tenant_id: tid, errors: n },
         severity: "error",
@@ -143,7 +151,8 @@ export async function evaluateHealth(supabase: any, now = Date.now()): Promise<H
       alerts.push({
         key: `cron_falhando_${c.jobname}`,
         title: `Tarefa automática "${c.jobname}" falhou ${c.failures}x na última hora`,
-        hint: c.last_error ? `Último erro: ${String(c.last_error).slice(0, 160)}` : undefined,
+        problem: c.last_error ? `Último erro: ${String(c.last_error).slice(0, 200)}` : "Uma rotina automática do sistema não está completando.",
+        hint: "Me chamar para ver o erro dessa rotina.",
         detail: { jobname: c.jobname, failures: c.failures },
         severity: "error",
       });
@@ -151,12 +160,4 @@ export async function evaluateHealth(supabase: any, now = Date.now()): Promise<H
   }
 
   return alerts;
-}
-
-// Uma mensagem só por rodada, com os alertas novos (erros primeiro).
-export function formatAlertMessage(alerts: HealthAlert[], now = new Date()): string {
-  const sorted = [...alerts].sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "error" ? -1 : 1));
-  const lines = sorted.map((a) => `${a.severity === "error" ? "🔴" : "🟡"} ${a.title}${a.hint ? `\n   ↳ ${a.hint}` : ""}`);
-  const when = now.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
-  return `🩺 *Saúde do Sistema — Cartzy*\n\n${lines.join("\n\n")}\n\n_${when} · painel: app.cartzy.com.br/admin/saude_`;
 }

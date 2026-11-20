@@ -4,6 +4,7 @@ import { useTenant } from '@/hooks/useTenant';
 import { TenantSwitcher } from '@/components/TenantSwitcher';
 import { HelpCircle } from 'lucide-react';
 import { getHelpPageMeta } from '@/lib/help-page-key';
+import { AdminAlertsBell } from '@/components/layout/AdminAlertsBell';
 
 export function TopBar() {
   const { user, profile } = useAuth();
@@ -58,6 +59,9 @@ export function TopBar() {
         <HelpCircle className="h-4 w-4" />
         Tutoriais
       </Link>
+
+      {/* Sininho de alertas do sistema: só o super admin vê */}
+      {profile?.role === 'super_admin' && <AdminAlertsBell />}
       
       {subInfo && (
         <div className="flex items-center px-3 border-l border-[#e5e7eb] h-8">
