@@ -175,3 +175,6 @@ Branch: `etapa-3-medio` (sai de `etapa-2-limpeza`; juntar no `main` leva as etap
   telefones e data). Dividir o atendimento principal do `zapi-webhook` (~2.000 linhas num bloco só) fica para a etapa 4.
 - **3.6 Limpeza do banco**: não aplicada — o Supabase pediu confirmação e ela não foi respondida. Script pronto em `limpeza-banco.sql`.
 - Testes: 116 passando (eram 99). Front compila.
+  - **20/11 08:30 — Ela Up desconectada do Bling (decisão do Rafael):** integração desativada e credenciais/tokens apagados no
+    Cartzy (a loja nunca enviou pedido ao Bling). Agora só a Mania usa o aplicativo `a10873…`, então os avisos dele voltam a ir
+    só para a Mania. Falta revogar o acesso do aplicativo dentro do Bling da Ela Up (Central de Extensões → Minhas instalações).
