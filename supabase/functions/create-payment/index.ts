@@ -5,6 +5,7 @@ import { applyPaymentMethodLock } from "../_shared/payment-method-lock.ts";
 import { resolvePixDiscount } from "../_shared/pix-discount.ts";
 import { loadCouponWindow, isOrderWithinCoupon } from "../_shared/coupon-eligibility.ts";
 import { getActiveTenantMpToken, missingPaymentProviderResponse } from "../_shared/tenant-mp-token.ts";
+import { pixDiscountPerOrder } from "../_shared/order-totals.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -403,11 +404,8 @@ serve(async (req) => {
     for (let i = 0; i < orderCtxs.length; i++) {
       const ctx = orderCtxs[i];
       const productsTotal = ctx.productsTotal > 0 ? ctx.productsTotal : (orderCtxs.length === 1 ? fallbackPayloadSubtotal : 0);
-      // PIX por pedido = subtotal próprio × percent
-      const pixCents = pixDiscountPercent > 0
-        ? Math.round(productsTotal * pixDiscountPercent)
-        : 0;
-      pixShares.push(pixCents / 100);
+      // PIX por pedido = subtotal próprio × percent — regra única com as telas (_shared/order-totals.ts)
+      pixShares.push(pixDiscountPerOrder([productsTotal], pixDiscountPercent)[0]);
 
       if (!eligibleFlags[i]) {
         couponShares.push(0);

@@ -244,3 +244,10 @@ Achados em produção: `whatsapp-add-label` recusa as chamadas do gatilho da eti
   fila de espera (`http_post` da extensão http, sem headers) e etiqueta do app (a função exige login). Testes: `gatilhos-chave.test.mjs`.
 - **5.5 Limpeza final — levantamento** (`docs/refatoracao/limpeza-final-proposta.md`): 18 funções para apagar depois da Black
   (2 só depois de publicar; 2 a confirmar), 2 rotinas repetidas e 4 tabelas sem uso para arquivar. Nada apagado; aguarda aprovação.
+
+### 4.3 · Total do pedido numa regra só (P-07) — preparado, publicar só depois da Black
+`_shared/order-totals.ts` (`computeOrderTotals`, `pixDiscountPerOrder`) é usado pela cobrança (`create-payment`), pela loja da
+live (`LiveShop.tsx`) e pelo checkout público (`PublicCheckout.tsx`). Pix = % sobre o subtotal cheio de cada pedido, arredondado
+por pedido (a conta da cobrança). Correção junto: o checkout público, com promoção "leve X pague Y", calculava o Pix sobre o
+subtotal já descontado da promoção e mostrava total MAIOR do que o cobrado (ex.: 10% de Pix em R$ 300 com R$ 100 de promoção:
+tela R$ 20, cobrança R$ 30). Agora a tela mostra o que é cobrado. Testes de equivalência: `total-pedido.test.mjs` (90 mil casos).
