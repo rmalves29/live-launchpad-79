@@ -82,11 +82,55 @@ function isValidCPF(cpf: string) {
   return d2 === parseInt(d[10]);
 }
 
+
+// ------------------------- cache curto (vitrine) -------------------------
+// Muitos clientes da mesma loja pedem a MESMA lista ao mesmo tempo. Guardamos a resposta por poucos segundos
+// e, se várias chegam juntas, todas esperam a mesma consulta (fila única). Só vale para leitura da vitrine
+// (catalog e catalog_version): reserva, carrinho e pedido sempre consultam o banco na hora.
+const CATALOG_TTL_MS = 3_000;
+const TENANT_TTL_MS = 15_000;
+const CACHE_MAX = 500;
+type Entry<T> = { at: number; p: Promise<T> };
+const tenantCache = new Map<string, Entry<any>>();
+const catalogCache = new Map<string, Entry<{ body: string; ok: boolean }>>();
+
+function cached<T>(map: Map<string, Entry<T>>, key: string, ttl: number, load: () => Promise<T>): Promise<T> {
+  const now = Date.now();
+  const hit = map.get(key);
+  if (hit && now - hit.at < ttl) return hit.p;
+  const p = load();
+  map.set(key, { at: now, p });
+  p.catch(() => { if (map.get(key)?.p === p) map.delete(key); });
+  if (map.size > CACHE_MAX) {
+    for (const [k, v] of map) { if (now - v.at >= ttl) map.delete(k); }
+    while (map.size > CACHE_MAX) map.delete(map.keys().next().value as string);
+  }
+  return p;
+}
+
+async function cachedCatalogResponse(key: string, build: () => Promise<Response>): Promise<Response> {
+  const p = cached(catalogCache, key, CATALOG_TTL_MS, async () => {
+    const res = await build();
+    const body = await res.text();
+    let ok = res.status === 200;
+    try { ok = ok && JSON.parse(body)?.ok !== false; } catch { ok = false; }
+    return { body, ok };
+  });
+  const r = await p;
+  // erro não fica guardado: a próxima chamada tenta de novo
+  if (!r.ok && catalogCache.get(key)?.p === p) catalogCache.delete(key);
+  return new Response(r.body, { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+}
+
 async function getTenant(slugRaw: unknown) {
   let slug = String(slugRaw ?? '');
   try { slug = decodeURIComponent(slug); } catch { /* mantém */ }
   slug = slug.replace(/[​-‍﻿]/g, '').trim().toLowerCase();
   if (!slug) return null;
+  return await cached(tenantCache, slug, TENANT_TTL_MS, () => loadTenant(slug));
+}
+
+async function loadTenant(slug: string) {
   const { data } = await sb
     .from('tenants')
     .select('id, name, slug, logo_url, primary_color, is_active, live_reserve_mode, live_cart_minutes, live_shop_enabled, live_shop_close_at, live_open_order, enable_loja_live, enable_afiliados, pay_on_pickup_enabled, pay_on_pickup_available')
@@ -1017,8 +1061,16 @@ Deno.serve(async (req) => {
     const affView = await getAffiliate(tenant, body.ref);
     const aff = affView || (await getAffiliate(tenant, body.attr_ref));
     switch (body.action) {
-      case 'catalog': return await catalog(body, tenant, affView, aff);
-      case 'catalog_version': return json({ ok: true, version: await catalogVersion(tenant, aff) });
+      case 'catalog':
+      case 'catalog_version': {
+        const key = JSON.stringify([
+          body.action, tenant.id, affView?.id ?? '', aff?.id ?? '',
+          Math.max(0, Math.floor(num(body.offset, 0))), Math.floor(num(body.limit, 60)), String(body.q ?? '').trim().toLowerCase(),
+        ]);
+        return await cachedCatalogResponse(key, () => body.action === 'catalog'
+          ? catalog(body, tenant, affView, aff)
+          : (async () => json({ ok: true, version: await catalogVersion(tenant, aff) }))());
+      }
       case 'recognize': return await recognize(tenant, clientIp(req));
       case 'customer_lookup': return await customerLookup(body, tenant, clientIp(req));
       case 'customer_save': return await customerSave(body, tenant, clientIp(req));
