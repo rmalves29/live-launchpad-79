@@ -18,6 +18,7 @@ export function renderTenantRegistrationHtml(template, tenant) {
 
   // These tags must be in the HTTP response, before any JavaScript runs.
   const metadata = `<title>${name}</title>
+    <meta name="cartzy:share-rendering" content="static" />
     <meta name="description" content="" />
     <meta property="og:title" content="${name}" />
     <meta property="og:site_name" content="${name}" />
