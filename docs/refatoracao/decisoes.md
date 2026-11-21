@@ -263,3 +263,13 @@ código inexistente, esgotado) e gravam/chamam/respondem igual.
 "produto esgotado / você está na fila" chamava uma função inexistente (`sendZAPIMessage`): dava erro, o item virava
 "erro inesperado" e a cliente não era avisada. Agora o aviso sai pelo envio padrão (`zapi-send-message`).
 Próximo passo (pós-Black): dividir o processamento de cada item (~780 linhas) com o mesmo método.
+
+## 20/11 · Pausa automática de integrações de lojas vencidas
+- **Regra:** assinatura vencida há mais de 10 dias **e** nenhum pedido nos últimos 10 dias → rotina diária (03h15) desliga Bling, Olist, Bagy, Omie, Instagram, WhatsApp e frete da loja e registra cada uma em `integration_auto_pauses`.
+- **Volta:** gatilho em `tenants` religa na hora, quando a assinatura volta a valer (data no futuro, loja ativa, não bloqueada). Religa só o que a pausa desligou; o que a loja tinha desligado continua desligado. Se não der para religar (ex.: limite de transportadoras), registra o motivo e segue.
+- **Por que não "10 dias sem pedido":** lojas pagantes (Nica, Cabello, Luvian, Elos) ficam semanas sem live; sem o WhatsApp ligado, o comentário da próxima live não vira pedido.
+- **Fora de propósito:** gateways de pagamento (parados não custam nada e precisam confirmar Pix pago com atraso); lojas sem data de vencimento (internas).
+- **Simulação em 20/11:** pegaria Carine Prudêncio, Cartzy (trial de julho), Nica Brasil, Opalas, Revele e Roanne — 6 WhatsApp, 2 Bling, 1 Instagram, 5 fretes. Nenhuma vendeu nos últimos 10 dias.
+- **Simular sem mudar nada:** `select * from integracoes_pausar_lojas_vencidas(10, true);`
+- **Desfazer:** comandos no topo da migração `20261121010000`.
+- Testes: `tests/pausa-integracoes.test.mjs` (7 casos, Postgres em memória).
