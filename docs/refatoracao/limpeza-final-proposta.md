@@ -17,6 +17,7 @@ Regra: tabelas vão para o schema `arquivo` (dá para voltar); funções saem do
 | `create-pix-payment`, `calculate-shipping` | 0 | quase mortas | Substituídas por `create-payment` e pelas funções de frete por transportadora |
 | `update-zapi-client-token`, `whatsapp-send-template`, `whatsapp-proxy` | 0 | quase mortas | Sem tela nem rotina que chame |
 | `correios-debug-tmp`, `tmp-drive-kit-images` | 0 | — | Temporárias de diagnóstico |
+| Função SQL `get_admin_metrics` (+ `get_admin_metrics_cached`) | nenhuma tela chama | — | Já falha hoje (ordena por coluna renomeada); achado na simulação de 20/11 |
 
 **Confirmar antes com o Rafael** (criadas em 19/11 em outra conversa, podem estar em uso): `erp-stock-diagnose`, `pagarme-due-dates`.
 
