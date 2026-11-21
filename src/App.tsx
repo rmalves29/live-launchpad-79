@@ -68,7 +68,6 @@ const AffiliatePortal = lazy(() => import("./pages/affiliate/AffiliatePortal"));
 const LojaDaLive = lazy(() => import("./pages/loja-live/Index"));
 
 const EmpresasIndex = lazy(() => import("./pages/empresas/Index"));
-const Debug = lazy(() => import("./pages/Debug"));
 const AdminErros = lazy(() => import("./pages/admin/Erros"));
 const MonitoramentoMensagens = lazy(() => import("./pages/admin/MonitoramentoMensagens"));
 const ArquivoHistorico = lazy(() => import("./pages/admin/ArquivoHistorico"));
@@ -118,7 +117,7 @@ const queryClient = new QueryClient({
 const AppContent = () => {
   const location = useLocation();
   const { tenant, isMainSite } = useTenantContext();
-  const showShell = location.pathname !== '/checkout' && location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && location.pathname !== '/politica-de-privacidade' && location.pathname !== '/termos-de-uso' && location.pathname !== '/design-preview' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/') && location.pathname !== '/fluxo-envio' && !location.pathname.startsWith('/fluxo-envio/app') && location.pathname !== '/fluxo-envio/pagamento' && !location.pathname.startsWith('/i/') && location.pathname !== '/indicacao' && location.pathname !== '/agenda' && location.pathname !== '/afiliados/cadastro' && location.pathname !== '/afiliado' && !location.pathname.startsWith('/contratacao/');
+  const showShell = location.pathname !== '/mp/callback' && location.pathname !== '/auth' && location.pathname !== '/landing' && location.pathname !== '/renovar-assinatura' && location.pathname !== '/politica-de-privacidade' && location.pathname !== '/termos-de-uso' && location.pathname !== '/design-preview' && !location.pathname.startsWith('/t/') && !location.pathname.startsWith('/fluxo/') && location.pathname !== '/fluxo-envio' && !location.pathname.startsWith('/fluxo-envio/app') && location.pathname !== '/fluxo-envio/pagamento' && !location.pathname.startsWith('/i/') && location.pathname !== '/indicacao' && location.pathname !== '/agenda' && location.pathname !== '/afiliados/cadastro' && location.pathname !== '/afiliado' && !location.pathname.startsWith('/contratacao/');
   
   // Atualiza o título da aba do navegador baseado na página atual
   usePageTitle();
@@ -342,15 +341,6 @@ const AppContent = () => {
         {/* Rota para renovação de assinatura */}
         <Route path="/renovar-assinatura" element={
           <RequireAuth><RenovarAssinatura /></RequireAuth>
-        } />
-        
-        {/* Rota de debug - apenas super_admin autenticado */}
-        <Route path="/debug" element={
-          <RequireAuth>
-            <SuperAdminOnly>
-              <Debug />
-            </SuperAdminOnly>
-          </RequireAuth>
         } />
 
         {/* Painel de erros do Sentry - apenas rafael@maniadmulher.com */}
