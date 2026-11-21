@@ -85,11 +85,13 @@ function integracoes(pix) {
 }
 
 // pedidos: [{ id, created_at, items: [{ unit_price, qty }] }] (do mais antigo para o mais novo)
-async function cobrar({ pix, pedidos, cupom, codigo, frete, metodo }) {
+async function cobrar({ pix, pedidos, cupom, codigo, frete, metodo, cupomRow = null }) {
   const tables = {
     orders: pedidos.map((p) => ({ id: p.id, tenant_id: LOJA, cart_id: 10_000 + p.id, total_amount: 0, observation: '', created_at: p.created_at })),
     cart_items: pedidos.flatMap((p) => p.items.map((it, n) => ({ id: p.id * 100 + n, cart_id: 10_000 + p.id, qty: it.qty, unit_price: it.unit_price }))),
-    customers: [], tenants: [{ id: LOJA, slug: 'loja' }], coupons: [],
+    customers: [], tenants: [{ id: LOJA, slug: 'loja' }],
+    // o cadastro do cupom fica no banco simulado, como na vida real (a cobrança lê a validade dele)
+    coupons: cupomRow ? [{ ...cupomRow, tenant_id: LOJA, channel: 'bazar' }] : [],
     ...integracoes(pix),
   };
   const fn = await loadEdgeFunction('create-payment', { tables, fetchHandler: respondeGateways });
@@ -110,9 +112,25 @@ async function cobrar({ pix, pedidos, cupom, codigo, frete, metodo }) {
   }
   const pref = fn.calls.find((c) => c.url.includes('/checkout/preferences'));
   const gatewayTotal = pref ? r2(pref.body.items.reduce((s, i) => s + i.unit_price * i.quantity, 0)) : null;
+  const pg = fn.calls.find((c) => c.url.includes('/paymentlinks'));
+  const pagarme = pg ? r2(pg.body.cart_settings.items.reduce((s, i) => s + i.amount * (i.default_quantity ?? i.quantity ?? 1), 0) / 100) : null;
   const delegado = fn.sb.log.invokes.find((i) => i.name === 'create-infinitepay-payment');
-  return { ok: r.status === 200 && r.body?.success !== false, porPedido, gatewayTotal, infinitepay: delegado ? r2(delegado.body.total ?? delegado.body.amount ?? 0) : null };
+  let infinitepay = null, porPedidoInf = null;
+  if (delegado && rodarInfinitePay) {
+    const ip = await loadEdgeFunction('create-infinitepay-payment', { tables, fetchHandler: async (call) => (call.url.includes('infinitepay.io') ? { status: 200, body: { url: 'https://inf.test/l' } } : { status: 200, body: {} }) });
+    await ip.call(delegado.body);
+    const link = ip.calls.find((c) => c.url.includes('infinitepay.io/links'));
+    infinitepay = link ? r2(link.body.items.reduce((s, i) => s + i.price * i.quantity, 0) / 100) : null;
+    porPedidoInf = {};
+    for (const w of ip.sb.log.writes) {
+      if (w.table !== 'orders' || w.action !== 'update' || w.values?.total_amount == null) continue;
+      const id = w.filters.find((f) => f.col === 'id')?.val;
+      porPedidoInf[id] = r2(w.values.total_amount);
+    }
+  }
+  return { ok: r.status === 200 && r.body?.success !== false, porPedido, gatewayTotal, pagarme, infinitepay, porPedidoInf, erro: r.body?.error ?? null };
 }
+let rodarInfinitePay = false;
 
 // ---------------------------------------------------------------- base 1: pedidos reais
 const metodoDaTela = (m) => (m === 'pix' || m === 'infinitepay_pix' ? 'pix' : 'card');
@@ -222,7 +240,7 @@ async function rodarSorteados(qtd) {
     // cobrança com o payload que a tela monta hoje (cupom + promoção somados em coupon_discount)
     const descontoEnviado = Math.round((cupomTela + promo) * 100) / 100;
     const cobr = await cobrar({
-      pix: c.pix, pedidos: c.pedidos, cupom: descontoEnviado, frete: c.frete, metodo: c.metodo,
+      pix: c.pix, pedidos: c.pedidos, cupom: descontoEnviado, frete: c.frete, metodo: c.metodo, cupomRow: c.cupom,
       codigo: promo > 0 ? (t.aplicado ? 'CUPOM+BOGO' : 'BOGO') : (t.aplicado ? 'CUPOM' : null),
     });
     out.push({
@@ -253,6 +271,63 @@ function rodarLojaDaLive(qtd) {
     const res = lojaDaLive.computeCoupon(c, lines);
     out.push({ n, ok: res.ok, desconto: res.discount });
   }
+  return out;
+}
+
+// ---------------------------------------------------------------- base 3 (ampliação de 21/11): casos que faltavam
+const GATEWAYS = { mp: { mp: [true, 5] }, pagarme: { pg: [true, 5] }, infinitepay: { inf: [true, 5] } };
+
+async function rodarAmpliacao() {
+  const r = sorteio(2111);
+  const pick = (arr) => arr[Math.floor(r() * arr.length)];
+  const base = Date.parse('2026-11-10T12:00:00Z');
+  const out = [];
+  rodarInfinitePay = true;
+  try {
+    for (let n = 0; n < 240; n++) {
+      // pedidos pagos juntos, com o cupom começando DEPOIS do primeiro pedido (o primeiro fica fora da validade)
+      const qtd = n < 160 ? 2 + Math.floor(r() * 2) : 1 + Math.floor(r() * 2);
+      const pedidos = Array.from({ length: qtd }, (_, j) => ({
+        id: 9000 + n * 10 + j,
+        created_at: new Date(base + j * 86_400_000 * 2).toISOString(),
+        items: Array.from({ length: 1 + Math.floor(r() * 4) }, () => ({ unit_price: pick(PRECOS), qty: 1 + Math.floor(r() * 3), category_id: 1 + Math.floor(r() * 3) })),
+      }));
+      const agora = Date.parse(pedidos[qtd - 1].created_at) + 3_600_000;
+      let tipoCaso, cupom = null, enviado = null, codigo = null;
+      if (n < 160) {
+        tipoCaso = 'janela';
+        const tipo = pick(['percentage', 'fixed', 'progressive']);
+        cupom = { id: 1, code: 'CUPOM', is_active: true, used_count: 0, usage_limit: null, discount_type: tipo,
+          discount_value: tipo === 'fixed' ? pick([8, 20, 40, 500]) : pick([5, 10, 30]),
+          progressive_tiers: tipo === 'progressive' ? [{ min_value: 0, max_value: 99.99, discount: 5 }, { min_value: 100, max_value: null, discount: 10 }] : null,
+          min_purchase_amount: null, min_items_quantity: null,
+          starts_at: new Date(base + 86_400_000).toISOString(), expires_at: null };
+      } else if (n < 200) {
+        tipoCaso = 'fraude'; // desconto enviado pelo navegador sem cupom válido (código inexistente, nome de presente ou nenhum)
+        codigo = pick(['NAOEXISTE', 'BOLSINHA', null]);
+        const soma = pedidos.flatMap((p) => p.items).reduce((s, it) => s + it.unit_price * it.qty, 0);
+        enviado = r2(soma * pick([0.5, 0.9, 1]));
+      } else {
+        tipoCaso = 'gateway';
+      }
+      const pixCfg = pick(Object.keys(GATEWAYS));
+      const metodo = r() < 0.6 ? 'pix' : 'card';
+      const frete = pick(FRETES);
+      let cupomTela = 0, aplicado = false;
+      if (cupom) { const t = await cupomNaTela(cupom, pedidos, agora); aplicado = t.aplicado; cupomTela = aplicado ? t.desconto : 0; }
+      const descontoEnviado = tipoCaso === 'fraude' ? enviado : Math.round(cupomTela * 100) / 100;
+      const cobr = await cobrar({ pix: GATEWAYS[pixCfg], pedidos, cupom: descontoEnviado, frete, metodo, cupomRow: cupom,
+        codigo: tipoCaso === 'fraude' ? codigo : (aplicado ? 'CUPOM' : null) });
+      const pixPct = 5;
+      const tela = computeOrderTotals({
+        orderSubtotals: pedidos.map((p) => p.items.reduce((s, it) => s + it.unit_price * it.qty, 0)),
+        method: metodo, pixPercent: pixPct, couponDiscount: tipoCaso === 'fraude' ? 0 : cupomTela, promoDiscount: 0, shipping: frete,
+      });
+      out.push({ n, tipoCaso, gateway: pixCfg, metodo, cupomTela: r2(cupomTela), enviado: descontoEnviado, totalTelaSemFraude: r2(tela.total),
+        cobrado: pedidos.map((p) => cobr.porPedido[p.id]?.total ?? null), mp: cobr.gatewayTotal, pagarme: cobr.pagarme,
+        infinitepay: cobr.infinitepay, cobradoInf: cobr.porPedidoInf ? pedidos.map((p) => cobr.porPedidoInf[p.id] ?? null) : null });
+    }
+  } finally { rodarInfinitePay = false; }
   return out;
 }
 
@@ -307,6 +382,11 @@ test('casos sorteados: regra de cupom da Loja da Live (5.000 carrinhos)', () => 
   assert.ok(atual.lojaDaLive.some((c) => c.ok) && atual.lojaDaLive.some((c) => !c.ok));
 });
 
+test('ampliação: validade do cupom com pedidos juntos, presente, fraude e os três gateways (240 casos)', async () => {
+  atual.ampliacao = await rodarAmpliacao();
+  assert.equal(atual.ampliacao.length, 240);
+});
+
 test('referência gravada: a conta de hoje continua idêntica à gravada na fase 0', () => {
   if (GRAVAR || !referencia) {
     if (!GRAVAR && process.env.CI) assert.fail('referência ausente no CI: grave localmente com GRAVAR_REFERENCIA=1');
@@ -314,7 +394,7 @@ test('referência gravada: a conta de hoje continua idêntica à gravada na fase
     referencia = { ...atual };
     return;
   }
-  for (const parte of ['reais', 'sorteados', 'lojaDaLive']) {
+  for (const parte of ['reais', 'sorteados', 'lojaDaLive', 'ampliacao']) {
     const a = atual[parte], ref = referencia[parte];
     assert.equal(a.length, ref.length, `${parte}: quantidade de casos mudou`);
     for (let i = 0; i < a.length; i++) assert.deepEqual(a[i], ref[i], `${parte}, caso ${i}: resultado diferente da referência`);
