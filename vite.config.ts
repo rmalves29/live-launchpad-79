@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react-swc";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
+import { tenantRegistrationPages } from "./scripts/tenant-registration-pages.mjs";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -15,6 +16,7 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [
     react(),
+    tenantRegistrationPages(),
     mode === "development" && componentTagger(),
     sentryVitePlugin({
       org: "orderzaps",
