@@ -6,23 +6,23 @@ const pageTitles: Record<string, string> = {
   '/pedidos-manual': 'Manual',
   '/live': 'Live',
   '/live-tiktok': 'Live TikTok',
-  '/tiktok-automacao': 'Automação TikTok',
+  '/tiktok-automacao': 'Automa��o TikTok',
   '/checkout': 'Checkout',
   '/pedidos/checkout': 'Checkout',
   '/produtos': 'Produtos',
   '/clientes': 'Clientes',
   '/pedidos': 'Pedidos',
   '/sendflow': 'SendFlow',
-  '/relatorios': 'Relatórios',
+  '/relatorios': 'Relat�rios',
   '/sorteio': 'Sorteio',
   '/etiquetas': 'Etiquetas',
-  '/integracoes': 'Integrações',
+  '/integracoes': 'Integra��es',
   '/admin/tenants': 'Empresas',
   '/config': 'Config',
   '/whatsapp/templates': 'Templates',
-  '/whatsapp/cobranca': 'Cobrança',
-  '/whatsapp/zapi': 'Conexão Z-API',
-  '/whatsapp/conexao': 'Conexão WhatsApp',
+  '/whatsapp/cobranca': 'Cobran�a',
+  '/whatsapp/zapi': 'Conex�o Z-API',
+  '/whatsapp/conexao': 'Conex�o WhatsApp',
   '/auth': 'Entrar',
   '/debug': 'Debug',
 };
@@ -31,6 +31,8 @@ export const usePageTitle = (customTitle?: string) => {
   const location = useLocation();
 
   useEffect(() => {
+    // This public page owns its title and social preview with the store's brand.
+    if (/^\/t\/[^/]+\/cadastro-instagram\/?$/.test(location.pathname)) return;
     const baseTitle = 'Cartzy';
     
     if (customTitle) {
@@ -47,7 +49,7 @@ export const usePageTitle = (customTitle?: string) => {
       if (location.pathname.startsWith('/t/')) {
         document.title = `${baseTitle} - Checkout`;
       } else {
-        document.title = `${baseTitle} - Gestão de Pedidos`;
+        document.title = `${baseTitle} - Gest�o de Pedidos`;
       }
     }
   }, [location.pathname, customTitle]);

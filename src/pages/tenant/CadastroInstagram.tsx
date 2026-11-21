@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { Loader2, Instagram, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Toaster as Sonner } from '@/components/ui/sonner';
+import { applyTenantShareMetadata } from '@/lib/tenant-share-metadata';
 
 interface Tenant {
   id: string;
@@ -29,41 +30,55 @@ export default function CadastroInstagram() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
 
+  // Do not show the previous store's branding while a different slug is loading.
+  const currentTenant = tenant?.slug === (slug || '').trim().toLowerCase() ? tenant : null;
+  useLayoutEffect(() => applyTenantShareMetadata(document, currentTenant), [currentTenant]);
+
   useEffect(() => {
+    let cancelled = false;
     const loadTenant = async () => {
-      const normalizedSlug = decodeURIComponent(slug || '').trim().toLowerCase();
+      setTenant(null);
+      setTenantError(null);
+      setLoadingTenant(true);
+      let normalizedSlug = '';
+      try { normalizedSlug = decodeURIComponent(slug || '').trim().toLowerCase(); } catch {}
 
       if (!normalizedSlug) {
-        setTenantError('Loja não especificada');
+        setTenantError('Loja n�o especificada');
         setLoadingTenant(false);
         return;
       }
       try {
-        const { data, error } = await supabase.rpc('get_tenant_by_slug' as any, {
-          slug_param: normalizedSlug,
-        });
+        const { data: tenantData, error } = await supabase
+          .from('tenants_public')
+          .select('id, name, slug, logo_url, primary_color')
+          .eq('slug', normalizedSlug)
+          .eq('is_active', true)
+          .maybeSingle();
 
+        if (cancelled) return;
         if (error) throw error;
-        const tenantData = Array.isArray(data) ? data[0] : data;
 
         if (!tenantData) {
-          setTenantError('Loja não encontrada');
+          setTenantError('Loja n�o encontrada');
         } else {
           setTenant({
             id: tenantData.id,
             name: tenantData.name,
             slug: tenantData.slug,
-            logo_url: null,
-            primary_color: null,
+            logo_url: tenantData.logo_url,
+            primary_color: tenantData.primary_color,
           });
         }
       } catch {
+        if (cancelled) return;
         setTenantError('Erro ao carregar dados da loja');
       } finally {
-        setLoadingTenant(false);
+        if (!cancelled) setLoadingTenant(false);
       }
     };
     loadTenant();
+    return () => { cancelled = true; };
   }, [slug]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -77,7 +92,7 @@ export default function CadastroInstagram() {
       return;
     }
     if (!cleanPhone || cleanPhone.length < 10) {
-      toast.error('Informe um telefone válido');
+      toast.error('Informe um telefone v�lido');
       return;
     }
 
@@ -123,7 +138,7 @@ export default function CadastroInstagram() {
   if (tenantError || !tenant) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
-        <p className="text-muted-foreground">{tenantError || 'Loja não encontrada'}</p>
+        <p className="text-muted-foreground">{tenantError || 'Loja n�o encontrada'}</p>
       </div>
     );
   }
@@ -153,7 +168,7 @@ export default function CadastroInstagram() {
               <div>
                 <h2 className="text-xl font-semibold text-foreground">Cadastro realizado!</h2>
                 <p className="text-sm text-muted-foreground mt-2">
-                  Seu Instagram foi vinculado ao seu telefone com sucesso. Agora seus pedidos da Live serão identificados automaticamente.
+                  Seu Instagram foi vinculado ao seu telefone com sucesso. Agora seus pedidos da Live ser�o identificados automaticamente.
                 </p>
               </div>
               <Button variant="outline" onClick={() => { setSuccess(false); setInstagram(''); setPhone(''); setName(''); }}>
