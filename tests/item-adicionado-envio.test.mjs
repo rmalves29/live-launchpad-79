@@ -125,14 +125,14 @@ test('banco totalmente fora (nem a conferência funciona): não manda, protege o
   assert.equal(mensagensWhatsApp(fn).length, 0);
 });
 
+// A cópia da tela (src/lib/whatsapp-anti-block.ts) foi apagada em 20/11: nenhuma tela a usava; as mensagens saem só pelo servidor e pela cobrança.
 test('anti-spam nunca coloca caractere invisível dentro de link, código, valor ou telefone (P-04, corrigido)', async () => {
   const { addMessageVariation } = await import('../supabase/functions/_shared/anti-block-delay.ts');
-  const { addMessageVariation: daTela } = await import('../src/lib/whatsapp-anti-block.ts');
   const { addVariation: daCobranca } = extractFunctions('supabase/functions/cobranca-process/index.ts', ['invisibleCharPosition', 'addVariation'], { EMOJI_VARIATIONS: {} });
   const link = 'https://app.cartzy.com.br/loja-teste/checkout?p=5531999887766';
   const pedacos = [link, 'C210', 'R$ 89,90', '5531999887766'];
   const base = `Item adicionado ao pedido\n\nColar Aurora (C210)\nQtd: *1*\nValor: *R$ 89,90*\n\nFinalize seu pedido: ${link}\n\nWhats da loja: 5531999887766`;
-  for (const [nome, variar] of [['servidor', (t) => addMessageVariation(t, false)], ['tela', daTela], ['cobrança', daCobranca]]) {
+  for (const [nome, variar] of [['servidor', (t) => addMessageVariation(t, false)], ['cobrança', daCobranca]]) {
     let variadas = 0;
     for (let i = 0; i < 2000; i++) {
       const msg = variar(base);

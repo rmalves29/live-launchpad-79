@@ -41,7 +41,6 @@ const PagamentoRetorno = lazy(() => import("./pages/pagamento/Retorno"));
 // Pedidos
 const PedidosManual = lazy(() => import("./pages/pedidos/Manual"));
 const Live = lazy(() => import("./pages/pedidos/Live"));
-const Checkout = lazy(() => import("./pages/pedidos/Checkout"));
 const PublicCheckout = lazy(() => import("./pages/pedidos/PublicCheckout"));
 const Pedidos = lazy(() => import("./pages/pedidos/Index"));
 
@@ -207,7 +206,8 @@ const AppContent = () => {
         <Route path="/pagamento/retorno" element={<PagamentoRetorno />} />
         
         {/* Rotas protegidas */}
-        <Route path="/checkout" element={<Checkout />} />
+        {/* Checkout antigo removido em 21/11/2026: links salvos vão para o início */}
+        <Route path="/checkout" element={<Navigate to="/" replace />} />
         <Route path="/pedidos-manual" element={
           <RequireTenantAuth><FeatureGate feature="pedido_manual"><PedidosManual /></FeatureGate></RequireTenantAuth>
         } />

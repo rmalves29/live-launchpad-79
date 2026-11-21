@@ -133,7 +133,7 @@ const Retorno = () => {
 
             {status === "failure" && (
               <Link
-                to="/checkout"
+                to={tenantSlug ? `/t/${tenantSlug}/checkout` : catalogLink}
                 className="inline-flex items-center justify-center rounded-lg border border-border px-6 py-3 font-medium hover:bg-accent transition"
               >
                 Tentar novamente
