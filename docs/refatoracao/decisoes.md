@@ -286,3 +286,17 @@ Nada no sistema mudou nesta fase: só testes e referências.
   - B) cupom de 100% + desconto Pix: o Pix é aplicado de novo e o Mercado Pago recebe valor errado, até negativo (8 casos sorteados);
   - C) 11 de 54 cupons reais não batem com a configuração atual porque o cupom foi editado depois do uso (janela mudou para 29/09) — a regra está certa, o histórico é que mudou;
   - D) 3 pedidos da Loja da Live (19/11) pagos a R$ 1,00 com cupom de 100% (somam R$ 397,90 = cupom DESCTESTE1 da Prata e Prata) — parecem teste da própria loja.
+
+## 21/11 · Unificação dos checkouts — fase 1 (regra única no servidor)
+Aprovado pelo Rafael: corrigir A e B, promoção passa a valer na Loja da Live (fase 3), começar a fase 1.
+- **Módulos novos:** `_shared/regras-pedido.ts` (cupom do checkout, promoção "leve X pague Y"/progressiva, itens do gateway com soma exata) e `_shared/cobranca-pedidos.ts` (lê pedidos/itens/categoria/cupom/promoção do banco, decide o desconto, reparte entre os pedidos). Usados pela `create-payment` E pela `create-infinitepay-payment` (que é chamada direto pela internet e tinha uma terceira cópia da conta).
+- **Fraude fechada:** o desconto enviado pelo navegador é ignorado. Checkout do sistema: cupom (canal ≠ live) e promoção recalculados no servidor. Loja da Live: vale o desconto gravado no pedido pelo servidor da Loja da Live.
+- **Corrigido A:** os itens enviados ao Mercado Pago, Pagar.me e InfinitePay somam exatamente o total dos pedidos (linha que não divide pela quantidade vira duas).
+- **Corrigido B:** cupom de 100% + Pix não manda mais valor negativo/errado ao gateway.
+- **Corrigido E:** cupom com pedido anterior à validade, pago junto com outros — o desconto não é mais reduzido duas vezes (a cliente pagava a mais do que a tela mostrava; até R$ 29 nos testes).
+- **Limite de uso na cobrança:** como a tela soma o uso antes de pagar, a cobrança só recusa quem PASSOU do limite.
+- **Sem mudança:** Pix por pedido, rateio do cupom, frete no pedido mais antigo, ordem dos gateways, trava Pix/cartão.
+- **Prova:** referência da conta antiga regravada com o banco simulado completo (idêntica à fase 0) em `fixtures/checkout-referencia-fase0.json`; testes `fase 1 x conta antiga` só aceitam as mudanças previstas (Loja da Live idêntica; 600 sorteados com o mesmo total nos pedidos e gateway agora exato; fraude 40/40 paga o devido; validade 130 passam a pagar o que a tela mostrou, 0 pagam mais). `cobranca-servidor.test.mjs`: 10 garantias — todas falham no código antigo e passam no novo.
+- **Dados reais:** 413 de 423 pedidos pagos com cupom no checkout do sistema (90 dias) usaram cupom que a regra reconhece; os 10 restantes são de 16/10 com cupom apagado depois.
+- **Achado F (já existia, igual antes e depois):** com vários pedidos, cupom cobrindo um pedido inteiro e Pix, a TELA mostra total um pouco menor do que o cobrado (soma antes de travar no zero). Corrige na fase 2 (a tela passa a pedir o total ao servidor).
+- **Para desfazer:** reverter o commit da fase 1 (as duas funções voltam à conta antiga).

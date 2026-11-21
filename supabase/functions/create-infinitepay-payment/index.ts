@@ -5,7 +5,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolvePixDiscount } from "../_shared/pix-discount.ts";
-import { loadCouponWindow, isOrderWithinCoupon } from "../_shared/coupon-eligibility.ts";
+import { carregarPedidosParaCobranca, calcularDescontoDoServidor, repartirCobranca, itensDaCobranca } from "../_shared/cobranca-pedidos.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -165,96 +165,25 @@ serve(async (req) => {
       pixDiscountPercent = resolved.percent;
     }
 
-    const pixDiscountValue = toNumber(body.pix_discount, 0);
-    const couponDiscountValue = toNumber(body.coupon_discount, 0);
+    // Fase 1 (21/11/2026): a mesma conta da create-payment, feita aqui no servidor com dados do banco
+    // (_shared/cobranca-pedidos.ts). Esta função também é chamada direto pela internet, então o desconto enviado
+    // no corpo da chamada é ignorado — antes dava para pagar menos mandando qualquer valor.
     const shippingValue = toNumber(body.shippingCost, 0);
-
-    // Pré-carregar pedidos do merge
-    type OrderCtx = { id: number; observation: string | null; cart_id: number | null; productsTotal: number; created_at: string | null };
-    const orderCtxs: OrderCtx[] = [];
-    for (const orderId of orderIds) {
-      const { data: existingOrder } = await sb
-        .from("orders")
-        .select("id, observation, cart_id, created_at")
-        .eq("id", orderId)
-        .single();
-      if (!existingOrder) continue;
-      let productsTotal = 0;
-      if (existingOrder.cart_id) {
-        const { data: cartItems } = await sb
-          .from("cart_items")
-          .select("unit_price, qty")
-          .eq("cart_id", existingOrder.cart_id);
-        if (cartItems?.length) {
-          productsTotal = cartItems.reduce((s, it) => s + Number(it.unit_price) * Number(it.qty), 0);
-        }
-      }
-      orderCtxs.push({ id: existingOrder.id, observation: existingOrder.observation, cart_id: existingOrder.cart_id, productsTotal, created_at: existingOrder.created_at ?? null });
+    const orderCtxs = await carregarPedidosParaCobranca(sb, orderIds);
+    const fallbackPayloadSubtotal = body.cartItems.reduce((s, it) => s + it.unit_price * it.qty, 0);
+    const desconto = await calcularDescontoDoServidor(sb, { tenantId: body.tenant_id, pedidos: orderCtxs, codigoEnviado: body.coupon_code });
+    const enviado = toNumber(body.coupon_discount, 0);
+    if (Math.abs(enviado - desconto.valor) > 0.01) {
+      console.log(`[create-infinitepay-payment] desconto enviado=${enviado.toFixed(2)} ignorado; servidor=${desconto.valor.toFixed(2)} (${desconto.origem}, código=${desconto.codigo ?? "-"})`);
     }
-
-    // Mais antigo primeiro — frete fica 100% no primeiro
-    orderCtxs.sort((a, b) => {
-      const ta = a.created_at ? Date.parse(a.created_at) : a.id;
-      const tb = b.created_at ? Date.parse(b.created_at) : b.id;
-      if (ta !== tb) return ta - tb;
-      return a.id - b.id;
+    const parcelas = repartirCobranca({
+      pedidos: orderCtxs, desconto: desconto.valor, elegiveis: desconto.elegiveis,
+      pixPercent: pixDiscountPercent, frete: shippingValue, subtotalReserva: fallbackPayloadSubtotal,
     });
 
-    const combinedSubtotal = orderCtxs.reduce((s, o) => s + o.productsTotal, 0);
-    const fallbackPayloadSubtotal = body.cartItems.reduce((s, it) => s + it.unit_price * it.qty, 0);
-
-    // Cupom só vale para pedidos criados DENTRO do período de validade do cupom
-    const couponWindow = couponDiscountValue > 0
-      ? await loadCouponWindow(sb, (body as any).tenant_id, body.coupon_code)
-      : null;
-    const eligibleFlags = orderCtxs.map((o) => isOrderWithinCoupon(o.created_at, couponWindow));
-    const eligibleSubtotal = orderCtxs.reduce((s, o, i) => s + (eligibleFlags[i] ? o.productsTotal : 0), 0);
-
-    let effectiveCoupon = couponDiscountValue;
-    if (couponWindow && eligibleFlags.some((f) => !f)) {
-      if (eligibleSubtotal <= 0) {
-        effectiveCoupon = 0;
-      } else if (couponWindow.discountType === "fixed") {
-        effectiveCoupon = Math.min(effectiveCoupon, eligibleSubtotal);
-      } else if (combinedSubtotal > 0) {
-        effectiveCoupon = Math.round(effectiveCoupon * (eligibleSubtotal / combinedSubtotal) * 100) / 100;
-      }
-      console.log(
-        `[create-infinitepay-payment] Cupom ${body.coupon_code}: pedidos fora do período ignorados=` +
-          `[${orderCtxs.filter((_, i) => !eligibleFlags[i]).map((o) => o.id).join(",")}], desconto ajustado=${effectiveCoupon.toFixed(2)}`,
-      );
-    }
-
-    // PIX por pedido = % sobre o próprio subtotal; cupom rateado só entre os elegíveis
-    const pixShares: number[] = [];
-    const couponShares: number[] = [];
-    let couponRemaining = Math.round(effectiveCoupon * 100);
-    const lastEligibleIdx = eligibleFlags.lastIndexOf(true);
     for (let i = 0; i < orderCtxs.length; i++) {
       const ctx = orderCtxs[i];
-      const productsTotal = ctx.productsTotal > 0 ? ctx.productsTotal : (orderCtxs.length === 1 ? fallbackPayloadSubtotal : 0);
-      const pixCents = pixDiscountPercent > 0 ? Math.round(productsTotal * pixDiscountPercent) : 0;
-      pixShares.push(pixCents / 100);
-
-      if (!eligibleFlags[i]) {
-        couponShares.push(0);
-        continue;
-      }
-
-      const isLastEligible = i === lastEligibleIdx;
-      if (eligibleSubtotal <= 0 || orderCtxs.length === 1 || isLastEligible) {
-        couponShares.push(isLastEligible ? couponRemaining / 100 : 0);
-        if (isLastEligible) couponRemaining = 0;
-      } else {
-        const ratio = ctx.productsTotal / eligibleSubtotal;
-        const couponCents = Math.round(effectiveCoupon * 100 * ratio);
-        couponShares.push(couponCents / 100);
-        couponRemaining -= couponCents;
-      }
-    }
-
-    for (let i = 0; i < orderCtxs.length; i++) {
-      const ctx = orderCtxs[i];
+      const parcela = parcelas[i];
       const cleaned = (ctx.observation ?? "")
         .toString()
         .replace(/\n?\[FRETE\][^\n]*/g, "")
@@ -264,23 +193,17 @@ serve(async (req) => {
         .trim();
 
       const isFirst = i === 0;
-      const pixShare = pixShares[i] ?? 0;
-      const couponShare = couponShares[i] ?? 0;
-      const freightForThisOrder = isFirst ? shippingValue : 0;
       const freightNoteForThisOrder = isFirst ? freightNote : "";
-      const pixNote = pixShare > 0 ? `[PIX_DISCOUNT] R$ ${pixShare.toFixed(2)}` : "";
-      const couponNote = couponShare > 0
-        ? `[COUPON_DISCOUNT] R$ ${couponShare.toFixed(2)}${body.coupon_code ? ` (${body.coupon_code})` : ""}`
+      const pixNote = parcela.pix > 0 ? `[PIX_DISCOUNT] R$ ${parcela.pix.toFixed(2)}` : "";
+      const couponNote = parcela.cupom > 0
+        ? `[COUPON_DISCOUNT] R$ ${parcela.cupom.toFixed(2)}${desconto.codigo ? ` (${desconto.codigo})` : ""}`
         : "";
       const mergeNote = body.merge_observation ? `[MERGE] ${body.merge_observation}` : "";
       const nextObs = [cleaned, freightNoteForThisOrder, pixNote, couponNote, mergeNote].filter(Boolean).join("\n");
-
-      const productsTotal = ctx.productsTotal > 0 ? ctx.productsTotal : fallbackPayloadSubtotal;
-      const newTotal = Math.max(0, productsTotal - pixShare - couponShare) + freightForThisOrder;
       const shippingServiceId = body.shippingData?.service_id ? Number(body.shippingData.service_id) : null;
       const shippingProvider = typeof body.shippingData?.provider === "string" && body.shippingData.provider ? body.shippingData.provider : null;
 
-      console.log(`[create-infinitepay-payment] Order ${ctx.id} (${isFirst ? "FIRST" : "merged"}): products=${productsTotal.toFixed(2)}, pixShare=${pixShare.toFixed(2)} (percent=${pixDiscountPercent}), couponShare=${couponShare.toFixed(2)}, freight=${freightForThisOrder.toFixed(2)}, total=${newTotal.toFixed(2)}`);
+      console.log(`[create-infinitepay-payment] Order ${ctx.id} (${isFirst ? "FIRST" : "merged"}): products=${parcela.produtos.toFixed(2)}, pixShare=${parcela.pix.toFixed(2)} (percent=${pixDiscountPercent}), couponShare=${parcela.cupom.toFixed(2)}, freight=${parcela.frete.toFixed(2)}, total=${parcela.total.toFixed(2)}`);
 
       await sb
         .from("orders")
@@ -294,55 +217,26 @@ serve(async (req) => {
           customer_city: body.addressData.city,
           customer_state: body.addressData.state,
           observation: nextObs,
-          total_amount: newTotal,
+          total_amount: parcela.total,
+          coupon_discount: parcela.cupom,
+          coupon_code: parcela.cupom > 0 ? desconto.codigo : null,
           shipping_service_id: shippingServiceId,
           shipping_provider: shippingProvider,
         })
         .eq("id", ctx.id);
     }
 
-    // 4) Montar itens para o InfinitePay (valores em CENTAVOS)
-    // Distribuir desconto PIX + cupom proporcionalmente entre os produtos
+    // 4) Itens para o InfinitePay (CENTAVOS): desconto repartido pelo servidor, soma exata = total dos pedidos.
     // InfinitePay limita a descrição do item a 128 caracteres — truncamos com segurança
     const truncateDesc = (s: string) => {
       const clean = (s || "").toString().trim();
       if (clean.length <= 128) return clean;
       return clean.slice(0, 125).trimEnd() + "...";
     };
-    const productItems = body.cartItems
-      .filter((it) => Number(it.unit_price) > 0)
-      .map((it) => ({
-        description: truncateDesc(it.product_name || it.product_code || "Produto"),
-        quantity: it.qty,
-        price: Math.round(Number(it.unit_price) * 100), // centavos
-      }));
-
-    const totalDiscountCents = Math.round((pixDiscountValue + effectiveCoupon) * 100);
-    if (totalDiscountCents > 0 && productItems.length > 0) {
-      const productsTotalCents = productItems.reduce((s, it) => s + it.price * it.quantity, 0);
-      if (productsTotalCents > 0) {
-        let remaining = totalDiscountCents;
-        for (let i = 0; i < productItems.length; i++) {
-          const item = productItems[i];
-          const itemTotal = item.price * item.quantity;
-          const isLast = i === productItems.length - 1;
-          const itemDiscount = isLast
-            ? remaining
-            : Math.round((itemTotal / productsTotalCents) * totalDiscountCents);
-          const perUnit = Math.floor(itemDiscount / item.quantity);
-          item.price = Math.max(1, item.price - perUnit);
-          remaining -= perUnit * item.quantity;
-        }
-      }
-    }
-
-    // Adicionar frete como item
-    if (shippingValue > 0) {
-      productItems.push({
-        description: "Frete",
-        quantity: 1,
-        price: Math.round(shippingValue * 100),
-      });
+    const cobranca = itensDaCobranca(orderCtxs, parcelas, body.cartItems);
+    const productItems = cobranca.produtos.map((l) => ({ description: truncateDesc(l.nome), quantity: l.qtd, price: l.centavos }));
+    if (cobranca.freteCentavos > 0) {
+      productItems.push({ description: "Frete", quantity: 1, price: cobranca.freteCentavos });
     }
 
     // 5) Gerar order_nsu único (defesa contra spoofing — handle é público)

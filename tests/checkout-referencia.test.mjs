@@ -85,10 +85,15 @@ function integracoes(pix) {
 }
 
 // pedidos: [{ id, created_at, items: [{ unit_price, qty }] }] (do mais antigo para o mais novo)
-async function cobrar({ pix, pedidos, cupom, codigo, frete, metodo, cupomRow = null }) {
+// O banco simulado tem tudo o que a cobrança pode ler: pedidos (com a origem), itens com produto e categoria, cadastro
+// do cupom e promoções. O relógio fica parado no momento do pagamento simulado.
+async function cobrar({ pix, pedidos, cupom, codigo, frete, metodo, cupomRow = null, promos = [], origem = 'sis', agoraMs = null }) {
   const tables = {
-    orders: pedidos.map((p) => ({ id: p.id, tenant_id: LOJA, cart_id: 10_000 + p.id, total_amount: 0, observation: '', created_at: p.created_at })),
-    cart_items: pedidos.flatMap((p) => p.items.map((it, n) => ({ id: p.id * 100 + n, cart_id: 10_000 + p.id, qty: it.qty, unit_price: it.unit_price }))),
+    orders: pedidos.map((p) => ({ id: p.id, tenant_id: LOJA, cart_id: 10_000 + p.id, total_amount: 0, observation: '', created_at: p.created_at,
+      source: origem === 'live' ? 'live_shop' : 'whatsapp', coupon_code: origem === 'live' && p.cupomGravado ? 'CUPOMLIVE' : null, coupon_discount: origem === 'live' ? (p.cupomGravado ?? 0) : null })),
+    cart_items: pedidos.flatMap((p) => p.items.map((it, n) => ({ id: p.id * 100 + n, cart_id: 10_000 + p.id, qty: it.qty, unit_price: it.unit_price, product_id: p.id * 100 + n, product_name: 'Peça', product_code: 'C1' }))),
+    products: pedidos.flatMap((p) => p.items.map((it, n) => ({ id: p.id * 100 + n, category_id: it.category_id ?? null }))),
+    product_promotions: promos.map((pr, n) => ({ id: n + 1, tenant_id: LOJA, is_active: true, starts_at: null, ends_at: null, ...pr })),
     customers: [], tenants: [{ id: LOJA, slug: 'loja' }],
     // o cadastro do cupom fica no banco simulado, como na vida real (a cobrança lê a validade dele)
     coupons: cupomRow ? [{ ...cupomRow, tenant_id: LOJA, channel: 'bazar' }] : [],
@@ -96,7 +101,10 @@ async function cobrar({ pix, pedidos, cupom, codigo, frete, metodo, cupomRow = n
   };
   const fn = await loadEdgeFunction('create-payment', { tables, fetchHandler: respondeGateways });
   const todos = pedidos.flatMap((p) => p.items);
-  const r = await fn.call({
+  const relogio = Date.now;
+  if (agoraMs) Date.now = () => agoraMs;
+  try {
+  var r = await fn.call({
     order_ids: pedidos.map((p) => p.id), order_id: pedidos[0].id,
     cartItems: todos.map((it) => ({ product_name: 'Peça', product_code: 'C1', qty: it.qty, unit_price: it.unit_price })),
     customerData: { name: 'Cliente Teste', phone: '31900000000', cpf: '52998224725', email: 'c@teste.com' },
@@ -104,6 +112,7 @@ async function cobrar({ pix, pedidos, cupom, codigo, frete, metodo, cupomRow = n
     shippingCost: frete, shippingData: frete > 0 ? { service_id: 1, service_name: 'PAC', company_name: 'Correios', price: frete, delivery_time: 5 } : null,
     total: '0', coupon_discount: cupom, coupon_code: codigo, tenant_id: LOJA, tenant_slug: 'loja', payment_method: metodo, pix_discount: 0,
   });
+  } finally { Date.now = relogio; }
   const porPedido = Object.fromEntries(pedidos.map((p) => [p.id, null]));
   for (const w of fn.sb.log.writes) {
     if (w.table !== 'orders' || w.action !== 'update' || w.values?.total_amount == null) continue;
@@ -118,7 +127,8 @@ async function cobrar({ pix, pedidos, cupom, codigo, frete, metodo, cupomRow = n
   let infinitepay = null, porPedidoInf = null;
   if (delegado && rodarInfinitePay) {
     const ip = await loadEdgeFunction('create-infinitepay-payment', { tables, fetchHandler: async (call) => (call.url.includes('infinitepay.io') ? { status: 200, body: { url: 'https://inf.test/l' } } : { status: 200, body: {} }) });
-    await ip.call(delegado.body);
+    if (agoraMs) Date.now = () => agoraMs;
+    try { await ip.call(delegado.body); } finally { Date.now = relogio; }
     const link = ip.calls.find((c) => c.url.includes('infinitepay.io/links'));
     infinitepay = link ? r2(link.body.items.reduce((s, i) => s + i.price * i.quantity, 0) / 100) : null;
     porPedidoInf = {};
@@ -172,10 +182,18 @@ async function rodarReais() {
     }
 
     // cobrança: create-payment com o desconto gravado, o frete e a forma de pagamento do pedido real
+    // Cupom como estava NO PAGAMENTO: se a validade atual exclui algum pedido do grupo, a validade foi mudada depois
+    // (o cupom foi aceito na época) — nesses casos o cupom entra sem as datas novas.
+    const foraDaValidadeAtual = cfg && ps.some((p) => (cfg.ini && p.d < cfg.ini) || (cfg.fim && p.d > cfg.fim));
+    const cupomRowReal = cfg && k === 'sis' && cfg.canal !== 'live' ? { code: 'CUPOM', is_active: true, used_count: 0, usage_limit: null, discount_type: cfg.tipo,
+      discount_value: cfg.v, progressive_tiers: cfg.tiers, min_purchase_amount: cfg.min, min_items_quantity: cfg.minq,
+      starts_at: foraDaValidadeAtual ? null : cfg.ini, expires_at: foraDaValidadeAtual ? null : cfg.fim } : null;
     const cobr = await cobrar({
       pix: BASE.pix[ps[0].l], cupom: cupomGravado, codigo: cupomGravado > 0 ? 'CUPOM' : null,
       frete: r2(ps.reduce((s, p) => s + Number(p.f || 0), 0)), metodo: metodoDaTela(ps[0].m),
-      pedidos: ps.map((p) => ({ id: p.id, created_at: p.d, items: p.i.map(([pr, q]) => ({ unit_price: pr, qty: q })) })),
+      cupomRow: cupomRowReal, origem: k, agoraMs: Date.parse(ps[ps.length - 1].d) + 60_000,
+      pedidos: ps.map((p) => ({ id: p.id, created_at: p.d, cupomGravado: r2(Math.max(Number(p.cd || 0), Number(p.cn || 0))),
+        items: p.i.map(([pr, q, cat]) => ({ unit_price: pr, qty: q, category_id: cat })) })),
     });
     caso.totaisHoje = ps.map((p) => cobr.porPedido[p.id]?.total ?? null);
     out.push(caso);
@@ -240,7 +258,7 @@ async function rodarSorteados(qtd) {
     // cobrança com o payload que a tela monta hoje (cupom + promoção somados em coupon_discount)
     const descontoEnviado = Math.round((cupomTela + promo) * 100) / 100;
     const cobr = await cobrar({
-      pix: c.pix, pedidos: c.pedidos, cupom: descontoEnviado, frete: c.frete, metodo: c.metodo, cupomRow: c.cupom,
+      pix: c.pix, pedidos: c.pedidos, cupom: descontoEnviado, frete: c.frete, metodo: c.metodo, cupomRow: c.cupom, promos: c.promos, agoraMs: c.agora,
       codigo: promo > 0 ? (t.aplicado ? 'CUPOM+BOGO' : 'BOGO') : (t.aplicado ? 'CUPOM' : null),
     });
     out.push({
@@ -316,7 +334,7 @@ async function rodarAmpliacao() {
       let cupomTela = 0, aplicado = false;
       if (cupom) { const t = await cupomNaTela(cupom, pedidos, agora); aplicado = t.aplicado; cupomTela = aplicado ? t.desconto : 0; }
       const descontoEnviado = tipoCaso === 'fraude' ? enviado : Math.round(cupomTela * 100) / 100;
-      const cobr = await cobrar({ pix: GATEWAYS[pixCfg], pedidos, cupom: descontoEnviado, frete, metodo, cupomRow: cupom,
+      const cobr = await cobrar({ pix: GATEWAYS[pixCfg], pedidos, cupom: descontoEnviado, frete, metodo, cupomRow: cupom, agoraMs: agora,
         codigo: tipoCaso === 'fraude' ? codigo : (aplicado ? 'CUPOM' : null) });
       const pixPct = 5;
       const tela = computeOrderTotals({
@@ -339,7 +357,7 @@ test('base real: a cobrança de hoje reproduz o total pago nos 123 pedidos reais
   atual.reais = await rodarReais();
   const pedidos = atual.reais.flatMap((c) => c.totaisCobrados.map((tot, j) => ({ tot, hoje: c.totaisHoje[j], k: c.k })));
   const iguais = pedidos.filter((p) => p.hoje != null && Math.abs(p.hoje - p.tot) <= 0.01).length;
-  // Conferência de sanidade: a cobrança atual, com o desconto gravado no pedido, chega ao total que a cliente pagou.
+  // Conferência de sanidade: a cobrança, com o cupom como estava no pagamento, chega ao total que a cliente pagou.
   assert.ok(iguais >= pedidos.length - 3, `só ${iguais} de ${pedidos.length} pedidos reais bateram`);
   atual.resumoReais = { pedidos: pedidos.length, iguaisAoPago: iguais };
 });
@@ -387,7 +405,56 @@ test('ampliação: validade do cupom com pedidos juntos, presente, fraude e os t
   assert.equal(atual.ampliacao.length, 240);
 });
 
-test('referência gravada: a conta de hoje continua idêntica à gravada na fase 0', () => {
+// Fase 1 (21/11/2026): comparação com a conta ANTIGA (gravada com o código de antes, em checkout-referencia-fase0.json).
+// Só podem ter mudado os casos previstos e aprovados: fraude (A0), centavos/cupom 100% + Pix no gateway (A e B) e
+// cupom com pedido anterior à validade cobrando a mais (E). Qualquer outra diferença faz o teste falhar.
+const FASE0 = JSON.parse(readFileSync(new URL('./fixtures/checkout-referencia-fase0.json', import.meta.url), 'utf8'));
+const somaTotais = (v) => r2(v.reduce((s, x) => s + (x == null ? 0 : typeof x === 'object' ? x.total : x), 0));
+
+test('fase 1 x conta antiga: Loja da Live idêntica; pedidos sorteados com o mesmo total; gateway agora bate no centavo', () => {
+  assert.deepEqual(atual.lojaDaLive, FASE0.lojaDaLive);
+  let gatewayCorrigido = 0;
+  atual.sorteados.forEach((c, i) => {
+    const antes = FASE0.sorteados[i];
+    assert.deepEqual(c.cobrado, antes.cobrado, `sorteado ${i}: o total gravado nos pedidos mudou`);
+    assert.equal(c.totalTela, antes.totalTela, `sorteado ${i}: a tela mudou`);
+    if (c.gatewayTotal !== antes.gatewayTotal) {
+      assert.equal(c.gatewayTotal, somaTotais(c.cobrado), `sorteado ${i}: gateway mudou mas não bate com os pedidos`);
+      gatewayCorrigido++;
+    }
+    if (c.gatewayTotal != null) assert.equal(c.gatewayTotal, somaTotais(c.cobrado), `sorteado ${i}: gateway não bate no centavo`);
+  });
+  assert.ok(gatewayCorrigido > 0);
+});
+
+test('fase 1 x conta antiga: base real igual, exceto o pedido com desconto de um cupom que já não existe', () => {
+  const mudaram = atual.reais.map((c, i) => (JSON.stringify(c) === JSON.stringify(FASE0.reais[i]) ? null : i)).filter((i) => i != null);
+  // grupo 0: pedido de 23/08 com desconto anotado (R$ 109,20) e cupom que não existe mais; ao pagar de novo hoje, sem o
+  // cupom cadastrado, o servidor não dá o desconto. Não acontece com pedido em aberto: o cupom existe na hora de pagar.
+  assert.deepEqual(mudaram, [0]);
+});
+
+test('fase 1 x conta antiga: fraude fechada, validade do cupom respeitada e os três gateways batem no centavo', () => {
+  atual.ampliacao.forEach((c, i) => {
+    const antes = FASE0.ampliacao[i];
+    if (c.tipoCaso === 'fraude') {
+      assert.ok(somaTotais(antes.cobrado) < antes.totalTelaSemFraude - 0.01, `fraude ${i}: antes já pagava o devido?`);
+      assert.equal(somaTotais(c.cobrado), c.totalTelaSemFraude, `fraude ${i}: ainda paga menos que o devido`);
+    } else if (c.tipoCaso === 'janela') {
+      const igualAntes = JSON.stringify(c.cobrado) === JSON.stringify(antes.cobrado);
+      const igualTela = Math.abs(somaTotais(c.cobrado) - c.totalTelaSemFraude) <= 0.01;
+      assert.ok(igualAntes || igualTela, `validade ${i}: mudou e não ficou igual à tela`);
+      if (!igualAntes) assert.ok(somaTotais(c.cobrado) < somaTotais(antes.cobrado), `validade ${i}: a cliente passou a pagar MAIS`);
+    } else {
+      assert.deepEqual(c.cobrado, antes.cobrado, `gateway ${i}: o total gravado nos pedidos mudou`);
+    }
+    const g = c.gateway === 'infinitepay' ? c.infinitepay : c[c.gateway];
+    const pedidos = c.gateway === 'infinitepay' ? c.cobradoInf : c.cobrado;
+    if (g != null) assert.equal(g, somaTotais(pedidos), `caso ${i} (${c.gateway}): valor do gateway não bate com os pedidos`);
+  });
+});
+
+test('referência gravada: a conta de hoje continua idêntica à gravada', () => {
   if (GRAVAR || !referencia) {
     if (!GRAVAR && process.env.CI) assert.fail('referência ausente no CI: grave localmente com GRAVAR_REFERENCIA=1');
     writeFileSync(SAIDAS, JSON.stringify({ gravadoEm: '2026-11-21', ...atual }, null, 0));
