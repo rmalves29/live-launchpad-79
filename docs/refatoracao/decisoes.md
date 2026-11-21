@@ -273,3 +273,16 @@ Próximo passo (pós-Black): dividir o processamento de cada item (~780 linhas) 
 - **Simular sem mudar nada:** `select * from integracoes_pausar_lojas_vencidas(10, true);`
 - **Desfazer:** comandos no topo da migração `20261121010000`.
 - Testes: `tests/pausa-integracoes.test.mjs` (7 casos, Postgres em memória).
+
+## 21/11 · Unificação dos checkouts — fase 0 (testes antes de mexer)
+Nada no sistema mudou nesta fase: só testes e referências.
+- **Mapa:** checkout do sistema (`/t/loja/checkout`) calcula cupom, promoção e presentes NA TELA; Loja da Live (`/t/loja/live`) calcula no servidor (`live-shop`) com `_shared/coupon-rules.ts`. Cupons já são separados por canal (`live` x demais). Os dois cobram pela mesma `create-payment`.
+- **Conferência no banco (3.813 pedidos pagos, 90 dias):** 3.785 batem no centavo com produtos − Pix − cupom + frete; os 28 restantes são frete sem anotação, frete grátis aplicado depois ou ajuste manual — nenhum erro de conta.
+- **Base real anonimizada:** `tests/fixtures/checkout-pedidos-reais.json` — 123 pedidos (90 do sistema, 33 da Loja da Live), 12 grupos pagos juntos, 21 cupons; só números.
+- **Teste de referência:** `tests/checkout-referencia.test.mjs` roda o código ORIGINAL (funções de dentro da tela, regra do live-shop e a create-payment inteira). Resultado gravado em `tests/fixtures/checkout-referencia-saidas.json`: 123/123 pedidos reais reproduzidos; 600 casos sorteados do checkout do sistema; 5.000 carrinhos da Loja da Live. Prova: alterar 1 centavo na referência faz o teste falhar.
+- **Capturas da Loja da Live:** `tests/visual/` (fora do CI) — 10 telas (celular e computador: vitrine, carrinho, cupom, celular, finalizar) com servidor simulado e relógio congelado; 2 rodadas seguidas 10/10 iguais; um ponto final no título foi acusado (12 pixels).
+- **Achados (defeitos de hoje, a corrigir na fase 1, não aceitos como certos):**
+  - A) Mercado Pago recebe 1 a 7 centavos a mais ou a menos que o total do pedido em 233 de 403 casos sorteados (arredondamento ao repartir desconto por item);
+  - B) cupom de 100% + desconto Pix: o Pix é aplicado de novo e o Mercado Pago recebe valor errado, até negativo (8 casos sorteados);
+  - C) 11 de 54 cupons reais não batem com a configuração atual porque o cupom foi editado depois do uso (janela mudou para 29/09) — a regra está certa, o histórico é que mudou;
+  - D) 3 pedidos da Loja da Live (19/11) pagos a R$ 1,00 com cupom de 100% (somam R$ 397,90 = cupom DESCTESTE1 da Prata e Prata) — parecem teste da própria loja.

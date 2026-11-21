@@ -1,0 +1,15 @@
+{
+  "name": "cartzy-testes-visuais",
+  "private": true,
+  "type": "module",
+  "description": "Capturas de tela da Loja da Live com o servidor simulado (não roda no CI; uso antes/depois de cada fase).",
+  "scripts": {
+    "capturar": "node loja-da-live.mjs",
+    "comparar": "node loja-da-live.mjs --comparar"
+  },
+  "devDependencies": {
+    "playwright-core": "1.56.1",
+    "pixelmatch": "7.1.0",
+    "pngjs": "7.0.0"
+  }
+}
