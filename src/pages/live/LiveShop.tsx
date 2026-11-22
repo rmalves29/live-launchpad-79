@@ -7,6 +7,7 @@ import {
   setLiveRefs, type CartLine, type LiveCatalogMeta, type LiveCoupon, type LiveCustomer, type LiveProduct, type LiveVariant, type ShippingOption,
 } from '@/lib/live-shop';
 import './live-shop.css';
+import ImageLightbox from './ImageLightbox';
 
 type Screen = 'shop' | 'cart' | 'checkout' | 'done';
 type Modal =
@@ -88,6 +89,12 @@ const ShopSkeleton = () => (
   </div>
 );
 
+const ZoomGlyph = () => (
+  <span className="zi" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5M11 8.5v5M8.5 11h5" /></svg>
+  </span>
+);
+
 const CartIcon = ({ plus = false }: { plus?: boolean }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <circle cx="9" cy="20" r="1.4" /><circle cx="18" cy="20" r="1.4" />
@@ -128,6 +135,7 @@ export default function LiveShop() {
 
   const [screen, setScreen] = useState<Screen>('shop');
   const [modal, setModal] = useState<Modal>(null);
+  const [zoomPhoto, setZoomPhoto] = useState<{ src: string; alt: string } | null>(null);
   const [cart, setCart] = useState<CartLine[]>(() => readLS<CartLine[]>(`live_cart_${slug}`, []));
   const [direct, setDirect] = useState<CartLine[] | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -1007,7 +1015,11 @@ export default function LiveShop() {
               </div>
             </div>
             <div className="fb">
-              {f.image_url ? <img src={f.image_url} alt={f.name} width={46} height={46} /> : <div className="fi" />}
+              {f.image_url ? (
+                <button className="zt fl" onClick={() => setZoomPhoto({ src: f.image_url as string, alt: f.name })} aria-label={`Ampliar foto: ${f.name}`} type="button">
+                  <img src={f.image_url} alt={f.name} width={46} height={46} /><ZoomGlyph />
+                </button>
+              ) : <div className="fi" />}
               <div className="ft">
                 <div className="t">{f.name}</div>
                 {f.was ? <s>{brl(f.was)}</s> : null}
@@ -1026,7 +1038,11 @@ export default function LiveShop() {
           return (
             <div className="item it" key={p.key}>
               <div className="ph">
-                {p.image_url ? <img src={p.image_url} alt={p.name} loading={i < 4 ? 'eager' : 'lazy'} decoding="async" width={92} height={92} /> : null}
+                {p.image_url ? (
+                  <button className="zt" onClick={() => setZoomPhoto({ src: p.image_url as string, alt: p.name })} aria-label={`Ampliar foto: ${p.name}`} type="button">
+                    <img src={p.image_url} alt={p.name} loading={i < 4 ? 'eager' : 'lazy'} decoding="async" width={92} height={92} /><ZoomGlyph />
+                  </button>
+                ) : null}
                 <span className="n">{i + 1}</span>
                 {p.is_live && <span className="live">Em LIVE agora</span>}
               </div>
@@ -1351,7 +1367,11 @@ export default function LiveShop() {
           <div className="scrim" onClick={close} />
           <div className="sheet" role="dialog" aria-modal="true" aria-label="Escolha a opção do produto">
             <div className="top">
-              <div className="ph">{headImg ? <img src={headImg} alt="" /> : null}</div>
+              <div className="ph">{headImg ? (
+                <button className="zt" onClick={() => setZoomPhoto({ src: headImg, alt: p.name })} aria-label={`Ampliar foto: ${p.name}`} type="button">
+                  <img src={headImg} alt="" /><ZoomGlyph />
+                </button>
+              ) : null}</div>
               <div style={{ minWidth: 0 }}>
                 <div className="pr">
                   {!v && p.price_from ? <small style={{ marginRight: 4 }}>a partir de</small> : null}
@@ -1493,6 +1513,7 @@ export default function LiveShop() {
           : doneView()}
       </div>
       {sheets()}
+      {zoomPhoto && <ImageLightbox key={zoomPhoto.src} src={zoomPhoto.src} alt={zoomPhoto.alt} onClose={() => setZoomPhoto(null)} />}
       {cartCount > 0 && screen === 'shop' && !loading && !error && (
         <div className="foot"><div className="in">
           <button className="cta block" onClick={() => setScreen('cart')} type="button" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
