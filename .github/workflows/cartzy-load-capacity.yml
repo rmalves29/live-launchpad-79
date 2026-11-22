@@ -1,0 +1,32 @@
+name: Cartzy read-only capacity measurement
+on:
+  push:
+    branches: [codex/load-capacity-20261122]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cartzy-readonly-capacity
+  cancel-in-progress: false
+jobs:
+  public-api-capacity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify circuit breaker
+        run: node --test tests/readonly-load-stage.test.mjs
+      - name: Measure live catalog progressively
+        run: node scripts/load-test-cartzy.mjs --scenario catalog
+      - name: Measure registration reads progressively
+        run: node scripts/load-test-cartzy.mjs --scenario registration
+      - name: Preserve metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cartzy-capacity-results
+          path: work/load-tests/*.json
+          retention-days: 7
