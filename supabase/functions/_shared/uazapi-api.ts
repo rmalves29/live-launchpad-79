@@ -1,5 +1,6 @@
 // uazapi (uazapiGO) API wrapper
 // Docs: https://docs.uazapi.com
+import { storeLinkPreview } from "./store-link-preview.ts";
 
 export interface UazapiConfig {
   url: string;   // ex: https://yourname.uazapi.com
@@ -52,10 +53,14 @@ async function readResult(res: Response): Promise<{ success: boolean; messageId?
 
 export async function sendText(cfg: UazapiConfig, phone: string, text: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
+    const preview = await storeLinkPreview(text, {
+      supabaseUrl: typeof Deno !== 'undefined' ? Deno.env.get('SUPABASE_URL') || '' : '',
+      publicKey: typeof Deno !== 'undefined' ? Deno.env.get('SUPABASE_ANON_KEY') || '' : '',
+    });
     const res = await fetchWithTimeout(`${trimUrl(cfg.url)}/send/text`, {
       method: "POST",
       headers: instanceHeaders(cfg.token),
-      body: JSON.stringify({ number: phone, text }),
+      body: JSON.stringify({ number: phone, text, ...preview }),
     }, 60_000);
     return await readResult(res);
   } catch (e: any) {
