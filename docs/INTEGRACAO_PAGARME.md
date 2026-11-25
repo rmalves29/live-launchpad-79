@@ -1,3 +1,5 @@
+> ⚠️ Documento antigo: pode citar a arquitetura legada (OrderZap v2, Node/Express, Next.js). A lógica atual está nas Edge Functions em `supabase/functions/`. Veja o README da raiz.
+
 # 💳 Como Configurar o Pagar.me no OrderZap
 
 **Guia passo a passo para receber pagamentos via Pagar.me**

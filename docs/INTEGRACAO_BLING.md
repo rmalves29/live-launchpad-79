@@ -1,3 +1,5 @@
+> ⚠️ Documento antigo: pode citar a arquitetura legada (OrderZap v2, Node/Express, Next.js). A lógica atual está nas Edge Functions em `supabase/functions/`. Veja o README da raiz.
+
 # 📦 Como Configurar o Bling ERP no OrderZap
 
 **Guia passo a passo para integrar seu sistema de gestão com o OrderZap**

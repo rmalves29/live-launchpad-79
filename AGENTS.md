@@ -1,3 +1,10 @@
+# Projeto
+
+- Nome oficial: **Cartzy** (app.cartzy.com.br). "OrderZap"/"orderzap-v2" é nome legado: não usar em código, telas ou docs novos.
+- Stack atual: **Vite + React + TypeScript + Supabase + Tailwind + shadcn-ui**. Back-end = Supabase (Postgres com RLS, Auth, Storage, Edge Functions em Deno, pg_cron, pg_net). Não existe Node/Express nem Next.js neste repositório.
+- Front publicado pelo Lovable; banco e Edge Functions no projeto Supabase hxtbsieodbtzgcvvkeqx.
+- Validar mudanças com `npm run build` e `node --test tests/*.test.mjs`. Documentos em docs/legado/ descrevem a arquitetura antiga e não valem para o código atual.
+
 # Architecture rules
 
 - Generate new-company admin passwords with browser Web Crypto; retain them only in transient form/welcome state and never persist them in tenant credentials, because authentication provisioning owns password storage.

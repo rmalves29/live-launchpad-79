@@ -1,3 +1,5 @@
+> ⚠️ Documento antigo: pode citar a arquitetura legada (OrderZap v2, Node/Express, Next.js). A lógica atual está nas Edge Functions em `supabase/functions/`. Veja o README da raiz.
+
 # Integração Instagram Live - Guia Completo
 
 Este guia explica como configurar a integração do Instagram Live para capturar automaticamente pedidos de comentários em transmissões ao vivo.

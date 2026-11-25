@@ -1,3 +1,5 @@
+> ⚠️ Documento antigo: pode citar a arquitetura legada (OrderZap v2, Node/Express, Next.js). A lógica atual está nas Edge Functions em `supabase/functions/`. Veja o README da raiz.
+
 # 📦 Guia Completo de Integração com o Melhor Envio
 
 Este guia vai te ensinar passo a passo como configurar a integração com o **Melhor Envio** para calcular fretes, gerar etiquetas e rastrear envios automaticamente.
