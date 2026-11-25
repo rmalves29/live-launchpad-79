@@ -212,7 +212,7 @@ serve(async (req) => {
         const responseJson = JSON.parse(responseText);
         zapiMessageId = responseJson.messageId || null;
         zapiZaapId = responseJson.zaapId || responseJson.id || null;
-      } catch (e) {}
+      } catch (e) { console.warn("[zapi-send-paid-order] erro ignorado:", (e as any)?.message ?? e); }
     }
 
     await supabase.from("whatsapp_messages").insert({

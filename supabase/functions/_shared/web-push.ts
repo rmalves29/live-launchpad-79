@@ -17,7 +17,7 @@ function normalizeSubject(s: string): string {
 const VAPID_SUBJECT = normalizeSubject(RAW_SUBJECT);
 
 if (VAPID_PUBLIC && VAPID_PRIVATE) {
-  try { webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE); } catch (_) {}
+  try { webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE); } catch (_) { console.warn("[_shared/web-push] erro ignorado:", (_ as any)?.message ?? _); }
 }
 
 export interface PushEndpointSub {

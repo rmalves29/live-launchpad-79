@@ -4,6 +4,7 @@
 // Respostas de lojas abordadas antes pelo número da OrderZap continuam sendo lidas (as duas caixas).
 // Autenticação: cabeçalho x-agent-key = segredo PROSPECT_AGENT_KEY (definido pelo Rafael nos Secrets).
 // Ações: status, send, replies, opt_out.
+import { ORDERZAP_TENANT_ID } from "../_shared/platform.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   addChatLabel, connectInstance, createInstance, disconnectInstance, ensureLabel, getInstanceStatus, getUazapiConfig,
@@ -11,7 +12,6 @@ import {
 } from "../_shared/uazapi-api.ts";
 import { JARVIS_TENANT_ID } from "../_shared/jarvis-agenda.ts";
 
-const ORDERZAP_TENANT_ID = "d5671cfb-9c42-4c44-8f94-0a19a39473d8";
 const LABEL_NAME = "lead";
 const DAILY_CAP = Number(Deno.env.get("PROSPECT_AGENT_DAILY_CAP") || 50); // primeiras mensagens por dia
 const QUIET_START = 20, QUIET_END = 8; // horário de Brasília: não envia das 20h às 8h

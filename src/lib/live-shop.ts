@@ -2,6 +2,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { fetchCustomShippingOptions } from '@/hooks/useCustomShippingOptions';
 import { getActiveShippingIntegrations, shippingProviderLabel, type ActiveShippingIntegration, type ShippingProvider } from '@/lib/shipping-utils';
 import { addDeliveryDays, loadExtraDeliveryDays } from '@/lib/shipping-days';
+import { computeCouponDiscount } from '../../supabase/functions/_shared/coupon-rules.ts';
 
 // ---------------------------------------------------------------- tipos
 export interface LiveVariant {
@@ -161,34 +162,8 @@ export function cartOriginal(lines: CartLine[]) {
 
 export function previewCoupon(coupon: LiveCoupon | undefined, lines: CartLine[]): { ok: boolean; discount: number; message?: string } {
   if (!coupon) return { ok: false, discount: 0, message: 'Cupom inválido ou expirado.' };
-  const eligible = coupon.apply_to_promotional === false ? lines.filter((l) => !l.was) : lines;
-  const base = eligible.reduce((s, l) => s + l.price * l.qty, 0);
-  const qty = eligible.reduce((s, l) => s + l.qty, 0);
-  if (base <= 0) return { ok: false, discount: 0, message: 'Este cupom não vale para produtos em promoção.' };
-  if (coupon.discount_type !== 'progressive') {
-    if (coupon.min_purchase_amount > 0 && base < coupon.min_purchase_amount) {
-      return { ok: false, discount: 0, message: `Este cupom vale em compras acima de ${brl(coupon.min_purchase_amount)}.` };
-    }
-    if (coupon.min_items_quantity > 0 && qty < coupon.min_items_quantity) {
-      return { ok: false, discount: 0, message: `Este cupom vale a partir de ${coupon.min_items_quantity} item(ns).` };
-    }
-  }
-  let discount = 0;
-  if (coupon.discount_type === 'percentage') discount = (base * coupon.discount_value) / 100;
-  else if (coupon.discount_type === 'fixed') discount = Math.min(coupon.discount_value, base);
-  else if (coupon.discount_type === 'progressive') {
-    const tiers = coupon.progressive_tiers || [];
-    const tier = tiers.find((t) => (t.min_qty != null
-      ? qty >= t.min_qty && (t.max_qty == null || qty <= t.max_qty)
-      : base >= t.min_value && (t.max_value == null || base <= t.max_value)));
-    if (!tier) {
-      const byQty = tiers.some((t) => t.min_qty != null);
-      return { ok: false, discount: 0, message: byQty ? 'Adicione mais produtos para atingir a faixa de desconto deste cupom.' : 'Seu pedido ainda não atingiu a faixa de desconto deste cupom.' };
-    }
-    discount = (base * tier.discount) / 100;
-  }
-  discount = Math.round(Math.min(discount, base) * 100) / 100;
-  return discount > 0 ? { ok: true, discount } : { ok: false, discount: 0, message: 'Cupom sem desconto para este pedido.' };
+  // Mesma regra do servidor (supabase/functions/_shared/coupon-rules.ts)
+  return computeCouponDiscount(coupon, lines.map((l) => ({ unitPrice: l.price, qty: l.qty, promotional: !!l.was })));
 }
 
 /** Cupom marcado como "automático" que dá o maior desconto para este carrinho (igual ao cálculo do servidor). */

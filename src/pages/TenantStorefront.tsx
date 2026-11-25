@@ -116,18 +116,16 @@ export default function TenantStorefront() {
     const cacheKey = `pix_discount_${tenant.id}`;
     (async () => {
       try {
-        const [appmaxRes, pagarmeRes, mpRes, infRes] = await Promise.all([
-          supabase.from('integration_appmax').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
+        const [pagarmeRes, mpRes, infRes] = await Promise.all([
           supabase.from('integration_pagarme').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
           supabase.from('integration_mp').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
           supabase.from('integration_infinitepay').select('pix_discount_percent, is_active').eq('tenant_id', tenant.id).maybeSingle(),
         ]);
         if (cancelled) return;
         let discount = 0;
-        if (appmaxRes.data?.is_active && appmaxRes.data?.pix_discount_percent) discount = Number(appmaxRes.data.pix_discount_percent);
-        else if (pagarmeRes.data?.is_active && pagarmeRes.data?.pix_discount_percent) discount = Number(pagarmeRes.data.pix_discount_percent);
-        else if (mpRes.data?.is_active && mpRes.data?.pix_discount_percent) discount = Number(mpRes.data.pix_discount_percent);
-        else if (infRes.data?.is_active && infRes.data?.pix_discount_percent) discount = Number(infRes.data.pix_discount_percent);
+        // Desconto do gateway que cobra, na mesma ordem da cobrança: InfinitePay > Pagar.me > Mercado Pago
+        const charging = [infRes.data, pagarmeRes.data, mpRes.data].find((row) => row?.is_active);
+        if (charging?.pix_discount_percent) discount = Number(charging.pix_discount_percent);
         sessionStorage.setItem(cacheKey, JSON.stringify({ value: discount, ts: Date.now() }));
       } catch {
         /* silencioso — checkout vai recarregar sozinho */

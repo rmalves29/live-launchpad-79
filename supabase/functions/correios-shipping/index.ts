@@ -161,7 +161,7 @@ function parseEnabledServices(raw: any): Record<string, boolean> | null {
   try {
     const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
     if (typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
-  } catch {}
+  } catch (err) { console.warn("[correios-shipping] erro ignorado:", (err as any)?.message ?? err); }
   return null;
 }
 

@@ -33,7 +33,6 @@
 export type PaymentProvider =
   | "mercado_pago"
   | "pagarme"
-  | "appmax"
   | "infinitepay";
 
 export type PaymentMethodChoice = "pix" | "card" | null | undefined;
@@ -68,7 +67,7 @@ export function normalizePaymentMethodChoice(
  * Aplica restrição no payload do gateway para travar o método de pagamento.
  *
  * IMPORTANTE: muta o objeto `payload` in-place para os providers que aceitam
- * configuração via JSON (MP, Pagar.me, Appmax). Para InfinitePay, use
+ * configuração via JSON (MP, Pagar.me). Para InfinitePay, use
  * `buildLockedCheckoutUrl` na URL retornada.
  *
  * Se `choice` for null (cliente não escolheu nada), o payload não é alterado
@@ -146,16 +145,6 @@ export function applyPaymentMethodLock(
         delete ps.boleto_settings;
         delete ps.pix_settings;
       }
-      return;
-    }
-
-    // -----------------------------------------------------------------------
-    // APPMAX — API v3 (/order)
-    // Docs: https://docs.appmax.com.br/
-    // Define `payment_type` para travar a forma no checkout.
-    // -----------------------------------------------------------------------
-    case "appmax": {
-      payload.payment_type = normalized === "pix" ? "Pix" : "CreditCard";
       return;
     }
 

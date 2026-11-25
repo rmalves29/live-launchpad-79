@@ -1,3 +1,4 @@
+import { ORDERZAP_TENANT_ID } from "../_shared/platform.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   getUazapiConfig, sendText, runTypingSegments, sendPresenceAvailable,
@@ -8,7 +9,6 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-const ORDERZAP_TENANT_ID = "d5671cfb-9c42-4c44-8f94-0a19a39473d8";
 const LABEL_NAME = "lead";
 
 const json = (b: unknown, status = 200) =>

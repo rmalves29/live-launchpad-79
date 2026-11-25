@@ -1,6 +1,7 @@
 // Roda a cada minuto: alerta o aprovador 5 min antes e manda o link ao lead no horário da reunião.
 // Idempotente: cada envio é "reservado" com update condicional antes de mandar.
 // deno-lint-ignore-file no-explicit-any
+import { ORDERZAP_TENANT_ID } from "../_shared/platform.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { formatBrt } from "../_shared/affiliate-agenda.ts";
 import { JARVIS_TENANT_ID } from "../_shared/jarvis-agenda.ts";
@@ -9,7 +10,6 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-const ORDERZAP_TENANT_ID = "d5671cfb-9c42-4c44-8f94-0a19a39473d8";
 const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
 
 async function sendVia(tenantId: string, phone: string | null, message: string) {

@@ -124,7 +124,7 @@ serve(withQuoteCache("superfrete", async (req) => {
         const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
         if (typeof parsed === "object" && !Array.isArray(parsed)) enabledServices = parsed;
       }
-    } catch {}
+    } catch (err) { console.warn("[superfrete-shipping] erro ignorado:", (err as any)?.message ?? err); }
 
     // Define quais service_ids enviar ao SuperFrete
     const allServiceIds = [1, 2, 17, 3]; // PAC, SEDEX, Mini Envios, .Package

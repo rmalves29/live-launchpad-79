@@ -151,7 +151,7 @@ serve(withQuoteCache("meuscorreios", async (req) => {
         const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
         if (typeof parsed === 'object' && !Array.isArray(parsed)) enabledServices = parsed;
       }
-    } catch {}
+    } catch (err) { console.warn("[meuscorreios-shipping] erro ignorado:", (err as any)?.message ?? err); }
 
     let cepOrigem = integration?.from_cep?.replace(/\D/g, "") || "";
     if (!cepOrigem) {

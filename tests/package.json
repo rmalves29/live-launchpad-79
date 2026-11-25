@@ -1,0 +1,12 @@
+{
+  "name": "cartzy-tests",
+  "private": true,
+  "type": "module",
+  "description": "Testes dos fluxos críticos do Cartzy. Ficam separados do app: nada aqui entra no build do Lovable.",
+  "scripts": {
+    "test": "node --import ./support/register.mjs --test ./*.test.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.16"
+  }
+}

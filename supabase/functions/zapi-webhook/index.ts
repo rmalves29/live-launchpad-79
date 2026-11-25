@@ -1,8 +1,10 @@
+import { ORDERZAP_TENANT_ID } from "../_shared/platform.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { parsePurchaseLimitError, purchaseLimitCustomerMessage } from "../_shared/purchase-limit.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getGroupAdmins as evoGetGroupAdmins } from "../_shared/evolution-api.ts";
 import { getUazapiConfig, sendText as uazSendText, sendImage as uazSendImage } from "../_shared/uazapi-api.ts";
+import { firstValidPhone, getBrasiliaDateISO, hashMessage, looksLikeBrazilianPhone, normalizeDigits, normalizeParticipantPhone, normalizePhone } from "../_shared/zapi-phone.ts";
  import { antiBlockDelay, logAntiBlockDelay, antiBlockDelayLive, addMessageVariation, getTypingDelay, simulateTyping } from "../_shared/anti-block-delay.ts";
  import { activateConsentOnReply } from "../_shared/consent-v2.ts";
 
@@ -10,21 +12,6 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-// Função para obter a data atual no timezone de Brasília (America/Sao_Paulo)
-function getBrasiliaDateISO(): string {
-  const now = new Date();
-  // Brasília é UTC-3, então subtraímos 3 horas do UTC
-  const brasiliaOffset = -3 * 60; // -180 minutos
-  const utcOffset = now.getTimezoneOffset(); // minutos de diferença do UTC
-  const brasiliaTime = new Date(now.getTime() + (utcOffset + brasiliaOffset) * 60 * 1000);
-  
-  const year = brasiliaTime.getFullYear();
-  const month = String(brasiliaTime.getMonth() + 1).padStart(2, '0');
-  const day = String(brasiliaTime.getDate()).padStart(2, '0');
-  
-  return `${year}-${month}-${day}`;
-}
 
 interface ZAPIWebhookPayload {
   phone?: string;
@@ -92,48 +79,6 @@ function cleanMessageCache() {
       processedGroupEvents.delete(key);
     }
   }
-}
-
-function normalizeDigits(value?: string | null): string {
-  return (value || '').replace(/\D/g, '');
-}
-
-function looksLikeBrazilianPhone(value?: string | null): boolean {
-  let digits = normalizeDigits(value);
-  if (!digits) return false;
-  if (digits.startsWith('55') && digits.length >= 12 && digits.length <= 13) {
-    digits = digits.slice(2);
-  } else if (digits.length > 11) {
-    return false;
-  }
-  if (digits.length < 10 || digits.length > 11) return false;
-  const ddd = Number(digits.slice(0, 2));
-  return !Number.isNaN(ddd) && ddd >= 11 && ddd <= 99;
-}
-
-function firstValidPhone(...values: Array<string | undefined | null>): string {
-  for (const value of values) {
-    if (looksLikeBrazilianPhone(value)) return value || '';
-  }
-  return '';
-}
-
-function normalizeParticipantPhone(value?: string | null): string {
-  const digits = normalizeDigits(value);
-
-  if (!digits) return '';
-
-  // Telefones BR reais têm 10-11 dígitos sem DDI e 12-13 com DDI.
-  // Identificadores maiores costumam ser LIDs do WhatsApp e não devem ser truncados.
-  if (digits.length > 13) {
-    return digits;
-  }
-
-  if (digits.startsWith('55') && digits.length >= 12 && digits.length <= 13) {
-    return digits.slice(2);
-  }
-
-  return digits;
 }
 
 async function resolveZapiIntegration(supabase: any, instanceId?: string, connectedPhone?: string | null, uazapiTenantId?: string | null) {
@@ -271,16 +216,6 @@ function queueItemAddedMessage(
   } else {
     task.catch((error: any) => console.error('[zapi-webhook] Background item-added dispatch error:', error?.message || error));
   }
-}
-
-function hashMessage(text: string): string {
-  let hash = 0;
-  for (let i = 0; i < text.length; i++) {
-    const char = text.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return hash.toString(36);
 }
 
 function isDuplicateGroupEvent(key: string): boolean {
@@ -1041,9 +976,9 @@ serve(async (req) => {
        
        // Prospecção (Harvey): respostas privadas que chegam no WhatsApp da OrderZap
        // ficam guardadas para o prospect-agent ler (ele só devolve as de lojas abordadas).
-       if (!fromMe && messageText && (payload as any).uazapi_tenant_id === 'd5671cfb-9c42-4c44-8f94-0a19a39473d8') {
+       if (!fromMe && messageText && (payload as any).uazapi_tenant_id === ORDERZAP_TENANT_ID) {
          const { error: inErr } = await supabase.from('whatsapp_messages').insert({
-           tenant_id: 'd5671cfb-9c42-4c44-8f94-0a19a39473d8',
+           tenant_id: ORDERZAP_TENANT_ID,
            phone: senderPhone,
            message: messageText,
            type: 'incoming',
@@ -2372,37 +2307,6 @@ async function handleMessageStatusCallback(supabase: any, payload: ZAPIWebhookPa
   });
 }
 
-function normalizePhone(phone: string): string {
-  if (!phone) return '';
-
-  // Remove all non-digit characters
-  let clean = phone.replace(/\D/g, '');
-
-  // IDs de grupo e LIDs do WhatsApp não são telefones reais.
-  if (clean.length > 13) return '';
-
-  // Remove country code 55 if present
-  if (clean.startsWith('55') && clean.length > 11) {
-    clean = clean.substring(2);
-  }
-
-  if (clean.length > 11) return '';
-
-  // Expect DDD + number
-  if (clean.length < 10) return '';
-
-  const ddd = Number(clean.substring(0, 2));
-  if (Number.isNaN(ddd) || ddd < 11 || ddd > 99) return '';
-
-  // If WhatsApp sends DDD + 8 digits (10 total), assume mobile and add the 9th digit
-  // (landlines typically don't use WhatsApp).
-  if (clean.length === 10) {
-    clean = clean.substring(0, 2) + '9' + clean.substring(2);
-  }
-
-  return clean;
-}
-
 async function findOrCreateCustomer(
   supabase: any, 
   tenantId: string, 
@@ -3183,7 +3087,7 @@ async function updateOrderTotal(supabase: any, orderId: number) {
          try {
            const responseJson = JSON.parse(responseText);
            zapiMessageId = responseJson.messageId || responseJson.id || null;
-         } catch (e) { }
+         } catch (e) { console.warn("[zapi-webhook] erro ignorado:", (e as any)?.message ?? e); }
 
          // Log da mensagem enviada
          await supabase.from('whatsapp_messages').insert({
@@ -3334,7 +3238,7 @@ async function updateOrderTotal(supabase: any, orderId: number) {
    try {
      const responseJson = JSON.parse(responseText);
      zapiMessageId = responseJson.messageId || responseJson.id || null;
-   } catch (e) { }
+   } catch (e) { console.warn("[zapi-webhook] erro ignorado:", (e as any)?.message ?? e); }
    
    // Update confirmation status
    await supabase

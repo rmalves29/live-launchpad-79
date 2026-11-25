@@ -3,6 +3,7 @@
 // Ações: catalog | customer_lookup | customer_save | coupon_check | reserve | create_order | cancel_order
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { parsePurchaseLimitError, purchaseLimitCustomerMessage } from '../_shared/purchase-limit.ts';
+import { computeCouponDiscount } from '../_shared/coupon-rules.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -205,37 +206,8 @@ function couponActive(c: any) {
 
 function computeCoupon(coupon: any, lines: Line[]): { ok: boolean; discount: number; message?: string } {
   if (!couponActive(coupon)) return { ok: false, discount: 0, message: 'Cupom inválido ou expirado.' };
-  const eligible = coupon.apply_to_promotional === false ? lines.filter((l) => !l.promotional) : lines;
-  const base = eligible.reduce((s, l) => s + l.unit_price * l.qty, 0);
-  const itemCount = eligible.reduce((s, l) => s + l.qty, 0);
-  if (base <= 0) return { ok: false, discount: 0, message: 'Este cupom não vale para produtos em promoção.' };
-
-  const type = String(coupon.discount_type);
-  if (type !== 'progressive') {
-    const min = num(coupon.min_purchase_amount);
-    if (min > 0 && base < min) return { ok: false, discount: 0, message: `Este cupom vale em compras acima de R$ ${min.toFixed(2).replace('.', ',')}.` };
-    const minItems = num(coupon.min_items_quantity);
-    if (minItems > 0 && itemCount < minItems) return { ok: false, discount: 0, message: `Este cupom vale a partir de ${minItems} item(ns).` };
-  }
-
-  let discount = 0;
-  if (type === 'percentage') discount = (base * num(coupon.discount_value)) / 100;
-  else if (type === 'fixed') discount = Math.min(num(coupon.discount_value), base);
-  else if (type === 'progressive') {
-    const tiers: any[] = Array.isArray(coupon.progressive_tiers) ? coupon.progressive_tiers : [];
-    // Faixa por QUANTIDADE de produtos (min_qty/max_qty) ou por VALOR do pedido (min_value/max_value, o formato antigo)
-    const tier = tiers.find((t) => t.min_qty != null
-      ? itemCount >= num(t.min_qty) && (t.max_qty == null || itemCount <= num(t.max_qty))
-      : base >= num(t.min_value) && (t.max_value == null || base <= num(t.max_value)));
-    if (!tier) {
-      const byQty = tiers.some((t) => t.min_qty != null);
-      return { ok: false, discount: 0, message: byQty ? 'Adicione mais produtos para atingir a faixa de desconto deste cupom.' : 'Seu pedido ainda não atingiu a faixa de desconto deste cupom.' };
-    }
-    discount = (base * num(tier.discount)) / 100;
-  } else return { ok: false, discount: 0, message: 'Cupom inválido.' };
-
-  discount = round2(Math.min(discount, base));
-  return discount > 0 ? { ok: true, discount } : { ok: false, discount: 0, message: 'Cupom sem desconto para este pedido.' };
+  // Mesma regra da tela (src/lib/live-shop.ts): uma cópia só em _shared/coupon-rules.ts
+  return computeCouponDiscount(coupon, lines.map((l) => ({ unitPrice: l.unit_price, qty: l.qty, promotional: l.promotional })));
 }
 
 async function loadCoupon(tenantId: string, code: unknown, affId?: string | null) {
@@ -288,12 +260,11 @@ async function giftsWithLeft(tenantId: string, gifts: any[], excludeOrderId?: nu
 async function loadCatalogExtras(tenant: any, aff?: any) {
   const extras: Record<string, unknown> = {};
     const nowIso = new Date().toISOString();
-    const [couponsRes, giftsRes, shipRes, pagarme, appmax, mp, infinite] = await Promise.all([
+    const [couponsRes, giftsRes, shipRes, pagarme, mp, infinite] = await Promise.all([
       scopeAffiliate(sb.from('coupons').select('code, discount_type, discount_value, min_purchase_amount, min_items_quantity, progressive_tiers, apply_to_promotional, auto_apply, description, starts_at, expires_at, usage_limit, used_count, is_active').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).limit(50), aff?.id),
       sb.from('gifts').select('name, description, minimum_purchase_amount, auto_apply, quantity').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true).order('minimum_purchase_amount', { ascending: true }),
       sb.from('custom_shipping_options').select('name, price, delivery_days, free_shipping_min_order, coverage_type').eq('tenant_id', tenant.id).eq('channel', 'live').eq('is_active', true),
       sb.from('integration_pagarme').select('is_active, enable_pix, enable_credit_card, pix_discount_percent, max_installments, max_installments_without_interest, min_installment_value').eq('tenant_id', tenant.id).maybeSingle(),
-      sb.from('integration_appmax').select('is_active, enable_pix, enable_credit_card, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
       sb.from('integration_mp').select('is_active, enable_pix, enable_credit_card, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
       sb.from('integration_infinitepay').select('is_active, enable_pix, enable_credit_card, pix_discount_percent').eq('tenant_id', tenant.id).maybeSingle(),
     ]);
@@ -312,10 +283,10 @@ async function loadCatalogExtras(tenant: any, aff?: any) {
       .filter((s: any) => (s.coverage_type || 'national') === 'national')
       .map((s: any) => ({ name: s.name, price: num(s.price), free_min: s.free_shipping_min_order != null ? num(s.free_shipping_min_order) : null, pickup: s.delivery_days === 0 }));
 
-    // Gateway ativo (mesma prioridade do create-payment): InfinitePay > AppMax > Pagar.me > Mercado Pago.
+    // Gateway ativo (mesma prioridade do create-payment): InfinitePay > Pagar.me > Mercado Pago.
     // Pix, desconto Pix e condições do cartão vêm só do gateway cadastrado: a mesma fonte vale para a live e para o bazar.
     const inf: any = infinite.data;
-    const active: any = inf?.is_active ? inf : [appmax.data, pagarme.data, mp.data].find((x: any) => x?.is_active);
+    const active: any = inf?.is_active ? inf : [pagarme.data, mp.data].find((x: any) => x?.is_active);
     const pix = active ? active.enable_pix !== false : true;
     const card = active ? active.enable_credit_card !== false : true;
     const pg: any = !inf?.is_active && pagarme.data?.is_active && active === pagarme.data ? pagarme.data : null;

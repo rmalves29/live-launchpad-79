@@ -1,6 +1,7 @@
 // Pré-cadastro de empresas com aprovação por WhatsApp (instância OrderZap).
 // Ações de tela exigem super_admin; "whatsapp_reply" é interna (service role, chamada pelo zapi-webhook).
 // deno-lint-ignore-file no-explicit-any
+import { ORDERZAP_TENANT_ID } from "../_shared/platform.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   approvalMessage, isOrderZapInstance, isValidSuffix, moduleAccess, onboardingPassword, parseApprovalReply,
@@ -11,7 +12,6 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-const ORDERZAP_TENANT_ID = "d5671cfb-9c42-4c44-8f94-0a19a39473d8";
 const json = (b: unknown, status = 200) =>
   new Response(JSON.stringify(b), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 

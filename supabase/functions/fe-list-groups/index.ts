@@ -1,3 +1,4 @@
+import { authorizeTenantCaller, guardResponse } from "../_shared/auth-guard.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -132,6 +133,11 @@ serve(async (req) => {
         status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Só o próprio tenant (ou chamada interna) sincroniza: antes qualquer pessoa disparava a sincronização
+    // de qualquer loja e recebia os links de convite dos grupos (a -v2 já tinha essa trava).
+    const guard = await authorizeTenantCaller(req, supabase, tenant_id);
+    if (!guard.ok) return guardResponse(guard, corsHeaders);
 
     const { data: waConfig } = await supabase
       .from("integration_whatsapp")

@@ -1,11 +1,9 @@
 // Shared helper: resolve PIX discount on the server side.
 // This is the source of truth — frontend values are advisory only.
 //
-// Order of priority for active integration discount:
-//   1) AppMax        (integration_appmax.pix_discount_percent)
-//   2) Pagar.me      (integration_pagarme.pix_discount_percent)
-//   3) Mercado Pago  (integration_mp.pix_discount_percent)
-//   4) InfinitePay   (integration_infinitepay.pix_discount_percent)
+// O desconto vem SEMPRE do gateway que vai cobrar o pedido (ver payment-provider.ts):
+//   InfinitePay > Pagar.me > Mercado Pago.
+// Se esse gateway não tem desconto configurado, não há desconto (nunca usa o de outro gateway).
 //
 // Returns { percent, value, source } where:
 //   - percent is the configured discount % (0 if none / not PIX)
@@ -13,6 +11,7 @@
 //   - source  is the provider name that supplied the discount, or null
 
 // deno-lint-ignore-file no-explicit-any
+import { chargingProvider } from "./payment-provider.ts";
 
 export type PixDiscountResult = {
   percent: number;
@@ -55,46 +54,28 @@ export async function resolvePixDiscount(
   if (subtotal <= 0) return empty;
 
   try {
-    const [appmaxRes, pagarmeRes, mpRes, infRes] = await Promise.all([
-      sb.from("integration_appmax")
-        .select("pix_discount_percent, is_active")
-        .eq("tenant_id", tenantId)
-        .maybeSingle(),
+    const [pagarmeRes, mpRes, infRes] = await Promise.all([
       sb.from("integration_pagarme")
-        .select("pix_discount_percent, is_active")
+        .select("pix_discount_percent, is_active, api_key")
         .eq("tenant_id", tenantId)
         .maybeSingle(),
       sb.from("integration_mp")
-        .select("pix_discount_percent, is_active")
+        .select("pix_discount_percent, is_active, access_token")
         .eq("tenant_id", tenantId)
         .maybeSingle(),
       sb.from("integration_infinitepay")
-        .select("pix_discount_percent, is_active")
+        .select("pix_discount_percent, is_active, handle")
         .eq("tenant_id", tenantId)
         .maybeSingle(),
     ]);
 
-    let percent = 0;
-    let source: string | null = null;
-
-    const appmax = appmaxRes?.data;
-    const pagarme = pagarmeRes?.data;
-    const mp = mpRes?.data;
-    const inf = infRes?.data;
-
-    if (appmax?.is_active && toNum(appmax.pix_discount_percent) > 0) {
-      percent = toNum(appmax.pix_discount_percent);
-      source = "appmax";
-    } else if (pagarme?.is_active && toNum(pagarme.pix_discount_percent) > 0) {
-      percent = toNum(pagarme.pix_discount_percent);
-      source = "pagarme";
-    } else if (mp?.is_active && toNum(mp.pix_discount_percent) > 0) {
-      percent = toNum(mp.pix_discount_percent);
-      source = "mercado_pago";
-    } else if (inf?.is_active && toNum(inf.pix_discount_percent) > 0) {
-      percent = toNum(inf.pix_discount_percent);
-      source = "infinitepay";
-    }
+    const rows = {
+      pagarme: pagarmeRes?.data,
+      mercado_pago: mpRes?.data,
+      infinitepay: infRes?.data,
+    };
+    const source = chargingProvider(rows);
+    const percent = source ? toNum(rows[source]?.pix_discount_percent) : 0;
 
     if (percent <= 0) return empty;
 
