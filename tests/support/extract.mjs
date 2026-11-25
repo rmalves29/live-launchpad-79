@@ -44,6 +44,26 @@ function skipString(source, i, quote) {
   return source.length;
 }
 
+// Funções de várias linhas declaradas DENTRO de um componente (`const nome = (async) (...) => { ... }`).
+// Lê o texto original da tela e o roda com as dependências passadas em `globals` (supabase, toast, setState...),
+// para testar a conta que a tela faz hoje sem copiar nada à mão.
+function sliceInnerArrow(source, name) {
+  const m = new RegExp(`\\bconst\\s+${name}\\s*=\\s*(async\\s*)?\\(`).exec(source);
+  if (!m) throw new Error(`[tests] função interna ${name} não encontrada`);
+  const arrow = source.indexOf('=>', m.index);
+  const open = source.indexOf('{', arrow);
+  const end = skipBlock(source, open);
+  return source.slice(m.index, end + 1).trim() + ';';
+}
+
+export function extractInnerArrows(relativeFile, names, globals = {}) {
+  const source = readFileSync(path.join(ROOT, relativeFile), 'utf8');
+  const code = names.map((n) => sliceInnerArrow(source, n)).join('\n\n');
+  const js = stripTypeScriptTypes(code, { mode: 'strip' });
+  const factory = new Function(...Object.keys(globals), `${js}\nreturn { ${names.join(', ')} };`);
+  return factory(...Object.values(globals));
+}
+
 export function extractFunctions(relativeFile, names, globals = {}) {
   const source = readFileSync(path.join(ROOT, relativeFile), 'utf8');
   const code = names.map((n) => sliceFunction(source, n)).join('\n\n');

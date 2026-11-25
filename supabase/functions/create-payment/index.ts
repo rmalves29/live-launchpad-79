@@ -3,9 +3,8 @@ import { enforceRateLimit } from "../_shared/rate-limit.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { applyPaymentMethodLock } from "../_shared/payment-method-lock.ts";
 import { resolvePixDiscount } from "../_shared/pix-discount.ts";
-import { loadCouponWindow, isOrderWithinCoupon } from "../_shared/coupon-eligibility.ts";
 import { getActiveTenantMpToken, missingPaymentProviderResponse } from "../_shared/tenant-mp-token.ts";
-import { pixDiscountPerOrder } from "../_shared/order-totals.ts";
+import { carregarPedidosParaCobranca, calcularDescontoDoServidor, repartirCobranca, itensDaCobranca } from "../_shared/cobranca-pedidos.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -252,7 +251,7 @@ serve(async (req) => {
     const [rlBlocked, resolved, ordersRes, infinitepayInteg, mpInteg, pagarmeInteg] = await Promise.all([
       enforceRateLimit(req, sb, "create-payment", 60, 60),
       resolvePixDiscount(sb, payload.tenant_id, payload.payment_method, productsSubtotalForDiscount),
-      sb.from("orders").select("id, observation, total_amount, cart_id, created_at").in("id", orderIds),
+      carregarPedidosParaCobranca(sb, orderIds),
       sb.from("integration_infinitepay")
         .select("is_active, handle, enable_pix, enable_credit_card")
         .eq("tenant_id", payload.tenant_id)
@@ -324,106 +323,23 @@ serve(async (req) => {
 
     // 2) Persistir endereço + frete no(s) pedido(s)
     const freightNote = buildFreightNote(payload.shippingData, payload.shippingCost);
-    // Pré-carregar todos os pedidos do merge e calcular subtotal de cada um (a partir dos cart_items)
-    type OrderCtx = {
-      id: number;
-      observation: string | null;
-      cart_id: number | null;
-      productsTotal: number;
-      created_at: string | null;
-    };
-    const orderCtxs: OrderCtx[] = [];
-    // Pedidos já vieram na leitura inicial; os itens de todos os carrinhos vêm numa consulta só.
-    const existingOrders = ordersRes.data || [];
-    const cartIds = [...new Set(existingOrders.map((o: any) => o.cart_id).filter(Boolean))];
-    const totalsByCart = new Map<number, number>();
-    if (cartIds.length > 0) {
-      const { data: allCartItems } = await sb
-        .from("cart_items")
-        .select("cart_id, unit_price, qty")
-        .in("cart_id", cartIds);
-      for (const it of allCartItems || []) {
-        totalsByCart.set(it.cart_id, (totalsByCart.get(it.cart_id) || 0) + Number(it.unit_price) * Number(it.qty));
-      }
-    }
-    for (const existingOrder of existingOrders) {
-      const productsTotal = existingOrder.cart_id ? (totalsByCart.get(existingOrder.cart_id) || 0) : 0;
-      orderCtxs.push({
-        id: existingOrder.id,
-        observation: existingOrder.observation,
-        cart_id: existingOrder.cart_id,
-        productsTotal,
-        created_at: existingOrder.created_at ?? null,
-      });
-    }
-
-    // Ordenar do mais antigo para o mais novo — frete inteiro vai no primeiro (mais antigo)
-    orderCtxs.sort((a, b) => {
-      const ta = a.created_at ? Date.parse(a.created_at) : a.id;
-      const tb = b.created_at ? Date.parse(b.created_at) : b.id;
-      if (ta !== tb) return ta - tb;
-      return a.id - b.id;
-    });
-
-    const combinedSubtotal = orderCtxs.reduce((s, o) => s + o.productsTotal, 0);
+    // Fase 1 (21/11/2026): pedidos, itens, cupom e promoção vêm do banco e a conta é do servidor (_shared/cobranca-pedidos.ts).
+    // O desconto enviado pelo navegador não entra na conta (antes dava para mandar qualquer valor).
+    const orderCtxs = ordersRes;
     const fallbackPayloadSubtotal = payload.cartItems.reduce((s, it) => s + it.unit_price * it.qty, 0);
-    let totalCouponDiscount = toNumber(payload.coupon_discount, 0);
     const shippingValue = toNumber(payload.shippingCost, 0);
-
-    // Cupom só vale para pedidos criados DENTRO do período de validade do cupom
-    const couponWindow = totalCouponDiscount > 0
-      ? await loadCouponWindow(sb, payload.tenant_id, payload.coupon_code)
-      : null;
-    const eligibleFlags = orderCtxs.map((o) => isOrderWithinCoupon(o.created_at, couponWindow));
-    const eligibleSubtotal = orderCtxs.reduce((s, o, i) => s + (eligibleFlags[i] ? o.productsTotal : 0), 0);
-
-    if (couponWindow && eligibleFlags.some((f) => !f)) {
-      const excluded = orderCtxs.filter((_, i) => !eligibleFlags[i]).map((o) => o.id);
-      // Reduz o desconto para a base elegível
-      if (eligibleSubtotal <= 0) {
-        totalCouponDiscount = 0;
-      } else if (couponWindow.discountType === "fixed") {
-        totalCouponDiscount = Math.min(totalCouponDiscount, eligibleSubtotal);
-      } else if (combinedSubtotal > 0) {
-        totalCouponDiscount = Math.round(totalCouponDiscount * (eligibleSubtotal / combinedSubtotal) * 100) / 100;
-      }
-      console.log(
-        `[create-payment] Cupom ${payload.coupon_code}: pedidos fora do período ignorados=[${excluded.join(",")}], ` +
-          `base elegível=${eligibleSubtotal.toFixed(2)}, desconto ajustado=${totalCouponDiscount.toFixed(2)}`,
-      );
-      // Mantém o payload alinhado para os cálculos dos gateways abaixo
-      payload.coupon_discount = totalCouponDiscount;
+    const desconto = await calcularDescontoDoServidor(sb, { tenantId: payload.tenant_id, pedidos: orderCtxs, codigoEnviado: payload.coupon_code });
+    const enviado = toNumber(payload.coupon_discount, 0);
+    if (Math.abs(enviado - desconto.valor) > 0.01) {
+      console.log(`[create-payment] desconto enviado pela tela=${enviado.toFixed(2)} ignorado; servidor=${desconto.valor.toFixed(2)} (${desconto.origem}, cupom=${desconto.cupom.toFixed(2)}, promoção=${desconto.promocao.toFixed(2)}, código=${desconto.codigo ?? "-"})`);
     }
-
-    // PIX: cada pedido recebe % sobre o seu próprio subtotal (igual ao caso de pedido único)
-    // CUPOM: rateado proporcionalmente APENAS entre os pedidos elegíveis
-    const pixShares: number[] = [];
-    const couponShares: number[] = [];
-    let couponRemaining = Math.round(totalCouponDiscount * 100);
-    const lastEligibleIdx = eligibleFlags.lastIndexOf(true);
-    for (let i = 0; i < orderCtxs.length; i++) {
-      const ctx = orderCtxs[i];
-      const productsTotal = ctx.productsTotal > 0 ? ctx.productsTotal : (orderCtxs.length === 1 ? fallbackPayloadSubtotal : 0);
-      // PIX por pedido = subtotal próprio × percent — regra única com as telas (_shared/order-totals.ts)
-      pixShares.push(pixDiscountPerOrder([productsTotal], pixDiscountPercent)[0]);
-
-      if (!eligibleFlags[i]) {
-        couponShares.push(0);
-        continue;
-      }
-
-      const isLastEligible = i === lastEligibleIdx;
-      if (eligibleSubtotal <= 0 || orderCtxs.length === 1 || isLastEligible) {
-        couponShares.push(isLastEligible ? couponRemaining / 100 : 0);
-        if (isLastEligible) couponRemaining = 0;
-      } else {
-        const ratio = ctx.productsTotal / eligibleSubtotal;
-        const couponCents = Math.round(totalCouponDiscount * 100 * ratio);
-        couponShares.push(couponCents / 100);
-        couponRemaining -= couponCents;
-      }
-    }
-
+    payload.coupon_discount = desconto.valor;
+    payload.coupon_code = desconto.codigo;
+    const parcelas = repartirCobranca({
+      pedidos: orderCtxs, desconto: desconto.valor, elegiveis: desconto.elegiveis,
+      pixPercent: pixDiscountPercent, frete: shippingValue, subtotalReserva: fallbackPayloadSubtotal,
+    });
+    const cobranca = itensDaCobranca(orderCtxs, parcelas, payload.cartItems);
 
     const orderUpdates: PromiseLike<unknown>[] = [];
     for (let i = 0; i < orderCtxs.length; i++) {
@@ -440,10 +356,11 @@ serve(async (req) => {
 
       const isFirst = i === 0;
       const mergeNote = payload.merge_observation ? `[MERGE] ${payload.merge_observation}` : "";
-      const pixShare = pixShares[i] ?? 0;
-      const couponShare = couponShares[i] ?? 0;
+      const parcela = parcelas[i];
+      const pixShare = parcela.pix;
+      const couponShare = parcela.cupom;
       // Frete inteiro só no primeiro pedido (mais antigo); demais ficam sem frete
-      const freightForThisOrder = isFirst ? shippingValue : 0;
+      const freightForThisOrder = parcela.frete;
       const freightNoteForThisOrder = isFirst ? freightNote : "";
       const pixNote = pixShare > 0 ? `[PIX_DISCOUNT] R$ ${pixShare.toFixed(2)}` : "";
       const couponNote = couponShare > 0
@@ -453,8 +370,8 @@ serve(async (req) => {
       const pickupNote = isPickupPay ? "[PAGAMENTO] Pagar na retirada" : "";
       const nextObs = [cleaned, freightNoteForThisOrder, pixNote, couponNote, mergeNote, pickupNote].filter(Boolean).join("\n");
 
-      const productsTotal = ctx.productsTotal > 0 ? ctx.productsTotal : fallbackPayloadSubtotal;
-      const newTotal = Math.max(0, productsTotal - pixShare - couponShare) + freightForThisOrder;
+      const productsTotal = parcela.produtos;
+      const newTotal = parcela.total;
 
       console.log(`[create-payment] Order ${orderId} (${isFirst ? "FIRST" : "merged"}): products=${productsTotal.toFixed(2)}, pixShare=${pixShare.toFixed(2)} (percent=${pixDiscountPercent}), couponShare=${couponShare.toFixed(2)}, freight=${freightForThisOrder.toFixed(2)}, total=${newTotal.toFixed(2)}`);
 
@@ -597,57 +514,15 @@ serve(async (req) => {
       console.log("[create-payment] Using Pagar.me for tenant:", payload.tenant_id);
       
       // Pagar.me não aceita itens com valor 0 — filtrar brindes/gratuitos
-      const items = payload.cartItems
-        .filter((it) => Number(it.unit_price) > 0)
-        .map((it) => ({
-          code: it.product_code || `PROD-${Date.now()}`,
-          description: it.product_name || it.product_code || "Produto",
-          quantity: it.qty,
-          amount: Math.round(Number(it.unit_price) * 100), // Pagar.me usa centavos
-        }));
-
-      // Adicionar frete como item
-      if (payload.shippingCost && payload.shippingCost > 0) {
-        items.push({
-          code: "FRETE",
-          description: "Frete",
-          quantity: 1,
-          amount: Math.round(Number(payload.shippingCost) * 100),
-        });
-      }
-
-      // Aplicar descontos de PIX + CUPOM distribuindo proporcionalmente entre os itens de produto
-      const pixDiscountCents = Math.round(toNumber(payload.pix_discount, 0) * 100);
-      const couponDiscountCents = Math.round(toNumber(payload.coupon_discount, 0) * 100);
-      const totalProductDiscountCents = pixDiscountCents + couponDiscountCents;
-
-      if (totalProductDiscountCents > 0) {
-        // Calcular total dos produtos (sem frete)
-        const productItems = items.filter(it => it.code !== "FRETE");
-        const productsTotalCents = productItems.reduce((s, it) => s + (it.amount * it.quantity), 0);
-
-        if (productsTotalCents > 0) {
-          let remainingDiscount = totalProductDiscountCents;
-          for (let i = 0; i < productItems.length; i++) {
-            const item = productItems[i];
-            const itemTotal = item.amount * item.quantity;
-            // Proporção deste item no total
-            const isLast = i === productItems.length - 1;
-            const itemDiscount = isLast
-              ? remainingDiscount
-              : Math.round((itemTotal / productsTotalCents) * totalProductDiscountCents);
-
-            // Reduzir o amount por unidade (arredondado)
-            const discountPerUnit = Math.floor(itemDiscount / item.quantity);
-            item.amount = Math.max(1, item.amount - discountPerUnit); // mínimo 1 centavo
-            remainingDiscount -= discountPerUnit * item.quantity;
-          }
-          // Se sobrou centavos de arredondamento, subtrair do último item
-          if (remainingDiscount > 0 && productItems.length > 0) {
-            const lastItem = productItems[productItems.length - 1];
-            lastItem.amount = Math.max(1, lastItem.amount - Math.ceil(remainingDiscount / lastItem.quantity));
-          }
-        }
+      // Itens com o desconto já repartido pelo servidor; a soma bate no centavo com o total dos pedidos (fase 1).
+      const items = cobranca.produtos.map((l) => ({
+        code: l.codigo || `PROD-${Date.now()}`,
+        description: l.nome,
+        quantity: l.qtd,
+        amount: l.centavos, // Pagar.me usa centavos
+      }));
+      if (cobranca.freteCentavos > 0) {
+        items.push({ code: "FRETE", description: "Frete", quantity: 1, amount: cobranca.freteCentavos });
       }
 
       const totalAmount = items.reduce((sum, item) => sum + (item.amount * item.quantity), 0);
@@ -825,28 +700,16 @@ serve(async (req) => {
     // ==== MERCADO PAGO ====
     console.log("[create-payment] Using Mercado Pago for tenant:", payload.tenant_id);
     
-    // Calcular subtotal dos produtos para distribuir descontos proporcionalmente
-    const mpSubtotal = payload.cartItems.reduce((s, it) => s + it.unit_price * it.qty, 0);
-    const mpTotalDiscount = toNumber(payload.pix_discount, 0) + toNumber(payload.coupon_discount, 0);
-    const mpDiscountRatio = mpSubtotal > 0 && mpTotalDiscount > 0 ? (mpSubtotal - mpTotalDiscount) / mpSubtotal : 1;
-
-    console.log(`[create-payment] MP discount: subtotal=${mpSubtotal}, totalDiscount=${mpTotalDiscount}, ratio=${mpDiscountRatio}`);
-
-    const items = payload.cartItems.map((it) => ({
-      title: it.product_name || it.product_code || "Produto",
-      quantity: it.qty,
-      unit_price: Math.round(Number(it.unit_price) * mpDiscountRatio * 100) / 100,
+    // Itens com o desconto já repartido pelo servidor; a soma bate no centavo com o total dos pedidos (fase 1).
+    // (Antes: preço × proporção arredondado item a item — sobravam centavos; com cupom de 100% + Pix ia valor negativo.)
+    const items = cobranca.produtos.map((l) => ({
+      title: l.nome,
+      quantity: l.qtd,
+      unit_price: l.centavos / 100,
       currency_id: "BRL",
     }));
-
-    // Se houver frete, adiciona como item separado (sem desconto)
-    if (payload.shippingCost && payload.shippingCost > 0) {
-      items.push({
-        title: "Frete",
-        quantity: 1,
-        unit_price: Number(payload.shippingCost),
-        currency_id: "BRL",
-      });
+    if (cobranca.freteCentavos > 0) {
+      items.push({ title: "Frete", quantity: 1, unit_price: cobranca.freteCentavos / 100, currency_id: "BRL" });
     }
 
     // Webhook URL for payment notifications (inclui tenant_id para resolver token correto)

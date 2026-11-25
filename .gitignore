@@ -37,3 +37,6 @@ coverage/
 
 # pasta temporária criada pelo teste de equivalência do zapi-webhook (nunca publicar)
 supabase/functions/__zapi_webhook_antes/
+tests/visual/node_modules/
+tests/visual/atuais/
+tests/visual/diferencas/
