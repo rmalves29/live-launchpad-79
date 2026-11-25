@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { simulateTyping } from "../_shared/anti-block-delay.ts";
+import { observeCaller } from "../_shared/internal-auth.ts";
 import {
   sendText as uazSendText,
   sendImage as uazSendImage,
@@ -75,6 +76,7 @@ function normalizeGroupJid(phone: string, provider: "zapi" | "uazapi"): string {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  observeCaller(req, "zapi-send-message"); // etapa 4.4: só registra quem chama (não bloqueia)
 
   try {
     const body: SendMessageRequest = await req.json();

@@ -40,7 +40,7 @@ export default function MercadoPagoCallback() {
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          navigate('/checkout', { replace: true });
+          navigate(`/pagamento/retorno${window.location.search}`, { replace: true });
           return 0;
         }
         return prev - 1;

@@ -342,10 +342,10 @@ export default function CorreiosBulkLabels({ tenantId }: CorreiosBulkLabelsProps
                       R$ {Number(order.total_amount || 0).toFixed(2)}
                     </span>
                     {!hasAddress && (
-                      <AlertTriangle className="h-4 w-4 text-destructive shrink-0" title="Endereço incompleto" />
+                      <AlertTriangle className="h-4 w-4 text-destructive shrink-0" {...({ title: "Endereço incompleto" } as any)} />
                     )}
                     {hasServiceError && (
-                      <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" title="Serviço inválido" />
+                      <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" {...({ title: "Serviço inválido" } as any)} />
                     )}
                   </div>
                 );

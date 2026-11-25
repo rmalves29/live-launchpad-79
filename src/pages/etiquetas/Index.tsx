@@ -46,6 +46,7 @@ interface Order {
   items?: any[];
   customer_cpf?: string; // CPF do cliente (buscado da tabela customers)
   observation?: string; // Campo de observação do pedido
+  shipping_provider?: string | null;
 }
 
 

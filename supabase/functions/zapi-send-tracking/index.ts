@@ -14,6 +14,7 @@ import {
   calcTypingDuration,
 } from "../_shared/uazapi-api.ts";
 import { tryPushBeforeWhatsApp } from "../_shared/push-fallback.ts";
+import { observeCaller } from "../_shared/internal-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,6 +23,7 @@ const corsHeaders = {
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  observeCaller(req, "zapi-send-tracking"); // etapa 4.4: só registra quem chama (não bloqueia)
 
   try {
     const { order_id, tenant_id, tracking_code, shipped_at } = await req.json();

@@ -358,20 +358,20 @@ export const ShippingOptionsManager = ({ channel = 'bazar' }: { channel?: 'bazar
         if (error) throw error;
         
         const newOption: ShippingOption = {
-          id: data.id,
-          name: data.name,
-          description: data.description || null,
-          delivery_days: data.delivery_days,
-          price: Number(data.price),
-          is_active: data.is_active,
-          carrier_service_id: data.carrier_service_id || null,
-          carrier_service_name: data.carrier_service_name || null,
-          coverage_type: data.coverage_type || 'national',
-          coverage_states: data.coverage_states || null,
-          coverage_city: data.coverage_city || null,
-          coverage_state: data.coverage_state || null,
-          coverage_cep_ranges: data.coverage_cep_ranges || null,
-          free_shipping_min_order: data.free_shipping_min_order != null ? Number(data.free_shipping_min_order) : null
+          id: (data as any).id,
+          name: (data as any).name,
+          description: (data as any).description || null,
+          delivery_days: (data as any).delivery_days,
+          price: Number((data as any).price),
+          is_active: (data as any).is_active,
+          carrier_service_id: (data as any).carrier_service_id || null,
+          carrier_service_name: (data as any).carrier_service_name || null,
+          coverage_type: (data as any).coverage_type || 'national',
+          coverage_states: (data as any).coverage_states || null,
+          coverage_city: (data as any).coverage_city || null,
+          coverage_state: (data as any).coverage_state || null,
+          coverage_cep_ranges: (data as any).coverage_cep_ranges || null,
+          free_shipping_min_order: (data as any).free_shipping_min_order != null ? Number((data as any).free_shipping_min_order) : null
         };
         setOptions(prev => [...prev, newOption]);
         toast({ title: 'Sucesso', description: 'Opção de frete criada' });

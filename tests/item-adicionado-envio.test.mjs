@@ -125,14 +125,14 @@ test('banco totalmente fora (nem a conferência funciona): não manda, protege o
   assert.equal(mensagensWhatsApp(fn).length, 0);
 });
 
+// A cópia da tela (src/lib/whatsapp-anti-block.ts) foi apagada em 20/11: nenhuma tela a usava; as mensagens saem só pelo servidor e pela cobrança.
 test('anti-spam nunca coloca caractere invisível dentro de link, código, valor ou telefone (P-04, corrigido)', async () => {
   const { addMessageVariation } = await import('../supabase/functions/_shared/anti-block-delay.ts');
-  const { addMessageVariation: daTela } = await import('../src/lib/whatsapp-anti-block.ts');
   const { addVariation: daCobranca } = extractFunctions('supabase/functions/cobranca-process/index.ts', ['invisibleCharPosition', 'addVariation'], { EMOJI_VARIATIONS: {} });
   const link = 'https://app.cartzy.com.br/loja-teste/checkout?p=5531999887766';
   const pedacos = [link, 'C210', 'R$ 89,90', '5531999887766'];
   const base = `Item adicionado ao pedido\n\nColar Aurora (C210)\nQtd: *1*\nValor: *R$ 89,90*\n\nFinalize seu pedido: ${link}\n\nWhats da loja: 5531999887766`;
-  for (const [nome, variar] of [['servidor', (t) => addMessageVariation(t, false)], ['tela', daTela], ['cobrança', daCobranca]]) {
+  for (const [nome, variar] of [['servidor', (t) => addMessageVariation(t, false)], ['cobrança', daCobranca]]) {
     let variadas = 0;
     for (let i = 0; i < 2000; i++) {
       const msg = variar(base);
@@ -142,4 +142,69 @@ test('anti-spam nunca coloca caractere invisível dentro de link, código, valor
     }
     assert.ok(variadas > 600, `${nome}: a variação anti-spam continua acontecendo (${variadas} de 2000)`);
   }
+});
+
+// ---- P-03 (etapa 4.1): quem pode chamar a função. Modo observação primeiro, trava depois. ----
+const CHAVE = 'chave-interna-teste';
+async function carregarComTrava(enforce) {
+  const tables = tabelas();
+  return loadEdgeFunction('zapi-send-item-added', {
+    tables,
+    env: enforce ? { ITEM_ADDED_ENFORCE_AUTH: 'true' } : {},
+    rpc: {
+      item_added_claim: () => 'send',
+      reserve_send_slot: () => new Date().toISOString(),
+      internal_key_check: (args) => args.p_name === 'item_added' && args.p_key === CHAVE,
+    },
+    fetchHandler: async (call) => (call.url.includes('/functions/v1/push-dispatch') ? { status: 200, body: { sent: false } } : { status: 200, body: { id: 'msg-1' } }),
+  });
+}
+const auditoria = (fn) => fn.sb.db.internal_call_audit || [];
+
+test('P-03 observação: chamada SEM chave ainda manda a mensagem, mas fica registrada como "sem_chave"', async () => {
+  const fn = await carregarComTrava(false);
+  await fn.call(pedido());
+  assert.equal(mensagensWhatsApp(fn).length, 1, 'nada muda para as lojas no modo observação');
+  assert.deepEqual(auditoria(fn).map((a) => [a.caller, a.allowed]), [['sem_chave', true]]);
+});
+
+test('P-03 observação: gatilho do banco com a chave interna é identificado como "internal_key"', async () => {
+  const fn = await carregarComTrava(false);
+  await fn.call(pedido(), { headers: { 'x-cartzy-internal-key': CHAVE } });
+  assert.equal(mensagensWhatsApp(fn).length, 1);
+  assert.equal(auditoria(fn)[0].caller, 'internal_key');
+});
+
+test('P-03 trava ligada: sem chave ou com chave errada é recusada (401) e nada é enviado', async () => {
+  for (const headers of [{}, { 'x-cartzy-internal-key': 'chute' }, { Authorization: 'Bearer anon-qualquer' }]) {
+    const fn = await carregarComTrava(true);
+    const r = await fn.call(pedido(), { headers });
+    assert.equal(r.status, 401);
+    assert.equal(mensagensWhatsApp(fn).length, 0);
+    assert.deepEqual(auditoria(fn).map((a) => [a.caller, a.allowed]), [['sem_chave', false]]);
+  }
+});
+
+test('P-03 trava ligada: gatilho do banco (chave interna) e funções do sistema (service role) continuam enviando', async () => {
+  for (const [headers, caller] of [[{ 'x-cartzy-internal-key': CHAVE }, 'internal_key'], [{ Authorization: 'Bearer service-role-teste' }, 'service_role']]) {
+    const fn = await carregarComTrava(true);
+    await fn.call(pedido(), { headers });
+    assert.equal(mensagensWhatsApp(fn).length, 1, `${caller} manda`);
+    assert.equal(auditoria(fn)[0].caller, caller);
+  }
+});
+
+// ---- Etapa 4.4: observação ampla — identifica quem chama só pelos cabeçalhos, sem validar e sem bloquear ----
+import { describeCaller } from '../supabase/functions/_shared/internal-auth.ts';
+const jwt = (payload) => `x.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.y`;
+const req = (headers) => new Request('https://x.test/fn', { method: 'POST', headers });
+
+test('4.4: quem chama é identificado só pelos cabeçalhos (usuário, chave pública, sistema, chave interna, nenhuma)', () => {
+  assert.deepEqual(describeCaller(req({ Authorization: 'Bearer srv' }), 'srv'), { caller: 'service_role', userId: null });
+  assert.deepEqual(describeCaller(req({ 'x-cartzy-internal-key': 'k' }), 'srv'), { caller: 'chave_interna', userId: null });
+  assert.deepEqual(describeCaller(req({ Authorization: `Bearer ${jwt({ role: 'authenticated', sub: 'u-1' })}` }), 'srv'), { caller: 'usuario', userId: 'u-1' });
+  assert.deepEqual(describeCaller(req({ Authorization: `Bearer ${jwt({ role: 'anon' })}` }), 'srv'), { caller: 'chave_publica', userId: null });
+  assert.deepEqual(describeCaller(req({ apikey: 'qualquer' }), 'srv'), { caller: 'chave_publica', userId: null });
+  assert.deepEqual(describeCaller(req({}), 'srv'), { caller: 'nenhuma', userId: null });
+  assert.deepEqual(describeCaller(req({ Authorization: 'Bearer lixo.lixo.lixo' }), 'srv'), { caller: 'nenhuma', userId: null });
 });

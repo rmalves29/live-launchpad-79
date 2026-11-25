@@ -6,23 +6,21 @@ const pageTitles: Record<string, string> = {
   '/pedidos-manual': 'Manual',
   '/live': 'Live',
   '/live-tiktok': 'Live TikTok',
-  '/tiktok-automacao': 'Automa��o TikTok',
-  '/checkout': 'Checkout',
-  '/pedidos/checkout': 'Checkout',
+  '/tiktok-automacao': 'Automação TikTok',
   '/produtos': 'Produtos',
   '/clientes': 'Clientes',
   '/pedidos': 'Pedidos',
   '/sendflow': 'SendFlow',
-  '/relatorios': 'Relat�rios',
+  '/relatorios': 'Relatórios',
   '/sorteio': 'Sorteio',
   '/etiquetas': 'Etiquetas',
-  '/integracoes': 'Integra��es',
+  '/integracoes': 'Integrações',
   '/admin/tenants': 'Empresas',
   '/config': 'Config',
   '/whatsapp/templates': 'Templates',
-  '/whatsapp/cobranca': 'Cobran�a',
-  '/whatsapp/zapi': 'Conex�o Z-API',
-  '/whatsapp/conexao': 'Conex�o WhatsApp',
+  '/whatsapp/cobranca': 'Cobrança',
+  '/whatsapp/zapi': 'Conexão Z-API',
+  '/whatsapp/conexao': 'Conexão WhatsApp',
   '/auth': 'Entrar',
   '/debug': 'Debug',
 };
@@ -49,7 +47,7 @@ export const usePageTitle = (customTitle?: string) => {
       if (location.pathname.startsWith('/t/')) {
         document.title = `${baseTitle} - Checkout`;
       } else {
-        document.title = `${baseTitle} - Gest�o de Pedidos`;
+        document.title = `${baseTitle} - Gestão de Pedidos`;
       }
     }
   }, [location.pathname, customTitle]);

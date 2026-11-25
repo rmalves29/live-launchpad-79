@@ -159,5 +159,21 @@ export async function evaluateHealth(supabase: any, now = Date.now()): Promise<H
     }
   }
 
+  // 10) P-03 (etapa 4.1): chamadas SEM identificação às funções internas nas últimas 24h.
+  //     Enquanto a trava não liga, isto mostra se ainda há alguém chamando sem chave (o que seria recusado).
+  const { data: semChave } = await supabase.from("internal_call_audit").select("fn").eq("caller", "sem_chave").gt("created_at", since(24 * H));
+  const porFn = new Map<string, number>();
+  for (const r of semChave || []) porFn.set(r.fn, (porFn.get(r.fn) || 0) + 1);
+  for (const [fn, n] of porFn) {
+    alerts.push({
+      key: `chamada_sem_chave_${fn}`,
+      title: `${n} chamada(s) sem identificação à função ${fn} nas últimas 24h`,
+      problem: "Com a trava ligada, essas chamadas seriam recusadas. Pode ser uma origem do sistema que ainda não manda a chave, ou alguém de fora.",
+      hint: "Não ligar a trava enquanto este alerta aparecer. Me chamar para ver de onde vêm.",
+      detail: { fn, count: n },
+      severity: "warn",
+    });
+  }
+
   return alerts;
 }

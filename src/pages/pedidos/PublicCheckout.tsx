@@ -23,6 +23,7 @@ import { getActiveShippingIntegrations, shippingProviderLabel, ShippingProvider,
 import { addDeliveryDays, loadExtraDeliveryDays } from '@/lib/shipping-days';
 import { PushOptInDialog } from '@/components/push/PushOptInDialog';
 import { getExistingSubscription, isPushSupported } from '@/lib/push-client';
+import { computeOrderTotals } from '../../../supabase/functions/_shared/order-totals.ts';
 
 
 interface Tenant {
@@ -1121,15 +1122,18 @@ const PublicCheckout = () => {
       const bogoCalc = computeBogoDiscount(allItems, activePromotions);
       const bogoDiscountValue = bogoCalc.total;
 
+      // Etapa 4.3: mesma conta da cobrança (_shared/order-totals.ts). Pix sobre o subtotal CHEIO de cada pedido
+      // (antes descontava a promoção "leve X pague Y" da base e a tela mostrava um total maior do que o cobrado).
       const effectivePixPercentForPayment = typeof pixDiscountPercent === 'number' ? pixDiscountPercent : 0;
-      const baseForPixPay = Math.max(0, productsTotal - bogoDiscountValue);
-      const pixDiscount = paymentMethod === 'pix' && effectivePixPercentForPayment > 0
-        ? Math.round((baseForPixPay * effectivePixPercentForPayment / 100) * 100) / 100
-        : 0;
+      const payTotals = computeOrderTotals({
+        orderSubtotals: ordersToProcess.map((o) => o.items.reduce((s, it) => s + Number(it.unit_price) * it.qty, 0)),
+        method: paymentMethod, pixPercent: effectivePixPercentForPayment,
+        couponDiscount, promoDiscount: bogoDiscountValue, shipping: shippingCost,
+      });
+      const pixDiscount = payTotals.pixDiscount;
       // Soma BOGO ao coupon_discount para reaproveitar a distribuição proporcional dos gateways
       const totalCouponDiscount = Math.round((couponDiscount + bogoDiscountValue) * 100) / 100;
-      const totalWithDiscount = Math.max(0, productsTotal - totalCouponDiscount - pixDiscount);
-      const totalAmount = totalWithDiscount + shippingCost;
+      const totalAmount = payTotals.total;
 
       // Contador do cupom não precisa travar o pagamento
       if (appliedCoupon) {
@@ -1570,11 +1574,17 @@ const PublicCheckout = () => {
   const bogoDiscount = bogo.total;
 
   // Recalcular desconto PIX quando método de pagamento ou subtotal mudam
+  // Etapa 4.3: mesma conta da cobrança (_shared/order-totals.ts) — Pix sobre o subtotal cheio de cada pedido.
   const effectivePixPercent = typeof pixDiscountPercent === 'number' ? pixDiscountPercent : 0;
-  const baseForPix = Math.max(0, combinedSubtotal - bogoDiscount);
-  const currentPixDiscount = paymentMethod === 'pix' && effectivePixPercent > 0
-    ? Math.round((baseForPix * effectivePixPercent / 100) * 100) / 100
+  const selectedShippingPrice = selectedShipping && selectedShipping !== 'retirada'
+    ? parseFloat(shippingOptions.find(opt => opt.id === selectedShipping)?.custom_price || shippingOptions.find(opt => opt.id === selectedShipping)?.price || '0')
     : 0;
+  const screenTotals = computeOrderTotals({
+    orderSubtotals: selectedOrders.map((o) => o.items.reduce((s, it) => s + it.unit_price * it.qty, 0)),
+    method: paymentMethod, pixPercent: effectivePixPercent,
+    couponDiscount, promoDiscount: bogoDiscount, shipping: selectedShippingPrice,
+  });
+  const currentPixDiscount = screenTotals.pixDiscount;
 
   // Função para formatar telefone com máscara
   const formatPhoneMask = (value: string) => {
@@ -2411,10 +2421,7 @@ const PublicCheckout = () => {
                     <div className="flex justify-between items-center text-xl font-bold">
                       <span>Total:</span>
                       <span className="text-green-600">
-                        {formatCurrency(
-                          Math.max(0, combinedSubtotal - currentPixDiscount - couponDiscount - bogoDiscount) +
-                          (selectedShipping && selectedShipping !== 'retirada' ? parseFloat(shippingOptions.find(opt => opt.id === selectedShipping)?.custom_price || shippingOptions.find(opt => opt.id === selectedShipping)?.price || '0') : 0)
-                        )}
+                        {formatCurrency(screenTotals.total)}
                       </span>
                     </div>
                   </div>

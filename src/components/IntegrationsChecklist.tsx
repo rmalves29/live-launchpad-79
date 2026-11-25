@@ -67,7 +67,7 @@ export default function IntegrationsChecklist() {
         .select('is_active, handle')
         .eq('tenant_id', tenantId)
         .maybeSingle();
-      return data as { is_active: boolean; handle: string | null } | null;
+      return data as unknown as { is_active: boolean; handle: string | null } | null;
     },
     enabled: !!tenantId,
   });

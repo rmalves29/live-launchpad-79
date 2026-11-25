@@ -15,6 +15,7 @@ import {
   calcTypingDuration,
 } from "../_shared/evolution-api.ts";
 import { tryPushBeforeWhatsApp } from "../_shared/push-fallback.ts";
+import { observeCaller } from "../_shared/internal-auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -102,6 +103,7 @@ function validateRequest(body: any): body is PaidOrderRequest {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  observeCaller(req, "zapi-send-paid-order"); // etapa 4.4: só registra quem chama (não bloqueia)
 
   const timestamp = new Date().toISOString();
 

@@ -217,7 +217,7 @@ export default function InstagramLiveInsights({ tenantId }: { tenantId: string }
         setLives((liveRows || []) as LiveRow[]);
         setComments(cRows);
         setOrders(orderMap);
-        setDms((dmRows || []) as DmRow[]);
+        setDms((dmRows || []) as unknown as DmRow[]);
         setProductNames(names);
         setNow(Date.now());
       } finally {

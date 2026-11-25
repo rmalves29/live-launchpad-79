@@ -21,6 +21,7 @@ interface Product {
   name: string;
   code: string;
   price: number;
+  promotional_price?: number | null;
   image_url?: string;
 }
 
@@ -30,6 +31,10 @@ interface CartItem {
   qty: number;
   unit_price: number;
   product?: Product;
+  // cópia gravada no item (cart_items) — usada quando o produto foi apagado/alterado
+  product_name?: string | null;
+  product_code?: string | null;
+  product_image_url?: string | null;
 }
 
 interface Order {

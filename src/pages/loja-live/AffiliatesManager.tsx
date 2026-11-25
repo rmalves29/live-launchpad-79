@@ -230,7 +230,7 @@ export function AffiliatesManager() {
     if (!s || s.toPay <= 0) return;
     if (!window.confirm(`Marcar ${money(s.toPay)} de comissão de ${a.name} como paga?`)) return;
     setBusyId(a.id);
-    const { error } = await supabase.from('orders').update({ affiliate_paid_at: new Date().toISOString() } as any)
+    const { error } = await (supabase.from('orders') as any).update({ affiliate_paid_at: new Date().toISOString() } as any)
       .eq('tenant_id', tenant!.id).eq('affiliate_id' as any, a.id).eq('is_paid', true).eq('is_cancelled', false).is('affiliate_paid_at' as any, null);
     setBusyId(null);
     if (error) return toast({ title: 'Erro', description: error.message, variant: 'destructive' });

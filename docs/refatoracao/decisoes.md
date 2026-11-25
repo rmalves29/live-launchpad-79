@@ -196,3 +196,80 @@ só para o super admin, com o número de problemas em aberto; ao clicar, cada um
   (antes contava sessões de janeiro) · push parado · Bling sem credenciais · Bling com acesso vencido · mesmo aplicativo Bling em
   várias lojas · 5+ falhas de envio ao Bling/h por loja · tarefas agendadas falhando (`admin_health_cron_failures`,
   migração `20261120090000_health_cron_failures.sql`). Testes: `tests/alertas-saude.test.mjs`.
+
+## Etapa 4 · Risco alto 🔴 — 20/11/2026
+Branch: `etapa-4-alto` (sai de `etapa-3-medio`). Regra: itens de risco alto só publicam depois da Black Friday (27/11).
+
+### 4.1 · Trava da função de item adicionado (P-03) — "testar primeiro antes de travar" (pedido do Rafael)
+Hoje `zapi-send-item-added` aceita qualquer chamada da internet. Quem chama (registros de 20/11): o banco (gatilhos
+`send_whatsapp_on_item_added` e `item_added_flush_tick`, 66 chamadas, SEM identificação) e o webhook do WhatsApp/Instagram
+(service role). Travar hoje pararia todas as mensagens de item adicionado.
+Feito (MODO OBSERVAÇÃO — nada é recusado):
+- Migração `20261120120000_item_added_internal_key.sql`: chave interna em `private.internal_keys` (schema fora da API),
+  os dois gatilhos mandam o header `x-cartzy-internal-key`, conferência `public.internal_key_check` (só service role),
+  registro de quem chama em `internal_call_audit` (só super admin lê).
+- Função: `_shared/internal-auth.ts` classifica cada chamada (service_role / internal_key / sem_chave), registra e aceita.
+  A trava liga com o secret `ITEM_ADDED_ENFORCE_AUTH=true` (sem mudar código); tirar o secret volta para observação.
+- Sininho: alerta "chamada sem identificação" enquanto houver chamada sem chave nas últimas 24h.
+- Testes: `item-adicionado-envio.test.mjs` (observação e trava) e `item-adicionado-chave.test.mjs` (gatilhos mandam a chave;
+  anon/authenticated não leem nem conferem a chave).
+Para ligar a trava (depois da Black): publicar; acompanhar alguns dias; consulta
+`select caller, count(*) from internal_call_audit where fn='zapi-send-item-added' and created_at > now()-interval '3 days' group by 1;`
+deve mostrar zero `sem_chave` (e o sininho sem o alerta). Só então criar o secret.
+
+### 4.5 · Erros de tipo: 92 → 0 (20/11)
+Só declarações de tipo; o que as telas fazem não mudou (build ok, 135 testes ok). Rodar: `cd tests && npm run typecheck`.
+- Campos que existem no banco mas faltavam nas interfaces locais (`promotional_price`, `product_name/code/image_url` do item,
+  `shipping_provider`, `payment_installments`, `full_name`).
+- Tabelas acessadas com `as any` (InfinitePay, Omie, Bagy, campanhas): conversão via `as unknown as`.
+- `menu_flags` (jsonb) convertido para o tipo da loja na entrada (TenantContext/useTenant).
+- Arquivos `*.test.ts` de src/ rodam no bun e saíram desta checagem.
+Achados (sem mudança de comportamento, só registro):
+- O topo do sistema usa `profile.full_name`, que não existe em `profiles`: o nome exibido sempre cai no nome da loja.
+- `TenantProducts`: o formulário começava sem `promotional_price`/`observation` (campos ficavam "soltos" até digitar); agora começam vazios.
+- `BlingFiscalSettings`: `default_ipi` é numérico no banco e texto na tela — conferir se o IPI salvo aparece selecionado ao reabrir.
+
+### 4.4 · Revisão de segurança das funções (20/11)
+Relatório completo: `docs/refatoracao/seguranca-funcoes.md`. 138 funções; 74 sem trava; 19 de risco alto (mensagem pela loja ou
+custo dela). Crons chamam com a chave pública; 8 funções são chamadas pelo banco sem identificação.
+Feito agora (sem bloquear nada): `observeCaller` em 20 funções de risco (só registra quem chama em `internal_call_audit`,
+lendo cabeçalhos, sem chamada extra e sem nunca derrubar a função). Nenhuma trava ligada antes da Black Friday.
+Achados em produção: `whatsapp-add-label` recusa as chamadas do gatilho da etiqueta do app (401); WhatsApp da Mania caiu de manhã.
+
+## Etapa 5 (pós-Black) — itens adiantados em 20/11 por não terem risco
+- **5.1 CI**: `.github/workflows/testes.yml` roda testes, build (instalando pelo `bun.lock`, o do Lovable) e checagem de tipos a
+  cada push/PR. Primeira rodada ✅. Ao juntar no `main`, as mudanças do Lovable também passam a ser conferidas.
+- **5.3 Gatilhos com chave interna** (`20261120130000_triggers_internal_key.sql`, chave `sistema`): pedido pago, rastreio
+  postado e aviso da agenda mandam `x-cartzy-internal-key`. As funções ainda ignoram o header (nada muda). Ficaram de fora:
+  fila de espera (`http_post` da extensão http, sem headers) e etiqueta do app (a função exige login). Testes: `gatilhos-chave.test.mjs`.
+- **5.5 Limpeza final — levantamento** (`docs/refatoracao/limpeza-final-proposta.md`): 18 funções para apagar depois da Black
+  (2 só depois de publicar; 2 a confirmar), 2 rotinas repetidas e 4 tabelas sem uso para arquivar. Nada apagado; aguarda aprovação.
+
+### 4.3 · Total do pedido numa regra só (P-07) — preparado, publicar só depois da Black
+`_shared/order-totals.ts` (`computeOrderTotals`, `pixDiscountPerOrder`) é usado pela cobrança (`create-payment`), pela loja da
+live (`LiveShop.tsx`) e pelo checkout público (`PublicCheckout.tsx`). Pix = % sobre o subtotal cheio de cada pedido, arredondado
+por pedido (a conta da cobrança). Correção junto: o checkout público, com promoção "leve X pague Y", calculava o Pix sobre o
+subtotal já descontado da promoção e mostrava total MAIOR do que o cobrado (ex.: 10% de Pix em R$ 300 com R$ 100 de promoção:
+tela R$ 20, cobrança R$ 30). Agora a tela mostra o que é cobrado. Testes de equivalência: `total-pedido.test.mjs` (90 mil casos).
+
+### 4.2 · Atendimento do WhatsApp dividido (preparado, publicar só depois da Black)
+O bloco principal do `zapi-webhook` (≈1.970 linhas) ficou com ≈1.450: saíram, sem mudar a lógica (conferido linha a linha),
+`handleConnectionEvent` (conexão/queda), `handleGroupParticipantEvent` (entrada/saída de grupos) e a leitura dos códigos do
+comentário (`_shared/live-comment-codes.ts`, idêntica à antiga em 50 mil comentários — `comentario-codigo.test.mjs`).
+Teste de comportamento (`zapi-webhook-equivalencia.test.mjs`): a versão antiga (guardada em `tests/fixtures/`) e a nova recebem
+os mesmos 12 eventos (conexão, queda, entrada/saída de grupo, status, mensagem sem código, com código, privada, divulgação,
+código inexistente, esgotado) e gravam/chamam/respondem igual.
+**Bug corrigido junto:** quando a cliente pedia mais do que o estoque restante (ex.: "C210x2" com 1 em estoque), o aviso
+"produto esgotado / você está na fila" chamava uma função inexistente (`sendZAPIMessage`): dava erro, o item virava
+"erro inesperado" e a cliente não era avisada. Agora o aviso sai pelo envio padrão (`zapi-send-message`).
+Próximo passo (pós-Black): dividir o processamento de cada item (~780 linhas) com o mesmo método.
+
+## 20/11 · Pausa automática de integrações de lojas vencidas
+- **Regra:** assinatura vencida há mais de 10 dias **e** nenhum pedido nos últimos 10 dias → rotina diária (03h15) desliga Bling, Olist, Bagy, Omie, Instagram, WhatsApp e frete da loja e registra cada uma em `integration_auto_pauses`.
+- **Volta:** gatilho em `tenants` religa na hora, quando a assinatura volta a valer (data no futuro, loja ativa, não bloqueada). Religa só o que a pausa desligou; o que a loja tinha desligado continua desligado. Se não der para religar (ex.: limite de transportadoras), registra o motivo e segue.
+- **Por que não "10 dias sem pedido":** lojas pagantes (Nica, Cabello, Luvian, Elos) ficam semanas sem live; sem o WhatsApp ligado, o comentário da próxima live não vira pedido.
+- **Fora de propósito:** gateways de pagamento (parados não custam nada e precisam confirmar Pix pago com atraso); lojas sem data de vencimento (internas).
+- **Simulação em 20/11:** pegaria Carine Prudêncio, Cartzy (trial de julho), Nica Brasil, Opalas, Revele e Roanne — 6 WhatsApp, 2 Bling, 1 Instagram, 5 fretes. Nenhuma vendeu nos últimos 10 dias.
+- **Simular sem mudar nada:** `select * from integracoes_pausar_lojas_vencidas(10, true);`
+- **Desfazer:** comandos no topo da migração `20261121010000`.
+- Testes: `tests/pausa-integracoes.test.mjs` (7 casos, Postgres em memória).

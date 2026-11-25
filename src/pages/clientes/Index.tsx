@@ -1052,7 +1052,7 @@ const Clientes = () => {
           console.error('Error loading cart items:', itemsError);
         } else {
           // 3. Agrupa em memória por cart_id
-          cartItemsByCartId = (allCartItems || []).reduce<typeof cartItemsByCartId>(
+          cartItemsByCartId = ((allCartItems || []) as any[]).reduce<typeof cartItemsByCartId>(
             (acc, item) => {
               const cid = item.cart_id as number;
               if (!acc[cid]) acc[cid] = [];

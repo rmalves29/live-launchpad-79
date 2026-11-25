@@ -12,7 +12,7 @@ const min = (m) => new Date(AGORA - m * 60_000).toISOString();
 function banco(extra = {}, rpc = {}) {
   return createFakeSupabase({
     tables: {
-      webhook_logs: [], sending_jobs: [], whatsapp_active_sessions: [], push_campaigns: [], bling_sync_logs: [],
+      internal_call_audit: [], webhook_logs: [], sending_jobs: [], whatsapp_active_sessions: [], push_campaigns: [], bling_sync_logs: [],
       integration_bling: [],
       tenants: [{ id: 'mania', name: 'MANIA DE MULHER' }, { id: 'elaup', name: 'Ela Up' }, { id: 'pabeli', name: 'Pabeli' }],
       ...extra,
@@ -100,4 +100,16 @@ test('quadro do sininho: abre o novo, atualiza o que continua e resolve o que su
   r = await syncSystemAlerts(sb, [A, B], new Date(AGORA + 30 * 60_000));
   assert.equal(r.opened, 1, 'B voltou: conta como novo');
   assert.equal(sb.db.system_alerts.find((x) => x.rule_key === 'b').resolved_at, null);
+});
+
+test('P-03: chamada sem identificação à função interna aparece no sininho (só as das últimas 24h)', async () => {
+  const audit = [
+    { fn: 'zapi-send-item-added', caller: 'sem_chave', created_at: min(30) },
+    { fn: 'zapi-send-item-added', caller: 'sem_chave', created_at: min(60) },
+    { fn: 'zapi-send-item-added', caller: 'internal_key', created_at: min(10) },
+    { fn: 'zapi-send-item-added', caller: 'sem_chave', created_at: min(60 * 30) },
+  ];
+  const a = await evaluateHealth(banco({ internal_call_audit: audit }), AGORA);
+  assert.deepEqual(chaves(a), ['chamada_sem_chave_zapi-send-item-added']);
+  assert.match(a[0].title, /^2 chamada/);
 });

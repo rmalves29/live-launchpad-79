@@ -5,6 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getGroupAdmins as evoGetGroupAdmins } from "../_shared/evolution-api.ts";
 import { getUazapiConfig, sendText as uazSendText, sendImage as uazSendImage } from "../_shared/uazapi-api.ts";
 import { firstValidPhone, getBrasiliaDateISO, hashMessage, looksLikeBrazilianPhone, normalizeDigits, normalizeParticipantPhone, normalizePhone } from "../_shared/zapi-phone.ts";
+import { extractProductEntries, isProductBroadcastMessage } from "../_shared/live-comment-codes.ts";
  import { antiBlockDelay, logAntiBlockDelay, antiBlockDelayLive, addMessageVariation, getTypingDelay, simulateTyping } from "../_shared/anti-block-delay.ts";
  import { activateConsentOnReply } from "../_shared/consent-v2.ts";
 
@@ -311,66 +312,7 @@ serve(async (req) => {
       evtType === 'ConnectedCallback' ||
       evtType === 'NotificationDisconnectedCallback';
     if (isConnectionEvent) {
-      try {
-        const integ = await resolveZapiIntegration(supabase, payload.instanceId, payload.connectedPhone, (payload as any).uazapi_tenant_id);
-        if (integ?.tenant_id) {
-          const reason = (payload as any).reason || (payload as any).cause || (payload as any).error || '';
-          const connectedPhoneStr = payload.connectedPhone || '';
-          const msg = `Z-API ${evtType}${reason ? ` | reason=${reason}` : ''} | phone=${connectedPhoneStr} | instanceId=${payload.instanceId || ''}`;
-          await supabase.from('whatsapp_messages').insert({
-            tenant_id: integ.tenant_id,
-            phone: connectedPhoneStr || 'system',
-            message: msg,
-            type: 'system_log',
-            created_at: new Date().toISOString(),
-          });
-          console.log(`[zapi-webhook] 🔌 ${msg}`);
-
-          // 🛑 Auto-pausar envios em massa (sendflow/mass_message) quando o telefone desconectar
-          const isDisconnect =
-            evtType === 'DisconnectedCallback' ||
-            evtType === 'NotificationDisconnectedCallback';
-          if (isDisconnect) {
-            try {
-              const { data: pausedJobs, error: pauseErr } = await supabase
-                .from('sending_jobs')
-                .update({
-                  status: 'paused',
-                  paused_at: new Date().toISOString(),
-                  error_message: 'Pausado automaticamente: WhatsApp desconectado',
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('tenant_id', integ.tenant_id)
-                .eq('status', 'running')
-                .in('job_type', ['sendflow', 'mass_message', 'cobranca'])
-                .select('id, job_type');
-
-              if (pauseErr) {
-                console.error('[zapi-webhook] Erro ao pausar envios automáticos:', pauseErr.message);
-              } else if (pausedJobs && pausedJobs.length > 0) {
-                console.log(`[zapi-webhook] ⏸️ ${pausedJobs.length} envio(s) pausado(s) por desconexão do tenant ${integ.tenant_id}`);
-                await supabase.from('whatsapp_messages').insert({
-                  tenant_id: integ.tenant_id,
-                  phone: connectedPhoneStr || 'system',
-                  message: `Envios pausados automaticamente por desconexão (${pausedJobs.length} job(s)): ${pausedJobs.map((j: any) => `${j.job_type}#${String(j.id).slice(0, 8)}`).join(', ')}`,
-                  type: 'system_log',
-                  created_at: new Date().toISOString(),
-                });
-              }
-            } catch (pauseCatch: any) {
-              console.error('[zapi-webhook] Exceção ao auto-pausar envios:', pauseCatch?.message);
-            }
-          }
-        } else {
-          console.log(`[zapi-webhook] 🔌 ${evtType} (no tenant resolved) instanceId=${payload.instanceId}`);
-        }
-      } catch (logErr: any) {
-        console.error('[zapi-webhook] Failed to log connection event:', logErr?.message);
-      }
-      return new Response(JSON.stringify({ ok: true, logged: true }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return await handleConnectionEvent(supabase, payload, evtType);
     }
     
     // Log detalhado APENAS para eventos de grupo (participantes)
@@ -416,412 +358,7 @@ serve(async (req) => {
        notification === 'GROUP_PARTICIPANT_JOIN');
 
     if (isGroupParticipantsUpdateType || isReceivedCallbackGroupEvent) {
-      let normalizedAction: string;
-      let groupJid: string;
-      let participants: string[];
-      const instanceId = payload.instanceId || '';
-      const eventTimestamp = payload.momment || payload.timestamp || Date.now();
-
-      if (isReceivedCallbackGroupEvent) {
-        // Format 2: ReceivedCallback with notification field
-        // notification: GROUP_PARTICIPANT_ADD | GROUP_PARTICIPANT_LEAVE | GROUP_PARTICIPANT_REMOVE
-        const notifAction = notification.replace('GROUP_PARTICIPANT_', '').toLowerCase();
-        normalizedAction = notifAction;
-        groupJid = payload.phone || payload.chatId || '';
-        // Participant comes from participantPhone, notificationParameters (strip @lid), or participant
-        const rawParticipants: string[] = [];
-        if (payload.participantPhone) rawParticipants.push(payload.participantPhone);
-        if (payload.notificationParameters && payload.notificationParameters.length > 0) {
-          for (const param of payload.notificationParameters) {
-            const cleaned = param.replace(/@lid$/i, '').replace(/@s\.whatsapp\.net$/i, '');
-            if (cleaned && !rawParticipants.includes(cleaned)) rawParticipants.push(cleaned);
-          }
-        }
-        if (payload.participant && !rawParticipants.includes(payload.participant)) {
-          rawParticipants.push(payload.participant);
-        }
-        participants = rawParticipants.filter(Boolean);
-        console.log(`[zapi-webhook] 📥 ReceivedCallback group event: notification=${notification}, group=${groupJid}, participants=${JSON.stringify(participants)}`);
-      } else {
-        // Format 1: Dedicated GroupParticipantsUpdate type
-        const eventPayload = payload.data || payload;
-        const action = eventPayload.action || eventPayload.event || eventPayload.notification || payload.notification || '';
-        normalizedAction = String(action).toLowerCase();
-        groupJid = eventPayload.chatId || eventPayload.groupId || payload.chatId || payload.groupId || '';
-        const participantsRaw = eventPayload.participants || payload.participants || [
-          eventPayload.participantPhone,
-          eventPayload.participant,
-          payload.participantPhone,
-          payload.participant,
-          payload.phone,
-        ].filter(Boolean);
-        participants = Array.isArray(participantsRaw) ? participantsRaw : [participantsRaw];
-      }
-
-      // Bridge UazAPI: alguns eventos chegam como `GroupParticipantsCallback`
-      // com action/notification genérico (`group_event`), mas contendo o
-      // participante que entrou. Nesse caso, tratar como entrada para não perder
-      // a contagem do relatório.
-      if ((!normalizedAction || normalizedAction === 'group_event') && participants.length > 0 && eventType === 'GroupParticipantsCallback') {
-        normalizedAction = 'add';
-      }
-
-      let eventTenantId: string | null = null;
-      let zapiCreds: { zapi_instance_id: string | null; zapi_token: string | null; zapi_client_token: string | null } | null = null;
-
-      const integ = await resolveZapiIntegration(supabase, instanceId, payload.connectedPhone, (payload as any).uazapi_tenant_id);
-      if (integ) {
-        eventTenantId = integ.tenant_id;
-        zapiCreds = { zapi_instance_id: integ.zapi_instance_id, zapi_token: integ.zapi_token, zapi_client_token: integ.zapi_client_token };
-      }
-
-      const actionCompact = normalizedAction.replace(/[\s_\-.]+/g, '');
-      const isJoinEvent = ['add', 'join', 'joined', 'invite', 'introduced'].includes(actionCompact);
-      const isLeaveEvent = ['remove', 'removed', 'leave', 'left', 'exit', 'exited', 'out', 'kick', 'kicked'].includes(actionCompact);
-
-      if (eventTenantId && groupJid && (isJoinEvent || isLeaveEvent)) {
-        const feEventType = isJoinEvent ? 'join' : 'leave';
-
-        // ─── LID Resolution: detect if participants are LIDs (not real phones) ───
-        // WhatsApp LIDs are internal identifiers (15+ digits), not phone numbers.
-        // Brazilian phones max out at 13 digits (55 + 2 DDD + 9 number).
-        const isLid = (val: string): boolean => {
-          const digits = normalizeDigits(val);
-          return digits.length > 13;
-        };
-
-        const hasLidOnly = participants.length > 0 && participants.every(p => isLid(p));
-
-        if (hasLidOnly && zapiCreds?.zapi_instance_id && zapiCreds?.zapi_token) {
-          console.log(`[zapi-webhook] 🔍 Participants are LIDs, resolving via group-metadata...`);
-          const baseUrlMeta = `https://api.z-api.io/instances/${zapiCreds.zapi_instance_id}/token/${zapiCreds.zapi_token}`;
-          const headersMeta: Record<string, string> = { 'Content-Type': 'application/json' };
-          if (zapiCreds.zapi_client_token) headersMeta['Client-Token'] = zapiCreds.zapi_client_token;
-
-          try {
-            const metaRes = await fetch(`${baseUrlMeta}/group-metadata/${groupJid}`, { method: 'GET', headers: headersMeta });
-            const metadata = await metaRes.json();
-            console.log(`[zapi-webhook] group-metadata response status=${metaRes.status}, participants count=${metadata?.participants?.length || 0}`);
-
-            if (metadata?.participants && Array.isArray(metadata.participants)) {
-              // Get all real phone numbers currently in the group
-              const currentGroupPhones = metadata.participants
-                .map((p: any) => normalizeParticipantPhone(p.phone))
-                .filter((p: string) => p && !isLid(p));
-
-              if (isJoinEvent) {
-                // For JOIN: find phones in group that DON'T have a recent join event
-                const recentWindow = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-                const { data: recentJoins } = await supabase
-                  .from('fe_group_events')
-                  .select('phone')
-                  .eq('tenant_id', eventTenantId)
-                  .eq('group_jid', groupJid)
-                  .eq('event_type', 'join')
-                  .gte('created_at', recentWindow);
-
-                const recentJoinPhones = new Set((recentJoins || []).map((e: any) => e.phone));
-                // Also check which phones already had a join event ever (to compare)
-                const { data: allKnownEvents } = await supabase
-                  .from('fe_group_events')
-                  .select('phone, event_type')
-                  .eq('tenant_id', eventTenantId)
-                  .eq('group_jid', groupJid)
-                  .order('created_at', { ascending: false });
-
-                // Build a set of phones that are "known members" (last event was join)
-                const knownMembers = new Set<string>();
-                const seenPhones = new Set<string>();
-                for (const ev of (allKnownEvents || [])) {
-                  if (!seenPhones.has(ev.phone)) {
-                    seenPhones.add(ev.phone);
-                    if (ev.event_type === 'join') knownMembers.add(ev.phone);
-                  }
-                }
-
-                // New participants = in group now but not known members and not recently joined
-                const newPhones = currentGroupPhones.filter((p: string) =>
-                  !knownMembers.has(p) && !recentJoinPhones.has(p)
-                );
-
-                if (newPhones.length > 0) {
-                  participants = newPhones;
-                  console.log(`[zapi-webhook] ✅ Resolved LID → real phones for JOIN: ${JSON.stringify(newPhones)}`);
-                } else {
-                  // Fallback: couldn't determine who's new, skip
-                  console.warn(`[zapi-webhook] ⚠️ Could not resolve new participants from LID. Group has ${currentGroupPhones.length} members, ${knownMembers.size} known.`);
-                  participants = [];
-                }
-              } else {
-                // For LEAVE: find phones we know as members but NOT in current group
-                const { data: allKnownEvents } = await supabase
-                  .from('fe_group_events')
-                  .select('phone, event_type')
-                  .eq('tenant_id', eventTenantId)
-                  .eq('group_jid', groupJid)
-                  .order('created_at', { ascending: false });
-
-                const knownMembers = new Set<string>();
-                const seenPhones = new Set<string>();
-                for (const ev of (allKnownEvents || [])) {
-                  if (!seenPhones.has(ev.phone)) {
-                    seenPhones.add(ev.phone);
-                    if (ev.event_type === 'join') knownMembers.add(ev.phone);
-                  }
-                }
-
-                const currentSet = new Set(currentGroupPhones);
-                const leftPhones = Array.from(knownMembers).filter(p => !currentSet.has(p));
-
-                if (leftPhones.length > 0) {
-                  participants = leftPhones;
-                  console.log(`[zapi-webhook] ✅ Resolved LID → real phones for LEAVE: ${JSON.stringify(leftPhones)}`);
-                } else {
-                  console.warn(`[zapi-webhook] ⚠️ Could not resolve departed participants from LID.`);
-                  participants = [];
-                }
-              }
-            }
-          } catch (metaErr: any) {
-            console.error(`[zapi-webhook] group-metadata call failed: ${metaErr.message}`);
-            participants = []; // Don't process with invalid LID phones
-          }
-        }
-        // ─── FIM LID Resolution ───
-
-        const { data: feGroup } = await supabase
-          .from('fe_groups')
-          .select('id, group_jid, group_name, participant_count')
-          .eq('tenant_id', eventTenantId)
-          .eq('group_jid', groupJid)
-          .maybeSingle();
-
-        // UazAPI às vezes envia o evento de entrada com action=add, porém sem
-        // o telefone do participante. Antes isso resultava em 0 linhas gravadas
-        // e o relatório ficava menor que o WhatsApp. Registramos um evento
-        // anônimo estável por timestamp para preservar a contagem e evitar
-        // duplicidade em retry do mesmo webhook.
-        if (participants.length === 0 && feGroup) {
-          const anonymousPhone = `unknown-${eventTimestamp}`;
-          const dedupeKey = `${eventTenantId}:${groupJid}:${anonymousPhone}:${feEventType}:${eventTimestamp}`;
-          if (!isDuplicateGroupEvent(dedupeKey)) {
-            const { data: existingAnonymous } = await supabase
-              .from('fe_group_events')
-              .select('id')
-              .eq('tenant_id', eventTenantId)
-              .eq('group_jid', groupJid)
-              .eq('phone', anonymousPhone)
-              .eq('event_type', feEventType)
-              .limit(1)
-              .maybeSingle();
-
-            if (!existingAnonymous) {
-              await supabase.from('fe_group_events').insert({
-                tenant_id: eventTenantId,
-                group_id: feGroup.id,
-                group_jid: groupJid,
-                phone: anonymousPhone,
-                event_type: feEventType,
-              });
-
-              const newCount = Math.max(0, (feGroup.participant_count || 0) + (feEventType === 'join' ? 1 : -1));
-              feGroup.participant_count = newCount;
-              await supabase.from('fe_groups').update({ participant_count: newCount }).eq('id', feGroup.id);
-              console.log(`[zapi-webhook] ✅ Anonymous group event recorded: ${feEventType} group=${groupJid} timestamp=${eventTimestamp}`);
-            }
-          }
-
-          return new Response(JSON.stringify({ success: true, event: feEventType, group: groupJid, anonymous: true }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          });
-        }
-
-        for (const rawPhone of participants) {
-          const normalizedPhone = normalizeParticipantPhone(rawPhone);
-          if (!normalizedPhone || isLid(normalizedPhone)) continue;
-
-          if (normalizedPhone.length < 10 || normalizedPhone.length > 11) {
-            console.warn(`[zapi-webhook] Invalid participant phone resolved from ${rawPhone}: ${normalizedPhone}`);
-            continue;
-          }
-
-          const dedupeKey = `${eventTenantId}:${groupJid}:${normalizedPhone}:${feEventType}:${eventTimestamp}`;
-          if (isDuplicateGroupEvent(dedupeKey)) {
-            continue;
-          }
-
-          const recentThreshold = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-          const { data: existingEvent } = await supabase
-            .from('fe_group_events')
-            .select('id')
-            .eq('tenant_id', eventTenantId)
-            .eq('group_jid', groupJid)
-            .eq('phone', normalizedPhone)
-            .eq('event_type', feEventType)
-            .gte('created_at', recentThreshold)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (existingEvent) {
-            console.log(`[zapi-webhook] Recent duplicate group event skipped for ${normalizedPhone} in ${groupJid}`);
-            continue;
-          }
-
-          await supabase.from('fe_group_events').insert({
-            tenant_id: eventTenantId,
-            group_id: feGroup?.id || null,
-            group_jid: groupJid,
-            phone: normalizedPhone,
-            event_type: feEventType,
-          });
-
-          console.log(`[zapi-webhook] ✅ Group event recorded: ${feEventType} phone=${normalizedPhone} group=${groupJid}`);
-
-          // Automação de retorno: dispara em fire-and-forget para não bloquear o webhook
-          try {
-            supabase.functions.invoke('fe-return-automation-trigger', {
-              body: {
-                tenant_id: eventTenantId,
-                group_id: feGroup?.id || null,
-                group_jid: groupJid,
-                group_name: feGroup?.group_name || null,
-                phone: normalizedPhone,
-                event_type: feEventType,
-              },
-            }).catch((err) => console.error('[zapi-webhook] return-automation-trigger error:', err?.message));
-          } catch (_) { /* ignore */ }
-
-          if (feGroup) {
-            const newCount = Math.max(0, (feGroup.participant_count || 0) + (feEventType === 'join' ? 1 : -1));
-            feGroup.participant_count = newCount;
-            await supabase.from('fe_groups').update({ participant_count: newCount }).eq('id', feGroup.id);
-
-            // Find campaigns this group belongs to
-            const { data: campaignLinks } = await supabase
-              .from('fe_campaign_groups')
-              .select('campaign_id')
-              .eq('group_id', feGroup.id);
-            const campaignIds = (campaignLinks || []).map((cl: any) => cl.campaign_id);
-
-            // Build OR filter: 
-            // 1) group_id matches this specific group
-            // 2) group_id is null AND campaign_id is null → "all groups" scope
-            // 3) campaign_id matches one of the campaigns this group belongs to
-            let orFilter = `group_id.eq.${feGroup.id},and(group_id.is.null,campaign_id.is.null)`;
-            if (campaignIds.length > 0) {
-              orFilter += `,campaign_id.in.(${campaignIds.join(',')})`;
-            }
-
-            const { data: autoMsgs } = await supabase
-              .from('fe_auto_messages')
-              .select('*')
-              .eq('tenant_id', eventTenantId)
-              .eq('event_type', feEventType)
-              .eq('is_active', true)
-              .or(orFilter);
-
-            if (autoMsgs && autoMsgs.length > 0) {
-              // Use already-fetched creds or fetch if not available
-              const creds = zapiCreds;
-
-              if (creds?.zapi_instance_id && creds?.zapi_token) {
-                const baseUrl = `https://api.z-api.io/instances/${creds.zapi_instance_id}/token/${creds.zapi_token}`;
-                const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-                if (creds.zapi_client_token) headers['Client-Token'] = creds.zapi_client_token;
-
-                for (const autoMsg of autoMsgs) {
-                  try {
-                    const phoneForSend = `55${normalizedPhone}`;
-                    let text = autoMsg.content_text || '';
-                    text = text.replace(/\{\{phone\}\}/g, normalizedPhone).replace(/\{\{group\}\}/g, feGroup.group_name || groupJid);
-
-                    if (autoMsg.content_type === 'text' && text) {
-                      const sendResult = await fetch(`${baseUrl}/send-text`, {
-                        method: 'POST',
-                        headers,
-                        body: JSON.stringify({ phone: phoneForSend, message: text }),
-                      });
-                      const sendBody = await sendResult.text();
-                      console.log(`[zapi-webhook] Auto-message text result for ${feEventType} to ${phoneForSend}: status=${sendResult.status} body=${sendBody.substring(0, 300)}`);
-                      if (sendResult.ok) await supabase.rpc('fe_auto_message_inc', { p_id: autoMsg.id });
-                    } else if (autoMsg.content_type === 'image' && autoMsg.media_url) {
-                      const sendResult = await fetch(`${baseUrl}/send-image`, {
-                        method: 'POST',
-                        headers,
-                        body: JSON.stringify({ phone: phoneForSend, image: autoMsg.media_url, caption: text }),
-                      });
-                      const sendBody = await sendResult.text();
-                      console.log(`[zapi-webhook] Auto-message image result for ${feEventType} to ${phoneForSend}: status=${sendResult.status} body=${sendBody.substring(0, 300)}`);
-                      if (sendResult.ok) await supabase.rpc('fe_auto_message_inc', { p_id: autoMsg.id });
-                    }
-                  } catch (amErr: any) {
-                    console.error('[zapi-webhook] Auto-message error:', amErr.message);
-                  }
-                }
-              } else {
-                // Tenant em UazAPI: mesmo ritmo do disparo em massa (digitando 1,5s + pausa 2s entre mensagens)
-                const { data: uaz } = await supabase
-                  .from('integration_whatsapp')
-                  .select('uazapi_url, uazapi_token, provider, is_active')
-                  .eq('tenant_id', eventTenantId)
-                  .eq('is_active', true)
-                  .maybeSingle();
-                if (uaz?.provider === 'uazapi' && uaz.uazapi_url && uaz.uazapi_token) {
-                  const uazUrl = String(uaz.uazapi_url).replace(/\/+$/, '');
-                  const uazHeaders = { 'Content-Type': 'application/json', 'token': uaz.uazapi_token };
-                  const phoneForSend = `55${normalizedPhone}`;
-                  let first = true;
-                  for (const autoMsg of autoMsgs) {
-                    try {
-                      let text = (autoMsg.content_text || '')
-                        .replace(/\{\{phone\}\}/g, normalizedPhone)
-                        .replace(/\{\{group\}\}/g, feGroup.group_name || groupJid);
-                      text = addMessageVariation(text, false, { invisibleVariation: true });
-                      const isImage = autoMsg.content_type === 'image' && autoMsg.media_url;
-                      if (!isImage && !(autoMsg.content_type === 'text' && text)) continue;
-                      if (!first) await new Promise((r) => setTimeout(r, 2000));
-                      first = false;
-                      try {
-                        await fetch(`${uazUrl}/send/presence`, {
-                          method: 'POST', headers: uazHeaders,
-                          body: JSON.stringify({ number: phoneForSend, presence: 'composing', delay: 1500 }),
-                        });
-                        await new Promise((r) => setTimeout(r, 1500));
-                      } catch (_) { /* ignore */ }
-                      const res = await fetch(`${uazUrl}/send/${isImage ? 'media' : 'text'}`, {
-                        method: 'POST', headers: uazHeaders,
-                        body: JSON.stringify(isImage
-                          ? { number: phoneForSend, type: 'image', file: autoMsg.media_url, text }
-                          : { number: phoneForSend, text }),
-                      });
-                      const body = await res.text();
-                      console.log(`[zapi-webhook] Auto-message (uazapi) ${feEventType} to ${phoneForSend}: status=${res.status} body=${body.substring(0, 200)}`);
-                      if (res.ok) await supabase.rpc('fe_auto_message_inc', { p_id: autoMsg.id });
-                    } catch (uazErr: any) {
-                      console.error('[zapi-webhook] Auto-message (uazapi) error:', uazErr.message);
-                    }
-                  }
-                } else {
-                  console.warn(`[zapi-webhook] No Z-API/UazAPI credentials found for tenant ${eventTenantId} to send auto-message`);
-                }
-              }
-            }
-          } else {
-            console.log(`[zapi-webhook] Group ${groupJid} not registered in fe_groups for tenant ${eventTenantId}, event recorded without auto-message`);
-          }
-        }
-
-        console.log(`[zapi-webhook] Group event processed: ${feEventType} in ${groupJid} (${participants.length} participants)`);
-        return new Response(JSON.stringify({ success: true, event: feEventType, group: groupJid }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      console.log(`[zapi-webhook] Group event ignored (tenant=${eventTenantId}, group=${groupJid}, action=${normalizedAction})`);
-      return new Response(JSON.stringify({ success: true, skipped: 'group_event_no_tenant_or_action' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return await handleGroupParticipantEvent(supabase, payload, eventType, notification, isReceivedCallbackGroupEvent);
     }
     // ─── FIM: Captura eventos de grupo ───────────────────────────────────
 
@@ -1007,71 +544,16 @@ serve(async (req) => {
     // carrinho e disparando "Item Adicionado" sem a cliente ter pedido nada.
     // Detecta o padrão estrutural de divulgação (emoji de loja + instrução de
     // compra) e ignora a mensagem inteira nesse caso.
-    const isBroadcastMessage = /🛍️/.test(messageText)
-      && /(para\s+(comprar|adquirir)[^\n]{0,40}(digite|responda)|digite\s+apenas\s+o\s+c[oó]digo)/i.test(messageText);
+    const isBroadcastMessage = isProductBroadcastMessage(messageText);
 
-    // Recognize product codes with optional quantity:
-    // Formats: C76126x2, C76126 x2, 2xC76126, 2x C76126, C76126X2, etc.
-    // Also plain: C76126 (qty=1)
-    // Supports variants with "/" or "-": C370/24, C014-1
-    const productEntries: Array<{ code: string; qty: number }> = [];
+    // Códigos de produto do comentário (C76126x2, 2xC76126, C370/24, T002-01...) — regra em _shared/live-comment-codes.ts
+    let productEntries: Array<{ code: string; qty: number }> = [];
 
     if (isBroadcastMessage) {
       console.log(`[zapi-webhook] ⏭️ SKIPPED: mensagem parece ser uma divulgação de produto (SendFlow), não um pedido. From: ${senderPhone}`);
     } else {
-
-    // Code suffix capture: digits, optionally followed by /NN or -NN (variants like /24, -1, T002-01)
-    // Accepts 1-3 letter prefix (C, T, P, SKU...) followed by digits and optional variant suffix.
-    // Pattern 1: code first, then optional quantity — C76126x2, T002-01x2, C370/24 x2
-    const codeFirstRegex = /\b([A-Za-z]{1,3})(\d{1,6}(?:[\/\-]\d{1,3})?)\s*[xX]\s*(\d{1,3})\b/g;
-    // Pattern 2: quantity first, then code — 2xC76126, 2xT002-01
-    const qtyFirstRegex = /\b(\d{1,3})\s*[xX]\s*([A-Za-z]{1,3})(\d{1,6}(?:[\/\-]\d{1,3})?)\b/g;
-    // Pattern 3: plain code without quantity — C76126, T002-01, C370/24
-    const plainCodeRegex = /\b([A-Za-z]{1,3})(\d{1,6}(?:[\/\-]\d{1,3})?)/g;
-
-    const processedCodes = new Set<string>();
-    let match;
-
-    // First pass: "C76126x2" / "T002-01x2" style
-    while ((match = codeFirstRegex.exec(messageText)) !== null) {
-      const normalized = `${match[1].toUpperCase()}${match[2]}`;
-      const qty = Math.max(1, Math.min(parseInt(match[3], 10), 99));
-      if (!processedCodes.has(normalized)) {
-        processedCodes.add(normalized);
-        productEntries.push({ code: normalized, qty });
-      }
+      productEntries = extractProductEntries(messageText);
     }
-
-    // Second pass: "2xC76126" / "2xT002-01" style
-    while ((match = qtyFirstRegex.exec(messageText)) !== null) {
-      const normalized = `${match[2].toUpperCase()}${match[3]}`;
-      const qty = Math.max(1, Math.min(parseInt(match[1], 10), 99));
-      if (!processedCodes.has(normalized)) {
-        processedCodes.add(normalized);
-        productEntries.push({ code: normalized, qty });
-      }
-    }
-
-    // Third pass: plain "C76126" / "T002-01" (only if not already matched with quantity)
-    // Prefer the longer/more specific match: if "C370/24" was captured, don't also add "C370".
-    const plainMatches: string[] = [];
-    while ((match = plainCodeRegex.exec(messageText)) !== null) {
-      plainMatches.push(`${match[1].toUpperCase()}${match[2]}`);
-    }
-    // Sort by length DESC so variants come first (T002-01 before T002)
-    plainMatches.sort((a, b) => b.length - a.length);
-    for (const normalized of plainMatches) {
-      // Skip if a more specific variant of this code was already added
-      const hasMoreSpecific = Array.from(processedCodes).some(
-        c => c !== normalized && c.startsWith(normalized) && (c[normalized.length] === '/' || c[normalized.length] === '-')
-      );
-      if (!processedCodes.has(normalized) && !hasMoreSpecific) {
-        processedCodes.add(normalized);
-        productEntries.push({ code: normalized, qty: 1 });
-      }
-    }
-
-    } // fim do else (!isBroadcastMessage)
 
     const productCodes = productEntries.map(e => e.code);
 
@@ -2007,7 +1489,12 @@ serve(async (req) => {
             const outOfStockMsg = waitlistPosition
               ? `😔 *Produto Esgotado*\n\nO produto *${product.name}* (${product.code}) está esgotado.\n\n🎯 Te coloquei na *fila de espera*! Você é a *${waitlistPosition}ª* da fila. Assim que voltar ao estoque, separo uma unidade pra você e te aviso aqui no WhatsApp com o link de pagamento. 💚`
               : `❌ *Produto Esgotado!*\n\nO produto *${product.name}* (${product.code}) está esgotado.\n\nDesculpe pelo inconveniente! 😔`;
-            await sendZAPIMessage(supabase, tenantId, senderPhone, outOfStockMsg);
+            // Etapa 4.2: antes chamava sendZAPIMessage, que não existe — dava erro e a mensagem de esgotado/fila nunca saía.
+            // Agora usa o envio padrão do sistema (zapi-send-message escolhe Z-API, UazAPI ou API oficial da loja).
+            const { error: oosErr } = await supabase.functions.invoke('zapi-send-message', {
+              body: { tenant_id: tenantId, phone: senderPhone, message: outOfStockMsg },
+            });
+            if (oosErr) console.error('[zapi-webhook] falha ao avisar esgotado:', oosErr.message);
           }
           continue;
         }
@@ -2243,6 +1730,480 @@ serve(async (req) => {
 });
 
 // Handle message status callbacks from Z-API
+// Conexão/desconexão do WhatsApp: registra, pausa envios em massa quando cai. (Saiu do atendimento principal na etapa 4.2.)
+async function handleConnectionEvent(supabase: any, payload: ZAPIWebhookPayload, evtType: string): Promise<Response> {
+    try {
+      const integ = await resolveZapiIntegration(supabase, payload.instanceId, payload.connectedPhone, (payload as any).uazapi_tenant_id);
+      if (integ?.tenant_id) {
+        const reason = (payload as any).reason || (payload as any).cause || (payload as any).error || '';
+        const connectedPhoneStr = payload.connectedPhone || '';
+        const msg = `Z-API ${evtType}${reason ? ` | reason=${reason}` : ''} | phone=${connectedPhoneStr} | instanceId=${payload.instanceId || ''}`;
+        await supabase.from('whatsapp_messages').insert({
+          tenant_id: integ.tenant_id,
+          phone: connectedPhoneStr || 'system',
+          message: msg,
+          type: 'system_log',
+          created_at: new Date().toISOString(),
+        });
+        console.log(`[zapi-webhook] 🔌 ${msg}`);
+
+        // 🛑 Auto-pausar envios em massa (sendflow/mass_message) quando o telefone desconectar
+        const isDisconnect =
+          evtType === 'DisconnectedCallback' ||
+          evtType === 'NotificationDisconnectedCallback';
+        if (isDisconnect) {
+          try {
+            const { data: pausedJobs, error: pauseErr } = await supabase
+              .from('sending_jobs')
+              .update({
+                status: 'paused',
+                paused_at: new Date().toISOString(),
+                error_message: 'Pausado automaticamente: WhatsApp desconectado',
+                updated_at: new Date().toISOString(),
+              })
+              .eq('tenant_id', integ.tenant_id)
+              .eq('status', 'running')
+              .in('job_type', ['sendflow', 'mass_message', 'cobranca'])
+              .select('id, job_type');
+
+            if (pauseErr) {
+              console.error('[zapi-webhook] Erro ao pausar envios automáticos:', pauseErr.message);
+            } else if (pausedJobs && pausedJobs.length > 0) {
+              console.log(`[zapi-webhook] ⏸️ ${pausedJobs.length} envio(s) pausado(s) por desconexão do tenant ${integ.tenant_id}`);
+              await supabase.from('whatsapp_messages').insert({
+                tenant_id: integ.tenant_id,
+                phone: connectedPhoneStr || 'system',
+                message: `Envios pausados automaticamente por desconexão (${pausedJobs.length} job(s)): ${pausedJobs.map((j: any) => `${j.job_type}#${String(j.id).slice(0, 8)}`).join(', ')}`,
+                type: 'system_log',
+                created_at: new Date().toISOString(),
+              });
+            }
+          } catch (pauseCatch: any) {
+            console.error('[zapi-webhook] Exceção ao auto-pausar envios:', pauseCatch?.message);
+          }
+        }
+      } else {
+        console.log(`[zapi-webhook] 🔌 ${evtType} (no tenant resolved) instanceId=${payload.instanceId}`);
+      }
+    } catch (logErr: any) {
+      console.error('[zapi-webhook] Failed to log connection event:', logErr?.message);
+    }
+    return new Response(JSON.stringify({ ok: true, logged: true }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
+// Entrada/saída de participantes em grupos (Fluxo de Envio / grupos VIP). (Saiu do atendimento principal na etapa 4.2.)
+async function handleGroupParticipantEvent(supabase: any, payload: ZAPIWebhookPayload, eventType: string | undefined, notification: string, isReceivedCallbackGroupEvent: boolean): Promise<Response> {
+    let normalizedAction: string;
+    let groupJid: string;
+    let participants: string[];
+    const instanceId = payload.instanceId || '';
+    const eventTimestamp = payload.momment || payload.timestamp || Date.now();
+
+    if (isReceivedCallbackGroupEvent) {
+      // Format 2: ReceivedCallback with notification field
+      // notification: GROUP_PARTICIPANT_ADD | GROUP_PARTICIPANT_LEAVE | GROUP_PARTICIPANT_REMOVE
+      const notifAction = notification.replace('GROUP_PARTICIPANT_', '').toLowerCase();
+      normalizedAction = notifAction;
+      groupJid = payload.phone || payload.chatId || '';
+      // Participant comes from participantPhone, notificationParameters (strip @lid), or participant
+      const rawParticipants: string[] = [];
+      if (payload.participantPhone) rawParticipants.push(payload.participantPhone);
+      if (payload.notificationParameters && payload.notificationParameters.length > 0) {
+        for (const param of payload.notificationParameters) {
+          const cleaned = param.replace(/@lid$/i, '').replace(/@s\.whatsapp\.net$/i, '');
+          if (cleaned && !rawParticipants.includes(cleaned)) rawParticipants.push(cleaned);
+        }
+      }
+      if (payload.participant && !rawParticipants.includes(payload.participant)) {
+        rawParticipants.push(payload.participant);
+      }
+      participants = rawParticipants.filter(Boolean);
+      console.log(`[zapi-webhook] 📥 ReceivedCallback group event: notification=${notification}, group=${groupJid}, participants=${JSON.stringify(participants)}`);
+    } else {
+      // Format 1: Dedicated GroupParticipantsUpdate type
+      const eventPayload = payload.data || payload;
+      const action = eventPayload.action || eventPayload.event || eventPayload.notification || payload.notification || '';
+      normalizedAction = String(action).toLowerCase();
+      groupJid = eventPayload.chatId || eventPayload.groupId || payload.chatId || payload.groupId || '';
+      const participantsRaw = eventPayload.participants || payload.participants || [
+        eventPayload.participantPhone,
+        eventPayload.participant,
+        payload.participantPhone,
+        payload.participant,
+        payload.phone,
+      ].filter(Boolean);
+      participants = Array.isArray(participantsRaw) ? participantsRaw : [participantsRaw];
+    }
+
+    // Bridge UazAPI: alguns eventos chegam como `GroupParticipantsCallback`
+    // com action/notification genérico (`group_event`), mas contendo o
+    // participante que entrou. Nesse caso, tratar como entrada para não perder
+    // a contagem do relatório.
+    if ((!normalizedAction || normalizedAction === 'group_event') && participants.length > 0 && eventType === 'GroupParticipantsCallback') {
+      normalizedAction = 'add';
+    }
+
+    let eventTenantId: string | null = null;
+    let zapiCreds: { zapi_instance_id: string | null; zapi_token: string | null; zapi_client_token: string | null } | null = null;
+
+    const integ = await resolveZapiIntegration(supabase, instanceId, payload.connectedPhone, (payload as any).uazapi_tenant_id);
+    if (integ) {
+      eventTenantId = integ.tenant_id;
+      zapiCreds = { zapi_instance_id: integ.zapi_instance_id, zapi_token: integ.zapi_token, zapi_client_token: integ.zapi_client_token };
+    }
+
+    const actionCompact = normalizedAction.replace(/[\s_\-.]+/g, '');
+    const isJoinEvent = ['add', 'join', 'joined', 'invite', 'introduced'].includes(actionCompact);
+    const isLeaveEvent = ['remove', 'removed', 'leave', 'left', 'exit', 'exited', 'out', 'kick', 'kicked'].includes(actionCompact);
+
+    if (eventTenantId && groupJid && (isJoinEvent || isLeaveEvent)) {
+      const feEventType = isJoinEvent ? 'join' : 'leave';
+
+      // ─── LID Resolution: detect if participants are LIDs (not real phones) ───
+      // WhatsApp LIDs are internal identifiers (15+ digits), not phone numbers.
+      // Brazilian phones max out at 13 digits (55 + 2 DDD + 9 number).
+      const isLid = (val: string): boolean => {
+        const digits = normalizeDigits(val);
+        return digits.length > 13;
+      };
+
+      const hasLidOnly = participants.length > 0 && participants.every(p => isLid(p));
+
+      if (hasLidOnly && zapiCreds?.zapi_instance_id && zapiCreds?.zapi_token) {
+        console.log(`[zapi-webhook] 🔍 Participants are LIDs, resolving via group-metadata...`);
+        const baseUrlMeta = `https://api.z-api.io/instances/${zapiCreds.zapi_instance_id}/token/${zapiCreds.zapi_token}`;
+        const headersMeta: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (zapiCreds.zapi_client_token) headersMeta['Client-Token'] = zapiCreds.zapi_client_token;
+
+        try {
+          const metaRes = await fetch(`${baseUrlMeta}/group-metadata/${groupJid}`, { method: 'GET', headers: headersMeta });
+          const metadata = await metaRes.json();
+          console.log(`[zapi-webhook] group-metadata response status=${metaRes.status}, participants count=${metadata?.participants?.length || 0}`);
+
+          if (metadata?.participants && Array.isArray(metadata.participants)) {
+            // Get all real phone numbers currently in the group
+            const currentGroupPhones = metadata.participants
+              .map((p: any) => normalizeParticipantPhone(p.phone))
+              .filter((p: string) => p && !isLid(p));
+
+            if (isJoinEvent) {
+              // For JOIN: find phones in group that DON'T have a recent join event
+              const recentWindow = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+              const { data: recentJoins } = await supabase
+                .from('fe_group_events')
+                .select('phone')
+                .eq('tenant_id', eventTenantId)
+                .eq('group_jid', groupJid)
+                .eq('event_type', 'join')
+                .gte('created_at', recentWindow);
+
+              const recentJoinPhones = new Set((recentJoins || []).map((e: any) => e.phone));
+              // Also check which phones already had a join event ever (to compare)
+              const { data: allKnownEvents } = await supabase
+                .from('fe_group_events')
+                .select('phone, event_type')
+                .eq('tenant_id', eventTenantId)
+                .eq('group_jid', groupJid)
+                .order('created_at', { ascending: false });
+
+              // Build a set of phones that are "known members" (last event was join)
+              const knownMembers = new Set<string>();
+              const seenPhones = new Set<string>();
+              for (const ev of (allKnownEvents || [])) {
+                if (!seenPhones.has(ev.phone)) {
+                  seenPhones.add(ev.phone);
+                  if (ev.event_type === 'join') knownMembers.add(ev.phone);
+                }
+              }
+
+              // New participants = in group now but not known members and not recently joined
+              const newPhones = currentGroupPhones.filter((p: string) =>
+                !knownMembers.has(p) && !recentJoinPhones.has(p)
+              );
+
+              if (newPhones.length > 0) {
+                participants = newPhones;
+                console.log(`[zapi-webhook] ✅ Resolved LID → real phones for JOIN: ${JSON.stringify(newPhones)}`);
+              } else {
+                // Fallback: couldn't determine who's new, skip
+                console.warn(`[zapi-webhook] ⚠️ Could not resolve new participants from LID. Group has ${currentGroupPhones.length} members, ${knownMembers.size} known.`);
+                participants = [];
+              }
+            } else {
+              // For LEAVE: find phones we know as members but NOT in current group
+              const { data: allKnownEvents } = await supabase
+                .from('fe_group_events')
+                .select('phone, event_type')
+                .eq('tenant_id', eventTenantId)
+                .eq('group_jid', groupJid)
+                .order('created_at', { ascending: false });
+
+              const knownMembers = new Set<string>();
+              const seenPhones = new Set<string>();
+              for (const ev of (allKnownEvents || [])) {
+                if (!seenPhones.has(ev.phone)) {
+                  seenPhones.add(ev.phone);
+                  if (ev.event_type === 'join') knownMembers.add(ev.phone);
+                }
+              }
+
+              const currentSet = new Set(currentGroupPhones);
+              const leftPhones = Array.from(knownMembers).filter(p => !currentSet.has(p));
+
+              if (leftPhones.length > 0) {
+                participants = leftPhones;
+                console.log(`[zapi-webhook] ✅ Resolved LID → real phones for LEAVE: ${JSON.stringify(leftPhones)}`);
+              } else {
+                console.warn(`[zapi-webhook] ⚠️ Could not resolve departed participants from LID.`);
+                participants = [];
+              }
+            }
+          }
+        } catch (metaErr: any) {
+          console.error(`[zapi-webhook] group-metadata call failed: ${metaErr.message}`);
+          participants = []; // Don't process with invalid LID phones
+        }
+      }
+      // ─── FIM LID Resolution ───
+
+      const { data: feGroup } = await supabase
+        .from('fe_groups')
+        .select('id, group_jid, group_name, participant_count')
+        .eq('tenant_id', eventTenantId)
+        .eq('group_jid', groupJid)
+        .maybeSingle();
+
+      // UazAPI às vezes envia o evento de entrada com action=add, porém sem
+      // o telefone do participante. Antes isso resultava em 0 linhas gravadas
+      // e o relatório ficava menor que o WhatsApp. Registramos um evento
+      // anônimo estável por timestamp para preservar a contagem e evitar
+      // duplicidade em retry do mesmo webhook.
+      if (participants.length === 0 && feGroup) {
+        const anonymousPhone = `unknown-${eventTimestamp}`;
+        const dedupeKey = `${eventTenantId}:${groupJid}:${anonymousPhone}:${feEventType}:${eventTimestamp}`;
+        if (!isDuplicateGroupEvent(dedupeKey)) {
+          const { data: existingAnonymous } = await supabase
+            .from('fe_group_events')
+            .select('id')
+            .eq('tenant_id', eventTenantId)
+            .eq('group_jid', groupJid)
+            .eq('phone', anonymousPhone)
+            .eq('event_type', feEventType)
+            .limit(1)
+            .maybeSingle();
+
+          if (!existingAnonymous) {
+            await supabase.from('fe_group_events').insert({
+              tenant_id: eventTenantId,
+              group_id: feGroup.id,
+              group_jid: groupJid,
+              phone: anonymousPhone,
+              event_type: feEventType,
+            });
+
+            const newCount = Math.max(0, (feGroup.participant_count || 0) + (feEventType === 'join' ? 1 : -1));
+            feGroup.participant_count = newCount;
+            await supabase.from('fe_groups').update({ participant_count: newCount }).eq('id', feGroup.id);
+            console.log(`[zapi-webhook] ✅ Anonymous group event recorded: ${feEventType} group=${groupJid} timestamp=${eventTimestamp}`);
+          }
+        }
+
+        return new Response(JSON.stringify({ success: true, event: feEventType, group: groupJid, anonymous: true }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      for (const rawPhone of participants) {
+        const normalizedPhone = normalizeParticipantPhone(rawPhone);
+        if (!normalizedPhone || isLid(normalizedPhone)) continue;
+
+        if (normalizedPhone.length < 10 || normalizedPhone.length > 11) {
+          console.warn(`[zapi-webhook] Invalid participant phone resolved from ${rawPhone}: ${normalizedPhone}`);
+          continue;
+        }
+
+        const dedupeKey = `${eventTenantId}:${groupJid}:${normalizedPhone}:${feEventType}:${eventTimestamp}`;
+        if (isDuplicateGroupEvent(dedupeKey)) {
+          continue;
+        }
+
+        const recentThreshold = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+        const { data: existingEvent } = await supabase
+          .from('fe_group_events')
+          .select('id')
+          .eq('tenant_id', eventTenantId)
+          .eq('group_jid', groupJid)
+          .eq('phone', normalizedPhone)
+          .eq('event_type', feEventType)
+          .gte('created_at', recentThreshold)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (existingEvent) {
+          console.log(`[zapi-webhook] Recent duplicate group event skipped for ${normalizedPhone} in ${groupJid}`);
+          continue;
+        }
+
+        await supabase.from('fe_group_events').insert({
+          tenant_id: eventTenantId,
+          group_id: feGroup?.id || null,
+          group_jid: groupJid,
+          phone: normalizedPhone,
+          event_type: feEventType,
+        });
+
+        console.log(`[zapi-webhook] ✅ Group event recorded: ${feEventType} phone=${normalizedPhone} group=${groupJid}`);
+
+        // Automação de retorno: dispara em fire-and-forget para não bloquear o webhook
+        try {
+          supabase.functions.invoke('fe-return-automation-trigger', {
+            body: {
+              tenant_id: eventTenantId,
+              group_id: feGroup?.id || null,
+              group_jid: groupJid,
+              group_name: feGroup?.group_name || null,
+              phone: normalizedPhone,
+              event_type: feEventType,
+            },
+          }).catch((err) => console.error('[zapi-webhook] return-automation-trigger error:', err?.message));
+        } catch (_) { /* ignore */ }
+
+        if (feGroup) {
+          const newCount = Math.max(0, (feGroup.participant_count || 0) + (feEventType === 'join' ? 1 : -1));
+          feGroup.participant_count = newCount;
+          await supabase.from('fe_groups').update({ participant_count: newCount }).eq('id', feGroup.id);
+
+          // Find campaigns this group belongs to
+          const { data: campaignLinks } = await supabase
+            .from('fe_campaign_groups')
+            .select('campaign_id')
+            .eq('group_id', feGroup.id);
+          const campaignIds = (campaignLinks || []).map((cl: any) => cl.campaign_id);
+
+          // Build OR filter: 
+          // 1) group_id matches this specific group
+          // 2) group_id is null AND campaign_id is null → "all groups" scope
+          // 3) campaign_id matches one of the campaigns this group belongs to
+          let orFilter = `group_id.eq.${feGroup.id},and(group_id.is.null,campaign_id.is.null)`;
+          if (campaignIds.length > 0) {
+            orFilter += `,campaign_id.in.(${campaignIds.join(',')})`;
+          }
+
+          const { data: autoMsgs } = await supabase
+            .from('fe_auto_messages')
+            .select('*')
+            .eq('tenant_id', eventTenantId)
+            .eq('event_type', feEventType)
+            .eq('is_active', true)
+            .or(orFilter);
+
+          if (autoMsgs && autoMsgs.length > 0) {
+            // Use already-fetched creds or fetch if not available
+            const creds = zapiCreds;
+
+            if (creds?.zapi_instance_id && creds?.zapi_token) {
+              const baseUrl = `https://api.z-api.io/instances/${creds.zapi_instance_id}/token/${creds.zapi_token}`;
+              const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+              if (creds.zapi_client_token) headers['Client-Token'] = creds.zapi_client_token;
+
+              for (const autoMsg of autoMsgs) {
+                try {
+                  const phoneForSend = `55${normalizedPhone}`;
+                  let text = autoMsg.content_text || '';
+                  text = text.replace(/\{\{phone\}\}/g, normalizedPhone).replace(/\{\{group\}\}/g, feGroup.group_name || groupJid);
+
+                  if (autoMsg.content_type === 'text' && text) {
+                    const sendResult = await fetch(`${baseUrl}/send-text`, {
+                      method: 'POST',
+                      headers,
+                      body: JSON.stringify({ phone: phoneForSend, message: text }),
+                    });
+                    const sendBody = await sendResult.text();
+                    console.log(`[zapi-webhook] Auto-message text result for ${feEventType} to ${phoneForSend}: status=${sendResult.status} body=${sendBody.substring(0, 300)}`);
+                    if (sendResult.ok) await supabase.rpc('fe_auto_message_inc', { p_id: autoMsg.id });
+                  } else if (autoMsg.content_type === 'image' && autoMsg.media_url) {
+                    const sendResult = await fetch(`${baseUrl}/send-image`, {
+                      method: 'POST',
+                      headers,
+                      body: JSON.stringify({ phone: phoneForSend, image: autoMsg.media_url, caption: text }),
+                    });
+                    const sendBody = await sendResult.text();
+                    console.log(`[zapi-webhook] Auto-message image result for ${feEventType} to ${phoneForSend}: status=${sendResult.status} body=${sendBody.substring(0, 300)}`);
+                    if (sendResult.ok) await supabase.rpc('fe_auto_message_inc', { p_id: autoMsg.id });
+                  }
+                } catch (amErr: any) {
+                  console.error('[zapi-webhook] Auto-message error:', amErr.message);
+                }
+              }
+            } else {
+              // Tenant em UazAPI: mesmo ritmo do disparo em massa (digitando 1,5s + pausa 2s entre mensagens)
+              const { data: uaz } = await supabase
+                .from('integration_whatsapp')
+                .select('uazapi_url, uazapi_token, provider, is_active')
+                .eq('tenant_id', eventTenantId)
+                .eq('is_active', true)
+                .maybeSingle();
+              if (uaz?.provider === 'uazapi' && uaz.uazapi_url && uaz.uazapi_token) {
+                const uazUrl = String(uaz.uazapi_url).replace(/\/+$/, '');
+                const uazHeaders = { 'Content-Type': 'application/json', 'token': uaz.uazapi_token };
+                const phoneForSend = `55${normalizedPhone}`;
+                let first = true;
+                for (const autoMsg of autoMsgs) {
+                  try {
+                    let text = (autoMsg.content_text || '')
+                      .replace(/\{\{phone\}\}/g, normalizedPhone)
+                      .replace(/\{\{group\}\}/g, feGroup.group_name || groupJid);
+                    text = addMessageVariation(text, false, { invisibleVariation: true });
+                    const isImage = autoMsg.content_type === 'image' && autoMsg.media_url;
+                    if (!isImage && !(autoMsg.content_type === 'text' && text)) continue;
+                    if (!first) await new Promise((r) => setTimeout(r, 2000));
+                    first = false;
+                    try {
+                      await fetch(`${uazUrl}/send/presence`, {
+                        method: 'POST', headers: uazHeaders,
+                        body: JSON.stringify({ number: phoneForSend, presence: 'composing', delay: 1500 }),
+                      });
+                      await new Promise((r) => setTimeout(r, 1500));
+                    } catch (_) { /* ignore */ }
+                    const res = await fetch(`${uazUrl}/send/${isImage ? 'media' : 'text'}`, {
+                      method: 'POST', headers: uazHeaders,
+                      body: JSON.stringify(isImage
+                        ? { number: phoneForSend, type: 'image', file: autoMsg.media_url, text }
+                        : { number: phoneForSend, text }),
+                    });
+                    const body = await res.text();
+                    console.log(`[zapi-webhook] Auto-message (uazapi) ${feEventType} to ${phoneForSend}: status=${res.status} body=${body.substring(0, 200)}`);
+                    if (res.ok) await supabase.rpc('fe_auto_message_inc', { p_id: autoMsg.id });
+                  } catch (uazErr: any) {
+                    console.error('[zapi-webhook] Auto-message (uazapi) error:', uazErr.message);
+                  }
+                }
+              } else {
+                console.warn(`[zapi-webhook] No Z-API/UazAPI credentials found for tenant ${eventTenantId} to send auto-message`);
+              }
+            }
+          }
+        } else {
+          console.log(`[zapi-webhook] Group ${groupJid} not registered in fe_groups for tenant ${eventTenantId}, event recorded without auto-message`);
+        }
+      }
+
+      console.log(`[zapi-webhook] Group event processed: ${feEventType} in ${groupJid} (${participants.length} participants)`);
+      return new Response(JSON.stringify({ success: true, event: feEventType, group: groupJid }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    console.log(`[zapi-webhook] Group event ignored (tenant=${eventTenantId}, group=${groupJid}, action=${normalizedAction})`);
+    return new Response(JSON.stringify({ success: true, skipped: 'group_event_no_tenant_or_action' }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+
 async function handleMessageStatusCallback(supabase: any, payload: ZAPIWebhookPayload) {
   const { status, ids, phone } = payload;
   

@@ -8,6 +8,7 @@ import {
 } from '@/lib/live-shop';
 import './live-shop.css';
 import ImageLightbox from './ImageLightbox';
+import { computeOrderTotals, pixDiscountPerOrder } from '../../../supabase/functions/_shared/order-totals.ts';
 
 type Screen = 'shop' | 'cart' | 'checkout' | 'done';
 type Modal =
@@ -469,13 +470,13 @@ export default function LiveShop() {
   }, [meta]);
   // P-09 (decisão do Rafael, 19/11): o desconto Pix é sobre o subtotal cheio dos produtos, igual ao servidor
   // (_shared/pix-discount.ts); o cupom é abatido à parte. Assim a tela mostra exatamente o que será cobrado.
-  const pixPct = pay === 'pix' ?meta?.payment.pix_discount_percent || 0 : 0;
-  const pixOff = pixPct > 0 ? Math.round((subtotal * pixPct) / 100 * 100) / 100 : 0;
-  const totalFinal = Math.max(0, subtotal - couponOff - pixOff) + shipPrice;
-  // Tela de finalizar: o total base (sem desconto Pix) e quanto o Pix abate; cada botão de pagar mostra o seu valor.
+  // Etapa 4.3: a conta do total é a mesma da cobrança (_shared/order-totals.ts).
   const pixPctMeta = meta?.payment.pix_discount_percent || 0;
-  const pixDiscountOnBase = Math.round((subtotal * pixPctMeta) / 100 * 100) / 100;
-  const baseTotal = Math.max(0, subtotal - couponOff) + shipPrice;
+  const totalsFor = (method: string) => computeOrderTotals({ orderSubtotals: [subtotal], method, pixPercent: pixPctMeta, couponDiscount: couponOff, shipping: shipPrice });
+  const totalFinal = totalsFor(pay).total;
+  // Tela de finalizar: cada botão de pagar mostra o seu valor (Pix com desconto, cartão sem).
+  const baseTotal = totalsFor('card').total;
+  const pixTotal = totalsFor('pix').total;
   const reserveLeft = expiresAt ? Math.max(0, Math.round((expiresAt - tick) / 1000)) : null;
 
   // ------------------------------------------------ carrinho
@@ -815,7 +816,7 @@ export default function LiveShop() {
     if (method !== 'pay_on_pickup') setPay(method);
     setDonePickup(false);
     // o desconto Pix depende da forma escolhida agora (o estado `pay` só atualiza no próximo render)
-    const pixOff = method === 'pix' ? Math.round((subtotal * (meta.payment.pix_discount_percent || 0)) / 100 * 100) / 100 : 0;
+    const pixOff = method === 'pix' ? pixDiscountPerOrder([subtotal], meta.payment.pix_discount_percent || 0)[0] : 0;
     if (!selectedShip) { toast('Escolha uma opção de frete'); return; }
     if (!validCpf(customer.cpf)) { setForm({ ...EMPTY_CUSTOMER, ...customer }); setFormError('Confirme seu CPF para continuar.'); setModal({ type: 'signup' }); return; }
     setBusy(true);
@@ -1264,7 +1265,7 @@ export default function LiveShop() {
               {couponOff > 0 && <div className="r"><span>Cupom {effectiveCode}</span><span className="neg">- {brl(couponOff)}</span></div>}
               <div className="r"><span>Frete</span><span>{selectedShip ? (shipPrice ? brl(shipPrice) : 'Grátis') : '—'}</span></div>
               <div className="r tot"><span>Total</span><span>{brl(baseTotal)}</span></div>
-              {meta?.payment.pix && pixPctMeta > 0 && <div className="r sb"><span>Pagando no Pix: {pixPctMeta}% de desconto</span><span className="neg">{brl(baseTotal - pixDiscountOnBase)}</span></div>}
+              {meta?.payment.pix && pixPctMeta > 0 && <div className="r sb"><span>Pagando no Pix: {pixPctMeta}% de desconto</span><span className="neg">{brl(pixTotal)}</span></div>}
             </div>
           </div>
         </div>
@@ -1290,7 +1291,7 @@ export default function LiveShop() {
           {/* Um toque na forma de pagamento já cria o pedido e abre a página de pagamento (sem botão "Fazer pedido") */}
           {!pickupOn && meta?.payment.pix && (
             <button className="cta block" onClick={() => placeOrder('pix')} disabled={busy || !selectedShip || lines.length === 0} type="button">
-              {busy ? 'Abrindo o pagamento…' : `Pagar com Pix · ${brl(baseTotal - pixDiscountOnBase)}${pixPctMeta > 0 ? ` (${pixPctMeta}% off)` : ''}`}
+              {busy ? 'Abrindo o pagamento…' : `Pagar com Pix · ${brl(pixTotal)}${pixPctMeta > 0 ? ` (${pixPctMeta}% off)` : ''}`}
             </button>
           )}
           {!pickupOn && meta?.payment.card && (
