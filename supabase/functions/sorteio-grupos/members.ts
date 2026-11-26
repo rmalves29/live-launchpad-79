@@ -93,8 +93,10 @@ export function applyEvents(members: Member[], events: Array<{ phone: string | n
   for (const e of events) {
     const phone = normPhone(e.phone);
     if (!phone) continue;
-    if (isLeave(e.event_type)) map.delete(phone);
-    else if (isJoin(e.event_type) && !map.has(phone)) map.set(phone, { phone, name: "", admin: false });
+    // o aviso de entrada/saída pode vir com ou sem o 9 do celular: compara todas as formas do número
+    const forms = phoneVariants(phone).filter((v) => v.startsWith("55"));
+    if (isLeave(e.event_type)) { for (const f of forms) map.delete(f); }
+    else if (isJoin(e.event_type) && !forms.some((f) => map.has(f))) map.set(phone, { phone, name: "", admin: false });
   }
   return Array.from(map.values());
 }

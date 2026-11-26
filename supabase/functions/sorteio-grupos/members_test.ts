@@ -52,3 +52,10 @@ Deno.test("aplica entradas e saídas depois da leitura", () => {
 Deno.test("variações do telefone", () => {
   eq(phoneVariants("553195309585").sort(), ["3195309585", "31995309585", "553195309585", "5531995309585"], "com e sem 9");
 });
+
+Deno.test("saída com número sem o 9 tira quem foi lido com o 9", () => {
+  const now = applyEvents([{ phone: "5531995309585", name: "", admin: false }], [{ phone: "3195309585", event_type: "leave" }]);
+  eq(now.length, 0, "saiu");
+  const again = applyEvents([{ phone: "5531995309585", name: "", admin: false }], [{ phone: "3195309585", event_type: "join" }]);
+  eq(again.length, 1, "não duplica");
+});
