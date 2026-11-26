@@ -10,6 +10,7 @@ export interface MergeableOrder {
 
 export interface OrderMergeResult {
   hasPaidOrderWithinPeriod: boolean;
+  /** Sempre vazio: o servidor só informa se existe pedido pago (ver hasPaidOrderWithinPeriod). */
   mergeableOrders: MergeableOrder[];
   orderMergeDays: number;
   loading: boolean;
@@ -72,31 +73,26 @@ export function useOrderMerge(
 
       const normalizedPhone = normalizeForStorage(customerPhone);
 
-      // Buscar pedidos PAGOS do cliente dentro do período via RPC (SECURITY DEFINER)
-      // Necessário pois a tabela orders tem RLS que bloqueia acesso anônimo direto
-      const { data: matchingOrders, error: ordersError } = await supabase
-        .rpc('get_paid_orders_for_merge', {
+      // Pergunta só SE o cliente tem pedido pago no período (RPC devolve true/false).
+      // Segurança: o checkout é público, então não recebe IDs, datas nem valores de pedidos.
+      const { data: hasPaid, error: ordersError } = await supabase
+        .rpc('has_paid_order_for_merge', {
           p_tenant_id: tenantId,
           p_customer_phone: normalizedPhone,
           p_from_date: limitDateISO
         });
 
       if (ordersError) {
-        console.error('Erro ao buscar pedidos pagos:', ordersError);
+        console.error('Erro ao verificar pedidos pagos:', ordersError);
         throw ordersError;
       }
 
-      if ((matchingOrders || []).length > 0) {
+      setMergeableOrders([]);
+      if (hasPaid === true) {
         setHasPaidOrderWithinPeriod(true);
-        setMergeableOrders((matchingOrders || []).map(o => ({
-          id: o.id,
-          created_at: o.created_at,
-          total_amount: o.total_amount
-        })));
-        console.log(`✅ Cliente tem ${matchingOrders.length} pedido(s) pago(s) nos últimos ${mergeDays} dias - frete grátis disponível`);
+        console.log(`✅ Cliente tem pedido pago nos últimos ${mergeDays} dias - frete grátis disponível`);
       } else {
         setHasPaidOrderWithinPeriod(false);
-        setMergeableOrders([]);
         console.log(`ℹ️ Nenhum pedido pago nos últimos ${mergeDays} dias para este cliente`);
       }
     } catch (err: any) {

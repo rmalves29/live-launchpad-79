@@ -10,6 +10,7 @@ import {
   calcTypingDuration,
   type UazapiConfig,
 } from "../_shared/uazapi-api.ts";
+import { authorizeTenantCaller, guardResponse } from "../_shared/auth-guard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -87,6 +88,9 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+    // Seguranca: so a propria loja, super admin ou chamada interna podem agir sobre este tenant_id
+    const guard = await authorizeTenantCaller(req, supabase, tenant_id);
+    if (!guard.ok) return guardResponse(guard, corsHeaders);
 
     const isGroup = isGroupJid(phone);
     if (!isGroup) {
