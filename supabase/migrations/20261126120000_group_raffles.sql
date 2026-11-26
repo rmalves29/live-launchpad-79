@@ -26,3 +26,29 @@ create policy "Loja vê os próprios sorteios de grupos" on public.group_raffles
     or tenant_id in (select tu.tenant_id from public.tenant_users tu where tu.user_id = (select auth.uid()))
     or (select public.is_super_admin())
   );
+
+-- Última lista de participantes lida de cada grupo (o sorteio usa leituras de até 30 min + entradas/saídas depois disso).
+create table if not exists public.group_member_snapshots (
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  group_jid text not null,
+  group_name text,
+  status text not null default 'ok',            -- ok | not_found | error
+  error text,
+  read_at timestamptz,                           -- hora da última leitura com sucesso
+  attempted_at timestamptz not null default now(),
+  member_count int,
+  no_phone_count int,
+  members jsonb not null default '[]'::jsonb,    -- [{ phone, name, admin }]
+  primary key (tenant_id, group_jid)
+);
+
+alter table public.group_member_snapshots enable row level security;
+
+drop policy if exists "Loja vê as próprias leituras de grupos" on public.group_member_snapshots;
+create policy "Loja vê as próprias leituras de grupos" on public.group_member_snapshots
+  for select to authenticated
+  using (
+    tenant_id = (select public.get_current_tenant_id())
+    or tenant_id in (select tu.tenant_id from public.tenant_users tu where tu.user_id = (select auth.uid()))
+    or (select public.is_super_admin())
+  );

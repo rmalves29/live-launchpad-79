@@ -37,3 +37,18 @@ Deno.test("sorteia sem repetir ganhador e cobre todos", () => {
   for (let i = 0; i < 5000; i++) { const x = drawWinners(pool, 1)[0]; hits.set(x, (hits.get(x) || 0) + 1); }
   for (const v of pool) if ((hits.get(v) || 0) < 800) throw new Error("distribuição desigual");
 });
+
+import { applyEvents, phoneVariants } from "./members.ts";
+Deno.test("aplica entradas e saídas depois da leitura", () => {
+  const base = [{ phone: "553199990000", name: "", admin: false }, { phone: "553188880000", name: "", admin: true }];
+  const now = applyEvents(base, [
+    { phone: "3199990000", event_type: "leave" },
+    { phone: "11947363119", event_type: "join" },
+    { phone: "3177770000", event_type: "join" },
+    { phone: "3177770000", event_type: "leave" },
+  ]);
+  eq(now.map((m) => m.phone).sort(), ["5511947363119", "553188880000"], "membros agora");
+});
+Deno.test("variações do telefone", () => {
+  eq(phoneVariants("553195309585").sort(), ["3195309585", "31995309585", "553195309585", "5531995309585"], "com e sem 9");
+});

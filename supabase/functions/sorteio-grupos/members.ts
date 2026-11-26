@@ -82,3 +82,30 @@ export function drawWinners<T>(pool: T[], count: number): T[] {
   for (let i = 0; i < n; i++) out.push(copy.splice(secureIndex(copy.length), 1)[0]);
   return out;
 }
+
+const isJoin = (t: string) => /^(join|add|entr|promote|demote)/i.test(t || "");
+const isLeave = (t: string) => /^(leave|remove|left|sai|exit)/i.test(t || "");
+
+// Lista lida do grupo + entradas/saídas registradas DEPOIS da leitura = quem está no grupo agora.
+// Eventos em ordem de data. Quem entrou depois da leitura entra como participante comum (não admin).
+export function applyEvents(members: Member[], events: Array<{ phone: string | null; event_type: string }>): Member[] {
+  const map = new Map(members.map((m) => [m.phone, m]));
+  for (const e of events) {
+    const phone = normPhone(e.phone);
+    if (!phone) continue;
+    if (isLeave(e.event_type)) map.delete(phone);
+    else if (isJoin(e.event_type) && !map.has(phone)) map.set(phone, { phone, name: "", admin: false });
+  }
+  return Array.from(map.values());
+}
+
+// Variações do número brasileiro (com/sem 55, com/sem o 9 do celular) para achar a cliente no cadastro.
+export function phoneVariants(phone: string): string[] {
+  const p = normPhone(phone);
+  const out = new Set<string>([p]);
+  const local = p.startsWith("55") ? p.slice(2) : p;
+  out.add(local);
+  if (local.length === 10) { const with9 = local.slice(0, 2) + "9" + local.slice(2); out.add(with9); out.add("55" + with9); }
+  if (local.length === 11 && local[2] === "9") { const sem9 = local.slice(0, 2) + local.slice(3); out.add(sem9); out.add("55" + sem9); }
+  return Array.from(out);
+}
