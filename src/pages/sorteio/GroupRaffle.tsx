@@ -43,8 +43,8 @@ function GroupStatus({ g, busy }: { g: Group; busy: boolean }) {
 function Avatar({ w }: { w: Winner }) {
   const [broken, setBroken] = useState(false);
   const initial = (w.name || w.whatsapp_name || '?').trim().charAt(0).toUpperCase();
-  if (w.image && !broken) return <img src={w.image} alt="" className="h-16 w-16 rounded-full object-cover border" onError={() => setBroken(true)} />;
-  return <div className="h-16 w-16 rounded-full bg-primary/15 text-primary flex items-center justify-center text-2xl font-bold">{initial}</div>;
+  if (w.image && !broken) return <img src={w.image} alt="" className="h-28 w-28 shrink-0 rounded-full object-cover border-2 border-primary/30" onError={() => setBroken(true)} />;
+  return <div className="h-28 w-28 shrink-0 rounded-full bg-primary/15 text-primary flex items-center justify-center text-5xl font-bold">{initial}</div>;
 }
 
 export default function GroupRaffle({ tenantId }: { tenantId: string }) {
@@ -224,20 +224,20 @@ export default function GroupRaffle({ tenantId }: { tenantId: string }) {
             <>
               <div className="space-y-3">
                 {result.winners.map((w, i) => (
-                  <div key={w.phone} className="rounded-lg border p-3 bg-primary/5 flex gap-3 items-center">
+                  <div key={w.phone} className="rounded-xl border-2 border-primary/30 p-5 bg-primary/5 flex gap-5 items-center">
                     <Avatar w={w} />
                     <div className="min-w-0">
-                      <div className="flex items-center gap-1 text-xs font-semibold text-primary"><Trophy className="h-3 w-3" /> {i + 1}º ganhador</div>
-                      <div className="text-lg font-bold truncate">{w.name || w.whatsapp_name || 'Sem nome'}</div>
-                      {w.whatsapp_name && w.name && w.whatsapp_name !== w.name && <div className="text-xs text-muted-foreground truncate">WhatsApp: {w.whatsapp_name}</div>}
-                      <div className="text-sm">{formatPhoneForDisplay(w.phone)}</div>
-                      <div className="mt-1 flex flex-wrap gap-1">{w.groups.map((g) => <Badge key={g} variant="secondary" className="text-[10px]">{g}</Badge>)}</div>
+                      <div className="flex items-center gap-2 text-base font-semibold text-primary"><Trophy className="h-5 w-5" /> {i + 1}º ganhador</div>
+                      <div className="text-3xl font-bold leading-tight break-words">{w.name || w.whatsapp_name || 'Sem nome'}</div>
+                      {w.whatsapp_name && w.name && w.whatsapp_name !== w.name && <div className="text-sm text-muted-foreground break-words">WhatsApp: {w.whatsapp_name}</div>}
+                      <div className="text-xl font-medium mt-1">{formatPhoneForDisplay(w.phone)}</div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">{w.groups.map((g) => <Badge key={g} variant="secondary" className="text-sm px-2.5 py-0.5">{g}</Badge>)}</div>
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="text-xs text-muted-foreground space-y-1">
-                <div className="flex items-center gap-1"><Users className="h-3 w-3" /> {result.participants_count} participantes concorreram, de {result.groups_count} grupo(s)</div>
+              <div className="text-sm text-muted-foreground space-y-1.5">
+                <div className="flex items-center gap-1.5"><Users className="h-4 w-4" /> {result.participants_count} participantes concorreram, de {result.groups_count} grupo(s)</div>
                 <div>{result.excluded_admins} administrador(es) fora{result.no_phone_count ? ` · ${result.no_phone_count} sem número visível fora` : ''}</div>
                 {result.grupos_fora?.length > 0 && <div>{result.grupos_fora.length} grupo(s) ficaram de fora</div>}
                 <div>Sorteado em {fmtDateTime(result.created_at)}</div>
