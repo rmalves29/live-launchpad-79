@@ -15,6 +15,8 @@ import { supabaseTenant } from '@/lib/supabase-tenant';
 import { useTenantContext } from '@/contexts/TenantContext';
 import { formatPhoneForDisplay } from '@/lib/phone-utils';
 import { formatBrasiliaDate } from '@/lib/date-utils';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import GroupRaffle, { GROUP_RAFFLE_TENANTS } from './GroupRaffle';
 
 interface Candidate {
   customer_phone: string;
@@ -36,7 +38,7 @@ const ROANNE_TENANT_ID = '014457e5-e85f-4d62-874b-6bd0b72213bc';
 
 type EligibilityMode = 'paid' | 'all';
 
-const Sorteio = () => {
+const SorteioPedidos = () => {
   const { toast } = useToast();
   const { tenantId } = useTenantContext();
   const [eventRange, setEventRange] = useState<DateRange | undefined>();
@@ -512,6 +514,30 @@ const Sorteio = () => {
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+};
+
+// Lojas liberadas ganham a aba "Participantes dos grupos"; as demais seguem só com o sorteio por pedidos.
+const Sorteio = () => {
+  const { tenantId } = useTenantContext();
+  if (!tenantId || !GROUP_RAFFLE_TENANTS.includes(tenantId)) return <SorteioPedidos />;
+  return (
+    <div className="container mx-auto pt-6 max-w-[1600px]">
+      <Tabs defaultValue="grupos">
+        <TabsList>
+          <TabsTrigger value="grupos">Participantes dos grupos</TabsTrigger>
+          <TabsTrigger value="pedidos">Por pedidos pagos</TabsTrigger>
+        </TabsList>
+        <TabsContent value="grupos" className="pt-4">
+          <div className="mb-4">
+            <h1 className="text-2xl font-bold">Sorteio entre participantes dos grupos</h1>
+            <p className="text-sm text-muted-foreground mt-1">Sorteia entre quem está nos grupos de WhatsApp agora. O resultado aparece só aqui.</p>
+          </div>
+          <GroupRaffle tenantId={tenantId} />
+        </TabsContent>
+        <TabsContent value="pedidos"><SorteioPedidos /></TabsContent>
+      </Tabs>
     </div>
   );
 };

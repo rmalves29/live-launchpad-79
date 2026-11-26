@@ -52,3 +52,6 @@ verify_jwt = false
 
 [functions.erp-stock-reconcile]
 verify_jwt = false
+
+[functions.sorteio-grupos]
+verify_jwt = false
