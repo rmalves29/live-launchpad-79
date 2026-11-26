@@ -7,7 +7,7 @@
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { authorizeTenantCaller, guardResponse } from "../_shared/auth-guard.ts";
-import { createUazapiMembers } from "../fe-export-contacts/uazapi.ts";
+import { createUazapiGroupReader } from "./uazapi-members.ts";
 import { buildPool, drawWinners, normPhone, toMembers, type Member } from "./members.ts";
 
 // Lojas com o sorteio por grupos liberado
@@ -81,18 +81,31 @@ Deno.serve(async (req) => {
     const credsOk = provider === "uazapi" ? !!(cfg?.uazapi_url && cfg?.uazapi_token) : !!(cfg?.zapi_instance_id && cfg?.zapi_token);
     if (!credsOk) return json({ success: false, error: "WhatsApp da loja não está conectado." });
 
-    const membersUazapi = provider === "uazapi" ? createUazapiMembers(cfg as any) : undefined;
     const byGroup: Array<{ group: string; members: Member[] }> = [];
     const failed: Array<{ grupo: string; erro: string }> = [];
     let semNumero = 0;
-    await parallelLimit(chosen, 4, async (g: any) => {
+    const started = Date.now();
+    const BUDGET_MS = 120_000; // a função tem limite de tempo: o que não der para ler fica como "não lido"
+    const addGroup = (g: any, raw: unknown[]) => {
+      const { members, semNumero: sn } = toMembers(raw);
+      semNumero += sn;
+      byGroup.push({ group: g.group_name, members });
+    };
+    const reader = provider === "uazapi" ? createUazapiGroupReader(cfg as any) : undefined;
+    // UazAPI: primeiro a lista geral (todos os grupos com participantes numa chamada só)
+    const fromList = reader ? await reader.listAll() : new Map<string, unknown[]>();
+    const pending = chosen.filter((g: any) => {
+      const raw = fromList.get(g.group_jid);
+      if (raw) { addGroup(g, raw); return false; }
+      return true;
+    });
+    await parallelLimit(pending, 6, async (g: any) => {
+      if (Date.now() - started > BUDGET_MS) { failed.push({ grupo: g.group_name, erro: "tempo esgotado" }); return; }
       try {
-        const raw = membersUazapi ? await membersUazapi(g.group_jid) : await membersZapi(cfg, g.group_jid);
-        const { members, semNumero: sn } = toMembers(raw);
-        semNumero += sn;
-        byGroup.push({ group: g.group_name, members });
+        addGroup(g, reader ? await reader.info(g.group_jid) : await membersZapi(cfg, g.group_jid));
       } catch (e: any) {
-        failed.push({ grupo: g.group_name, erro: e?.name === "AbortError" ? "tempo esgotado" : String(e?.message || e).slice(0, 160) });
+        const msg = String(e?.message || e);
+        failed.push({ grupo: g.group_name, erro: /timed out|abort/i.test(msg) || e?.name === "TimeoutError" ? "o WhatsApp demorou para responder" : msg.slice(0, 160) });
       }
     });
     if (!byGroup.length) return json({ success: false, error: "Não foi possível ler nenhum grupo no WhatsApp agora. Tente de novo em instantes.", grupos_com_erro: failed });
