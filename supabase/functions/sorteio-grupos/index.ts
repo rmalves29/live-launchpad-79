@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
 
     const loadSnapshots = async () => {
       const { data } = await sb.from("group_member_snapshots")
-        .select("group_jid, read_at, status, error, member_count, members").eq("tenant_id", tenantId);
+        .select("group_jid, read_at, status, error, member_count, no_phone_count, members").eq("tenant_id", tenantId);
       return new Map<string, any>((data || []).map((s: any) => [s.group_jid, s]));
     };
 
