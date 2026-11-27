@@ -1294,7 +1294,8 @@ export default function SendFlow() {
                   type="date"
                   value={scheduleDate}
                   onChange={(e) => setScheduleDate(e.target.value)}
-                  min={new Date().toISOString().split('T')[0]}
+                  // Dia de hoje em Brasília (toISOString é UTC e bloqueava "hoje" a partir das 21h)
+                  min={new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })}
                   className="mt-1"
                 />
               </div>
